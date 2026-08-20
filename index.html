@@ -1,0 +1,2382 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Duo Interpreter v1.00 — 多言語 双方向通訳</title>
+
+<!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Duo通訳">
+<meta name="theme-color" content="#0b0e14">
+<link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxODAgMTgwIj48cmVjdCB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgcng9IjQwIiBmaWxsPSIjMGIwZTE0Ii8+PHRleHQgeD0iOTAiIHk9Ijc4IiBmb250LXNpemU9IjU0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjM2RkYzk3IiBmb250LWZhbWlseT0iSGVsdmV0aWNhLEFyaWFsIiBmb250LXdlaWdodD0iYm9sZCI+QTwvdGV4dD48dGV4dCB4PSI5MCIgeT0iMTQ0IiBmb250LXNpemU9IjU0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjNWViOGZmIiBmb250LWZhbWlseT0iSGVsdmV0aWNhLEFyaWFsIiBmb250LXdlaWdodD0iYm9sZCI+QjwvdGV4dD48cmVjdCB4PSI0MCIgeT0iOTAiIHdpZHRoPSIxMDAiIGhlaWdodD0iMyIgZmlsbD0iIzJhMzQ0NCIvPjwvc3ZnPg==">
+<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiRHVvIEludGVycHJldGVyIiwic2hvcnRfbmFtZSI6IkR1b+mAmuiovyIsInN0YXJ0X3VybCI6Ii4vIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJvcmllbnRhdGlvbiI6ImFueSIsImJhY2tncm91bmRfY29sb3IiOiIjMGIwZTE0IiwidGhlbWVfY29sb3IiOiIjMGIwZTE0In0=">
+
+<!-- ============================================================
+     このHTMLに焼き込まれた設定・用語集（「HTMLに保存」で更新されます）
+     ============================================================ -->
+<script id="embedded-config" type="application/json">
+{"glossary":[],"ctx":"","note":"Duo Interpreter embedded data"}
+</script>
+
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#141a24; --panel-2:#1b2330; --line:#2a3444;
+    --txt:#e8edf5; --dim:#8b97a8;
+    --a:#3ddc97;    /* Speaker A = 自分 */
+    --b:#5eb8ff;    /* Speaker B = 相手 */
+    --danger:#ff5c6c; --warn:#ffb454;
+    --fs:30px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg);color:var(--txt);overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","Hiragino Sans","Noto Sans JP","Noto Sans SC",Meiryo,sans-serif;
+    display:flex;flex-direction:column;
+  }
+  #stage{flex:1;display:flex;flex-direction:column;min-height:0;gap:2px;background:var(--line);position:relative}
+  .side{flex:1;min-height:0;background:var(--panel);display:flex;flex-direction:column;position:relative}
+  .side.flip{transform:rotate(180deg)}
+  .side-head{
+    display:flex;align-items:center;gap:9px;padding:7px 14px;flex:0 0 auto;
+    font-size:12px;color:var(--dim);border-bottom:1px solid var(--line);
+  }
+  .badge{font-weight:800;padding:2px 9px;border-radius:999px;font-size:11px;letter-spacing:.05em}
+  .badge.a{background:rgba(61,220,151,.15);color:var(--a)}
+  .badge.b{background:rgba(94,184,255,.15);color:var(--b)}
+  .feed{flex:1;min-height:0;overflow-y:auto;padding:12px 18px 96px;display:flex;flex-direction:column;gap:12px}
+  .feed::-webkit-scrollbar{width:6px}
+  .feed::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+  .bubble{border-radius:14px;padding:11px 15px;background:var(--panel-2);border-left:4px solid var(--line);animation:pop .16s ease-out}
+  @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .bubble.from-A{border-left-color:var(--a)}
+  .bubble.from-B{border-left-color:var(--b)}
+  .bubble .who{font-size:11px;color:var(--dim);margin-bottom:5px}
+  .bubble .main{font-size:var(--fs);line-height:1.35;font-weight:600;word-break:break-word}
+  .bubble .sub{font-size:calc(var(--fs)*.5);line-height:1.45;color:var(--dim);margin-top:7px;word-break:break-word}
+  .bubble.pending .main{opacity:.4;font-style:italic}
+  .bubble.interim{opacity:.55;border-left-style:dashed}
+  .empty{margin:auto;text-align:center;color:var(--dim);font-size:14px;line-height:1.9;padding:20px}
+  .empty b{display:block;font-size:19px;color:var(--txt);margin-bottom:6px}
+
+  /* ---- 中央バー ---- */
+  #bar{
+    position:absolute;left:0;right:0;top:var(--bar-top,50%);transform:translateY(-50%);z-index:40;
+    width:max-content;max-width:97vw;margin:0 auto;
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;
+    background:rgba(11,14,20,.94);border:1px solid var(--line);border-radius:22px;
+    padding:8px 10px;backdrop-filter:blur(8px);box-shadow:0 12px 44px rgba(0,0,0,.65);
+  }
+  .cbtn{
+    border:1px solid var(--line);background:var(--panel-2);color:var(--txt);border-radius:999px;
+    padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;
+  }
+  .cbtn:hover{background:#26303f}
+  .cbtn.icon{padding:9px 11px}
+  #mic{background:var(--a);color:#05221a;border-color:transparent;font-size:14px;padding:11px 20px;font-weight:800}
+  #mic.live{background:var(--danger);color:#fff;animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,92,108,.45)}50%{box-shadow:0 0 0 12px rgba(255,92,108,0)}}
+  .seatctl{
+    display:flex;align-items:center;gap:4px;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:999px;padding:4px 8px 4px 10px;
+  }
+  .seatctl .tag{font-size:11px;font-weight:800;letter-spacing:.04em}
+  .seatctl.a .tag{color:var(--a)} .seatctl.b .tag{color:var(--b)}
+  .seatctl select{
+    background:transparent;border:0;color:var(--txt);font-size:12.5px;font-family:inherit;
+    padding:5px 2px;cursor:pointer;max-width:120px;
+  }
+  .seatctl select option{background:var(--panel)}
+  .seg{display:flex;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .seg button{border:0;background:transparent;color:var(--dim);padding:9px 13px;font-size:12px;font-weight:800;cursor:pointer}
+  .seg button.on{background:#2f3d50;color:var(--txt)}
+  .cbtn.listen{position:relative;overflow:hidden;min-width:132px;justify-content:center;font-weight:800}
+  .cbtn.listen #lvlFill{position:absolute;left:0;top:0;bottom:0;width:0%;background:rgba(61,220,151,.28);transition:width .08s linear;pointer-events:none}
+  .cbtn.listen span{position:relative;z-index:1}
+  .cbtn.listen.langA{border-color:var(--a)} .cbtn.listen.langB{border-color:var(--b)}
+  body.manual .feed{cursor:pointer}
+
+  /* ---- 片側だけを大きく表示するモード ---- */
+  .side.mini{flex:0 0 46px !important;transform:none !important;cursor:pointer;background:var(--panel-2)}
+  .side.mini .feed{display:none}
+  .side.mini .side-head{height:46px;border-bottom:0}
+  .side.mini .restore{margin-left:auto;font-size:11px;color:var(--dim);border:1px solid var(--line);
+    border-radius:999px;padding:3px 10px}
+  .side .restore{display:none}
+  .side.mini .restore{display:inline-block}
+  #stage.focusA #sideA .feed{padding-top:64px}
+  #stage.focusB #sideB .feed{padding-bottom:120px}
+  .fsgrp{display:flex;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .fsgrp button{border:0;background:transparent;color:var(--txt);cursor:pointer;padding:9px 12px;font-weight:800}
+  .fsgrp button:hover{background:#26303f}
+  .fsgrp .fsA{font-size:11px} .fsgrp .fsB{font-size:16px}
+
+  /* ---- ドロワー ---- */
+  #cog{position:fixed;right:12px;top:10px;z-index:60}
+  #drawer{
+    position:fixed;inset:0 0 0 auto;width:min(470px,100%);z-index:70;background:var(--panel);
+    border-left:1px solid var(--line);transform:translateX(100%);transition:transform .24s ease;display:flex;flex-direction:column;
+  }
+  #drawer.open{transform:none}
+  #drawer > header{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  #drawer > header h2{margin:0;font-size:16px}
+  .tabs{display:flex;border-bottom:1px solid var(--line);background:var(--bg)}
+  .tabs button{flex:1;border:0;background:transparent;color:var(--dim);padding:11px 4px;font-size:12.5px;font-weight:700;cursor:pointer;border-bottom:2px solid transparent}
+  .tabs button.on{color:var(--txt);border-bottom-color:var(--a)}
+  .pane{flex:1;overflow-y:auto;padding:18px;display:none;flex-direction:column;gap:16px}
+  .pane.on{display:flex}
+  .field{display:flex;flex-direction:column;gap:6px}
+  .field > label{font-size:11.5px;color:var(--dim);font-weight:800;letter-spacing:.05em}
+  .field small{font-size:11px;color:var(--dim);line-height:1.65}
+  input[type=text],input[type=password],select,textarea{
+    background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:9px;
+    padding:9px 11px;font-size:13.5px;font-family:inherit;width:100%;
+  }
+  textarea{resize:vertical;min-height:64px}
+  .row{display:flex;gap:8px;align-items:center}
+  .row.wrap{flex-wrap:wrap}
+  .switch{display:flex;align-items:center;gap:9px;font-size:13.5px;cursor:pointer}
+  .switch input{width:17px;height:17px;accent-color:var(--a);flex:0 0 auto}
+  .btn{border:1px solid var(--line);background:var(--panel-2);color:var(--txt);border-radius:9px;padding:9px 12px;font-size:12.5px;font-weight:700;cursor:pointer;flex:1;white-space:nowrap}
+  .btn:hover{background:#26303f}
+  .btn.primary{background:var(--a);color:#05221a;border-color:transparent}
+  .btn.ghost{flex:0 0 auto}
+  .hr{height:1px;background:var(--line)}
+  .note{font-size:11.5px;color:var(--dim);line-height:1.75;background:var(--panel-2);padding:10px 12px;border-radius:9px}
+  .note b{color:var(--txt)}
+  .warnbox{border-left:3px solid var(--warn)}
+
+  /* 用語集テーブル */
+  #glossWrap{border:1px solid var(--line);border-radius:9px;overflow:auto;max-height:260px}
+  table.gl{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.gl th{position:sticky;top:0;background:var(--panel-2);color:var(--dim);font-size:11px;text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+  table.gl td{border-bottom:1px solid var(--line);padding:0}
+  table.gl td input{border:0;border-radius:0;background:transparent;padding:7px 8px;font-size:12.5px}
+  table.gl td input:focus{outline:1px solid var(--a);background:var(--bg)}
+  table.gl td.del{width:30px;text-align:center}
+  table.gl td.del button{border:0;background:transparent;color:var(--dim);cursor:pointer;font-size:14px;padding:4px 6px}
+  table.gl td.del button:hover{color:var(--danger)}
+
+  #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:95;background:var(--danger);color:#fff;
+    padding:11px 17px;border-radius:10px;font-size:13.5px;max-width:92vw;display:none;box-shadow:0 8px 30px rgba(0,0,0,.5);line-height:1.6}
+  #scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:65;display:none}
+  #scrim.on{display:block}
+  #minutes{position:fixed;inset:5%;z-index:80;background:var(--panel);border:1px solid var(--line);border-radius:14px;display:none;flex-direction:column}
+  #minutes.on{display:flex}
+  #minutes > header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  #minutes .body{flex:1;overflow:auto;padding:18px;white-space:pre-wrap;font-size:14.5px;line-height:1.85}
+
+  /* ===== iPhone 向け調整 ===== */
+  html,body{overscroll-behavior:none;-webkit-text-size-adjust:100%}
+  body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  .feed{-webkit-overflow-scrolling:touch}
+  /* iOSでは入力欄のフォントが16px未満だと自動ズームするので下限を16pxにする */
+  input[type=text],input[type=password],select,textarea{font-size:16px}
+  #drawer{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+  #cog{top:calc(env(safe-area-inset-top) + 8px)}
+  /* タップ領域をiOSの推奨サイズ（44px以上）に */
+  .cbtn{min-height:44px}
+  .seg button,.fsgrp button{min-height:44px}
+  /* 長押しの選択メニューが出て邪魔になるのを防ぐ（本文は選択可のまま） */
+  .cbtn,.seg,.fsgrp,.side-head,.badge{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+
+  /* iPhoneはマイク入力しか使えないので、狭い画面では入力元セレクトを省いて場所を空ける */
+  @media (max-width:560px){
+    body.ios-mic-only .seatctl select[id^="src"]{display:none}
+  }
+
+  @media (max-width:700px){
+    :root{--fs:23px}
+    #bar{gap:6px;padding:7px 8px;border-radius:18px}
+    .cbtn{padding:8px 10px;font-size:12px}
+    #mic{padding:10px 14px}
+    .cbtn.listen{min-width:104px}
+    .seatctl{padding:3px 6px 3px 8px;gap:2px}
+    .seatctl select{max-width:74px;font-size:11.5px;padding:4px 1px}
+    .fsgrp button{padding:8px 9px}
+    #cog{top:6px;right:8px}
+  }
+
+  /* iPhone 縦画面：バーが場所を取りすぎないよう2段までに収める */
+  @media (max-width:480px){
+    #bar{gap:5px;padding:6px 7px;border-radius:16px;max-width:calc(100vw - 12px)}
+    .cbtn{padding:8px 9px;font-size:12px;gap:4px}
+    #mic{padding:10px 13px;font-size:13px}
+    .seatctl{padding:2px 5px 2px 7px}
+    .seatctl select{max-width:66px;font-size:11px}
+    .seatctl .tag{font-size:10px}
+    .cbtn.listen{min-width:76px;max-width:100px;font-size:12px;overflow:hidden;white-space:nowrap}
+    #focusBtn{font-size:12px;padding:8px 9px}
+    .seg button{padding:8px 8px;font-size:11px}
+    .fsgrp button{padding:8px 7px}
+    .seatctl select{max-width:58px}
+    .bubble{padding:9px 12px;border-radius:12px}
+    .feed{padding:10px 12px 92px}
+    .side-head{padding:6px 10px;font-size:11px}
+  }
+
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <!-- 上：Speaker B（相手） -->
+  <section class="side" id="sideB">
+    <div class="side-head">
+      <span class="badge b">B</span><span id="labelB">相手 / Partner</span>
+      <span class="restore">タップで2分割に戻す</span>
+      <span style="margin-left:auto" id="statusB"></span>
+    </div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.00</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
+  </section>
+
+  <!-- 下：Speaker A（自分） -->
+  <section class="side" id="sideA">
+    <div class="side-head">
+      <span class="badge a">A</span><span id="labelA">自分 / Me</span>
+      <span class="restore">タップで2分割に戻す</span>
+      <span style="margin-left:auto" id="statusA"></span>
+    </div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.00</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
+  </section>
+
+  <div id="bar">
+    <button class="cbtn" id="mic">● 開始</button>
+
+    <div class="seatctl a">
+      <span class="tag">A</span>
+      <select id="srcA" title="Aの音声入力元"></select>
+      <select id="langA" title="Aの言語"></select>
+    </div>
+    <div class="seatctl b">
+      <span class="tag">B</span>
+      <select id="srcB" title="Bの音声入力元"></select>
+      <select id="langB" title="Bの言語"></select>
+    </div>
+
+    <div class="seg" id="modeSeg">
+      <button data-m="manual" class="on" title="話す人が言語を切り替える（認識精度が最も高い）">手動</button>
+      <button data-m="auto" title="自動で言語を切り替える">AUTO</button>
+    </div>
+    <button class="cbtn listen" id="listenBtn" title="いま聞き取っている言語（クリックで切替）">
+      <i id="lvlFill"></i><span id="listenTxt">🎧 日本語</span>
+    </button>
+
+    <button class="cbtn" id="focusBtn" title="表示レイアウトを切り替える">⬍ 2分割</button>
+
+    <div class="fsgrp">
+      <button id="fsDown" class="fsA" title="文字を小さく">A−</button>
+      <button id="fsUp" class="fsB" title="文字を大きく">A＋</button>
+    </div>
+    <button class="cbtn icon" id="ttsToggle" title="読み上げ ON/OFF">🔊</button>
+    <button class="cbtn icon" id="clearBtn" title="ログ消去">🗑</button>
+  </div>
+</div>
+
+<button class="cbtn icon" id="cog" title="設定">⚙</button>
+<div id="scrim"></div>
+
+<aside id="drawer">
+  <header><h2>設定 / Settings</h2><button class="cbtn icon" id="closeDrawer">✕</button></header>
+  <div class="tabs">
+    <button data-tab="p1" class="on">翻訳・API</button>
+    <button data-tab="p2">音声</button>
+    <button data-tab="p3">用語集</button>
+    <button data-tab="p4">表示・記録</button>
+  </div>
+
+  <!-- ===== タブ1: 翻訳・API ===== -->
+  <div class="pane on" id="p1">
+    <div class="field">
+      <label>翻訳プロバイダ</label>
+      <select id="provider">
+        <option value="free">🆓 無料モード（APIキー不要 / Google翻訳ウェブ版）</option>
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="gemini">Google Gemini</option>
+        <option value="groq">Groq（高速・無料枠あり）</option>
+        <option value="deepseek">DeepSeek（低価格）</option>
+        <option value="openrouter">OpenRouter（各社モデル横断 / :free あり）</option>
+        <option value="mistral">Mistral</option>
+        <option value="together">Together AI</option>
+        <option value="xai">xAI (Grok)</option>
+        <option value="custom">カスタム / ローカル（Ollama・LM Studio・vLLM）</option>
+      </select>
+      <small id="provNote"></small>
+    </div>
+
+    <div class="field" id="keyField">
+      <label>API Key</label>
+      <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
+      <label class="switch"><input type="checkbox" id="remember" checked> このブラウザに保存する</label>
+    </div>
+
+    <div class="field" id="baseField" style="display:none">
+      <label>Base URL（OpenAI互換エンドポイント）</label>
+      <input type="text" id="baseUrl" placeholder="http://localhost:11434/v1">
+      <small>Ollama: http://localhost:11434/v1 ／ LM Studio: http://localhost:1234/v1<br>
+      ローカルは <code>OLLAMA_ORIGINS=*</code> 等でCORS許可が必要です。</small>
+    </div>
+
+    <div class="field">
+      <label>翻訳モデル</label>
+      <div class="row">
+        <select id="model" style="flex:1"></select>
+        <button class="btn ghost" id="fetchModels" title="このアカウントで使えるモデル一覧を取得">🔄 更新</button>
+      </div>
+      <input type="text" id="modelCustom" placeholder="モデル名を直接入力" style="display:none">
+      <button class="btn ghost" id="modelExpand" style="display:none;margin-top:2px"></button>
+      <small id="modelNote">主要モデル（最新の5.6系）のみ表示しています。APIキーを入力すると、実際に使えるモデル一覧を自動で取得します。</small>
+    </div>
+
+    <div class="field">
+      <label>翻訳スタイル</label>
+      <select id="tone">
+        <option value="business">ビジネス（丁寧）</option>
+        <option value="plain">簡潔・口語</option>
+        <option value="literal">できるだけ直訳</option>
+        <option value="casual">カジュアル・フレンドリー</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>会議の背景 / コンテキスト</label>
+      <textarea id="ctx" placeholder="例）当社は自動車部品メーカー。相手はドイツの調達担当。今日は価格改定と納期の打ち合わせ。"></textarea>
+      <small>AI翻訳プロバイダ選択時のみ有効です。</small>
+    </div>
+
+    <div class="note">
+      <b>完全無料で使う場合</b><br>
+      プロバイダ=「無料モード」、音声認識=「ブラウザ内蔵」、読み上げ=「ブラウザ内蔵音声」にすると、APIキーなし・課金なしで動作します（Chrome / Edge、マイク入力のみ）。
+    </div>
+  </div>
+
+  <!-- ===== タブ2: 音声 ===== -->
+  <div class="pane" id="p2">
+    <div class="field">
+      <label>音声認識（STT）</label>
+      <select id="sttProvider">
+        <option value="webspeech">🆓 ブラウザ内蔵 Web Speech API（無料・低遅延 / Chrome・Edge / マイクのみ）</option>
+        <option value="realtime">⚡ リアルタイム同時通訳（gpt-realtime-translate / OpenAI）</option>
+        <option value="openai">OpenAI（gpt-4o-transcribe / whisper-1）</option>
+        <option value="groq">Groq Whisper（高速・安価）</option>
+        <option value="gemini">Google Gemini（音声理解）</option>
+      </select>
+      <select id="sttModel" style="margin-top:4px"></select>
+      <input type="text" id="sttModelCustom" placeholder="モデル名を直接入力" style="display:none">
+      <small>タブ／システム音声を入力にする場合は、ブラウザ内蔵ではなく API 側の音声認識が必要です。</small>
+      <div class="note" id="realtimeNote" style="display:none">
+        <b>⚡ リアルタイム同時通訳モード</b><br>
+        音声を送りながら訳した<b>音声と字幕が同時に返ってくる</b>方式です（WebRTC接続）。
+        「録音→文字起こし→翻訳」の順番待ちが無くなるため、遅延が大幅に減り、話し終わるのを待たずに訳が出ます。<br><br>
+        ・話し手の言語は<b>自動判別</b>されるので、手動/AUTOの切り替えは不要です<br>
+        ・訳文の音声は自動で読み上げられます（TTS設定は使いません）<br>
+        ・翻訳プロバイダの設定（モデル・用語集・背景）は<b>使われません</b><br>
+        ・料金は音声1分あたり $0.034 程度（従量課金）<br>
+        ・OpenAI の APIキーが必要です（⚙→翻訳・API で OpenAI を選び、キーを入力）
+      </div>
+      <div class="field" id="rtDirField" style="display:none">
+        <label>訳す方向</label>
+        <select id="rtDir">
+          <option value="B">A（自分）が話した内容を → B（相手）の言語へ</option>
+          <option value="A">B（相手）が話した内容を → A（自分）の言語へ</option>
+        </select>
+        <small>このモードは1接続につき1方向です。双方向にしたい場合は「両方向（2接続）」を選んでください（料金は2倍になります）。</small>
+        <select id="rtBoth">
+          <option value="0">片方向のみ（安価）</option>
+          <option value="1">両方向（2接続・料金2倍）</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>APIキー（音声認識用・翻訳と別プロバイダの場合）</label>
+      <input type="password" id="sttKey" placeholder="空欄なら翻訳プロバイダのキーを使用" autocomplete="off">
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="field">
+      <label>音声入力元の設定</label>
+      <div class="note">
+        <b>対面で使う</b>：A・B とも「マイク」。1本のマイクで両言語を交互に待ち受けます。<br><br>
+        <b>Zoom / Teams で使う</b>：A =「マイク」（自分）、B =「タブ／システム音声」（相手）。開始時に画面共有ダイアログが出るので、<b>会議のタブ（またはウィンドウ／画面全体）を選び「タブの音声も共有」を必ずON</b>にしてください。映像は使わず音声だけを利用します。
+      </div>
+      <div class="note">
+        <b>対面で2人が1本のマイクを使うときのコツ</b><br>
+        画面中央の <b>手動 / AUTO</b> を切り替えられます。<br><br>
+        <b>手動（推奨・認識精度が高い）</b>：話す前に「🎧 ◯◯語」ボタン、または自分側のパネルをタップして言語を合わせます。音声認識は常に正しい言語で待ち受けるため、誤認識がぐっと減ります。<br><br>
+        <b>AUTO</b>：約9秒無音が続くともう一方の言語に自動で切り替わります。手を使わずに済みますが、切り替わる前に話し始めると誤認識が起きます。
+      </div>
+      <div class="note warnbox">
+        タブ音声のキャプチャは Chrome / Edge（デスクトップ）のみ対応です。macOS で「画面全体の音声」を取る場合は BlackHole 等の仮想オーディオが必要になることがあります。
+      </div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="field">
+      <label>読み上げ（TTS）</label>
+      <select id="ttsMode">
+        <option value="off">なし</option>
+        <option value="browser">🆓 ブラウザ内蔵音声（無料・即時）</option>
+        <option value="openai">OpenAI 音声（自然）</option>
+      </select>
+      <select id="ttsWho">
+        <option value="all">両方の訳を読み上げる</option>
+        <option value="B2A">相手(B)の発言だけ読み上げる（推奨）</option>
+        <option value="A2B">自分(A)の発言だけ読み上げる</option>
+      </select>
+      <div class="row">
+        <select id="voiceA"><option value="alloy">alloy</option><option value="nova">nova</option><option value="shimmer">shimmer</option><option value="ash">ash</option><option value="onyx">onyx</option><option value="fable">fable</option><option value="sage">sage</option></select>
+        <select id="voiceB"><option value="ash">ash</option><option value="onyx">onyx</option><option value="fable">fable</option><option value="alloy">alloy</option><option value="nova">nova</option><option value="shimmer">shimmer</option><option value="sage">sage</option></select>
+      </div>
+      <select id="ttsModel"></select>
+      <input type="text" id="ttsModelCustom" placeholder="モデル名を直接入力" style="display:none">
+      <small>読み上げ中はマイク認識を自動で停止し、ハウリングを防ぎます。</small>
+    </div>
+
+    <div class="field">
+      <label>マイク感度（無音判定のしきい値）</label>
+      <input type="range" id="vad" min="10" max="120" value="35">
+      <small>API音声認識のとき、どのくらいの音量から発話とみなすか。周囲がうるさい場合は右へ。</small>
+    </div>
+  </div>
+
+  <!-- ===== タブ3: 用語集 ===== -->
+  <div class="pane" id="p3">
+    <div class="field">
+      <label>用語集 <span id="glCount" style="color:var(--a)"></span></label>
+      <div id="glossWrap">
+        <table class="gl">
+          <thead><tr><th style="width:38%">原語 / Source</th><th style="width:38%">訳語 / Target</th><th>備考</th><th></th></tr></thead>
+          <tbody id="glBody"></tbody>
+        </table>
+      </div>
+      <div class="row wrap">
+        <button class="btn" id="glAdd">＋ 行を追加</button>
+        <button class="btn" id="glExport">CSV ダウンロード</button>
+        <button class="btn" id="glImportBtn">CSV 読み込み</button>
+        <input type="file" id="glImport" accept=".csv,text/csv" style="display:none">
+      </div>
+      <small>CSV 形式：1行目ヘッダー <code>source,target,note</code>。Excel / Google スプレッドシートでそのまま編集できます（UTF-8 BOM付きで出力）。</small>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="field">
+      <label>このHTMLファイルに焼き込んで保存</label>
+      <label class="switch"><input type="checkbox" id="embedKey"> APIキーも埋め込む（自分専用ファイルにする場合のみ）</label>
+      <button class="btn primary" id="saveHtml">⤓ 設定・用語集を埋め込んだHTMLを書き出す</button>
+      <small>用語集・コンテキスト・各種設定を埋め込んだ新しい HTML を書き出します。書き出したファイルを配れば、相手のPCでも同じ用語集で動きます。<br>
+      ※ 元ファイルは上書きされないので、ダウンロードしたものと置き換えてお使いください。</small>
+      <div class="row">
+        <button class="btn" id="loadEmbedded">埋め込みデータを読み込み直す</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== タブ4: 表示・記録 ===== -->
+  <div class="pane" id="p4">
+    <div class="field">
+      <label>表示</label>
+      <div class="row"><span style="font-size:11.5px;color:var(--dim);width:72px">文字サイズ</span><input type="range" id="fsize" min="16" max="72" value="30"></div>
+      <label class="switch"><input type="checkbox" id="flipTop" checked> 上パネル（B）を180°回転 — 対面で端末を挟むとき</label>
+      <label class="switch"><input type="checkbox" id="showSrc" checked> 原文も小さく併記する</label>
+      <label class="switch"><input type="checkbox" id="swapSides"> 上下を入れ替える（上=自分A）</label>
+      <label class="switch"><input type="checkbox" id="interimOn" checked> 認識途中の文字も表示する</label>
+    </div>
+    <div class="field">
+      <label>名前（表示ラベル）</label>
+      <div class="row"><input type="text" id="nameA" placeholder="自分 / Me"><input type="text" id="nameB" placeholder="相手 / Partner"></div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="field">
+      <label>ログ・議事録</label>
+      <div class="row wrap">
+        <button class="btn" id="dlTxt">テキストDL</button>
+        <button class="btn" id="dlCsv">CSV DL</button>
+      </div>
+      <button class="btn primary" id="genMinutes">AIで議事録を生成</button>
+      <small>議事録生成は AI プロバイダ選択時のみ利用できます。</small>
+    </div>
+
+    <div class="hr"></div>
+    <div class="note">
+      <b>ショートカット</b><br>
+      Space＝開始/停止　／　＋ −＝文字サイズ　／　1＝Aの言語で待受　2＝Bの言語で待受　0＝自動交互
+    </div>
+  </div>
+</aside>
+
+<div id="minutes">
+  <header><h2 style="margin:0;font-size:15px">議事録 / Minutes</h2>
+    <div class="row"><button class="cbtn" id="copyMin">コピー</button><button class="cbtn" id="dlMin">DL</button><button class="cbtn icon" id="closeMin">✕</button></div>
+  </header>
+  <div class="body" id="minBody"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* =========================================================================
+   Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
+   ========================================================================= */
+
+/* ---------------- 言語定義 ---------------- */
+var LANGS = [
+  { c:'ja',    name:'日本語',      sr:'ja-JP', tts:'ja-JP', g:'ja',    en:'Japanese' },
+  { c:'en',    name:'English',     sr:'en-US', tts:'en-US', g:'en',    en:'English' },
+  { c:'de',    name:'Deutsch',     sr:'de-DE', tts:'de-DE', g:'de',    en:'German' },
+  { c:'it',    name:'Italiano',    sr:'it-IT', tts:'it-IT', g:'it',    en:'Italian' },
+  { c:'fr',    name:'Français',    sr:'fr-FR', tts:'fr-FR', g:'fr',    en:'French' },
+  { c:'es',    name:'Español',     sr:'es-ES', tts:'es-ES', g:'es',    en:'Spanish' },
+  { c:'pt',    name:'Português',   sr:'pt-BR', tts:'pt-BR', g:'pt',    en:'Portuguese' },
+  { c:'zh',    name:'中文(简体)',   sr:'zh-CN', tts:'zh-CN', g:'zh-CN', en:'Simplified Chinese' },
+  { c:'zh-TW', name:'中文(繁體)',   sr:'zh-TW', tts:'zh-TW', g:'zh-TW', en:'Traditional Chinese' },
+  { c:'ko',    name:'한국어',       sr:'ko-KR', tts:'ko-KR', g:'ko',    en:'Korean' },
+  { c:'ru',    name:'Русский',     sr:'ru-RU', tts:'ru-RU', g:'ru',    en:'Russian' },
+  { c:'vi',    name:'Tiếng Việt',  sr:'vi-VN', tts:'vi-VN', g:'vi',    en:'Vietnamese' },
+  { c:'th',    name:'ไทย',          sr:'th-TH', tts:'th-TH', g:'th',    en:'Thai' },
+  { c:'id',    name:'Indonesia',   sr:'id-ID', tts:'id-ID', g:'id',    en:'Indonesian' },
+  { c:'hi',    name:'हिन्दी',        sr:'hi-IN', tts:'hi-IN', g:'hi',    en:'Hindi' },
+  { c:'ar',    name:'العربية',      sr:'ar-SA', tts:'ar-SA', g:'ar',    en:'Arabic' },
+  { c:'nl',    name:'Nederlands',  sr:'nl-NL', tts:'nl-NL', g:'nl',    en:'Dutch' },
+  { c:'pl',    name:'Polski',      sr:'pl-PL', tts:'pl-PL', g:'pl',    en:'Polish' },
+  { c:'tr',    name:'Türkçe',      sr:'tr-TR', tts:'tr-TR', g:'tr',    en:'Turkish' }
+];
+function L(code){ for (var i=0;i<LANGS.length;i++) if (LANGS[i].c === code) return LANGS[i]; return LANGS[0]; }
+
+/* ---------------- プロバイダ定義 ---------------- */
+var PROVIDERS = {
+  free:      { label:'無料モード', kind:'free', key:false,
+               note:'Google翻訳のウェブ版エンドポイントを利用します。APIキー・課金は不要ですが、非公式のため混雑時に失敗することがあります（自動でMyMemoryに切替）。用語集とコンテキストは反映されません。' },
+  openai:    { label:'OpenAI', kind:'oai', base:'https://api.openai.com/v1', key:true,
+               models:[
+                 {id:'gpt-5.6-luna', note:'軽量・低コスト（同時通訳におすすめ）', primary:true},
+                 {id:'gpt-5.6-terra', note:'標準', primary:true},
+                 {id:'gpt-5.6-sol',   note:'フラッグシップ・最高精度', primary:true},
+                 {id:'gpt-5.5'}, {id:'gpt-5.5-pro'},
+                 {id:'gpt-5.4'}, {id:'gpt-5.4-mini'}, {id:'gpt-5.4-nano'}, {id:'gpt-5.4-pro'},
+                 {id:'gpt-5.3-codex', note:'コーディング特化'},
+                 {id:'gpt-5.2'}, {id:'gpt-5.2-pro'},
+                 {id:'gpt-5.1'},
+                 {id:'gpt-5'}, {id:'gpt-5-mini'}, {id:'gpt-5-nano'}, {id:'gpt-5-pro'},
+                 {id:'o3'}, {id:'o3-pro'},
+                 {id:'gpt-4.1'}, {id:'gpt-4.1-mini'},
+                 {id:'gpt-4o'}, {id:'gpt-4o-mini', note:'旧世代・安価で安定'}
+               ],
+               note:'同時通訳では応答の速さが効くため、まずは gpt-5.6-luna をおすすめします。' },
+  anthropic: { label:'Anthropic', kind:'anthropic', base:'https://api.anthropic.com/v1', key:true,
+               models:[{id:'claude-haiku-4-5', note:'高速・低コスト'},{id:'claude-sonnet-4-5'},{id:'claude-opus-4-1'},{id:'claude-3-5-haiku-latest'},{id:'claude-3-7-sonnet-latest'}],
+               note:'ニュアンスや敬語の再現に強い。ブラウザから直接呼ぶため anthropic-dangerous-direct-browser-access ヘッダを付与します。' },
+  gemini:    { label:'Gemini', kind:'gemini', base:'https://generativelanguage.googleapis.com/v1beta', key:true,
+               models:['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.5-pro','gemini-2.0-flash'],
+               note:'無料枠が比較的大きく、音声認識も同じキーで使えます。' },
+  groq:      { label:'Groq', kind:'oai', base:'https://api.groq.com/openai/v1', key:true,
+               models:['llama-3.3-70b-versatile','llama-3.1-8b-instant','openai/gpt-oss-120b','qwen/qwen3-32b','moonshotai/kimi-k2-instruct'],
+               note:'非常に高速で無料枠あり。同時通訳の遅延を最小化したい場合に有利です。' },
+  deepseek:  { label:'DeepSeek', kind:'oai', base:'https://api.deepseek.com/v1', key:true,
+               models:['deepseek-chat','deepseek-reasoner'], note:'低価格。中国語まわりに強い。' },
+  openrouter:{ label:'OpenRouter', kind:'oai', base:'https://openrouter.ai/api/v1', key:true,
+               models:['openai/gpt-4o-mini','anthropic/claude-3.5-haiku','google/gemini-2.5-flash','meta-llama/llama-3.3-70b-instruct','qwen/qwen-2.5-72b-instruct','mistralai/mistral-small-3.2-24b-instruct:free','google/gemma-3-27b-it:free'],
+               note:'1つのキーで各社モデルを横断利用。「:free」が付くモデルは無料枠で使えます。' },
+  mistral:   { label:'Mistral', kind:'oai', base:'https://api.mistral.ai/v1', key:true,
+               models:['mistral-small-latest','mistral-large-latest','open-mistral-nemo'], note:'欧州言語に強い。' },
+  together:  { label:'Together', kind:'oai', base:'https://api.together.xyz/v1', key:true,
+               models:['meta-llama/Llama-3.3-70B-Instruct-Turbo','Qwen/Qwen2.5-72B-Instruct-Turbo'], note:'オープンモデル中心。' },
+  xai:       { label:'xAI', kind:'oai', base:'https://api.x.ai/v1', key:true,
+               models:['grok-4-fast','grok-3-mini','grok-4'], note:'' },
+  custom:    { label:'カスタム/ローカル', kind:'oai', base:'', key:false, baseEditable:true,
+               models:['qwen2.5:7b','gemma3:12b','llama3.1:8b','qwen3:8b'],
+               note:'OpenAI互換APIならどれでも。ローカルLLMを使えば通信費ゼロ・情報を外に出さずに運用できます。' }
+};
+
+var STT_MODELS = {
+  openai:[
+    {id:'gpt-4o-mini-transcribe', note:'安価・高速（おすすめ）'},
+    {id:'gpt-transcribe',         note:'最新・高精度'},
+    {id:'gpt-4o-transcribe'},
+    {id:'gpt-4o-transcribe-diarize', note:'話者分離あり'},
+    {id:'whisper-1',              note:'旧世代・安定'}
+  ],
+  groq:  [{id:'whisper-large-v3-turbo', note:'高速'}, {id:'whisper-large-v3'}],
+  gemini:[{id:'gemini-2.5-flash'}, {id:'gemini-2.5-flash-lite'}],
+  webspeech:[{id:'(ブラウザ内蔵)'}],
+  realtime:[{id:'gpt-realtime-translate', note:'音声→訳した音声＋字幕を同時生成'}]
+};
+var TTS_MODELS = [
+  {id:'gpt-4o-mini-tts', note:'自然・安価（おすすめ）'},
+  {id:'tts-1',           note:'低遅延'},
+  {id:'tts-1-hd',        note:'高音質'}
+];
+var STT_BASE = { openai:'https://api.openai.com/v1', groq:'https://api.groq.com/openai/v1' };
+
+/* APIから取得したモデル一覧のキャッシュ（provider -> {chat:[],stt:[],tts:[]}） */
+var MODEL_CACHE = {};
+
+/* ---------------- ストレージ ---------------- */
+var mem = {};
+var store = {
+  get:function(k,d){ try{ var v=localStorage.getItem(k); if(v!==null) return v; }catch(e){} return (k in mem)?mem[k]:d; },
+  set:function(k,v){ mem[k]=v; try{ localStorage.setItem(k,v); }catch(e){} },
+  del:function(k){ delete mem[k]; try{ localStorage.removeItem(k); }catch(e){} }
+};
+var $ = function(id){ return document.getElementById(id); };
+
+/* 埋め込みデータ */
+var EMBED = {};
+try { EMBED = JSON.parse($('embedded-config').textContent) || {}; } catch(e){ EMBED = {}; }
+
+function pref(key, embedKey, def){
+  var v = store.get(key, null);
+  if (v !== null && v !== undefined) return v;
+  if (embedKey && EMBED[embedKey] !== undefined && EMBED[embedKey] !== null) return EMBED[embedKey];
+  return def;
+}
+
+/* ---------------- 設定 ---------------- */
+var CFG = {};
+var KEYS = {};   // provider -> apikey
+
+function loadCfg(){
+  CFG = {
+    provider:  pref('di.prov','provider','free'),
+    baseUrl:   pref('di.base','baseUrl',''),
+    model:     pref('di.model','model',''),
+    tone:      pref('di.tone','tone','business'),
+    ctx:       pref('di.ctx','ctx',''),
+    sttProvider: pref('di.sttp','sttProvider','webspeech'),
+    sttModel:  pref('di.sttm','sttModel',''),
+    ttsMode:   pref('di.tts','ttsMode','off'),
+    ttsWho:    pref('di.ttsw','ttsWho','B2A'),
+    focus:     pref('di.focus','focus','split'),
+    rtDir:     pref('di.rtdir','rtDir','B'),
+    rtBoth:    pref('di.rtboth','rtBoth','0'),
+    ttsModel:  pref('di.ttsm','ttsModel',''),
+    voiceA:    pref('di.va','voiceA','alloy'),
+    voiceB:    pref('di.vb','voiceB','ash'),
+    vad:       parseInt(pref('di.vad','vad','35'),10),
+    langA:     pref('di.la','langA','ja'),
+    langB:     pref('di.lb','langB','en'),
+    srcA:      pref('di.sa','srcA','mic'),
+    srcB:      pref('di.sb','srcB','mic'),
+    nameA:     pref('di.na','nameA',''),
+    nameB:     pref('di.nb','nameB',''),
+    fsize:     pref('di.fs','fsize', (window.innerWidth <= 480 ? '22' : '30')),
+    flipTop:   pref('di.flip','flipTop','1')+'' === '1',
+    showSrc:   pref('di.src','showSrc','1')+'' === '1',
+    swap:      pref('di.swap','swap','0')+'' === '1',
+    interimOn: pref('di.itm','interimOn','1')+'' === '1',
+    remember:  store.get('di.remember','1') === '1',
+    glossary:  []
+  };
+  // 用語集
+  var gs = store.get('di.gloss', null);
+  if (gs !== null){ try{ CFG.glossary = JSON.parse(gs); }catch(e){ CFG.glossary = []; } }
+  else if (EMBED.glossary) CFG.glossary = EMBED.glossary.slice();
+  if (!CFG.glossary.length) CFG.glossary = [];
+
+  // APIキー
+  try { KEYS = JSON.parse(store.get('di.keys','{}')) || {}; } catch(e){ KEYS = {}; }
+  if (EMBED.keys) for (var k in EMBED.keys) if (!KEYS[k]) KEYS[k] = EMBED.keys[k];
+  if (!CFG.model)    CFG.model    = defaultModel(CFG.provider);
+  if (!CFG.sttModel) CFG.sttModel = defaultSttModel(CFG.sttProvider);
+  if (!CFG.ttsModel) CFG.ttsModel = TTS_MODELS[0].id;
+}
+function firstId(list){ var a = normList(list); return a.length ? a[0].id : ''; }
+function defaultModel(p){ var P = PROVIDERS[p]; return P ? firstId(P.models) : ''; }
+function defaultSttModel(p){ return firstId(STT_MODELS[p]); }
+function saveKeys(){ if (CFG.remember) store.set('di.keys', JSON.stringify(KEYS)); }
+function saveGloss(){ store.set('di.gloss', JSON.stringify(CFG.glossary)); }
+
+/* ---------------- 状態 ---------------- */
+var S = { running:false, entries:[], seq:0, speaking:false, listenSeat:'A', autoMode:true };
+
+/* ---------------- トースト ---------------- */
+var tTimer = null;
+function toast(msg, ok){
+  var t = $('toast');
+  t.innerHTML = msg;
+  t.style.background = ok ? '#1f7a54' : 'var(--danger)';
+  t.style.display = 'block';
+  clearTimeout(tTimer);
+  tTimer = setTimeout(function(){ t.style.display='none'; }, ok ? 2600 : 6000);
+}
+
+/* ---------------- 表示 ---------------- */
+function seatName(s){
+  if (s === 'A') return CFG.nameA || '自分 / Me';
+  return CFG.nameB || '相手 / Partner';
+}
+/* 表示レイアウト： split（2分割） / A（Bを最小化） / B（Aを最小化） */
+function setFocus(mode){
+  CFG.focus = mode;
+  store.set('di.focus', mode);
+  var stage = $('stage'), A = $('sideA'), B = $('sideB');
+  stage.classList.remove('focusA','focusB');
+  A.classList.remove('mini'); B.classList.remove('mini');
+  if (mode === 'A'){ stage.classList.add('focusA'); B.classList.add('mini'); }
+  else if (mode === 'B'){ stage.classList.add('focusB'); A.classList.add('mini'); }
+  layout();
+}
+function updateFocusUI(){
+  var stage = $('stage');
+  var topIsMini = stage.firstElementChild && stage.firstElementChild.classList.contains('mini');
+  var btn = $('focusBtn');
+  var narrow = window.innerWidth <= 480;   // iPhone縦などではボタンを短く
+  if (CFG.focus === 'A'){
+    btn.textContent = narrow ? '▣A' : ('▣ ' + seatName('A'));
+    btn.title = seatName('B') + ' 側を最小化中（クリックで切替）';
+  } else if (CFG.focus === 'B'){
+    btn.textContent = narrow ? '▣B' : ('▣ ' + seatName('B'));
+    btn.title = seatName('A') + ' 側を最小化中（クリックで切替）';
+  } else {
+    btn.textContent = narrow ? '⬍' : '⬍ 2分割';
+    btn.title = '片側だけを大きく表示したいときはクリック（一方的に説明する場面向け）';
+  }
+  positionBar();
+}
+
+/* コントロールバーの縦位置。
+   2分割のときは境目（中央）。片側を最小化したときは、最小化パネルを
+   覆ってしまうとタップで戻せなくなるので、その手前まで避ける。 */
+function positionBar(){
+  var bar = $('bar'), stage = $('stage');
+  if (!bar || !stage) return;
+  if (CFG.focus === 'split'){
+    document.documentElement.style.setProperty('--bar-top','50%');
+    return;
+  }
+  var MINI = 46, HEAD = 34, GAP = 6;
+  var h = bar.offsetHeight || 60;
+  var stageH = stage.clientHeight || window.innerHeight;
+  var topIsMini = stage.firstElementChild && stage.firstElementChild.classList.contains('mini');
+  // 上が最小化のときは「最小化バー＋拡大側パネルの見出し」の下に置く
+  var top = topIsMini ? (MINI + HEAD + GAP + h/2) : (stageH - MINI - GAP - h/2);
+  document.documentElement.style.setProperty('--bar-top', Math.round(top) + 'px');
+}
+window.addEventListener('resize', positionBar);
+
+function layout(){
+  var stage=$('stage'), A=$('sideA'), B=$('sideB');
+  if (CFG.swap) stage.insertBefore(A,B); else stage.insertBefore(B,A);
+  A.classList.remove('flip'); B.classList.remove('flip');
+  // 最小化されたパネルは回転させない（操作する人が読めるように）
+  var top = stage.firstElementChild;
+  if (CFG.flipTop && !top.classList.contains('mini')) top.classList.add('flip');
+  updateFocusUI();
+  $('labelA').textContent = seatName('A') + ' · ' + L(CFG.langA).name;
+  $('labelB').textContent = seatName('B') + ' · ' + L(CFG.langB).name;
+}
+function clearEmpty(){
+  ['feedA','feedB'].forEach(function(id){ var e=$(id).querySelector('.empty'); if(e) e.remove(); });
+}
+function nowStr(){ var d=new Date(); function p(n){return (n<10?'0':'')+n;} return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); }
+
+function addEntry(seat, text, interim){
+  var e = { id:'e'+(++S.seq), seat:seat, srcText:text, dstText:'', time:nowStr(),
+            ts:new Date().toISOString(), interim:!!interim,
+            srcLang:(seat==='A'?CFG.langA:CFG.langB), dstLang:(seat==='A'?CFG.langB:CFG.langA) };
+  S.entries.push(e);
+  render(e);
+  return e;
+}
+function removeEntry(e){
+  var n = document.querySelectorAll('[data-eid="'+e.id+'"]');
+  for (var i=0;i<n.length;i++) n[i].remove();
+  S.entries = S.entries.filter(function(x){ return x.id !== e.id; });
+}
+function render(e){ clearEmpty(); paint('feedA', e, 'A'); paint('feedB', e, 'B'); }
+
+function paint(feedId, e, viewer){
+  var feed = $(feedId);
+  var el = feed.querySelector('[data-eid="'+e.id+'"]');
+  if (!el){
+    el = document.createElement('div');
+    el.className = 'bubble from-' + e.seat;
+    el.setAttribute('data-eid', e.id);
+    el.innerHTML = '<div class="who"></div><div class="main"></div><div class="sub"></div>';
+    feed.appendChild(el);
+  }
+  var isSelf = (e.seat === viewer);
+  var main = isSelf ? e.srcText : (e.dstText || '…');
+  var sub  = isSelf ? (e.dstText||'') : e.srcText;
+  // 話者が後から確定した場合にも色分けが追従するよう毎回付け直す
+  el.className = 'bubble from-' + e.seat +
+                 (e.dstText ? '' : ' pending') + (e.interim ? ' interim' : '');
+  el.querySelector('.who').textContent =
+    seatName(e.seat) + ' · ' + L(e.srcLang).name + ' · ' + e.time + (isSelf ? ' · 原文' : ' · 訳');
+  el.querySelector('.main').textContent = main;
+  var s = el.querySelector('.sub');
+  s.textContent = CFG.showSrc ? sub : '';
+  s.style.display = (CFG.showSrc && sub) ? '' : 'none';
+  feed.scrollTop = feed.scrollHeight;
+}
+
+/* ---------------- APIキー取得 ---------------- */
+function keyOf(prov){ return (KEYS[prov]||'').trim(); }
+function transKey(){ return keyOf(CFG.provider); }
+function sttKey(){ return (KEYS['stt:'+CFG.sttProvider]||'').trim() || keyOf(CFG.sttProvider) || transKey(); }
+
+/* ---------------- 翻訳 ---------------- */
+function glossaryPrompt(){
+  var rows = CFG.glossary.filter(function(r){ return r.s && r.t; });
+  if (!rows.length) return '';
+  return '\n【必ず従う用語集（原語 => 訳語）】\n' +
+    rows.map(function(r){ return '- ' + r.s + ' => ' + r.t + (r.n ? '  ※'+r.n : ''); }).join('\n');
+}
+function ctxPrompt(){ var c=(CFG.ctx||'').trim(); return c ? ('\n【会議の背景】\n'+c) : ''; }
+function tonePrompt(){
+  if (CFG.tone==='plain')   return '簡潔で自然な口語にする。';
+  if (CFG.tone==='literal') return '意訳を避け、原文の構造に忠実に訳す。';
+  if (CFG.tone==='casual')  return '親しみやすいカジュアルな口調にする。';
+  return 'ビジネス会議にふさわしい丁寧な表現にする。';
+}
+function recentCtx(n){
+  return S.entries.filter(function(e){ return e.dstText && !e.interim; }).slice(-n)
+    .map(function(e){ return L(e.srcLang).en + ': ' + e.srcText; }).join('\n');
+}
+function sysPrompt(from, to){
+  return 'You are a professional simultaneous interpreter. Translate the user\'s utterance from '
+    + L(from).en + ' into ' + L(to).en + '.\n'
+    + 'Rules:\n'
+    + '1. Output ONLY the translation. No explanations, no quotes, no preamble.\n'
+    + '2. Remove fillers and self-corrections; produce one clean, natural sentence.\n'
+    + '3. Never alter proper nouns, numbers, units, or dates.\n'
+    + '4. If the speech-recognition text contains obvious errors, infer the intended word from context.\n'
+    + '5. If the input is already in ' + L(to).en + ', still output it in ' + L(to).en + '.\n'
+    + tonePrompt() + ctxPrompt() + glossaryPrompt();
+}
+
+function translate(e){
+  var from = e.srcLang, to = e.dstLang, text = e.srcText;
+  var p = PROVIDERS[CFG.provider] || PROVIDERS.free;
+  var job;
+  if (p.kind === 'free')          job = freeTranslate(text, from, to);
+  else if (p.kind === 'anthropic') job = anthropicTranslate(text, from, to);
+  else if (p.kind === 'gemini')    job = geminiTranslate(text, from, to);
+  else                             job = oaiTranslate(text, from, to);
+
+  return job.then(function(out){
+    e.dstText = (out||'').trim();
+    render(e); speak(e);
+  }).catch(function(err){
+    e.dstText = '(翻訳エラー)';
+    render(e);
+    var m = String(err.message||err);
+    if (/model/i.test(m) && /(not found|does not exist|must provide|invalid)/i.test(m))
+      toast('モデル名が正しくない可能性があります。⚙→翻訳・API のモデル欄にある「🔄 更新」を押して選び直してください。<br><small>' + m.slice(0,140) + '</small>');
+    else toast('翻訳失敗: ' + m);
+  });
+}
+
+function baseUrlOf(){
+  var p = PROVIDERS[CFG.provider];
+  if (p.baseEditable) return (CFG.baseUrl||'').replace(/\/+$/,'');
+  return p.base;
+}
+
+/* OpenAIの推論系モデル（oシリーズ／gpt-5系）はChat Completions APIで
+   temperatureをデフォルト(1)以外に指定すると400エラーになるため送らない。
+   代わりにreasoning_effortをlowにして、通訳用途で重要な低遅延を優先する。
+   gpt-4o系・gpt-4.1系など従来モデルはtemperatureに対応しているので今まで通り指定する。 */
+function isReasoningModel(id){
+  return /^(o[1-9](-|$)|gpt-5(\.|-|$))/i.test(String(id || ''));
+}
+function oaiTranslate(text, from, to){
+  var key = transKey();
+  var p = PROVIDERS[CFG.provider];
+  if (p.key && !key) return Promise.reject(new Error('APIキーが未設定です'));
+  var url = baseUrlOf() + '/chat/completions';
+  var h = { 'Content-Type':'application/json' };
+  if (key) h['Authorization'] = 'Bearer ' + key;
+  if (CFG.provider === 'openrouter'){ h['HTTP-Referer'] = location.origin || 'https://localhost'; h['X-Title'] = 'Duo Interpreter'; }
+  var body = {
+    model: CFG.model,
+    messages:[
+      { role:'system', content: sysPrompt(from,to) },
+      { role:'user', content: '【直前までの会話（参考）】\n' + (recentCtx(6)||'(none)') + '\n\n【訳す発話】\n' + text }
+    ]
+  };
+  if (CFG.provider === 'openai' && isReasoningModel(CFG.model)){
+    body.reasoning_effort = 'low';
+  } else {
+    body.temperature = 0.2;
+  }
+  return fetch(url, { method:'POST', headers:h, body: JSON.stringify(body)
+  }).then(chk).then(function(j){ return j.choices[0].message.content; });
+}
+
+function anthropicTranslate(text, from, to){
+  var key = transKey();
+  if (!key) return Promise.reject(new Error('APIキーが未設定です'));
+  return fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'x-api-key':key,
+              'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
+    body: JSON.stringify({
+      model: CFG.model, max_tokens:1024, temperature:0.2,
+      system: sysPrompt(from,to),
+      messages:[{ role:'user', content:'【直前までの会話（参考）】\n' + (recentCtx(6)||'(none)') + '\n\n【訳す発話】\n' + text }]
+    })
+  }).then(chk).then(function(j){ return (j.content||[]).map(function(b){ return b.text||''; }).join(''); });
+}
+
+function geminiTranslate(text, from, to){
+  var key = transKey();
+  if (!key) return Promise.reject(new Error('APIキーが未設定です'));
+  var url = PROVIDERS.gemini.base + '/models/' + encodeURIComponent(CFG.model) + ':generateContent?key=' + encodeURIComponent(key);
+  return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      systemInstruction:{ parts:[{ text: sysPrompt(from,to) }] },
+      contents:[{ role:'user', parts:[{ text:'【直前までの会話（参考）】\n'+(recentCtx(6)||'(none)')+'\n\n【訳す発話】\n'+text }]}],
+      generationConfig:{ temperature:0.2 }
+    })
+  }).then(chk).then(function(j){
+    var c = j.candidates && j.candidates[0];
+    return c ? (c.content.parts||[]).map(function(p){ return p.text||''; }).join('') : '';
+  });
+}
+
+/* 無料翻訳：Google翻訳ウェブ版 → 失敗時 MyMemory */
+function freeTranslate(text, from, to){
+  var sl = L(from).g, tl = L(to).g;
+  var url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=' + sl +
+            '&tl=' + tl + '&dt=t&q=' + encodeURIComponent(text);
+  return fetch(url).then(function(r){
+    if (!r.ok) throw new Error('google ' + r.status);
+    return r.json();
+  }).then(function(j){
+    var out = '';
+    if (j && j[0]) for (var i=0;i<j[0].length;i++) out += (j[0][i][0]||'');
+    if (!out) throw new Error('empty');
+    return out;
+  }).catch(function(){
+    return fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) +
+                 '&langpair=' + sl + '|' + tl)
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        var t = j && j.responseData && j.responseData.translatedText;
+        if (!t) throw new Error('無料翻訳に失敗しました');
+        return t;
+      });
+  });
+}
+
+function chk(r){
+  if (!r.ok) return r.text().then(function(t){ throw new Error(r.status + ' ' + t.slice(0,180)); });
+  return r.json();
+}
+
+/* ---------------- 読み上げ ---------------- */
+var audioEl = new Audio();
+function speak(e){
+  if (CFG.ttsMode === 'off' || !e.dstText) return;
+  if (CFG.ttsWho === 'B2A' && e.seat !== 'B') return;
+  if (CFG.ttsWho === 'A2B' && e.seat !== 'A') return;
+  var lang = e.dstLang, text = e.dstText;
+
+  if (CFG.ttsMode === 'browser'){
+    try{
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = L(lang).tts; u.rate = 1.05;
+      S.speaking = true;
+      u.onend = u.onerror = function(){ S.speaking = false; };
+      speechSynthesis.speak(u);
+    }catch(err){ S.speaking=false; }
+    return;
+  }
+  var key = keyOf('openai') || transKey();
+  if (!key){ toast('OpenAI音声にはOpenAIのAPIキーが必要です'); return; }
+  S.speaking = true;
+  fetch('https://api.openai.com/v1/audio/speech', {
+    method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+    body: JSON.stringify({ model:(CFG.ttsModel||'gpt-4o-mini-tts'), voice:(e.seat==='A'?CFG.voiceA:CFG.voiceB), input:text,
+                           instructions:'Speak clearly and naturally, at a business meeting pace.' })
+  }).then(function(r){ if(!r.ok) throw new Error('TTS '+r.status); return r.blob(); })
+    .then(function(b){
+      audioEl.src = URL.createObjectURL(b);
+      audioEl.onended = audioEl.onerror = function(){ S.speaking=false; };
+      return audioEl.play();
+    }).catch(function(){ S.speaking=false; });
+}
+
+/* =========================================================================
+   音声入力エンジン
+   ========================================================================= */
+var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+/* --- 共有マイクストリーム ---------------------------------------------
+   マイクの使用許可ポップアップが何度も出るのを防ぐため、開始時に一度だけ
+   getUserMedia でマイクを掴み、停止するまで保持し続ける。
+   ストリームが生きている間はブラウザが許可状態を維持するので、
+   音声認識を内部で再起動しても再度ポップアップが出ない。          */
+var micStream = null;
+function ensureMic(){
+  if (micStream && micStream.active) return Promise.resolve(micStream);
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+    return Promise.reject(new Error('このブラウザはマイク入力に対応していません'));
+  return navigator.mediaDevices.getUserMedia({
+    audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true }
+  }).then(function(st){ micStream = st; return st; });
+}
+/* マイク許可が「毎回確認」のままだと、音声認識が再開するたびにポップアップが出る。
+   状態を調べて、恒久的に許可する方法を案内する。 */
+function checkMicPermission(){
+  if (!navigator.permissions || !navigator.permissions.query) return;
+  try{
+    navigator.permissions.query({ name:'microphone' }).then(function(st){
+      var warn = function(){
+        if (st.state === 'granted') return;
+        if (location.protocol === 'file:') return;   // 別の警告を出しているので重複させない
+        toast('マイクが「毎回確認」になっています。この状態だと認識が再開するたびに許可を聞かれます。<br>'
+            + '一度「開始」を押し、出てきたポップアップで<b>「許可」（今回のみ許可ではなく）</b>を選んでください。');
+      };
+      setTimeout(warn, 1800);
+      st.onchange = function(){ if (st.state === 'granted') toast('マイクの許可を保存しました。以後ポップアップは出ません。', true); };
+    }).catch(function(){});
+  }catch(e){}
+}
+
+function setLevel(rms){
+  var el = $('lvlFill');
+  if (el) el.style.width = Math.min(100, rms*400) + '%';
+}
+function releaseMic(){
+  if (micStream){ try{ micStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){} micStream = null; }
+}
+
+/* --- A) Web Speech（マイク・無料） --- */
+var rec=null, recRun=false, itmEntry=null, altTimer=null, restarting=false;
+
+function micSeats(){
+  var a = [];
+  if (CFG.srcA === 'mic') a.push('A');
+  if (CFG.srcB === 'mic') a.push('B');
+  return a;
+}
+function langOf(seat){ return seat==='A' ? CFG.langA : CFG.langB; }
+
+/* 聞き取り対象の話者を切り替える（手動ボタン・パネルタップ・AUTOから共通で使用） */
+function setListenSeat(seat, quiet){
+  if (S.listenSeat === seat) { updateStatus(); return; }
+  S.listenSeat = seat;
+  itmEntry = null;
+  updateStatus();
+  // Web Speech は言語を変えるのに再起動が必要
+  if (S.running && CFG.sttProvider === 'webspeech' && rec){
+    try{ rec.stop(); }catch(e){}   // onend が新しい言語で拾い直す
+  }
+  if (!quiet) clearTimeout(altTimer);
+}
+
+function startWebSpeech(){
+  var seats = micSeats();
+  if (!seats.length) return true;
+  if (!SR){ toast('このブラウザは Web Speech API 非対応です。設定の「音声」タブで API 側の音声認識を選んでください。'); return false; }
+  S.listenSeat = S.listenSeat && seats.indexOf(S.listenSeat)>=0 ? S.listenSeat : seats[0];
+  buildRec();
+  return true;
+}
+var sawSpeech = false;   // 今の認識セッション中に発話を拾えたか
+function buildRec(){
+  killRec();
+  rec = new SR();
+  rec.lang = L(langOf(S.listenSeat)).sr;
+  rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+
+  rec.onstart = function(){ sawSpeech = false; };
+
+  rec.onresult = function(ev){
+    if (S.speaking) return;
+    var itm='', fin=[];
+    for (var i=ev.resultIndex;i<ev.results.length;i++){
+      var r=ev.results[i];
+      if (r.isFinal) fin.push(r[0].transcript); else itm += r[0].transcript;
+    }
+    var seat = S.listenSeat;
+    if (CFG.interimOn && itm.trim()){
+      if (!itmEntry) itmEntry = addEntry(seat, itm.trim(), true);
+      else { itmEntry.srcText = itm.trim(); render(itmEntry); }
+    }
+    fin.forEach(function(t){
+      t = t.trim(); if (!t) return;
+      var e;
+      if (itmEntry){ e = itmEntry; itmEntry = null; e.interim = false; e.srcText = t; }
+      else e = addEntry(seat, t, false);
+      sawSpeech = true;
+      render(e); translate(e);
+    });
+  };
+  rec.onerror = function(ev){
+    if (ev.error==='not-allowed' || ev.error==='service-not-allowed'){
+      toast('マイクの使用が許可されていません。アドレス欄左の🔒アイコン →「マイク」→「許可」に設定してください。');
+      stopAll();
+    }
+    // no-speech / aborted などはここで何もしない（onend 側でまとめて処理する）
+  };
+
+  /* Chrome は無音が続くと自動で認識を終了する。再起動は避けられないので、
+     「どうせ再起動する、そのタイミングでだけ」言語を切り替える。
+     こうすることで AUTO でも再起動回数が増えず、許可ポップアップも増えない。 */
+  rec.onend = function(){
+    if (!recRun || restarting) return;
+    restarting = true;
+    if (S.autoMode && micSeats().length > 1 && !sawSpeech){
+      S.listenSeat = (S.listenSeat === 'A') ? 'B' : 'A';
+      itmEntry = null;
+      updateStatus();
+    }
+    setTimeout(function(){
+      restarting = false;
+      if (!recRun || !rec) return;
+      try{ rec.lang = L(langOf(S.listenSeat)).sr; rec.start(); }
+      catch(e){ setTimeout(function(){ try{ rec.start(); }catch(_){} }, 400); }
+    }, 120);
+  };
+  recRun = true;
+  try{ rec.start(); }catch(e){}
+  updateStatus();
+}
+function killRec(){ recRun=false; restarting=false; if(rec){ try{ rec.onend=null; rec.stop(); }catch(e){} rec=null; } itmEntry=null; }
+
+/* 旧・定期切替タイマーは廃止（再起動＝許可ポップアップの原因だったため） */
+function scheduleAlt(){ clearTimeout(altTimer); }
+function flipSeat(){
+  if (!S.running || micSeats().length<2) return;
+  setListenSeat(S.listenSeat==='A' ? 'B' : 'A', true);
+}
+
+/* --- B) ストリーム + API 音声認識（マイク or タブ音声） --- */
+function StreamEngine(seat, stream, opts){
+  this.seat = seat; this.stream = stream; this.opts = opts||{};
+  this.chunks=[]; this.voice=false; this.last=0; this.segStart=0; this.timer=null;
+  this.rec=null; this.ac=null; this.an=null; this.dead=false;
+}
+StreamEngine.prototype.start = function(){
+  var self = this;
+  try{
+    this.ac = new (window.AudioContext||window.webkitAudioContext)();
+    var src = this.ac.createMediaStreamSource(this.stream);
+    this.an = this.ac.createAnalyser(); this.an.fftSize = 1024;
+    src.connect(this.an);
+  }catch(e){}
+  this.newRec();
+  var buf = new Uint8Array(this.an ? this.an.frequencyBinCount : 512);
+  this.timer = setInterval(function(){
+    if (self.dead) return;
+    var rms = 0;
+    if (self.an){
+      self.an.getByteTimeDomainData(buf);
+      var s=0; for (var i=0;i<buf.length;i++){ var v=(buf[i]-128)/128; s+=v*v; }
+      rms = Math.sqrt(s/buf.length);
+    }
+    if (self.opts.meter) setLevel(rms);
+    var t = Date.now();
+    if (self.opts.isMic && S.speaking){ self.voice=false; self.last=t; return; }
+    if (rms > CFG.vad/1000) { self.voice=true; self.last=t; }
+    if (self.voice && (t-self.last)>900 && (t-self.segStart)>700) self.cut(true);
+    else if (!self.voice && (t-self.segStart)>8000) self.cut(false);
+    else if ((t-self.segStart)>20000) self.cut(true);
+  }, 60);
+};
+StreamEngine.prototype.newRec = function(){
+  var self = this;
+  this.chunks=[]; this.voice=false; this.segStart=Date.now(); this.last=Date.now();
+  var mime = pickMime();
+  try{ this.rec = mime ? new MediaRecorder(this.stream,{mimeType:mime}) : new MediaRecorder(this.stream); }
+  catch(e){ toast('録音を開始できません: '+e.message); return; }
+  this.rec.ondataavailable = function(ev){ if (ev.data && ev.data.size) self.chunks.push(ev.data); };
+  this.rec.onstop = function(){
+    var send = self.rec && self.rec._send;
+    var blob = new Blob(self.chunks, { type:(self.rec && self.rec.mimeType) || 'audio/webm' });
+    if (send && blob.size > 6000) transcribeBlob(blob, self.seat);
+    if (!self.dead && S.running) self.newRec();
+  };
+  try{ this.rec.start(); }catch(e){}
+};
+StreamEngine.prototype.cut = function(send){
+  if (!this.rec || this.rec.state==='inactive'){ if(!this.dead && S.running) this.newRec(); return; }
+  this.rec._send = !!send;
+  try{ this.rec.stop(); }catch(e){}
+};
+StreamEngine.prototype.stop = function(){
+  this.dead = true;
+  clearInterval(this.timer);
+  if (this.rec){ this.rec._send=false; try{ this.rec.stop(); }catch(e){} }
+  // 共有マイクは stopAll() でまとめて解放するのでここでは止めない
+  if (this.stream && !this.opts.isMic) this.stream.getTracks().forEach(function(t){ t.stop(); });
+  if (this.ac){ try{ this.ac.close(); }catch(e){} }
+  if (this.opts.meter) setLevel(0);
+};
+
+function pickMime(){
+  var c=['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'];
+  for (var i=0;i<c.length;i++) if (window.MediaRecorder && MediaRecorder.isTypeSupported(c[i])) return c[i];
+  return '';
+}
+
+function transcribeBlob(blob, seat){
+  var lang = langOf(seat);
+  var holder = addEntry(seat, '（認識中…）', true);
+  sttCall(blob, lang).then(function(text){
+    text = (text||'').trim();
+    if (!text || text.length<2 || /^[\s.,、。・…]*$/.test(text)){ removeEntry(holder); return; }
+    // AUTO（言語自動判定）のときは、認識結果からどちらの話者かを推定して割り当て直す
+    if (S.autoMode && micSeats().length > 1){
+      var g = guessSeatFromText(text);
+      if (g !== holder.seat){
+        holder.seat = g;
+        holder.srcLang = langOf(g);
+        holder.dstLang = langOf(g==='A' ? 'B' : 'A');
+        S.listenSeat = g;
+        updateStatus();
+      }
+    }
+    holder.srcText = text; holder.interim = false; render(holder);
+    translate(holder);
+  }).catch(function(err){
+    removeEntry(holder);
+    toast('音声認識失敗: ' + String(err.message||err));
+  });
+}
+
+/* --- 認識テキストから「どちらの話者か」を推定する ------------------------
+   文字の種類（かな／ハングル／漢字／キリル文字など）でまず判定し、
+   ラテン文字同士（英語・ドイツ語など）は頻出語で判定する。         */
+var SCRIPT_TEST = {
+  ja:function(t){ return /[぀-ゟ゠-ヿ]/.test(t); },
+  ko:function(t){ return /[가-힯ᄀ-ᇿ]/.test(t); },
+  ru:function(t){ return /[Ѐ-ӿ]/.test(t); },
+  ar:function(t){ return /[؀-ۿ]/.test(t); },
+  th:function(t){ return /[฀-๿]/.test(t); },
+  hi:function(t){ return /[ऀ-ॿ]/.test(t); },
+  zh:function(t){ return /[一-鿿]/.test(t) && !/[぀-ゟ゠-ヿ]/.test(t); }
+};
+SCRIPT_TEST['zh-TW'] = SCRIPT_TEST.zh;
+
+var STOPWORDS = {
+  en:['the','and','is','are','you','we','to','of','that','this','it','for','have','with','what','can'],
+  de:['der','die','das','und','ist','nicht','ich','wir','sie','ein','eine','mit','auf','für','haben','sehr'],
+  it:['il','la','di','che','non','sono','per','con','una','questo','anche','più','come','ma'],
+  fr:['le','la','les','de','et','est','pas','nous','vous','un','une','pour','avec','que','ce'],
+  es:['el','la','los','de','que','no','es','por','para','con','una','este','pero','muy'],
+  pt:['o','a','os','de','que','não','é','por','para','com','uma','este','mas','muito'],
+  nl:['de','het','een','en','is','niet','wij','voor','met','dat','maar','ook'],
+  pl:['nie','jest','to','się','w','na','że','do','ale','bardzo'],
+  tr:['bir','ve','bu','için','ile','ama','çok','değil','var'],
+  id:['yang','dan','di','ini','tidak','untuk','dengan','saya','kami'],
+  vi:['của','và','không','là','tôi','chúng','được','cho','với']
+};
+function latinScore(text, code){
+  var words = STOPWORDS[code];
+  if (!words) return 0;
+  var toks = text.toLowerCase().replace(/[^\p{L}\s']/gu,' ').split(/\s+/).filter(Boolean);
+  if (!toks.length) return 0;
+  var hit = 0;
+  toks.forEach(function(w){ if (words.indexOf(w) >= 0) hit++; });
+  return hit / toks.length;
+}
+function guessSeatFromText(text){
+  var seats = micSeats();
+  if (seats.length < 2) return seats[0] || S.listenSeat || 'A';
+  var la = CFG.langA, lb = CFG.langB;
+  var ta = SCRIPT_TEST[la], tb = SCRIPT_TEST[lb];
+  var ma = ta ? ta(text) : false, mb = tb ? tb(text) : false;
+  if (ma && !mb) return 'A';
+  if (mb && !ma) return 'B';
+  // どちらも文字種で決まらない場合（ラテン文字同士）は頻出語で比較
+  var sa = latinScore(text, la), sb = latinScore(text, lb);
+  if (sa > sb) return 'A';
+  if (sb > sa) return 'B';
+  return S.listenSeat || 'A';
+}
+
+function sttCall(blob, lang){
+  var p = CFG.sttProvider;
+  if (p === 'gemini') return geminiSTT(blob, lang);
+  var key = sttKey();
+  if (!key) return Promise.reject(new Error('音声認識用のAPIキーが未設定です'));
+  // モデル名が空だと OpenAI が 400「you must provide a model parameter」を返すため必ず補う
+  var mdl = (CFG.sttModel||'').trim();
+  if (!mdl || mdl.charAt(0) === '('){
+    mdl = defaultSttModel(p) || 'gpt-4o-mini-transcribe';
+    CFG.sttModel = mdl; store.set('di.sttm', mdl);
+  }
+  var ext = blob.type.indexOf('mp4')>=0 ? 'mp4' : (blob.type.indexOf('ogg')>=0 ? 'ogg' : 'webm');
+  var fd = new FormData();
+  fd.append('file', blob, 'seg.'+ext);
+  fd.append('model', mdl);
+  // AUTO かつマイクを2人で共有している場合は language を送らず、AI側に言語を自動判定させる
+  var autoDetect = S.autoMode && micSeats().length > 1;
+  if (!autoDetect) fd.append('language', L(lang).g.split('-')[0]);
+  var terms = CFG.glossary.slice(0,60).map(function(r){ return r.s; }).filter(Boolean).join(', ');
+  if (terms) fd.append('prompt', terms);
+  return fetch((STT_BASE[p]||STT_BASE.openai) + '/audio/transcriptions', {
+    method:'POST', headers:{ 'Authorization':'Bearer '+key }, body: fd
+  }).then(chk).then(function(j){ return j.text || ''; });
+}
+
+function geminiSTT(blob, lang){
+  var key = sttKey();
+  if (!key) return Promise.reject(new Error('Gemini APIキーが未設定です'));
+  return blobToB64(blob).then(function(b64){
+    var url = PROVIDERS.gemini.base + '/models/' + encodeURIComponent(CFG.sttModel||'gemini-2.5-flash') +
+              ':generateContent?key=' + encodeURIComponent(key);
+    return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ contents:[{ role:'user', parts:[
+        { text:'Transcribe this '+L(lang).en+' audio verbatim. Output only the transcript text. If there is no speech, output nothing.' },
+        { inlineData:{ mimeType: blob.type.split(';')[0] || 'audio/webm', data: b64 } }
+      ]}]})
+    }).then(chk).then(function(j){
+      var c = j.candidates && j.candidates[0];
+      return c ? (c.content.parts||[]).map(function(p){return p.text||'';}).join('') : '';
+    });
+  });
+}
+function blobToB64(b){
+  return new Promise(function(res,rej){
+    var fr = new FileReader();
+    fr.onload = function(){ res(String(fr.result).split(',')[1]); };
+    fr.onerror = rej; fr.readAsDataURL(b);
+  });
+}
+
+/* =========================================================================
+   C) リアルタイム同時通訳エンジン（gpt-realtime-translate / WebRTC）
+   ------------------------------------------------------------------
+   音声を送りながら、訳した音声と字幕がストリーミングで返ってくる。
+   1接続 = 1方向（出力言語を1つ指定する）。双方向にしたい場合は2接続張る。
+   ========================================================================= */
+function RealtimeEngine(srcSeat, stream){
+  this.srcSeat = srcSeat;                       // 話し手の席
+  this.dstSeat = (srcSeat === 'A') ? 'B' : 'A'; // 訳の届け先
+  this.stream  = stream;
+  this.pc = null; this.dc = null; this.audio = null;
+  this.entry = null; this.dead = false;
+}
+
+RealtimeEngine.prototype.start = function(){
+  var self = this;
+  var key = keyOf('openai') || transKey();
+  if (!key) return Promise.reject(new Error('OpenAI の APIキーが必要です'));
+  var target = L(langOf(this.dstSeat)).g.split('-')[0];   // 出力（訳）言語
+
+  // 1) 短期クライアントシークレットを発行
+  return fetch('https://api.openai.com/v1/realtime/translations/client_secrets', {
+    method:'POST',
+    headers:{ 'Authorization':'Bearer '+key, 'Content-Type':'application/json' },
+    body: JSON.stringify({
+      session:{
+        model:'gpt-realtime-translate',
+        audio:{
+          input:{ noise_reduction:{ type:'near_field' },
+                  transcription:{ model:'gpt-realtime-whisper' } },
+          output:{ language: target }
+        }
+      }
+    })
+  }).then(chk).then(function(j){
+    var secret = j.value || (j.client_secret && j.client_secret.value);
+    if (!secret) throw new Error('クライアントシークレットを取得できませんでした');
+    return self.connect(secret);
+  });
+};
+
+RealtimeEngine.prototype.connect = function(secret){
+  var self = this;
+  var pc = new RTCPeerConnection();
+  this.pc = pc;
+
+  // 訳した音声を再生する
+  var audio = document.createElement('audio');
+  audio.autoplay = true;
+  this.audio = audio;
+  pc.ontrack = function(ev){
+    audio.srcObject = ev.streams[0];
+    // 自分の声が混ざらないよう、再生中はマイク側の認識を抑制する
+  };
+
+  this.stream.getAudioTracks().forEach(function(t){ pc.addTrack(t, self.stream); });
+
+  var dc = pc.createDataChannel('oai-events');
+  this.dc = dc;
+  dc.onmessage = function(ev){ self.onEvent(ev); };
+  dc.onopen = function(){
+    // 念のため出力言語を明示（発行時の設定と同じ）
+    try{
+      dc.send(JSON.stringify({
+        type:'session.update',
+        session:{ audio:{ output:{ language: L(langOf(self.dstSeat)).g.split('-')[0] } } }
+      }));
+    }catch(e){}
+  };
+
+  pc.onconnectionstatechange = function(){
+    if (self.dead) return;
+    if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected'){
+      toast('リアルタイム接続が切断されました。停止して開始し直してください。');
+    }
+  };
+
+  return pc.createOffer().then(function(offer){
+    return pc.setLocalDescription(offer).then(function(){ return offer; });
+  }).then(function(offer){
+    return fetch('https://api.openai.com/v1/realtime/translations/calls', {
+      method:'POST',
+      headers:{ 'Authorization':'Bearer '+secret, 'Content-Type':'application/sdp' },
+      body: offer.sdp
+    });
+  }).then(function(r){
+    if (!r.ok) return r.text().then(function(t){ throw new Error('WebRTC接続失敗 '+r.status+': '+t.slice(0,160)); });
+    return r.text();
+  }).then(function(sdp){
+    return self.pc.setRemoteDescription({ type:'answer', sdp: sdp });
+  });
+};
+
+/* ストリーミングで届く字幕を吹き出しに反映する */
+RealtimeEngine.prototype.ensureEntry = function(){
+  if (!this.entry){
+    this.entry = addEntry(this.srcSeat, '', true);
+    this.entry.dstText = '';
+  }
+  return this.entry;
+};
+RealtimeEngine.prototype.onEvent = function(ev){
+  var e;
+  try { e = JSON.parse(ev.data); } catch(err){ return; }
+  var t = e.type || '';
+
+  if (t === 'session.input_transcript.delta'){          // 話した内容（原文）
+    this.ensureEntry().srcText += (e.delta || '');
+    render(this.entry);
+  }
+  else if (t === 'session.output_transcript.delta'){     // 訳文
+    this.ensureEntry().dstText += (e.delta || '');
+    render(this.entry);
+  }
+  else if (t === 'session.input_transcript.completed' || t === 'session.output_transcript.done'
+        || t === 'session.output_transcript.completed'){
+    if (this.entry){ this.entry.interim = false; render(this.entry); }
+    // 次の発話に備えて区切る
+    if (t !== 'session.input_transcript.completed') this.entry = null;
+  }
+  else if (t === 'error' || (e.error && e.error.message)){
+    toast('リアルタイム: ' + ((e.error && e.error.message) || 'エラー'));
+  }
+};
+
+RealtimeEngine.prototype.stop = function(){
+  this.dead = true;
+  try{ if (this.dc && this.dc.readyState === 'open') this.dc.send(JSON.stringify({ type:'session.close' })); }catch(e){}
+  try{ if (this.dc) this.dc.close(); }catch(e){}
+  try{ if (this.pc) this.pc.close(); }catch(e){}
+  if (this.audio){ try{ this.audio.srcObject = null; }catch(e){} this.audio = null; }
+  this.pc = null; this.dc = null; this.entry = null;
+};
+
+/* =========================================================================
+   開始 / 停止
+   ========================================================================= */
+var engines = [];
+
+function startAll(){
+  if (CFG.srcA==='off' && CFG.srcB==='off'){ toast('音声入力元がどちらも「使わない」になっています'); return; }
+  var p = PROVIDERS[CFG.provider];
+  if (p.key && !transKey()){ toast('APIキーを設定してください（⚙ → 翻訳・API）'); openDrawer(true); return; }
+  if (p.baseEditable && !CFG.baseUrl){ toast('Base URL を入力してください'); openDrawer(true); return; }
+
+  S.running = true;
+  $('mic').classList.add('live'); $('mic').textContent = '■ 停止';
+
+  var jobs = [];
+
+  // ---- リアルタイム同時通訳モード（gpt-realtime-translate）----
+  if (CFG.sttProvider === 'realtime'){
+    if (!(keyOf('openai') || transKey())){
+      toast('リアルタイムモードには OpenAI の APIキーが必要です（⚙→翻訳・API）');
+      stopAll(); openDrawer(true); return;
+    }
+    jobs.push(
+      ensureMic().then(function(st){
+        var dirs = (CFG.rtBoth === '1') ? ['A','B'] : [CFG.rtDir === 'A' ? 'B' : 'A'];
+        // dirs = 「話し手の席」の配列
+        return Promise.all(dirs.map(function(seat){
+          var eng = new RealtimeEngine(seat, st);
+          engines.push(eng);
+          return eng.start().catch(function(err){
+            toast('リアルタイム開始失敗: ' + String(err.message||err));
+          });
+        }));
+      }).then(function(){
+        if (engines.length) toast('リアルタイム同時通訳を開始しました。そのまま話してください。', true);
+      }).catch(function(err){
+        toast('マイクにアクセスできません: ' + err.message);
+        stopAll();
+      })
+    );
+    Promise.all(jobs).then(function(){ startVU(); updateStatus(); });
+    updateStatus();
+    return;
+  }
+
+  // マイク側
+  var ms = micSeats();
+  if (ms.length){
+    if (CFG.sttProvider === 'webspeech'){
+      // 先にマイクを掴んで許可を1回だけ取り、以後は保持し続ける
+      jobs.push(
+        ensureMic()
+          .then(function(){ if (!startWebSpeech()) stopAll(); })
+          .catch(function(err){
+            toast('マイクにアクセスできません: ' + err.message);
+            stopAll();
+          })
+      );
+    } else {
+      jobs.push(
+        ensureMic()
+        .then(function(st){
+          if (ms.length > 1){
+            // 1本のマイクで2言語 → 交互待ち受け（言語指定つきSTT）
+            S.listenSeat = S.listenSeat || ms[0];
+            var eng = new StreamEngine('MIC_ALT', st, { isMic:true, meter:true });
+            eng.seat = null;
+            eng._alt = true;
+            // seat はカット時に現在の listenSeat を使う
+            var origCut = eng.cut.bind(eng);
+            eng.cut = function(send){ this.seat = S.listenSeat; origCut(send); };
+            engines.push(eng); eng.start();
+            scheduleAltStream();
+          } else {
+            var e2 = new StreamEngine(ms[0], st, { isMic:true, meter:true });
+            engines.push(e2); e2.start();
+          }
+        }).catch(function(err){ toast('マイクにアクセスできません: '+err.message); })
+      );
+    }
+  }
+
+  // タブ／システム音声側
+  var dispSeat = (CFG.srcA==='display') ? 'A' : ((CFG.srcB==='display') ? 'B' : null);
+  if (dispSeat){
+    if (CFG.sttProvider === 'webspeech'){
+      toast('タブ／システム音声を使うには、⚙→音声 で API 側の音声認識（OpenAI / Groq / Gemini）を選んでください。');
+    } else if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
+      toast('このブラウザはタブ音声のキャプチャに対応していません（Chrome / Edge のデスクトップ版が必要）');
+    } else {
+      jobs.push(
+        navigator.mediaDevices.getDisplayMedia({ video:true, audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false } })
+        .then(function(st){
+          if (!st.getAudioTracks().length){
+            st.getTracks().forEach(function(t){t.stop();});
+            toast('音声トラックがありません。共有ダイアログで<b>「タブの音声も共有」</b>を必ずONにしてください。');
+            return;
+          }
+          st.getVideoTracks().forEach(function(t){ t.stop(); });  // 映像は不要
+          var eng = new StreamEngine(dispSeat, st, { isMic:false, meter:false });
+          engines.push(eng); eng.start();
+          toast('相手側の音声キャプチャを開始しました', true);
+        }).catch(function(err){ toast('画面／タブ音声を取得できません: '+err.message); })
+      );
+    }
+  }
+
+  Promise.all(jobs).then(function(){ startVU(); updateStatus(); });
+  updateStatus();
+}
+
+var altStreamTimer = null;
+/* API音声認識のAUTOは language を送らず結果から言語を判定するため、
+   定期的な交互切替は不要（切替タイマーは動かさない）。 */
+function scheduleAltStream(){ clearTimeout(altStreamTimer); }
+
+/* Web Speech 使用時もレベルメーターを動かす（共有マイクストリームから読む） */
+var vuTimer = null;
+function startVU(){
+  stopVU();
+  if (!micStream) return;
+  try{
+    var ac = new (window.AudioContext||window.webkitAudioContext)();
+    var an = ac.createAnalyser(); an.fftSize = 1024;
+    ac.createMediaStreamSource(micStream).connect(an);
+    var buf = new Uint8Array(an.frequencyBinCount);
+    vuTimer = setInterval(function(){
+      an.getByteTimeDomainData(buf);
+      var s=0; for (var i=0;i<buf.length;i++){ var v=(buf[i]-128)/128; s+=v*v; }
+      setLevel(Math.sqrt(s/buf.length));
+    }, 80);
+    vuTimer._ac = ac;
+  }catch(e){}
+}
+function stopVU(){
+  if (vuTimer){ if (vuTimer._ac){ try{ vuTimer._ac.close(); }catch(e){} } clearInterval(vuTimer); vuTimer=null; }
+  setLevel(0);
+}
+
+function stopAll(){
+  S.running = false;
+  clearTimeout(altTimer); clearTimeout(altStreamTimer);
+  $('mic').classList.remove('live'); $('mic').textContent = '● 開始';
+  killRec();
+  stopVU();
+  engines.forEach(function(e){ try{ e.stop(); }catch(_){} });
+  engines = [];
+  releaseMic();
+  updateStatus();
+}
+
+function updateStatus(){
+  var txt = '';
+  if (S.running){
+    var ms = micSeats();
+    if (ms.length>1) txt = '● 認識中 [' + (S.autoMode?'AUTO ':'') + L(langOf(S.listenSeat||'A')).name + ']';
+    else txt = '● 認識中';
+  }
+  $('statusA').textContent = txt;
+  $('statusB').textContent = txt;
+  refreshListenBtn();
+}
+
+/* 「いま聞き取っている言語」ボタンの表示更新 */
+function refreshListenBtn(){
+  var btn = $('listenBtn'), txt = $('listenTxt');
+  if (!btn || !txt) return;
+  // リアルタイムモードは言語を自動判別するため、切替UIは不要
+  var isRT = (CFG.sttProvider === 'realtime');
+  $('modeSeg').style.display = isRT ? 'none' : '';
+  var two = micSeats().length > 1 && !isRT;
+  btn.style.display = two ? '' : 'none';
+  var seat = S.listenSeat || 'A';
+  txt.textContent = '🎧 ' + L(langOf(seat)).name + (S.autoMode ? '' : '  ⇄');
+  btn.classList.toggle('langA', seat==='A');
+  btn.classList.toggle('langB', seat==='B');
+  btn.title = S.autoMode
+    ? 'AUTO：一定時間無音だと自動で切り替わります（クリックで即切替）'
+    : '手動：話す前にこれを押して自分の言語にしてください（画面のどこをタップしても切替できます）';
+}
+
+/* =========================================================================
+   用語集 UI
+   ========================================================================= */
+function glRender(){
+  var tb = $('glBody');
+  tb.innerHTML = '';
+  CFG.glossary.forEach(function(row, i){
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><input data-k="s" value=""></td><td><input data-k="t" value=""></td>' +
+                   '<td><input data-k="n" value=""></td><td class="del"><button title="削除">✕</button></td>';
+    tr.querySelectorAll('input').forEach(function(inp){
+      inp.value = row[inp.getAttribute('data-k')] || '';
+      inp.oninput = function(){ CFG.glossary[i][inp.getAttribute('data-k')] = inp.value; saveGloss(); glCount(); };
+    });
+    tr.querySelector('button').onclick = function(){ CFG.glossary.splice(i,1); saveGloss(); glRender(); };
+    tb.appendChild(tr);
+  });
+  glCount();
+}
+function glCount(){
+  var n = CFG.glossary.filter(function(r){ return r.s && r.t; }).length;
+  $('glCount').textContent = n ? '（' + n + '件）' : '（未登録）';
+}
+function csvParse(text){
+  text = text.replace(/^﻿/,'');
+  var rows=[], row=[], cur='', q=false;
+  for (var i=0;i<text.length;i++){
+    var c = text[i];
+    if (q){
+      if (c === '"'){ if (text[i+1]==='"'){ cur+='"'; i++; } else q=false; }
+      else cur += c;
+    } else {
+      if (c === '"') q = true;
+      else if (c === ','){ row.push(cur); cur=''; }
+      else if (c === '\n'){ row.push(cur); rows.push(row); row=[]; cur=''; }
+      else if (c === '\r'){ /* skip */ }
+      else cur += c;
+    }
+  }
+  if (cur !== '' || row.length){ row.push(cur); rows.push(row); }
+  return rows.filter(function(r){ return r.some(function(x){ return String(x).trim()!==''; }); });
+}
+function csvCell(v){ return '"' + String(v==null?'':v).replace(/"/g,'""') + '"'; }
+function download(name, text, mime){
+  var b = new Blob([text], { type: mime||'text/plain;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(b); a.download = name; a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1500);
+}
+function stamp(){
+  var d=new Date(); function p(n){return (n<10?'0':'')+n;}
+  return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes());
+}
+
+/* =========================================================================
+   HTML 埋め込み書き出し
+   ========================================================================= */
+function exportHtml(){
+  var data = {
+    glossary: CFG.glossary.filter(function(r){ return r.s || r.t; }),
+    ctx: CFG.ctx, provider: CFG.provider, baseUrl: CFG.baseUrl, model: CFG.model, tone: CFG.tone,
+    sttProvider: CFG.sttProvider, sttModel: CFG.sttModel, ttsModel: CFG.ttsModel,
+    ttsMode: CFG.ttsMode, ttsWho: CFG.ttsWho, voiceA: CFG.voiceA, voiceB: CFG.voiceB, vad: String(CFG.vad),
+    langA: CFG.langA, langB: CFG.langB, srcA: CFG.srcA, srcB: CFG.srcB,
+    nameA: CFG.nameA, nameB: CFG.nameB, fsize: CFG.fsize,
+    flipTop: CFG.flipTop?'1':'0', showSrc: CFG.showSrc?'1':'0', swap: CFG.swap?'1':'0', interimOn: CFG.interimOn?'1':'0',
+    focus: CFG.focus, rtDir: CFG.rtDir, rtBoth: CFG.rtBoth,
+    savedAt: new Date().toISOString()
+  };
+  if ($('embedKey').checked) data.keys = KEYS;
+
+  var clone = document.documentElement.cloneNode(true);
+  // 動的要素を掃除
+  ['feedA','feedB'].forEach(function(id){
+    var f = clone.querySelector('#'+id);
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.00</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+  });
+  var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
+  var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
+  var sc = clone.querySelector('#scrim'); if (sc) sc.classList.remove('on');
+  var mn = clone.querySelector('#minutes'); if (mn) mn.classList.remove('on');
+  var ts = clone.querySelector('#toast'); if (ts){ ts.textContent=''; ts.style.display='none'; }
+  clone.querySelectorAll('#model, #sttModel, #ttsModel').forEach(function(d){ d.innerHTML=''; });
+  clone.querySelectorAll('#langA, #langB, #srcA, #srcB').forEach(function(s){ s.innerHTML=''; });
+  var ec = clone.querySelector('#embedded-config');
+  if (ec) ec.textContent = '\n' + JSON.stringify(data, null, 1) + '\n';
+
+  var html = '<!DOCTYPE html>\n' + clone.outerHTML;
+  download('duo-interpreter-' + stamp() + '.html', html, 'text/html;charset=utf-8');
+  toast('設定と用語集を埋め込んだHTMLを書き出しました（' + data.glossary.length + '件）', true);
+}
+
+/* =========================================================================
+   ログ / 議事録
+   ========================================================================= */
+function logRows(){
+  return S.entries.filter(function(e){ return e.srcText && !e.interim && e.srcText!=='（認識中…）'; });
+}
+function genMinutes(){
+  var p = PROVIDERS[CFG.provider];
+  if (p.kind === 'free'){ toast('議事録生成にはAIプロバイダ（OpenAI等）の設定が必要です'); return; }
+  if (p.key && !transKey()){ toast('APIキーを設定してください'); return; }
+  var rows = logRows();
+  if (!rows.length){ toast('まだ会話がありません'); return; }
+  var log = rows.map(function(e){ return e.time+'\t'+seatName(e.seat)+'('+L(e.srcLang).en+')\t'+e.srcText+'\t'+(e.dstText||''); }).join('\n');
+
+  $('minutes').classList.add('on');
+  $('minBody').textContent = '生成中…';
+  var sys = 'あなたは会議書記です。多言語の逐語ログから議事録を作成します。出力構成：\n'
+    + '■ サマリー / Summary\n■ 決定事項 / Decisions\n■ アクションアイテム / Action Items（担当・期限が分かれば明記）\n■ 未決・持ち帰り / Open Items\n'
+    + '日本語と' + L(CFG.langB).en + ' を併記する。事実にないことは書かない。' + ctxPrompt();
+  var user = '逐語ログ（時刻 / 話者(言語) / 原文 / 訳）:\n' + log;
+
+  var job;
+  if (p.kind === 'anthropic'){
+    job = fetch('https://api.anthropic.com/v1/messages',{ method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':transKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body: JSON.stringify({ model:CFG.model, max_tokens:4000, system:sys, messages:[{role:'user',content:user}] })
+    }).then(chk).then(function(j){ return (j.content||[]).map(function(b){return b.text||'';}).join(''); });
+  } else if (p.kind === 'gemini'){
+    job = fetch(PROVIDERS.gemini.base+'/models/'+encodeURIComponent(CFG.model)+':generateContent?key='+encodeURIComponent(transKey()),
+      { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ systemInstruction:{parts:[{text:sys}]}, contents:[{role:'user',parts:[{text:user}]}] })
+      }).then(chk).then(function(j){ var c=j.candidates&&j.candidates[0]; return c?(c.content.parts||[]).map(function(x){return x.text||'';}).join(''):''; });
+  } else {
+    var h = { 'Content-Type':'application/json' };
+    if (transKey()) h['Authorization'] = 'Bearer ' + transKey();
+    job = fetch(baseUrlOf()+'/chat/completions',{ method:'POST', headers:h,
+      body: JSON.stringify({ model:CFG.model, temperature:0.3,
+        messages:[{role:'system',content:sys},{role:'user',content:user}] })
+    }).then(chk).then(function(j){ return j.choices[0].message.content; });
+  }
+  job.then(function(t){ $('minBody').textContent = t; })
+     .catch(function(e){ $('minBody').textContent = 'エラー: ' + e.message; });
+}
+
+/* =========================================================================
+   UI 配線
+   ========================================================================= */
+function openDrawer(o){ $('drawer').classList.toggle('open',o); $('scrim').classList.toggle('on',o); }
+
+function fillSelect(el, items, val){
+  el.innerHTML = '';
+  items.forEach(function(it){
+    var o = document.createElement('option');
+    o.value = it.v; o.textContent = it.t;
+    el.appendChild(o);
+  });
+  el.value = val;
+}
+function langOptions(){ return LANGS.map(function(l){ return { v:l.c, t:l.name }; }); }
+function srcOptions(){ return [ {v:'mic',t:'🎤 マイク'}, {v:'display',t:'🖥 タブ／システム音声'}, {v:'off',t:'⊘ 使わない'} ]; }
+
+/* ---- モデル選択コンボ（プルダウン＋「その他（手動入力）」）---- */
+var CUSTOM = '__custom__';
+var S_modelExpanded = (store.get('di.modelExpanded','0') === '1');
+
+/* 内蔵リストにある備考を、IDが一致すれば流用する（APIから取得した無備考の一覧にも適用） */
+function knownNoteFor(prov, id){
+  var models = (PROVIDERS[prov] && PROVIDERS[prov].models) || [];
+  for (var i=0;i<models.length;i++){ if (models[i].id === id) return models[i].note || null; }
+  return null;
+}
+function sortByCuratedOrder(arr, prov){
+  var order = {};
+  ((PROVIDERS[prov] && PROVIDERS[prov].models) || []).forEach(function(m,i){ order[m.id] = i; });
+  return arr.slice().sort(function(a,b){
+    var ai = (order[a.id] !== undefined) ? order[a.id] : 999;
+    var bi = (order[b.id] !== undefined) ? order[b.id] : 999;
+    return (ai !== bi) ? (ai - bi) : a.id.localeCompare(b.id);
+  });
+}
+/* OpenAIのモデルを「主要（最新5.6系）」と「その他」の2階層に分ける */
+function tierModels(list, prov){
+  var arr = normList(list).map(function(m){
+    if (!m.note && prov === 'openai'){
+      var n = knownNoteFor(prov, m.id);
+      if (n) return {id:m.id, note:n, primary:m.primary};
+    }
+    return m;
+  });
+  if (prov !== 'openai') return { primary: arr, rest: [] };
+  var primary = [], rest = [];
+  arr.forEach(function(m){
+    var isPrimary = m.primary || /^gpt-5\.6/i.test(m.id);
+    (isPrimary ? primary : rest).push(m);
+  });
+  if (!primary.length){ primary = arr; rest = []; } // 念のため：おすすめが0件なら全件表示にフォールバック
+  return { primary: sortByCuratedOrder(primary, prov), rest: sortByCuratedOrder(rest, prov) };
+}
+/* 翻訳モデル用コンボ：主要モデルのみ初期表示し、「他◯件」ボタンで全件展開 */
+function renderModelCombo(list, current, onSet){
+  var sel = $('model'), cust = $('modelCustom'), exp = $('modelExpand');
+  var t = tierModels(list, CFG.provider);
+  var inRest = t.rest.some(function(m){ return m.id === current; });
+  var showAll = S_modelExpanded || inRest || !t.rest.length;
+  var shown = showAll ? t.primary.concat(t.rest) : t.primary;
+  renderCombo('model', 'modelCustom', shown, current, onSet);
+
+  if (t.rest.length){
+    exp.style.display = '';
+    exp.textContent = showAll ? '▲ 主要モデルのみ表示' : ('▼ 他 ' + t.rest.length + ' 件のモデルを表示');
+    exp.onclick = function(){
+      var liveCurrent = (sel.value === CUSTOM) ? (cust.value.trim() || current) : sel.value;
+      S_modelExpanded = !showAll;
+      store.set('di.modelExpanded', S_modelExpanded ? '1' : '0');
+      renderModelCombo(list, liveCurrent, onSet);
+    };
+  } else {
+    exp.style.display = 'none';
+  }
+}
+function normList(list){
+  return (list||[]).map(function(m){ return (typeof m === 'string') ? {id:m} : m; })
+                   .filter(function(m){ return m && m.id; });
+}
+function renderCombo(selId, custId, list, current, onSet){
+  var sel = $(selId), cust = $(custId);
+  var arr = normList(list);
+  sel.innerHTML = '';
+  var found = false;
+  arr.forEach(function(m){
+    if (m.id === current) found = true;
+    var o = document.createElement('option');
+    o.value = m.id;
+    o.textContent = m.id + (m.note ? '  — ' + m.note : '');
+    sel.appendChild(o);
+  });
+  if (current && !found){
+    var o2 = document.createElement('option');
+    o2.value = current; o2.textContent = current + '（手動設定）';
+    sel.insertBefore(o2, sel.firstChild);
+  }
+  var oc = document.createElement('option');
+  oc.value = CUSTOM; oc.textContent = '── その他（モデル名を直接入力）──';
+  sel.appendChild(oc);
+
+  sel.value = current || (sel.options[0] ? sel.options[0].value : '');
+  cust.style.display = 'none';
+
+  sel.onchange = function(){
+    if (sel.value === CUSTOM){
+      cust.style.display = ''; cust.value = current || ''; cust.focus();
+    } else {
+      cust.style.display = 'none';
+      onSet(sel.value);
+    }
+  };
+  // 空文字は絶対に確定させない（APIが400を返す原因になるため）
+  cust.oninput = function(){
+    var v = cust.value.trim();
+    if (v) onSet(v);
+  };
+}
+
+/* ---- 自分のアカウントで使えるモデルをAPIから取得 ---- */
+function classifyModels(ids){
+  var out = { chat:[], stt:[], tts:[] };
+  ids.forEach(function(id){
+    var s = id.toLowerCase();
+    if (s.indexOf('transcribe') >= 0 || s.indexOf('whisper') >= 0) out.stt.push({id:id});
+    else if (s.indexOf('tts') >= 0 || s.indexOf('speech') >= 0)    out.tts.push({id:id});
+    // realtime / audio 系は WebSocket 専用のため、この画面の翻訳用途では使えない
+    else if (/embedding|moderation|image|dall|sora|video|guard|rerank|realtime|audio|search-preview|computer-use/.test(s)) { /* 除外 */ }
+    else out.chat.push({id:id});
+  });
+  ['chat','stt','tts'].forEach(function(k){
+    out[k].sort(function(a,b){ return a.id.localeCompare(b.id); });
+  });
+  return out;
+}
+
+function fetchModels(silent){
+  var p = PROVIDERS[CFG.provider];
+  if (!p || p.kind === 'free'){ if(!silent) toast('無料モードではモデル選択はありません'); return; }
+  var key = transKey();
+  if (p.key && !key){ if(!silent) toast('先にAPIキーを入力してください'); return; }
+  if (p.baseEditable && !CFG.baseUrl){ if(!silent) toast('先に Base URL を入力してください'); return; }
+
+  if (!silent) $('modelNote').textContent = 'モデル一覧を取得しています...';
+
+  var job;
+  if (p.kind === 'gemini'){
+    job = fetch(p.base + '/models?key=' + encodeURIComponent(key) + '&pageSize=200')
+      .then(chk).then(function(j){
+        return (j.models||[]).map(function(m){ return String(m.name||'').replace(/^models\//,''); });
+      });
+  } else if (p.kind === 'anthropic'){
+    job = fetch('https://api.anthropic.com/v1/models?limit=100', {
+      headers:{ 'x-api-key':key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' }
+    }).then(chk).then(function(j){ return (j.data||[]).map(function(m){ return m.id; }); });
+  } else {
+    var h = {};
+    if (key) h['Authorization'] = 'Bearer ' + key;
+    job = fetch(baseUrlOf() + '/models', { headers:h })
+      .then(chk).then(function(j){ return (j.data||j.models||[]).map(function(m){ return m.id || m.name; }); });
+  }
+
+  return job.then(function(ids){
+    ids = (ids||[]).filter(Boolean);
+    if (!ids.length) throw new Error('モデルが返ってきませんでした');
+    MODEL_CACHE[CFG.provider] = classifyModels(ids);
+    refreshProviderUI();
+    $('modelNote').textContent = '✅ ' + ids.length + ' 件のモデルを取得しました（このアカウントで実際に使えるものです）';
+    if (!silent) toast(ids.length + ' 件のモデルを取得しました', true);
+  }).catch(function(e){
+    $('modelNote').textContent = '一覧を取得できませんでした（下記の内蔵リストから選べます）';
+    if (!silent) toast('モデル一覧の取得に失敗: ' + String(e.message||e));
+  });
+}
+
+function chatModelsFor(prov){
+  var c = MODEL_CACHE[prov];
+  if (c && c.chat && c.chat.length) return c.chat;
+  return (PROVIDERS[prov] && PROVIDERS[prov].models) || [];
+}
+function sttModelsFor(prov){
+  if (prov === 'webspeech') return STT_MODELS.webspeech;
+  var c = MODEL_CACHE[prov];
+  if (c && c.stt && c.stt.length) return c.stt;
+  return STT_MODELS[prov] || [];
+}
+function ttsModelsFor(){
+  var c = MODEL_CACHE['openai'];
+  if (c && c.tts && c.tts.length) return c.tts;
+  return TTS_MODELS;
+}
+
+function refreshProviderUI(){
+  var p = PROVIDERS[CFG.provider];
+  $('provNote').textContent = p.note || '';
+  $('keyField').style.display = (p.key || p.baseEditable) ? '' : 'none';
+  $('baseField').style.display = p.baseEditable ? '' : 'none';
+  $('apiKey').value = KEYS[CFG.provider] || '';
+  $('baseUrl').value = CFG.baseUrl || '';
+
+  var isFree = (p.kind === 'free');
+  $('model').disabled = isFree;
+  $('fetchModels').disabled = isFree;
+  renderModelCombo(chatModelsFor(CFG.provider), CFG.model, function(v){
+    CFG.model = v; store.set('di.model', v);
+  });
+
+  $('sttModel').disabled = (CFG.sttProvider === 'webspeech');
+  renderCombo('sttModel','sttModelCustom', sttModelsFor(CFG.sttProvider), CFG.sttModel, function(v){
+    CFG.sttModel = v; store.set('di.sttm', v);
+  });
+
+  renderCombo('ttsModel','ttsModelCustom', ttsModelsFor(), CFG.ttsModel, function(v){
+    CFG.ttsModel = v; store.set('di.ttsm', v);
+  });
+
+  $('sttKey').value = KEYS['stt:'+CFG.sttProvider] || '';
+  $('ttsToggle').style.opacity = (CFG.ttsMode==='off') ? .45 : 1;
+
+  var isRT = (CFG.sttProvider === 'realtime');
+  $('realtimeNote').style.display = isRT ? '' : 'none';
+  $('rtDirField').style.display   = isRT ? '' : 'none';
+  $('sttModel').style.display     = isRT ? 'none' : '';
+  $('rtDir').value  = CFG.rtDir;
+  $('rtBoth').value = CFG.rtBoth;
+  refreshListenBtn();
+}
+
+function applyCfg(){
+  fillSelect($('langA'), langOptions(), CFG.langA);
+  fillSelect($('langB'), langOptions(), CFG.langB);
+  fillSelect($('srcA'),  srcOptions(),  CFG.srcA);
+  fillSelect($('srcB'),  srcOptions(),  CFG.srcB);
+  $('provider').value = CFG.provider;
+  $('tone').value = CFG.tone;
+  $('ctx').value = CFG.ctx;
+  $('sttProvider').value = CFG.sttProvider;
+  $('ttsMode').value = CFG.ttsMode;
+  $('ttsWho').value = CFG.ttsWho;
+  $('voiceA').value = CFG.voiceA;
+  $('voiceB').value = CFG.voiceB;
+  $('vad').value = CFG.vad;
+  $('fsize').value = CFG.fsize;
+  $('flipTop').checked = CFG.flipTop;
+  $('showSrc').checked = CFG.showSrc;
+  $('swapSides').checked = CFG.swap;
+  $('interimOn').checked = CFG.interimOn;
+  $('remember').checked = CFG.remember;
+  $('nameA').value = CFG.nameA;
+  $('nameB').value = CFG.nameB;
+  document.documentElement.style.setProperty('--fs', CFG.fsize+'px');
+  refreshProviderUI();
+  glRender();
+  layout();
+}
+
+/* --- タブ --- */
+document.querySelectorAll('.tabs button').forEach(function(b){
+  b.onclick = function(){
+    document.querySelectorAll('.tabs button').forEach(function(x){ x.classList.remove('on'); });
+    document.querySelectorAll('.pane').forEach(function(x){ x.classList.remove('on'); });
+    b.classList.add('on'); $(b.getAttribute('data-tab')).classList.add('on');
+  };
+});
+
+$('cog').onclick = function(){ openDrawer(true); };
+$('closeDrawer').onclick = function(){ openDrawer(false); };
+$('scrim').onclick = function(){ openDrawer(false); };
+$('mic').onclick = function(){ S.running ? stopAll() : startAll(); };
+
+/* --- AUTO / 手動 の切替 --- */
+function setMode(auto){
+  S.autoMode = !!auto;
+  store.set('di.automode', S.autoMode ? '1' : '0');
+  document.body.classList.toggle('manual', !S.autoMode);
+  Array.prototype.forEach.call($('modeSeg').children, function(b){
+    b.classList.toggle('on', (b.getAttribute('data-m')==='auto') === S.autoMode);
+  });
+  clearTimeout(altTimer); clearTimeout(altStreamTimer);
+  if (S.autoMode && S.running && micSeats().length>1){
+    if (CFG.sttProvider==='webspeech') scheduleAlt(); else scheduleAltStream();
+  }
+  updateStatus();
+}
+function toggleListen(){
+  var seats = micSeats();
+  if (seats.length < 2) return;
+  setListenSeat(S.listenSeat==='A' ? 'B' : 'A');
+}
+Array.prototype.forEach.call($('modeSeg').children, function(b){
+  b.onclick = function(){ setMode(b.getAttribute('data-m')==='auto'); };
+});
+$('listenBtn').onclick = toggleListen;
+
+/* 表示レイアウトの切替： 2分割 → Aのみ → Bのみ → 2分割 ... */
+$('focusBtn').onclick = function(){
+  var order = ['split','A','B'];
+  var i = order.indexOf(CFG.focus);
+  var next = order[(i + 1) % order.length];
+  setFocus(next);
+  if (next === 'split') toast('2分割表示に戻しました', true);
+  else toast(seatName(next) + ' 側だけを大きく表示しました。細くなった ' + seatName(next==='A'?'B':'A') + ' 側をタップすると2分割に戻ります。', true);
+};
+/* 最小化されたパネルをタップすると2分割に戻る */
+['sideA','sideB'].forEach(function(id){
+  $(id).addEventListener('click', function(ev){
+    if (this.classList.contains('mini')){ ev.stopPropagation(); setFocus('split'); }
+  }, true);
+});
+
+/* 手動モードでは、自分側のパネルをタップするだけで聞き取り言語が切り替わる */
+$('feedA').addEventListener('click', function(){ if (!S.autoMode) setListenSeat('A'); });
+$('feedB').addEventListener('click', function(){ if (!S.autoMode) setListenSeat('B'); });
+$('clearBtn').onclick = function(){
+  if (S.entries.length && !confirm('会話ログを消去しますか？')) return;
+  S.entries=[]; S.seq=0; $('feedA').innerHTML=''; $('feedB').innerHTML='';
+};
+
+function setFs(v){
+  v = Math.max(16, Math.min(72, v));
+  CFG.fsize = String(v); store.set('di.fs', CFG.fsize);
+  document.documentElement.style.setProperty('--fs', v+'px');
+  $('fsize').value = v;
+}
+$('fsUp').onclick   = function(){ setFs(parseInt(CFG.fsize,10)+3); };
+$('fsDown').onclick = function(){ setFs(parseInt(CFG.fsize,10)-3); };
+$('fsize').oninput  = function(){ setFs(parseInt($('fsize').value,10)); };
+
+$('ttsToggle').onclick = function(){
+  CFG.ttsMode = (CFG.ttsMode==='off') ? 'browser' : 'off';
+  store.set('di.tts', CFG.ttsMode); $('ttsMode').value = CFG.ttsMode;
+  $('ttsToggle').style.opacity = (CFG.ttsMode==='off') ? .45 : 1;
+  toast(CFG.ttsMode==='off' ? '読み上げ OFF' : '読み上げ ON（ブラウザ内蔵音声）', true);
+};
+
+/* 座席セレクタ */
+function seatChanged(restart){
+  layout(); updateStatus();
+  if (restart && S.running){ stopAll(); setTimeout(startAll, 400); }
+}
+$('langA').onchange = function(){ CFG.langA=this.value; store.set('di.la',this.value); seatChanged(false); };
+$('langB').onchange = function(){ CFG.langB=this.value; store.set('di.lb',this.value); seatChanged(false); };
+$('srcA').onchange  = function(){ CFG.srcA=this.value;  store.set('di.sa',this.value); seatChanged(true); };
+$('srcB').onchange  = function(){
+  CFG.srcB=this.value;  store.set('di.sb',this.value);
+  if (this.value === 'display'){
+    if (CFG.flipTop){ CFG.flipTop=false; store.set('di.flip','0'); $('flipTop').checked=false; }
+    if (CFG.sttProvider === 'webspeech')
+      toast('タブ／システム音声には API 側の音声認識が必要です。⚙→音声 で OpenAI / Groq / Gemini を選んでください。');
+    else toast('オンライン会議モード：開始時の共有ダイアログで<b>「タブの音声も共有」</b>をONにしてください。', true);
+  }
+  seatChanged(true);
+};
+
+/* プロバイダ関連 */
+$('provider').onchange = function(){
+  CFG.provider = this.value; store.set('di.prov', CFG.provider);
+  CFG.model = defaultModel(CFG.provider); store.set('di.model', CFG.model);
+  refreshProviderUI();
+  autoFetchModels();
+};
+var keyTimer = null;
+$('apiKey').oninput = function(){
+  KEYS[CFG.provider] = this.value.trim(); saveKeys();
+  clearTimeout(keyTimer); keyTimer = setTimeout(autoFetchModels, 1200);
+};
+function autoFetchModels(){
+  var p = PROVIDERS[CFG.provider];
+  if (!p || p.kind === 'free') return;
+  if (p.key && (transKey()||'').length < 15) return;   // キーが入りきっていない
+  if (MODEL_CACHE[CFG.provider]) return;               // 取得済み
+  fetchModels(true);
+}
+$('fetchModels').onclick = function(){ fetchModels(false); };
+$('sttKey').oninput = function(){ KEYS['stt:'+CFG.sttProvider] = this.value.trim(); saveKeys(); };
+$('baseUrl').oninput = function(){ CFG.baseUrl = this.value.trim(); store.set('di.base', CFG.baseUrl); };
+$('sttProvider').onchange = function(){
+  CFG.sttProvider = this.value; store.set('di.sttp', CFG.sttProvider);
+  CFG.sttModel = defaultSttModel(CFG.sttProvider); store.set('di.sttm', CFG.sttModel);
+  refreshProviderUI();
+  if (S.running){ stopAll(); setTimeout(startAll, 400); }
+};
+$('remember').onchange = function(){
+  CFG.remember = this.checked; store.set('di.remember', this.checked?'1':'0');
+  if (this.checked) saveKeys(); else store.del('di.keys');
+};
+
+function simple(id, key, prop, isCheck){
+  $(id).onchange = function(){
+    var v = isCheck ? this.checked : this.value;
+    CFG[prop] = v;
+    store.set(key, isCheck ? (v?'1':'0') : v);
+    if (prop==='flipTop'||prop==='swap'||prop==='nameA'||prop==='nameB') layout();
+    if (prop==='showSrc') S.entries.forEach(render);
+    if (prop==='ttsMode') $('ttsToggle').style.opacity = (v==='off')?.45:1;
+  };
+}
+simple('tone','di.tone','tone');
+simple('ctx','di.ctx','ctx');
+simple('ttsMode','di.tts','ttsMode');
+simple('ttsWho','di.ttsw','ttsWho');
+simple('rtDir','di.rtdir','rtDir');
+simple('rtBoth','di.rtboth','rtBoth');
+simple('voiceA','di.va','voiceA');
+simple('voiceB','di.vb','voiceB');
+simple('flipTop','di.flip','flipTop',true);
+simple('showSrc','di.src','showSrc',true);
+simple('swapSides','di.swap','swap',true);
+simple('interimOn','di.itm','interimOn',true);
+simple('nameA','di.na','nameA');
+simple('nameB','di.nb','nameB');
+$('vad').oninput = function(){ CFG.vad = parseInt(this.value,10); store.set('di.vad', this.value); };
+
+/* 用語集ボタン */
+$('glAdd').onclick = function(){ CFG.glossary.push({s:'',t:'',n:''}); saveGloss(); glRender();
+  var inp = $('glBody').querySelectorAll('tr:last-child input')[0]; if (inp) inp.focus(); };
+$('glExport').onclick = function(){
+  var rows = [['source','target','note']].concat(
+    CFG.glossary.filter(function(r){return r.s||r.t;}).map(function(r){ return [r.s||'', r.t||'', r.n||'']; }));
+  var csv = '﻿' + rows.map(function(r){ return r.map(csvCell).join(','); }).join('\r\n');
+  download('glossary-'+stamp()+'.csv', csv, 'text/csv;charset=utf-8');
+};
+$('glImportBtn').onclick = function(){ $('glImport').click(); };
+$('glImport').onchange = function(){
+  var f = this.files[0]; if (!f) return;
+  var fr = new FileReader();
+  fr.onload = function(){
+    var rows = csvParse(String(fr.result));
+    if (!rows.length){ toast('CSVを読み取れませんでした'); return; }
+    var start = 0;
+    var h = rows[0].map(function(x){ return String(x).trim().toLowerCase(); });
+    if (h[0]==='source' || h[0]==='原語' || h[0]==='src') start = 1;
+    var add = [];
+    for (var i=start;i<rows.length;i++){
+      var r = rows[i];
+      if (!r[0] && !r[1]) continue;
+      add.push({ s:(r[0]||'').trim(), t:(r[1]||'').trim(), n:(r[2]||'').trim() });
+    }
+    var mode = CFG.glossary.filter(function(x){return x.s||x.t;}).length
+      ? confirm('既存の用語集に「追加」しますか？\n（キャンセルを押すと置き換えます）') : false;
+    CFG.glossary = mode ? CFG.glossary.concat(add) : add;
+    saveGloss(); glRender();
+    toast(add.length + ' 件を読み込みました', true);
+  };
+  fr.readAsText(f, 'UTF-8');
+  this.value = '';
+};
+$('saveHtml').onclick = exportHtml;
+$('loadEmbedded').onclick = function(){
+  if (!EMBED.glossary && !EMBED.ctx){ toast('このファイルには埋め込みデータがありません'); return; }
+  if (EMBED.glossary) CFG.glossary = EMBED.glossary.slice();
+  if (EMBED.ctx) CFG.ctx = EMBED.ctx;
+  saveGloss(); store.set('di.ctx', CFG.ctx);
+  $('ctx').value = CFG.ctx; glRender();
+  toast('埋め込みデータを読み込みました', true);
+};
+
+/* ログ */
+$('dlTxt').onclick = function(){
+  var t = '# 通訳ログ ' + new Date().toLocaleString() + '\n\n' +
+    logRows().map(function(e){
+      return '[' + e.time + '] ' + seatName(e.seat) + ' (' + L(e.srcLang).name + ')\n  ' + e.srcText +
+             '\n  → (' + L(e.dstLang).name + ') ' + (e.dstText||'');
+    }).join('\n\n');
+  download('interpret-log-'+stamp()+'.txt', t);
+};
+$('dlCsv').onclick = function(){
+  var rows = [['time','speaker','src_lang','source','dst_lang','translation']].concat(
+    logRows().map(function(e){ return [e.time, seatName(e.seat), e.srcLang, e.srcText, e.dstLang, e.dstText||'']; }));
+  var csv = '﻿' + rows.map(function(r){ return r.map(csvCell).join(','); }).join('\r\n');
+  download('interpret-log-'+stamp()+'.csv', csv, 'text/csv;charset=utf-8');
+};
+$('genMinutes').onclick = genMinutes;
+$('closeMin').onclick = function(){ $('minutes').classList.remove('on'); };
+$('copyMin').onclick = function(){ navigator.clipboard.writeText($('minBody').textContent).then(function(){ toast('コピーしました', true); }); };
+$('dlMin').onclick = function(){ download('minutes-'+stamp()+'.txt', $('minBody').textContent); };
+
+/* キーボード */
+document.addEventListener('keydown', function(e){
+  var t = e.target.tagName;
+  if (t==='INPUT' || t==='TEXTAREA' || t==='SELECT') return;
+  if (e.code==='Space'){ e.preventDefault(); S.running ? stopAll() : startAll(); }
+  else if (e.key==='+' || e.key==='='){ setFs(parseInt(CFG.fsize,10)+3); }
+  else if (e.key==='-'){ setFs(parseInt(CFG.fsize,10)-3); }
+  else if (e.key==='1'){ setMode(false); setListenSeat('A'); }
+  else if (e.key==='2'){ setMode(false); setListenSeat('B'); }
+  else if (e.key==='0'){ setMode(true); }
+  else if (e.key==='Tab'){ e.preventDefault(); toggleListen(); }
+});
+window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); });
+
+/* 初期化 */
+loadCfg();
+applyCfg();
+setMode(store.get('di.automode','1') === '1');
+setFocus(CFG.focus || 'split');
+checkMicPermission();
+updateStatus();
+
+/* =========================================================================
+   iOS（iPhone / iPad）向けの環境チェックと自動調整
+   ========================================================================= */
+var IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+var IS_STANDALONE = (window.navigator.standalone === true) ||
+                    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+
+function iosSetup(){
+  if (!IS_IOS) return;
+
+  // 1) タブ／システム音声は iOS では OS の制限で取得できないため、常に選べないようにする
+  ['srcA','srcB'].forEach(function(id){
+    var sel = $(id);
+    Array.prototype.forEach.call(sel.options, function(o){
+      if (o.value === 'display'){ o.disabled = true; o.textContent = '🖥 タブ音声（iPhone非対応）'; }
+    });
+  });
+  if (CFG.srcA === 'display'){ CFG.srcA='mic'; store.set('di.sa','mic'); $('srcA').value='mic'; }
+  if (CFG.srcB === 'display'){ CFG.srcB='mic'; store.set('di.sb','mic'); $('srcB').value='mic'; }
+  document.body.classList.add('ios-mic-only');   // バーの音声入力元セレクトを隠して省スペース化
+
+  // 2) 内蔵音声認識が無い場合は API 側の認識に切り替える
+  if (CFG.sttProvider === 'webspeech' && !SR){
+    CFG.sttProvider = 'openai';
+    store.set('di.sttp','openai');
+    CFG.sttModel = defaultSttModel('openai');
+    store.set('di.sttm', CFG.sttModel);
+    refreshProviderUI();
+  }
+
+  // 3) 安全でない接続（http）ではマイクが一切使えないので明示する
+  if (location.protocol !== 'https:' && location.hostname !== 'localhost'){
+    setTimeout(function(){
+      toast('⚠ このページは <b>https</b> ではないため、iPhone ではマイクを使えません。<br>'
+          + 'HTTPS のURLから開き直してください（詳しくは同梱の手順書をご覧ください）。');
+    }, 1200);
+    return;
+  }
+
+  // 4) ホーム画面に追加していない場合は案内（全画面で快適に使えるため）
+  if (!IS_STANDALONE){
+    setTimeout(function(){
+      toast('ヒント：Safariの<b>共有ボタン</b>→「<b>ホーム画面に追加</b>」でアプリのように全画面で使えます。', true);
+    }, 2600);
+  }
+}
+
+/* iOS は無音のままだと音声を再生できないため、最初のタップで再生を解禁しておく */
+function unlockAudioOnce(){
+  var done = false;
+  var unlock = function(){
+    if (done) return; done = true;
+    try{
+      var ac = new (window.AudioContext||window.webkitAudioContext)();
+      if (ac.state === 'suspended') ac.resume();
+      var b = ac.createBuffer(1,1,22050), s = ac.createBufferSource();
+      s.buffer = b; s.connect(ac.destination); s.start(0);
+    }catch(e){}
+    try{ if (window.speechSynthesis){ var u=new SpeechSynthesisUtterance(''); speechSynthesis.speak(u); } }catch(e){}
+    document.removeEventListener('touchend', unlock);
+    document.removeEventListener('click', unlock);
+  };
+  document.addEventListener('touchend', unlock, { once:false });
+  document.addEventListener('click', unlock, { once:false });
+}
+
+iosSetup();
+unlockAudioOnce();
+
+if (!SR && CFG.sttProvider === 'webspeech'){
+  setTimeout(function(){ toast('このブラウザは内蔵音声認識に未対応です。⚙→音声 で OpenAI / Groq / Gemini の音声認識を選んでください。'); }, 900);
+}
+if (location.protocol === 'file:'){
+  setTimeout(function(){
+    toast('⚠ ファイルを直接開いています。マイクを使うには HTTPS のURLから開く必要があります。');
+  }, 1200);
+}
+</script>
+</body>
+</html>
