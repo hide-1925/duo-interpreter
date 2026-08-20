@@ -26,7 +26,7 @@
     --bg:#0b0e14; --panel:#141a24; --panel-2:#1b2330; --line:#2a3444;
     --txt:#e8edf5; --dim:#8b97a8;
     --a:#3ddc97;    /* Speaker A = 自分 */
-    --b:#5eb8ff;    /* Speaker B = 相手 */
+    --b:#dd88a4;    /* Speaker B = 相手（赤み寄りのピンク・眩しくない濃さ） */
     --danger:#ff5c6c; --warn:#ffb454;
     --fs:30px;
   }
@@ -46,7 +46,7 @@
   }
   .badge{font-weight:800;padding:2px 9px;border-radius:999px;font-size:11px;letter-spacing:.05em}
   .badge.a{background:rgba(61,220,151,.15);color:var(--a)}
-  .badge.b{background:rgba(94,184,255,.15);color:var(--b)}
+  .badge.b{background:rgba(221,136,164,.15);color:var(--b)}
   .feed{flex:1;min-height:0;overflow-y:auto;padding:12px 18px 96px;display:flex;flex-direction:column;gap:12px}
   .feed::-webkit-scrollbar{width:6px}
   .feed::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
@@ -55,6 +55,8 @@
   .bubble.from-A{border-left-color:var(--a)}
   .bubble.from-B{border-left-color:var(--b)}
   .bubble .who{font-size:11px;color:var(--dim);margin-bottom:5px}
+  .bubble.from-A .who{color:var(--a)}
+  .bubble.from-B .who{color:var(--b)}
   .bubble .main{font-size:var(--fs);line-height:1.35;font-weight:600;word-break:break-word}
   .bubble .sub{font-size:calc(var(--fs)*.5);line-height:1.45;color:var(--dim);margin-top:7px;word-break:break-word}
   .bubble.pending .main{opacity:.4;font-style:italic}
@@ -85,6 +87,8 @@
   }
   .seatctl .tag{font-size:11px;font-weight:800;letter-spacing:.04em}
   .seatctl.a .tag{color:var(--a)} .seatctl.b .tag{color:var(--b)}
+  .seatctl.a{border-color:var(--a)} .seatctl.b{border-color:var(--b)}
+  .seatctl.a select{color:var(--a)} .seatctl.b select{color:var(--b)}
   .seatctl select{
     background:transparent;border:0;color:var(--txt);font-size:12.5px;font-family:inherit;
     padding:5px 2px;cursor:pointer;max-width:120px;
@@ -365,8 +369,12 @@
         <option value="groq">Groq Whisper（高速・安価）</option>
         <option value="gemini">Google Gemini（音声理解）</option>
       </select>
-      <select id="sttModel" style="margin-top:4px"></select>
+      <div class="row" style="margin-top:4px">
+        <select id="sttModel" style="flex:1"></select>
+        <button class="btn ghost" id="fetchSttModels" title="このアカウントで使える音声認識モデル一覧を取得">🔄 更新</button>
+      </div>
       <input type="text" id="sttModelCustom" placeholder="モデル名を直接入力" style="display:none">
+      <small id="sttModelNote">APIキーを入力すると、実際に使えるモデル一覧を自動で取得します。</small>
       <small>タブ／システム音声を入力にする場合は、ブラウザ内蔵ではなく API 側の音声認識が必要です。</small>
       <div class="note" id="realtimeNote" style="display:none">
         <b>⚡ リアルタイム同時通訳モード</b><br>
@@ -602,12 +610,12 @@ var STT_MODELS = {
   openai:[
     {id:'gpt-4o-mini-transcribe', note:'安価・高速（おすすめ）'},
     {id:'gpt-transcribe',         note:'最新・高精度'},
-    {id:'gpt-4o-transcribe'},
-    {id:'gpt-4o-transcribe-diarize', note:'話者分離あり'},
+    {id:'gpt-4o-transcribe',      note:'標準グレード'},
+    {id:'gpt-4o-transcribe-diarize', note:'話者分離あり（料金はgpt-4o-transcribeと同水準、突出して高額ではない）'},
     {id:'whisper-1',              note:'旧世代・安定'}
   ],
-  groq:  [{id:'whisper-large-v3-turbo', note:'高速'}, {id:'whisper-large-v3'}],
-  gemini:[{id:'gemini-2.5-flash'}, {id:'gemini-2.5-flash-lite'}],
+  groq:  [{id:'whisper-large-v3-turbo', note:'高速'}, {id:'whisper-large-v3', note:'turboより高精度・やや低速'}],
+  gemini:[{id:'gemini-2.5-flash', note:'高精度'}, {id:'gemini-2.5-flash-lite', note:'軽量・高速'}],
   webspeech:[{id:'(ブラウザ内蔵)'}],
   realtime:[{id:'gpt-realtime-translate', note:'音声→訳した音声＋字幕を同時生成'}]
 };
@@ -1819,7 +1827,9 @@ function srcOptions(){ return [ {v:'mic',t:'🎤 マイク'}, {v:'display',t:'�
 
 /* ---- モデル選択コンボ（プルダウン＋「その他（手動入力）」）---- */
 var CUSTOM = '__custom__';
-var S_modelExpanded = (store.get('di.modelExpanded','0') === '1');
+/* 「他◯件を表示」の開閉状態はこのページを開いている間だけ覚える（保存しない）。
+   再読み込みや次回起動時は必ず主要モデルのみの表示に戻る。 */
+var S_modelExpanded = false;
 
 /* 内蔵リストにある備考を、IDが一致すれば流用する（APIから取得した無備考の一覧にも適用） */
 function knownNoteFor(prov, id){
@@ -1869,12 +1879,24 @@ function renderModelCombo(list, current, onSet){
     exp.onclick = function(){
       var liveCurrent = (sel.value === CUSTOM) ? (cust.value.trim() || current) : sel.value;
       S_modelExpanded = !showAll;
-      store.set('di.modelExpanded', S_modelExpanded ? '1' : '0');
       renderModelCombo(list, liveCurrent, onSet);
     };
   } else {
     exp.style.display = 'none';
   }
+}
+/* 内蔵リストの備考を、IDが一致すればAPI取得後の一覧にも流用する（STTモデル用の汎用版） */
+function noteFromList(id, curatedArr){
+  var arr = normList(curatedArr);
+  for (var i=0;i<arr.length;i++){ if (arr[i].id === id) return arr[i].note || null; }
+  return null;
+}
+function withKnownNotes(list, curatedArr){
+  return normList(list).map(function(m){
+    if (m.note) return m;
+    var n = noteFromList(m.id, curatedArr);
+    return n ? {id:m.id, note:n} : m;
+  });
 }
 function normList(list){
   return (list||[]).map(function(m){ return (typeof m === 'string') ? {id:m} : m; })
@@ -1975,6 +1997,47 @@ function fetchModels(silent){
   });
 }
 
+/* 音声認識（STT）用モデル一覧の取得。翻訳プロバイダとは別プロバイダ・別キーの場合があるため専用に用意。 */
+function fetchSttModels(silent){
+  var prov = CFG.sttProvider;
+  if (prov === 'webspeech' || prov === 'realtime'){
+    if (!silent) toast(prov === 'webspeech' ? 'ブラウザ内蔵の音声認識にはモデル一覧はありません' : 'このモードはモデル固定のため一覧取得は不要です');
+    return;
+  }
+  var key = sttKey();
+  if (!key){ if(!silent) toast('先に音声認識用のAPIキー（またはAPI Keyタブのキー）を入力してください'); return; }
+
+  if (!silent) $('sttModelNote').textContent = 'モデル一覧を取得しています...';
+
+  var job;
+  if (prov === 'gemini'){
+    job = fetch(PROVIDERS.gemini.base + '/models?key=' + encodeURIComponent(key) + '&pageSize=200')
+      .then(chk).then(function(j){
+        return (j.models||[]).map(function(m){ return String(m.name||'').replace(/^models\//,''); });
+      });
+  } else {
+    var base = (PROVIDERS[prov] && PROVIDERS[prov].base) || STT_BASE[prov];
+    job = fetch(base + '/models', { headers:{ 'Authorization':'Bearer ' + key } })
+      .then(chk).then(function(j){ return (j.data||j.models||[]).map(function(m){ return m.id || m.name; }); });
+  }
+
+  return job.then(function(ids){
+    ids = (ids||[]).filter(Boolean);
+    if (!ids.length) throw new Error('モデルが返ってきませんでした');
+    var cls = classifyModels(ids);
+    var cache = MODEL_CACHE[prov] = MODEL_CACHE[prov] || {};
+    cache.stt = cls.stt;
+    if (!cache.chat || !cache.chat.length) cache.chat = cls.chat;
+    if (!cache.tts  || !cache.tts.length)  cache.tts  = cls.tts;
+    refreshProviderUI();
+    $('sttModelNote').textContent = '✅ ' + cls.stt.length + ' 件の音声認識モデルを取得しました（このアカウントで実際に使えるものです）';
+    if (!silent) toast(cls.stt.length + ' 件の音声認識モデルを取得しました', true);
+  }).catch(function(e){
+    $('sttModelNote').textContent = '一覧を取得できませんでした（下記の内蔵リストから選べます）';
+    if (!silent) toast('モデル一覧の取得に失敗: ' + String(e.message||e));
+  });
+}
+
 function chatModelsFor(prov){
   var c = MODEL_CACHE[prov];
   if (c && c.chat && c.chat.length) return c.chat;
@@ -2008,9 +2071,11 @@ function refreshProviderUI(){
   });
 
   $('sttModel').disabled = (CFG.sttProvider === 'webspeech');
-  renderCombo('sttModel','sttModelCustom', sttModelsFor(CFG.sttProvider), CFG.sttModel, function(v){
+  renderCombo('sttModel','sttModelCustom', withKnownNotes(sttModelsFor(CFG.sttProvider), STT_MODELS[CFG.sttProvider]), CFG.sttModel, function(v){
     CFG.sttModel = v; store.set('di.sttm', v);
   });
+  var sttFetchable = (CFG.sttProvider !== 'webspeech' && CFG.sttProvider !== 'realtime');
+  $('fetchSttModels').style.display = sttFetchable ? '' : 'none';
 
   renderCombo('ttsModel','ttsModelCustom', ttsModelsFor(), CFG.ttsModel, function(v){
     CFG.ttsModel = v; store.set('di.ttsm', v);
@@ -2174,12 +2239,25 @@ function autoFetchModels(){
   fetchModels(true);
 }
 $('fetchModels').onclick = function(){ fetchModels(false); };
-$('sttKey').oninput = function(){ KEYS['stt:'+CFG.sttProvider] = this.value.trim(); saveKeys(); };
+$('fetchSttModels').onclick = function(){ fetchSttModels(false); };
+var sttKeyTimer = null;
+function autoFetchSttModels(){
+  var prov = CFG.sttProvider;
+  if (prov === 'webspeech' || prov === 'realtime') return;
+  if ((sttKey()||'').length < 15) return;               // キーが入りきっていない
+  if (MODEL_CACHE[prov] && MODEL_CACHE[prov].stt && MODEL_CACHE[prov].stt.length) return; // 取得済み
+  fetchSttModels(true);
+}
+$('sttKey').oninput = function(){
+  KEYS['stt:'+CFG.sttProvider] = this.value.trim(); saveKeys();
+  clearTimeout(sttKeyTimer); sttKeyTimer = setTimeout(autoFetchSttModels, 1200);
+};
 $('baseUrl').oninput = function(){ CFG.baseUrl = this.value.trim(); store.set('di.base', CFG.baseUrl); };
 $('sttProvider').onchange = function(){
   CFG.sttProvider = this.value; store.set('di.sttp', CFG.sttProvider);
   CFG.sttModel = defaultSttModel(CFG.sttProvider); store.set('di.sttm', CFG.sttModel);
   refreshProviderUI();
+  autoFetchSttModels();
   if (S.running){ stopAll(); setTimeout(startAll, 400); }
 };
 $('remember').onchange = function(){
