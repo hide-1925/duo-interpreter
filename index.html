@@ -1039,6 +1039,27 @@ function releaseMic(){
   if (micStream){ try{ micStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){} micStream = null; }
 }
 
+/* --- 画面スリープ防止（Screen Wake Lock） ---------------------------
+   iPhone/iPadは画面を触らないまま放置すると自動でロック／消灯し、
+   通訳中でも認識が止まってしまう。認識中は端末の「自動ロック」設定を
+   変えなくても画面が消えないようにする（iOS Safari は 16.4 以降で対応。
+   非対応環境では何もせず、通常どおり動作する）。               */
+var wakeLock = null;
+function acquireWakeLock(){
+  if (!('wakeLock' in navigator)) return;
+  navigator.wakeLock.request('screen').then(function(wl){
+    wakeLock = wl;
+    wakeLock.addEventListener('release', function(){ wakeLock = null; });
+  }).catch(function(){ /* 取得失敗は致命的でないので黙って無視 */ });
+}
+function releaseWakeLock(){
+  if (wakeLock){ try{ wakeLock.release(); }catch(e){} wakeLock = null; }
+}
+document.addEventListener('visibilitychange', function(){
+  // 画面ロックやタブ切替でOSが自動解放するため、復帰時に認識中なら取り直す
+  if (document.visibilityState === 'visible' && S.running) acquireWakeLock();
+});
+
 /* --- A) Web Speech（マイク・無料） --- */
 var rec=null, recRun=false, itmEntry=null, altTimer=null, restarting=false;
 
@@ -1482,6 +1503,7 @@ function startAll(){
 
   S.running = true;
   $('mic').classList.add('live'); $('mic').textContent = '■ 停止';
+  acquireWakeLock();
 
   var jobs = [];
 
@@ -1617,6 +1639,7 @@ function stopAll(){
   engines.forEach(function(e){ try{ e.stop(); }catch(_){} });
   engines = [];
   releaseMic();
+  releaseWakeLock();
   updateStatus();
 }
 
