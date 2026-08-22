@@ -38,9 +38,9 @@
     display:flex;flex-direction:column;
   }
   #stage{flex:1;display:flex;flex-direction:row;min-height:0;gap:2px;background:var(--line);position:relative}
-  /* 片側だけ拡大するモードのときは、細い帯を上下に置く従来レイアウトに戻す
-     （拡大側は横幅いっぱいに使えたほうが読みやすいため） */
-  #stage.focusA,#stage.focusB{flex-direction:column}
+  /* 上下2分割（対面で端末を挟むとき向け）と、片側だけ拡大するモードでは
+     パネルを縦に積む。拡大側は横幅いっぱいに使えたほうが読みやすいため。 */
+  #stage.splitV,#stage.focusA,#stage.focusB{flex-direction:column}
   .side{flex:1;min-height:0;background:var(--panel);display:flex;flex-direction:column;position:relative}
   .side.flip{transform:rotate(180deg)}
   .side-head{
@@ -494,9 +494,9 @@
     <div class="field">
       <label>表示</label>
       <div class="row"><span style="font-size:11.5px;color:var(--dim);width:72px">文字サイズ</span><input type="range" id="fsize" min="16" max="72" value="30"></div>
-      <label class="switch"><input type="checkbox" id="flipTop"> 片側パネルを180°回転 — 対面で端末を挟むとき</label>
+      <label class="switch"><input type="checkbox" id="flipTop"> 相手（B）側のパネルを180°回転 — 対面で端末を挟むとき</label>
       <label class="switch"><input type="checkbox" id="showSrc" checked> 原文も小さく併記する</label>
-      <label class="switch"><input type="checkbox" id="swapSides"> 左右を入れ替える（左=相手B）</label>
+      <label class="switch"><input type="checkbox" id="swapSides"> AとBの表示位置を入れ替える</label>
       <label class="switch"><input type="checkbox" id="interimOn" checked> 認識途中の文字も表示する</label>
     </div>
     <div class="field">
@@ -725,20 +725,20 @@ function seatName(s){
   if (s === 'A') return CFG.nameA || '自分 / Me';
   return CFG.nameB || '相手 / Partner';
 }
-/* 表示レイアウト： split（2分割） / A（Bを最小化） / B（Aを最小化） */
+/* 表示レイアウト：
+   split（左右2分割） / splitV（上下2分割） / A（Bを最小化） / B（Aを最小化） */
 function setFocus(mode){
   CFG.focus = mode;
   store.set('di.focus', mode);
   var stage = $('stage'), A = $('sideA'), B = $('sideB');
-  stage.classList.remove('focusA','focusB');
+  stage.classList.remove('splitV','focusA','focusB');
   A.classList.remove('mini'); B.classList.remove('mini');
   if (mode === 'A'){ stage.classList.add('focusA'); B.classList.add('mini'); }
   else if (mode === 'B'){ stage.classList.add('focusB'); A.classList.add('mini'); }
+  else if (mode === 'splitV'){ stage.classList.add('splitV'); }
   layout();
 }
 function updateFocusUI(){
-  var stage = $('stage');
-  var topIsMini = stage.firstElementChild && stage.firstElementChild.classList.contains('mini');
   var btn = $('focusBtn');
   var narrow = window.innerWidth <= 480;   // iPhone縦などではボタンを短く
   if (CFG.focus === 'A'){
@@ -747,19 +747,28 @@ function updateFocusUI(){
   } else if (CFG.focus === 'B'){
     btn.textContent = narrow ? '▣B' : ('▣ ' + seatName('B'));
     btn.title = seatName('A') + ' 側を最小化中（クリックで切替）';
+  } else if (CFG.focus === 'splitV'){
+    btn.textContent = narrow ? '⬍' : '⬍ 上下2分割';
+    btn.title = '上下2分割（対面で端末を挟むとき向け）。クリックで次の表示に切替';
   } else {
-    btn.textContent = narrow ? '⬍' : '⬍ 2分割';
-    btn.title = '片側だけを大きく表示したいときはクリック（一方的に説明する場面向け）';
+    btn.textContent = narrow ? '⬌' : '⬌ 左右2分割';
+    btn.title = '左右2分割。クリックで次の表示に切替';
   }
 }
 
 function layout(){
   var stage=$('stage'), A=$('sideA'), B=$('sideB');
-  if (CFG.swap) stage.insertBefore(B,A); else stage.insertBefore(A,B);
+  /* 並び順の基準：
+     ・左右に並べるとき  → 左 = 自分A（自分の手元側）
+     ・縦に積むとき      → 上 = 相手B（対面の相手に近い側。回転して見せるのもこちら）
+     「入れ替える」設定は、どちらの場合もこの基準を反転させる。 */
+  var vertical = (CFG.focus !== 'split');
+  var aFirst = vertical ? !!CFG.swap : !CFG.swap;
+  if (aFirst) stage.insertBefore(A,B); else stage.insertBefore(B,A);
   A.classList.remove('flip'); B.classList.remove('flip');
-  // 最小化されたパネルは回転させない（操作する人が読めるように）
-  var top = stage.firstElementChild;
-  if (CFG.flipTop && !top.classList.contains('mini')) top.classList.add('flip');
+  // 回転は常に相手（B）側だけ。自分（A）側は自分が読むので回さない。
+  // 最小化されたパネルも回転させない（操作する人が読めるように）
+  if (CFG.flipTop && !B.classList.contains('mini')) B.classList.add('flip');
   updateFocusUI();
   $('labelA').textContent = seatName('A') + ' · ' + L(CFG.langA).name;
   $('labelB').textContent = seatName('B') + ' · ' + L(CFG.langB).name;
@@ -2181,13 +2190,14 @@ $('modeBtn').onclick = function(){
 };
 $('listenBtn').onclick = toggleListen;
 
-/* 表示レイアウトの切替： 2分割 → Aのみ → Bのみ → 2分割 ... */
+/* 表示レイアウトの切替： 左右2分割 → 上下2分割 → Aのみ → Bのみ → 左右2分割 ... */
 $('focusBtn').onclick = function(){
-  var order = ['split','A','B'];
+  var order = ['split','splitV','A','B'];
   var i = order.indexOf(CFG.focus);
   var next = order[(i + 1) % order.length];
   setFocus(next);
-  if (next === 'split') toast('2分割表示に戻しました', true);
+  if (next === 'split') toast('左右2分割にしました', true);
+  else if (next === 'splitV') toast('上下2分割にしました（対面で端末を挟むとき向け）', true);
   else toast(seatName(next) + ' 側だけを大きく表示しました。細くなった ' + seatName(next==='A'?'B':'A') + ' 側をタップすると2分割に戻ります。', true);
 };
 /* 最小化されたパネルをタップすると2分割に戻る */
