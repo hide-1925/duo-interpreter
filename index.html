@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Duo Interpreter v1.00 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.02 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -164,7 +164,8 @@
   table.gl td.del button{border:0;background:transparent;color:var(--dim);cursor:pointer;font-size:14px;padding:4px 6px}
   table.gl td.del button:hover{color:var(--danger)}
 
-  #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:95;background:var(--danger);color:#fff;
+  /* 下部の操作バーと絶対に被らないよう、通知は画面の上側に出す */
+  #toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 14px);transform:translateX(-50%);z-index:95;background:var(--danger);color:#fff;
     padding:11px 17px;border-radius:10px;font-size:13.5px;max-width:92vw;display:none;box-shadow:0 8px 30px rgba(0,0,0,.5);line-height:1.6}
   #scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:65;display:none}
   #scrim.on{display:block}
@@ -232,7 +233,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusB"></span>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.00</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.02</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -242,7 +243,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.00</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.02</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
   </section>
 </div>
 
@@ -492,7 +493,7 @@
       <div class="row"><span style="font-size:11.5px;color:var(--dim);width:72px">文字サイズ</span><input type="range" id="fsize" min="16" max="72" value="30"></div>
       <label class="switch"><input type="checkbox" id="flipTop"> 片側パネルを180°回転 — 対面で端末を挟むとき</label>
       <label class="switch"><input type="checkbox" id="showSrc" checked> 原文も小さく併記する</label>
-      <label class="switch"><input type="checkbox" id="swapSides"> 左右を入れ替える（左=自分A）</label>
+      <label class="switch"><input type="checkbox" id="swapSides"> 左右を入れ替える（左=相手B）</label>
       <label class="switch"><input type="checkbox" id="interimOn" checked> 認識途中の文字も表示する</label>
     </div>
     <div class="field">
@@ -751,7 +752,7 @@ function updateFocusUI(){
 
 function layout(){
   var stage=$('stage'), A=$('sideA'), B=$('sideB');
-  if (CFG.swap) stage.insertBefore(A,B); else stage.insertBefore(B,A);
+  if (CFG.swap) stage.insertBefore(B,A); else stage.insertBefore(A,B);
   A.classList.remove('flip'); B.classList.remove('flip');
   // 最小化されたパネルは回転させない（操作する人が読めるように）
   var top = stage.firstElementChild;
@@ -1724,7 +1725,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.00</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.02</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
