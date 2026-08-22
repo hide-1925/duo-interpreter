@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Duo Interpreter v1.02 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.03 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -100,6 +100,10 @@
   .seg{display:flex;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;overflow:hidden}
   .seg button{border:0;background:transparent;color:var(--dim);padding:9px 13px;font-size:12px;font-weight:800;cursor:pointer}
   .seg button.on{background:#2f3d50;color:var(--txt)}
+  /* 見出し（何のボタンか）＋現在値 を2段で見せるボタン */
+  .cbtn.stack{flex-direction:column;gap:1px;justify-content:center;line-height:1.15;padding-top:6px;padding-bottom:6px}
+  .cbtn.stack small{position:relative;z-index:1;font-size:9.5px;font-weight:700;color:var(--dim);letter-spacing:.04em}
+  .cbtn.stack .val{position:relative;z-index:1;font-size:13px;font-weight:800}
   .cbtn.listen{position:relative;overflow:hidden;min-width:132px;justify-content:center;font-weight:800}
   .cbtn.listen #lvlFill{position:absolute;left:0;top:0;bottom:0;width:0%;background:rgba(61,220,151,.28);transition:width .08s linear;pointer-events:none}
   .cbtn.listen span{position:relative;z-index:1}
@@ -233,7 +237,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusB"></span>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.02</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.03</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -243,7 +247,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.02</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.03</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
   </section>
 </div>
 
@@ -261,12 +265,11 @@
     <select id="langB" title="Bの言語"></select>
   </div>
 
-  <div class="seg" id="modeSeg">
-    <button data-m="manual" class="on" title="話す人が言語を切り替える（認識精度が最も高い）">手動</button>
-    <button data-m="auto" title="自動で言語を切り替える">AUTO</button>
-  </div>
-  <button class="cbtn listen" id="listenBtn" title="いま聞き取っている言語（クリックで切替）">
-    <i id="lvlFill"></i><span id="listenTxt">🎧 日本語</span>
+  <button class="cbtn stack" id="modeBtn" title="言語の切り替え方（押すたびに 手動 ⇄ AUTO）">
+    <small>言語切替</small><span class="val" id="modeTxt">手動</span>
+  </button>
+  <button class="cbtn listen stack" id="listenBtn" title="いま聞き取っている言語（クリックで切替）">
+    <i id="lvlFill"></i><small>認識中言語</small><span class="val" id="listenTxt">日本語</span>
   </button>
 
   <button class="cbtn" id="focusBtn" title="表示レイアウトを切り替える">⬍ 2分割</button>
@@ -1543,7 +1546,12 @@ function startAll(){
       // 先にマイクを掴んで許可を1回だけ取り、以後は保持し続ける
       jobs.push(
         ensureMic()
-          .then(function(){ if (!startWebSpeech()) stopAll(); })
+          .then(function(){
+            if (!startWebSpeech()){ stopAll(); return; }
+            // 無料モードは言語の自動判定ができないので、使い方を最初に案内する
+            if (micSeats().length > 1)
+              toast('無料モードは言語の自動判定ができません。話す前に「認識中言語」ボタン（または自分側のパネル）をタップして、これから話す言語に切り替えてください。', true);
+          })
           .catch(function(err){
             toast('マイクにアクセスできません: ' + err.message);
             stopAll();
@@ -1655,17 +1663,37 @@ function updateStatus(){
   refreshListenBtn();
 }
 
-/* 「いま聞き取っている言語」ボタンの表示更新 */
+/* AUTO（言語の自動判定）が使えるかどうか。
+   ブラウザ内蔵の Web Speech API は待ち受け言語を1つ固定する必要があり、
+   言語を自動判定する仕組みが無い（AUTOにすると待ち受け言語を交互に入れ替える
+   擬似的な動作になり、切替待ちと取りこぼしが必ず発生する）。
+   そのため無料モードでは手動固定とし、AUTOはAI側STTに音声を丸ごと送って
+   言語判定させられるモードでのみ選べるようにする。                   */
+function autoAvailable(){
+  return CFG.sttProvider !== 'webspeech';
+}
+
+/* 「言語切替」「認識中言語」ボタンの表示更新 */
 function refreshListenBtn(){
   var btn = $('listenBtn'), txt = $('listenTxt');
   if (!btn || !txt) return;
   // リアルタイムモードは言語を自動判別するため、切替UIは不要
   var isRT = (CFG.sttProvider === 'realtime');
-  $('modeSeg').style.display = isRT ? 'none' : '';
   var two = micSeats().length > 1 && !isRT;
+
+  // 言語切替（手動 ⇄ AUTO）。AUTOが使えないモードでは出さない
+  var mb = $('modeBtn');
+  if (mb){
+    mb.style.display = (two && autoAvailable()) ? '' : 'none';
+    $('modeTxt').textContent = S.autoMode ? 'AUTO' : '手動';
+    mb.title = S.autoMode
+      ? 'AUTO：話し始めれば言語を自動で判定します（押すと手動に切替）'
+      : '手動：話す前に「認識中言語」を自分の言語に合わせます（押すとAUTOに切替）';
+  }
+
   btn.style.display = two ? '' : 'none';
   var seat = S.listenSeat || 'A';
-  txt.textContent = '🎧 ' + L(langOf(seat)).name + (S.autoMode ? '' : '  ⇄');
+  txt.textContent = L(langOf(seat)).name + (S.autoMode ? '' : ' ⇄');
   btn.classList.toggle('langA', seat==='A');
   btn.classList.toggle('langB', seat==='B');
   btn.title = S.autoMode
@@ -1748,7 +1776,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.02</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.03</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -2138,12 +2166,15 @@ $('mic').onclick = function(){ S.running ? stopAll() : startAll(); };
 
 /* --- AUTO / 手動 の切替 --- */
 function setMode(auto){
-  S.autoMode = !!auto;
-  store.set('di.automode', S.autoMode ? '1' : '0');
+  var want = !!auto;
+  // 無料モードなど AUTO が使えない場合は強制的に手動へ倒す。
+  // そのときユーザーの希望（AUTO）は保存し直さない ―― API側の音声認識に
+  // 戻したときに、元のAUTO設定がそのまま復帰するようにするため。
+  var forced = want && !autoAvailable();
+  if (forced) want = false;
+  S.autoMode = want;
+  if (!forced) store.set('di.automode', want ? '1' : '0');
   document.body.classList.toggle('manual', !S.autoMode);
-  Array.prototype.forEach.call($('modeSeg').children, function(b){
-    b.classList.toggle('on', (b.getAttribute('data-m')==='auto') === S.autoMode);
-  });
   clearTimeout(altTimer); clearTimeout(altStreamTimer);
   if (S.autoMode && S.running && micSeats().length>1){
     if (CFG.sttProvider==='webspeech') scheduleAlt(); else scheduleAltStream();
@@ -2155,9 +2186,17 @@ function toggleListen(){
   if (seats.length < 2) return;
   setListenSeat(S.listenSeat==='A' ? 'B' : 'A');
 }
-Array.prototype.forEach.call($('modeSeg').children, function(b){
-  b.onclick = function(){ setMode(b.getAttribute('data-m')==='auto'); };
-});
+/* 言語切替ボタン：押すたびに 手動 → AUTO → 手動 … と回す */
+$('modeBtn').onclick = function(){
+  if (!autoAvailable()){
+    toast('無料モード（ブラウザ内蔵の音声認識）は言語の自動判定ができないため、手動固定です。⚙→音声 で OpenAI などを選ぶと AUTO が使えます。');
+    return;
+  }
+  setMode(!S.autoMode);
+  toast(S.autoMode
+    ? 'AUTO：話し始めれば言語を自動で判定します。'
+    : '手動：話す前に「認識中言語」ボタンで、これから話す言語に合わせてください。', true);
+};
 $('listenBtn').onclick = toggleListen;
 
 /* 表示レイアウトの切替： 2分割 → Aのみ → Bのみ → 2分割 ... */
@@ -2257,6 +2296,8 @@ $('baseUrl').oninput = function(){ CFG.baseUrl = this.value.trim(); store.set('d
 $('sttProvider').onchange = function(){
   CFG.sttProvider = this.value; store.set('di.sttp', CFG.sttProvider);
   CFG.sttModel = defaultSttModel(CFG.sttProvider); store.set('di.sttm', CFG.sttModel);
+  // 無料モードに切り替えたら手動固定、API側に戻したら元のAUTO設定を復帰させる
+  setMode(store.get('di.automode','1') === '1');
   refreshProviderUI();
   autoFetchSttModels();
   if (S.running){ stopAll(); setTimeout(startAll, 400); }
