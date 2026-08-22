@@ -37,7 +37,10 @@
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","Hiragino Sans","Noto Sans JP","Noto Sans SC",Meiryo,sans-serif;
     display:flex;flex-direction:column;
   }
-  #stage{flex:1;display:flex;flex-direction:column;min-height:0;gap:2px;background:var(--line);position:relative}
+  #stage{flex:1;display:flex;flex-direction:row;min-height:0;gap:2px;background:var(--line);position:relative}
+  /* 片側だけ拡大するモードのときは、細い帯を上下に置く従来レイアウトに戻す
+     （拡大側は横幅いっぱいに使えたほうが読みやすいため） */
+  #stage.focusA,#stage.focusB{flex-direction:column}
   .side{flex:1;min-height:0;background:var(--panel);display:flex;flex-direction:column;position:relative}
   .side.flip{transform:rotate(180deg)}
   .side-head{
@@ -47,7 +50,7 @@
   .badge{font-weight:800;padding:2px 9px;border-radius:999px;font-size:11px;letter-spacing:.05em}
   .badge.a{background:rgba(61,220,151,.15);color:var(--a)}
   .badge.b{background:rgba(221,136,164,.15);color:var(--b)}
-  .feed{flex:1;min-height:0;overflow-y:auto;padding:12px 18px 96px;display:flex;flex-direction:column;gap:12px}
+  .feed{flex:1;min-height:0;overflow-y:auto;padding:12px 18px 18px;display:flex;flex-direction:column;gap:12px}
   .feed::-webkit-scrollbar{width:6px}
   .feed::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
   .bubble{border-radius:14px;padding:11px 15px;background:var(--panel-2);border-left:4px solid var(--line);animation:pop .16s ease-out}
@@ -64,13 +67,13 @@
   .empty{margin:auto;text-align:center;color:var(--dim);font-size:14px;line-height:1.9;padding:20px}
   .empty b{display:block;font-size:19px;color:var(--txt);margin-bottom:6px}
 
-  /* ---- 中央バー ---- */
+  /* ---- 操作バー（画面最下部に固定） ---- */
   #bar{
-    position:absolute;left:0;right:0;top:var(--bar-top,50%);transform:translateY(-50%);z-index:40;
+    flex:0 0 auto;position:relative;z-index:40;
     width:max-content;max-width:97vw;margin:0 auto;
     display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;
-    background:rgba(11,14,20,.94);border:1px solid var(--line);border-radius:22px;
-    padding:8px 10px;backdrop-filter:blur(8px);box-shadow:0 12px 44px rgba(0,0,0,.65);
+    background:rgba(11,14,20,.94);border:1px solid var(--line);border-top:1px solid var(--line);border-radius:22px 22px 0 0;
+    padding:8px 10px;backdrop-filter:blur(8px);box-shadow:0 -6px 24px rgba(0,0,0,.5);
   }
   .cbtn{
     border:1px solid var(--line);background:var(--panel-2);color:var(--txt);border-radius:999px;
@@ -111,15 +114,12 @@
     border-radius:999px;padding:3px 10px}
   .side .restore{display:none}
   .side.mini .restore{display:inline-block}
-  #stage.focusA #sideA .feed{padding-top:64px}
-  #stage.focusB #sideB .feed{padding-bottom:120px}
   .fsgrp{display:flex;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;overflow:hidden}
   .fsgrp button{border:0;background:transparent;color:var(--txt);cursor:pointer;padding:9px 12px;font-weight:800}
   .fsgrp button:hover{background:#26303f}
   .fsgrp .fsA{font-size:11px} .fsgrp .fsB{font-size:16px}
 
   /* ---- ドロワー ---- */
-  #cog{position:fixed;right:12px;top:10px;z-index:60}
   #drawer{
     position:fixed;inset:0 0 0 auto;width:min(470px,100%);z-index:70;background:var(--panel);
     border-left:1px solid var(--line);transform:translateX(100%);transition:transform .24s ease;display:flex;flex-direction:column;
@@ -180,7 +180,6 @@
   /* iOSでは入力欄のフォントが16px未満だと自動ズームするので下限を16pxにする */
   input[type=text],input[type=password],select,textarea{font-size:16px}
   #drawer{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
-  #cog{top:calc(env(safe-area-inset-top) + 8px)}
   /* タップ領域をiOSの推奨サイズ（44px以上）に */
   .cbtn{min-height:44px}
   .seg button,.fsgrp button{min-height:44px}
@@ -201,7 +200,6 @@
     .seatctl{padding:3px 6px 3px 8px;gap:2px}
     .seatctl select{max-width:74px;font-size:11.5px;padding:4px 1px}
     .fsgrp button{padding:8px 9px}
-    #cog{top:calc(env(safe-area-inset-top) + 6px);right:8px}
   }
 
   /* iPhone 縦画面：バーが場所を取りすぎないよう2段までに収める */
@@ -218,7 +216,7 @@
     .fsgrp button{padding:8px 7px}
     .seatctl select{max-width:58px}
     .bubble{padding:9px 12px;border-radius:12px}
-    .feed{padding:10px 12px 92px}
+    .feed{padding:10px 12px 14px}
     .side-head{padding:6px 10px;font-size:11px}
   }
 
@@ -246,41 +244,41 @@
     </div>
     <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.00</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
   </section>
-
-  <div id="bar">
-    <button class="cbtn" id="mic">● 開始</button>
-
-    <div class="seatctl a">
-      <span class="tag">A</span>
-      <select id="srcA" title="Aの音声入力元"></select>
-      <select id="langA" title="Aの言語"></select>
-    </div>
-    <div class="seatctl b">
-      <span class="tag">B</span>
-      <select id="srcB" title="Bの音声入力元"></select>
-      <select id="langB" title="Bの言語"></select>
-    </div>
-
-    <div class="seg" id="modeSeg">
-      <button data-m="manual" class="on" title="話す人が言語を切り替える（認識精度が最も高い）">手動</button>
-      <button data-m="auto" title="自動で言語を切り替える">AUTO</button>
-    </div>
-    <button class="cbtn listen" id="listenBtn" title="いま聞き取っている言語（クリックで切替）">
-      <i id="lvlFill"></i><span id="listenTxt">🎧 日本語</span>
-    </button>
-
-    <button class="cbtn" id="focusBtn" title="表示レイアウトを切り替える">⬍ 2分割</button>
-
-    <div class="fsgrp">
-      <button id="fsDown" class="fsA" title="文字を小さく">A−</button>
-      <button id="fsUp" class="fsB" title="文字を大きく">A＋</button>
-    </div>
-    <button class="cbtn icon" id="ttsToggle" title="読み上げ ON/OFF">🔊</button>
-    <button class="cbtn icon" id="clearBtn" title="ログ消去">🗑</button>
-  </div>
 </div>
 
-<button class="cbtn icon" id="cog" title="設定">⚙</button>
+<div id="bar">
+  <button class="cbtn" id="mic">● 開始</button>
+
+  <div class="seatctl a">
+    <span class="tag">A</span>
+    <select id="srcA" title="Aの音声入力元"></select>
+    <select id="langA" title="Aの言語"></select>
+  </div>
+  <div class="seatctl b">
+    <span class="tag">B</span>
+    <select id="srcB" title="Bの音声入力元"></select>
+    <select id="langB" title="Bの言語"></select>
+  </div>
+
+  <div class="seg" id="modeSeg">
+    <button data-m="manual" class="on" title="話す人が言語を切り替える（認識精度が最も高い）">手動</button>
+    <button data-m="auto" title="自動で言語を切り替える">AUTO</button>
+  </div>
+  <button class="cbtn listen" id="listenBtn" title="いま聞き取っている言語（クリックで切替）">
+    <i id="lvlFill"></i><span id="listenTxt">🎧 日本語</span>
+  </button>
+
+  <button class="cbtn" id="focusBtn" title="表示レイアウトを切り替える">⬍ 2分割</button>
+
+  <div class="fsgrp">
+    <button id="fsDown" class="fsA" title="文字を小さく">A−</button>
+    <button id="fsUp" class="fsB" title="文字を大きく">A＋</button>
+  </div>
+  <button class="cbtn icon" id="ttsToggle" title="読み上げ ON/OFF">🔊</button>
+  <button class="cbtn icon" id="clearBtn" title="ログ消去">🗑</button>
+  <button class="cbtn icon" id="cog" title="設定">⚙</button>
+</div>
+
 <div id="scrim"></div>
 
 <aside id="drawer">
@@ -492,9 +490,9 @@
     <div class="field">
       <label>表示</label>
       <div class="row"><span style="font-size:11.5px;color:var(--dim);width:72px">文字サイズ</span><input type="range" id="fsize" min="16" max="72" value="30"></div>
-      <label class="switch"><input type="checkbox" id="flipTop" checked> 上パネル（B）を180°回転 — 対面で端末を挟むとき</label>
+      <label class="switch"><input type="checkbox" id="flipTop"> 片側パネルを180°回転 — 対面で端末を挟むとき</label>
       <label class="switch"><input type="checkbox" id="showSrc" checked> 原文も小さく併記する</label>
-      <label class="switch"><input type="checkbox" id="swapSides"> 上下を入れ替える（上=自分A）</label>
+      <label class="switch"><input type="checkbox" id="swapSides"> 左右を入れ替える（左=自分A）</label>
       <label class="switch"><input type="checkbox" id="interimOn" checked> 認識途中の文字も表示する</label>
     </div>
     <div class="field">
@@ -678,7 +676,7 @@ function loadCfg(){
     nameA:     pref('di.na','nameA',''),
     nameB:     pref('di.nb','nameB',''),
     fsize:     pref('di.fs','fsize', (window.innerWidth <= 480 ? '22' : '30')),
-    flipTop:   pref('di.flip','flipTop','1')+'' === '1',
+    flipTop:   pref('di.flip','flipTop','0')+'' === '1',
     showSrc:   pref('di.src','showSrc','1')+'' === '1',
     swap:      pref('di.swap','swap','0')+'' === '1',
     interimOn: pref('di.itm','interimOn','1')+'' === '1',
@@ -749,28 +747,7 @@ function updateFocusUI(){
     btn.textContent = narrow ? '⬍' : '⬍ 2分割';
     btn.title = '片側だけを大きく表示したいときはクリック（一方的に説明する場面向け）';
   }
-  positionBar();
 }
-
-/* コントロールバーの縦位置。
-   2分割のときは境目（中央）。片側を最小化したときは、最小化パネルを
-   覆ってしまうとタップで戻せなくなるので、その手前まで避ける。 */
-function positionBar(){
-  var bar = $('bar'), stage = $('stage');
-  if (!bar || !stage) return;
-  if (CFG.focus === 'split'){
-    document.documentElement.style.setProperty('--bar-top','50%');
-    return;
-  }
-  var MINI = 46, HEAD = 34, GAP = 6;
-  var h = bar.offsetHeight || 60;
-  var stageH = stage.clientHeight || window.innerHeight;
-  var topIsMini = stage.firstElementChild && stage.firstElementChild.classList.contains('mini');
-  // 上が最小化のときは「最小化バー＋拡大側パネルの見出し」の下に置く
-  var top = topIsMini ? (MINI + HEAD + GAP + h/2) : (stageH - MINI - GAP - h/2);
-  document.documentElement.style.setProperty('--bar-top', Math.round(top) + 'px');
-}
-window.addEventListener('resize', positionBar);
 
 function layout(){
   var stage=$('stage'), A=$('sideA'), B=$('sideB');
