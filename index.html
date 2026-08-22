@@ -1003,35 +1003,118 @@ function chk(r){
 
 /* ---------------- 読み上げ ---------------- */
 var audioEl = new Audio();
-function speak(e){
-  if (CFG.ttsMode === 'off' || !e.dstText) return;
-  if (CFG.ttsWho === 'B2A' && e.seat !== 'B') return;
-  if (CFG.ttsWho === 'A2B' && e.seat !== 'A') return;
-  var lang = e.dstLang, text = e.dstText;
 
-  if (CFG.ttsMode === 'browser'){
-    try{
-      var u = new SpeechSynthesisUtterance(text);
-      u.lang = L(lang).tts; u.rate = 1.05;
-      S.speaking = true;
-      u.onend = u.onerror = function(){ S.speaking = false; };
-      speechSynthesis.speak(u);
-    }catch(err){ S.speaking=false; }
-    return;
+/* 読み上げ中は音声認識をいったん止める。
+   ブラウザ内蔵の音声認識と読み上げを同時に動かすと読み上げが無音になる環境があるため
+   （Chromeは認識中だと音声合成が抑制されやすく、iOSはマイクを掴んだままだと
+   オーディオセッションが録音側に寄って再生が絞られる）。
+   自分の読み上げをマイクが拾ってしまうエコーの防止にもなる。            */
+var ttsActive = 0, ttsPause = false, ttsWarned = false;
+
+function ttsBegin(){
+  ttsActive++;
+  S.speaking = true;
+  if (recRun && rec && !ttsPause){
+    ttsPause = true;
+    try{ rec.stop(); }catch(e){}
   }
+}
+function ttsEnd(){
+  ttsActive = Math.max(0, ttsActive - 1);
+  if (ttsActive > 0) return;            // まだ読み上げ中のものが残っている
+  S.speaking = false;
+  if (!ttsPause) return;
+  ttsPause = false;
+  if (!recRun || !rec) return;
+  setTimeout(function(){
+    if (!recRun || !rec || ttsPause) return;
+    try{ rec.start(); }catch(e){}
+  }, 250);
+}
+function ttsFailNotice(msg){
+  if (ttsWarned) return; ttsWarned = true;   // 毎回出すとうるさいので最初の1回だけ
+  toast(msg + '。<br>ブラウザ内蔵の読み上げは、音声認識と同時に使えない環境があります。'
+      + '⚙→音声 で読み上げを <b>OpenAI</b> にすると確実に鳴ります。');
+}
+
+/* 音声リストは非同期で読み込まれるため、取得できていれば言語に合う声を明示指定する
+   （声を指定しないと、環境によっては読み上げが始まらないことがある） */
+function ttsVoices(){
+  try{ return window.speechSynthesis ? (speechSynthesis.getVoices() || []) : []; }catch(e){ return []; }
+}
+function pickVoice(tag){
+  var vs = ttsVoices(); if (!vs.length) return null;
+  var want = String(tag||'').toLowerCase().replace('_','-');
+  var short = want.split('-')[0], loose = null;
+  for (var i=0;i<vs.length;i++){
+    var vl = String(vs[i].lang||'').toLowerCase().replace('_','-');
+    if (vl === want) return vs[i];
+    if (!loose && vl.split('-')[0] === short) loose = vs[i];
+  }
+  return loose;
+}
+
+function browserSpeak(text, tag){
+  if (!window.speechSynthesis){ ttsFailNotice('このブラウザは読み上げに対応していません'); return; }
+  var done = false, started = false, tStart = null, tEnd = null;
+  var finish = function(){
+    if (done) return; done = true;
+    clearTimeout(tStart); clearTimeout(tEnd);
+    ttsEnd();
+  };
+  try{
+    // 前の読み上げが詰まったままだと次が鳴らないので、取り残しがあれば消す
+    if (!ttsActive && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance(text);
+    u.lang = tag; u.rate = 1.05;
+    var v = pickVoice(tag); if (v) u.voice = v;
+    u.onstart = function(){ started = true; };
+    u.onend   = finish;
+    u.onerror = function(ev){
+      var err = (ev && ev.error) || '';
+      if (err !== 'interrupted' && err !== 'canceled') ttsFailNotice('読み上げを再生できませんでした（' + err + '）');
+      finish();
+    };
+    ttsBegin();
+    speechSynthesis.speak(u);
+    // 監視1：鳴り始めない環境では何も起きずに終わるので、気づけるように通知する
+    tStart = setTimeout(function(){
+      if (started || done) return;
+      try{ speechSynthesis.cancel(); }catch(e){}
+      ttsFailNotice('読み上げが再生されませんでした');
+      finish();
+    }, 2500);
+    // 監視2：onend が来ないまま固まると S.speaking が戻らず、音声認識まで止まってしまう
+    tEnd = setTimeout(finish, Math.min(60000, 5000 + text.length * 150));
+  }catch(err){ finish(); }
+}
+
+function apiSpeak(text, seat){
   var key = keyOf('openai') || transKey();
   if (!key){ toast('OpenAI音声にはOpenAIのAPIキーが必要です'); return; }
-  S.speaking = true;
+  var done = false, tEnd = null;
+  var finish = function(){ if (done) return; done = true; clearTimeout(tEnd); ttsEnd(); };
+  ttsBegin();
+  // 応答が返らない・再生が終わらない場合の保険（S.speaking を必ず戻す）
+  tEnd = setTimeout(finish, Math.min(90000, 8000 + text.length * 150));
   fetch('https://api.openai.com/v1/audio/speech', {
     method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-    body: JSON.stringify({ model:(CFG.ttsModel||'gpt-4o-mini-tts'), voice:(e.seat==='A'?CFG.voiceA:CFG.voiceB), input:text,
+    body: JSON.stringify({ model:(CFG.ttsModel||'gpt-4o-mini-tts'), voice:(seat==='A'?CFG.voiceA:CFG.voiceB), input:text,
                            instructions:'Speak clearly and naturally, at a business meeting pace.' })
   }).then(function(r){ if(!r.ok) throw new Error('TTS '+r.status); return r.blob(); })
     .then(function(b){
       audioEl.src = URL.createObjectURL(b);
-      audioEl.onended = audioEl.onerror = function(){ S.speaking=false; };
+      audioEl.onended = audioEl.onerror = finish;
       return audioEl.play();
-    }).catch(function(){ S.speaking=false; });
+    }).catch(function(){ finish(); });
+}
+
+function speak(e){
+  if (CFG.ttsMode === 'off' || !e.dstText) return;
+  if (CFG.ttsWho === 'B2A' && e.seat !== 'B') return;
+  if (CFG.ttsWho === 'A2B' && e.seat !== 'A') return;
+  if (CFG.ttsMode === 'browser') browserSpeak(e.dstText, L(e.dstLang).tts);
+  else apiSpeak(e.dstText, e.seat);
 }
 
 /* =========================================================================
@@ -1157,6 +1240,8 @@ function buildRec(){
      こうすることで AUTO でも再起動回数が増えず、許可ポップアップも増えない。 */
   rec.onend = function(){
     if (!recRun || restarting) return;
+    // 読み上げのために止めた場合は、ここで再開しない（読み上げ終了後に ttsEnd が再開する）
+    if (ttsPause) return;
     restarting = true;
     if (S.autoMode && micSeats().length > 1 && !sawSpeech){
       S.listenSeat = (S.listenSeat === 'A') ? 'B' : 'A';
@@ -2525,6 +2610,13 @@ function unlockAudioOnce(){
 
 iosSetup();
 unlockAudioOnce();
+
+/* 音声リストは遅れて読み込まれるので、先に一度読ませておく
+   （最初の読み上げで声が選べずに失敗するのを防ぐ） */
+if (window.speechSynthesis){
+  ttsVoices();
+  try{ speechSynthesis.addEventListener('voiceschanged', ttsVoices); }catch(e){}
+}
 
 if (!SR && CFG.sttProvider === 'webspeech'){
   setTimeout(function(){ toast('このブラウザは内蔵音声認識に未対応です。⚙→音声 で OpenAI / Groq / Gemini の音声認識を選んでください。'); }, 900);
