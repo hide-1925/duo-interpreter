@@ -1016,24 +1016,6 @@ function ensureMic(){
     audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true }
   }).then(function(st){ micStream = st; return st; });
 }
-/* マイク許可が「毎回確認」のままだと、音声認識が再開するたびにポップアップが出る。
-   状態を調べて、恒久的に許可する方法を案内する。 */
-function checkMicPermission(){
-  if (!navigator.permissions || !navigator.permissions.query) return;
-  try{
-    navigator.permissions.query({ name:'microphone' }).then(function(st){
-      var warn = function(){
-        if (st.state === 'granted') return;
-        if (location.protocol === 'file:') return;   // 別の警告を出しているので重複させない
-        toast('マイクが「毎回確認」になっています。この状態だと認識が再開するたびに許可を聞かれます。<br>'
-            + '一度「開始」を押し、出てきたポップアップで<b>「許可」（今回のみ許可ではなく）</b>を選んでください。');
-      };
-      setTimeout(warn, 1800);
-      st.onchange = function(){ if (st.state === 'granted') toast('マイクの許可を保存しました。以後ポップアップは出ません。', true); };
-    }).catch(function(){});
-  }catch(e){}
-}
-
 function setLevel(rms){
   var el = $('lvlFill');
   if (el) el.style.width = Math.min(100, rms*400) + '%';
@@ -2416,7 +2398,6 @@ loadCfg();
 applyCfg();
 setMode(store.get('di.automode','1') === '1');
 setFocus(CFG.focus || 'split');
-checkMicPermission();
 updateStatus();
 
 /* =========================================================================
