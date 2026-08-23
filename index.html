@@ -352,7 +352,7 @@
     <i id="lvlFill"></i><small>認識中言語</small><span class="val" id="listenTxt">日本語</span>
   </button>
 
-  <button class="cbtn" id="focusBtn" title="表示レイアウトを切り替える">⬍ 2分割</button>
+  <button class="cbtn stack" id="focusBtn" title="表示レイアウトを切り替える"><small>配置</small><span class="val" id="focusTxt">H：A/B</span></button>
 
   <div class="fsgrp">
     <button id="fsDown" class="fsA" title="文字を小さく">A−</button>
@@ -872,7 +872,7 @@ function updateFocusUI(){
     grad = 'linear-gradient(' + (vertical ? '180deg' : '90deg') + ','
          + seatTint(s1) + ' 0 50%,' + seatTint(s2) + ' 50% 100%)';
   }
-  btn.textContent = label;
+  var vt = $('focusTxt'); if (vt) vt.textContent = label;   // 見出し（配置）を消さないよう値だけ書き換える
   btn.title = title + '（クリックで次の表示に切替）';
   btn.style.setProperty('--focusGrad', grad);   // 背景そのものではなく外枠用の色として渡す
 }
