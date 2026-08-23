@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Duo Interpreter v1.05 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.06 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -261,7 +261,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.05</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。<span style="display:block;margin-top:10px;color:var(--warn);font-weight:700;font-size:14px">無料で使用する場合はブラウザから開いて使用してください。</span><span style="display:block;font-size:12px;margin-top:2px">ホーム画面に追加したアプリでは、内蔵（無料）の音声認識が使えません。</span></div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.06</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。<span style="display:block;margin-top:10px;color:var(--warn);font-weight:700;font-size:14px">無料で使用する場合はブラウザから開いて使用してください。</span><span style="display:block;font-size:12px;margin-top:2px">ホーム画面に追加したアプリでは、内蔵（無料）の音声認識が使えません。</span></div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -271,7 +271,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.05</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。<span style="display:block;margin-top:10px;color:var(--warn);font-weight:700;font-size:14px">無料で使用する場合はブラウザから開いて使用してください。</span><span style="display:block;font-size:12px;margin-top:2px">ホーム画面に追加したアプリでは、内蔵（無料）の音声認識が使えません。</span></div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.06</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。<span style="display:block;margin-top:10px;color:var(--warn);font-weight:700;font-size:14px">無料で使用する場合はブラウザから開いて使用してください。</span><span style="display:block;font-size:12px;margin-top:2px">ホーム画面に追加したアプリでは、内蔵（無料）の音声認識が使えません。</span></div></div>
   </section>
 </div>
 
@@ -1390,6 +1390,7 @@ function StreamEngine(seat, stream, opts){
   this.seat = seat; this.stream = stream; this.opts = opts||{};
   this.chunks=[]; this.voice=false; this.last=0; this.segStart=0; this.timer=null;
   this.rec=null; this.ac=null; this.an=null; this.dead=false;
+  this.peak=0; this.sent=0; this.hbAt=0; this.hbPeak=0; this.lowStreak=0; this.warnedLow=false;
 }
 StreamEngine.prototype.start = function(){
   var self = this;
@@ -1398,8 +1399,17 @@ StreamEngine.prototype.start = function(){
     var src = this.ac.createMediaStreamSource(this.stream);
     this.an = this.ac.createAnalyser(); this.an.fftSize = 1024;
     src.connect(this.an);
-  }catch(e){}
+    /* iOSではAudioContextが suspended の状態で始まる。そのままだと解析結果が
+       常に無音になり、発話を検出できず録音を全部捨ててしまうので必ず再開させる。 */
+    if (this.ac.state === 'suspended'){
+      var pr = this.ac.resume();
+      if (pr && pr.then) pr.then(function(){ dlog('audio','ac-resumed',{ state: self.ac && self.ac.state }); })
+                           .catch(function(e){ dlog('audio','ac-resume-FAIL',{ err:String((e&&e.message)||e) }); });
+    }
+    dlog('audio','engine-start',{ seat:this.seat, acState:this.ac.state, vadThreshold:+(CFG.vad/1000).toFixed(4) });
+  }catch(e){ dlog('audio','engine-FAIL',{ err:String((e&&e.message)||e) }); }
   this.newRec();
+  this.hbAt = Date.now();
   var buf = new Uint8Array(this.an ? this.an.frequencyBinCount : 512);
   this.timer = setInterval(function(){
     if (self.dead) return;
@@ -1410,7 +1420,29 @@ StreamEngine.prototype.start = function(){
       rms = Math.sqrt(s/buf.length);
     }
     if (self.opts.meter) setLevel(rms);
+    if (rms > self.peak)   self.peak = rms;
+    if (rms > self.hbPeak) self.hbPeak = rms;
     var t = Date.now();
+
+    /* 5秒に1回だけ音量の様子を残す（このループ自体は60ms毎なので毎回は残さない）。
+       「マイクは繋がっているのに何も起きない」ときの切り分けに使う。 */
+    if (t - self.hbAt >= 5000){
+      var th = CFG.vad/1000;
+      dlog('audio','level',{ seat:self.seat, peak:+self.hbPeak.toFixed(4), threshold:+th.toFixed(4),
+        acState: self.ac ? self.ac.state : null, sent: self.sent });
+      // 音は入っているのに閾値に届かない状態が続くなら、黙って捨て続けずに知らせる
+      if (self.hbPeak >= th) self.lowStreak = 0;
+      else if (self.sent === 0 && self.hbPeak > 0.002){
+        self.lowStreak++;
+        if (self.lowStreak >= 3 && !self.warnedLow){
+          self.warnedLow = true;
+          toast('マイクの音は入っていますが音量が小さく、発話として検出できていません。<br>'
+              + '⚙→音声 の「マイク感度」を上げる（数値を下げる）か、マイクを口に近づけてください。');
+        }
+      }
+      self.hbAt = t; self.hbPeak = 0;
+    }
+
     if (self.opts.isMic && S.speaking){ self.voice=false; self.last=t; return; }
     if (rms > CFG.vad/1000) { self.voice=true; self.last=t; }
     if (self.voice && (t-self.last)>900 && (t-self.segStart)>700) self.cut(true);
@@ -1421,14 +1453,23 @@ StreamEngine.prototype.start = function(){
 StreamEngine.prototype.newRec = function(){
   var self = this;
   this.chunks=[]; this.voice=false; this.segStart=Date.now(); this.last=Date.now();
+  this.peak = 0;                       // この区切りの中で観測した最大音量
   var mime = pickMime();
   try{ this.rec = mime ? new MediaRecorder(this.stream,{mimeType:mime}) : new MediaRecorder(this.stream); }
-  catch(e){ toast('録音を開始できません: '+e.message); return; }
+  catch(e){ dlog('audio','recorder-FAIL',{ err:String((e&&e.message)||e) }); toast('録音を開始できません: '+e.message); return; }
   this.rec.ondataavailable = function(ev){ if (ev.data && ev.data.size) self.chunks.push(ev.data); };
   this.rec.onstop = function(){
     var send = self.rec && self.rec._send;
+    var peak = (self.rec && self.rec._peak) || 0;
     var blob = new Blob(self.chunks, { type:(self.rec && self.rec.mimeType) || 'audio/webm' });
-    if (send && blob.size > 6000) transcribeBlob(blob, self.seat);
+    if (send && blob.size > 6000){
+      self.sent++;
+      transcribeBlob(blob, self.seat);
+    } else {
+      // これまで完全に無記録だった経路。捨てた理由が分からないと原因を追えない。
+      dlog('audio','discard',{ seat:self.seat, why: (!send ? '発話を検出せず（無音扱い）' : 'データが小さすぎる'),
+        bytes: blob.size, peak:+peak.toFixed(4), threshold:+(CFG.vad/1000).toFixed(4) });
+    }
     if (!self.dead && S.running) self.newRec();
   };
   try{ this.rec.start(); }catch(e){}
@@ -1436,6 +1477,7 @@ StreamEngine.prototype.newRec = function(){
 StreamEngine.prototype.cut = function(send){
   if (!this.rec || this.rec.state==='inactive'){ if(!this.dead && S.running) this.newRec(); return; }
   this.rec._send = !!send;
+  this.rec._peak = this.peak;
   try{ this.rec.stop(); }catch(e){}
 };
 StreamEngine.prototype.stop = function(){
@@ -2006,7 +2048,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.05</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。<span style=\"display:block;margin-top:10px;color:var(--warn);font-weight:700;font-size:14px\">無料で使用する場合はブラウザから開いて使用してください。</span></div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.06</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。<span style=\"display:block;margin-top:10px;color:var(--warn);font-weight:700;font-size:14px\">無料で使用する場合はブラウザから開いて使用してください。</span></div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -2643,7 +2685,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.05');
+  out.push('- バージョン: Duo Interpreter v1.06');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
