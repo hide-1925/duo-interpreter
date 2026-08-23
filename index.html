@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Duo Interpreter v1.06 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.07 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -261,7 +261,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.06</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。<span style="display:block;margin-top:10px;color:var(--warn);font-weight:700;font-size:14px">無料で使用する場合はブラウザから開いて使用してください。</span><span style="display:block;font-size:12px;margin-top:2px">ホーム画面に追加したアプリでは、内蔵（無料）の音声認識が使えません。</span></div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.07</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -271,7 +271,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.06</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。<span style="display:block;margin-top:10px;color:var(--warn);font-weight:700;font-size:14px">無料で使用する場合はブラウザから開いて使用してください。</span><span style="display:block;font-size:12px;margin-top:2px">ホーム画面に追加したアプリでは、内蔵（無料）の音声認識が使えません。</span></div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.07</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1349,9 +1349,11 @@ function buildRec(){
       dlog('stt','DEAD',{ restarts: recDeadStart, aliveMs: alive, standalone: !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) });
       restarting = false;
       stopAll();                       // 無意味な再起動ループを止める（電池を食うだけのため）
-      toast('<b>無料版を使用する場合はブラウザから開いて使用してください。</b><br>'
-          + 'ホーム画面に追加したアプリでは、内蔵の音声認識が使えません。<br>'
-          + 'このまま使う場合は ⚙→音声 で <b>OpenAI などのAPI</b> の音声認識に切り替えてください。');
+      toast('<b>内蔵の音声認識が、開始直後に終了してしまい文字起こしできません。</b><br>'
+          + '① 一度「停止」してから、もう一度「開始」を押してみてください<br>'
+          + '② 他のアプリやタブがマイクを使っていないか確認してください<br>'
+          + '③ ブラウザ（Safari等）で開き直すと直ることがあります<br>'
+          + '④ それでも直らない場合は ⚙→音声 で <b>OpenAI などのAPI</b> の音声認識に切り替えてください');
       return;
     }
 
@@ -2048,7 +2050,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.06</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。<span style=\"display:block;margin-top:10px;color:var(--warn);font-weight:700;font-size:14px\">無料で使用する場合はブラウザから開いて使用してください。</span></div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.07</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -2685,7 +2687,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.06');
+  out.push('- バージョン: Duo Interpreter v1.07');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
