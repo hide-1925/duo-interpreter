@@ -822,6 +822,10 @@ function toast(msg, ok){
 }
 
 /* ---------------- 表示 ---------------- */
+/* 話者の色。CSSの --a / --b と同じ値を使う */
+function seatTint(seat, alpha){
+  return 'rgba(' + (seat === 'A' ? '61,220,151' : '221,136,164') + ',' + alpha + ')';
+}
 function seatName(s){
   if (s === 'A') return CFG.nameA || '自分 / Me';
   return CFG.nameB || '相手 / Partner';
@@ -840,21 +844,28 @@ function setFocus(mode){
   layout();
 }
 function updateFocusUI(){
-  var btn = $('focusBtn');
-  var narrow = window.innerWidth <= 480;   // iPhone縦などではボタンを短く
-  if (CFG.focus === 'A'){
-    btn.textContent = narrow ? '▣A' : ('▣ ' + seatName('A'));
-    btn.title = seatName('B') + ' 側を最小化中（クリックで切替）';
-  } else if (CFG.focus === 'B'){
-    btn.textContent = narrow ? '▣B' : ('▣ ' + seatName('B'));
-    btn.title = seatName('A') + ' 側を最小化中（クリックで切替）';
-  } else if (CFG.focus === 'splitV'){
-    btn.textContent = narrow ? '⬍' : '⬍ 上下2分割';
-    btn.title = '上下2分割（対面で端末を挟むとき向け）。クリックで次の表示に切替';
+  var btn = $('focusBtn'); if (!btn) return;
+  var f = CFG.focus, label, title, grad;
+
+  if (f === 'A' || f === 'B'){
+    label = 'V：' + f;
+    title = seatName(f) + ' 側だけを大きく表示中';
+    grad  = 'linear-gradient(180deg,' + seatTint(f,.30) + ',' + seatTint(f,.30) + ')';
   } else {
-    btn.textContent = narrow ? '⬌' : '⬌ 左右2分割';
-    btn.title = '左右2分割。クリックで次の表示に切替';
+    var vertical = (f === 'splitV');
+    // 並び順は layout() と同じ判定にして、ボタンの表記と実際の配置を必ず一致させる
+    var aFirst = vertical ? !!CFG.swap : !CFG.swap;
+    var s1 = aFirst ? 'A' : 'B', s2 = aFirst ? 'B' : 'A';
+    label = (vertical ? 'V：' : 'H：') + s1 + '/' + s2;
+    title = vertical ? ('上下2分割（上=' + seatName(s1) + ' / 下=' + seatName(s2) + '）')
+                     : ('左右2分割（左=' + seatName(s1) + ' / 右=' + seatName(s2) + '）');
+    // 実際の配置と同じ向き・同じ順で色を並べ、見ただけで対応が分かるようにする
+    grad = 'linear-gradient(' + (vertical ? '180deg' : '90deg') + ','
+         + seatTint(s1,.30) + ' 0 50%,' + seatTint(s2,.30) + ' 50% 100%)';
   }
+  btn.textContent = label;
+  btn.title = title + '（クリックで次の表示に切替）';
+  btn.style.background = grad;
 }
 
 function layout(){
