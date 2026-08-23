@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Duo Interpreter v1.03 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.04 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -261,7 +261,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.03</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.04</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -271,7 +271,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.03</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.04</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
   </section>
 </div>
 
@@ -536,6 +536,13 @@
         <button class="btn" id="dlTxt">テキストDL</button>
         <button class="btn" id="dlCsv">CSV DL</button>
       </div>
+      <label style="font-size:11.5px;color:var(--dim);font-weight:800;letter-spacing:.05em;margin-top:4px">🩺 診断ログ（動作ログ込み・Claude貼り付け用）</label>
+      <div class="row wrap">
+        <button class="btn" id="copyDiag">コピー（スマホ推奨）</button>
+        <button class="btn" id="dlDiag">ファイルDL</button>
+      </div>
+      <small>環境・設定・使用中のマイク・動作の記録・会話ログをまとめて出力します。不具合の原因調査用です。
+      そのまま Claude に貼り付けてください。APIキーは自動で伏せ字にしますが、会話内容が含まれるため共有前にご確認ください。</small>
       <button class="btn primary" id="genMinutes">AIで議事録を生成</button>
       <small>議事録生成は AI プロバイダ選択時のみ利用できます。</small>
     </div>
@@ -884,7 +891,7 @@ function sysPrompt(from, to){
 function translate(e){
   var from = e.srcLang, to = e.dstLang, text = e.srcText;
   var p = PROVIDERS[CFG.provider] || PROVIDERS.free;
-  var job;
+  var job, t0 = Date.now();
   if (p.kind === 'free')          job = freeTranslate(text, from, to);
   else if (p.kind === 'anthropic') job = anthropicTranslate(text, from, to);
   else if (p.kind === 'gemini')    job = geminiTranslate(text, from, to);
@@ -892,11 +899,13 @@ function translate(e){
 
   return job.then(function(out){
     e.dstText = (out||'').trim();
+    dlog('translate','ok',{ prov:CFG.provider, model:CFG.model, from:from, to:to, ms:Date.now()-t0, chars:(e.dstText||'').length });
     render(e); speak(e);
   }).catch(function(err){
     e.dstText = '(翻訳エラー)';
     render(e);
     var m = String(err.message||err);
+    dlog('translate','FAIL',{ prov:CFG.provider, model:CFG.model, from:from, to:to, ms:Date.now()-t0, err:m.slice(0,200) });
     if (/model/i.test(m) && /(not found|does not exist|must provide|invalid)/i.test(m))
       toast('モデル名が正しくない可能性があります。⚙→翻訳・API のモデル欄にある「🔄 更新」を押して選び直してください。<br><small>' + m.slice(0,140) + '</small>');
     else toast('翻訳失敗: ' + m);
@@ -1001,6 +1010,26 @@ function chk(r){
   return r.json();
 }
 
+/* =========================================================================
+   動作ログ（診断用）
+   ------------------------------------------------------------------
+   通常動作への影響を避けるため、ここでは「メモリ上の配列に1件push」しかしない。
+   文字列化・整形・書き出しはダウンロードを押したときにまとめて行う。
+   音声レベル監視のような高頻度ループ（60ms毎）からは絶対に呼ばないこと。
+   ========================================================================= */
+var DLOG = [], DLOG_MAX = 800, DLOG_T0 = Date.now();
+function dlog(cat, msg, data){
+  if (DLOG.length >= DLOG_MAX) DLOG.shift();   // 古いものから捨てて上限を超えない
+  DLOG.push({ t: Date.now() - DLOG_T0, c: cat, m: msg, d: data });
+}
+/* APIキーらしき文字列は書き出し時に必ず伏せる（そのまま貼れるようにするため） */
+function redact(s){
+  return String(s)
+    .replace(/\b(sk|rk|gsk|xai|pk|sk-ant)-[A-Za-z0-9_\-]{6,}/gi, '$1-***REDACTED***')
+    .replace(/\bAIza[A-Za-z0-9_\-]{8,}/g, 'AIza***REDACTED***')
+    .replace(/(Bearer\s+)[A-Za-z0-9._\-]{6,}/gi, '$1***REDACTED***');
+}
+
 /* ---------------- 読み上げ ---------------- */
 var audioEl = new Audio();
 
@@ -1058,10 +1087,11 @@ function browserSpeak(text, tag){
     var u = new SpeechSynthesisUtterance(text);
     u.lang = tag; u.rate = 1.05;
     var v = pickVoice(tag); if (v) u.voice = v;
-    u.onstart = function(){ started = true; ttsSilentFails = 0; };
+    u.onstart = function(){ started = true; ttsSilentFails = 0; dlog('tts','browser-start',{ lang: tag, voice: v ? v.name : null, chars: text.length }); };
     u.onend   = finish;
     u.onerror = function(ev){
       var err = (ev && ev.error) || '';
+      dlog('tts','browser-ERROR',{ err: err, lang: tag });
       if (err !== 'interrupted' && err !== 'canceled') ttsFailNotice('読み上げを再生できませんでした（' + err + '）');
       finish();
     };
@@ -1073,6 +1103,7 @@ function browserSpeak(text, tag){
       if (started || done) return;
       try{ speechSynthesis.cancel(); }catch(e){}
       ttsSilentFails++;
+      dlog('tts','browser-SILENT',{ lang: tag, fails: ttsSilentFails, voices: ttsVoices().length });
       // 鳴らない読み上げを試し続けても邪魔なだけなので、続くようなら自動でOFFにする
       if (ttsSilentFails >= 2 && CFG.ttsMode === 'browser'){
         CFG.ttsMode = 'off'; store.set('di.tts','off');
@@ -1136,7 +1167,20 @@ function ensureMic(){
     return Promise.reject(new Error('このブラウザはマイク入力に対応していません'));
   return navigator.mediaDevices.getUserMedia({
     audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true }
-  }).then(function(st){ micStream = st; return st; });
+  }).then(function(st){
+    micStream = st;
+    // 実際にどのマイクが使われ、ノイズ抑制が本当に効いているかを記録する
+    try{
+      var tr = st.getAudioTracks()[0], s = tr.getSettings ? tr.getSettings() : {};
+      dlog('mic','acquired',{ label: tr.label || '(no label)', deviceId: (s.deviceId||'').slice(0,8),
+        sampleRate: s.sampleRate, channels: s.channelCount,
+        echoCancellation: s.echoCancellation, noiseSuppression: s.noiseSuppression, autoGainControl: s.autoGainControl });
+    }catch(e){}
+    return st;
+  }).catch(function(err){
+    dlog('mic','FAIL',{ err: String(err && (err.name+': '+err.message) || err) });
+    throw err;
+  });
 }
 function setLevel(rms){
   var el = $('lvlFill');
@@ -1156,8 +1200,9 @@ function acquireWakeLock(){
   if (!('wakeLock' in navigator)) return;
   navigator.wakeLock.request('screen').then(function(wl){
     wakeLock = wl;
+    dlog('wake','acquired');
     wakeLock.addEventListener('release', function(){ wakeLock = null; });
-  }).catch(function(){ /* 取得失敗は致命的でないので黙って無視 */ });
+  }).catch(function(e){ dlog('wake','FAIL',{ err:String(e && e.message || e) }); });
 }
 function releaseWakeLock(){
   if (wakeLock){ try{ wakeLock.release(); }catch(e){} wakeLock = null; }
@@ -1183,6 +1228,7 @@ function langOf(seat){ return seat==='A' ? CFG.langA : CFG.langB; }
 /* 聞き取り対象の話者を切り替える（手動ボタン・パネルタップ・AUTOから共通で使用） */
 function setListenSeat(seat, quiet){
   if (S.listenSeat === seat) { updateStatus(); return; }
+  dlog('lang','listenSeat',{ from: S.listenSeat, to: seat, auto: S.autoMode });
   S.listenSeat = seat;
   itmEntry = null;
   updateStatus();
@@ -1230,6 +1276,7 @@ function buildRec(){
       else e = addEntry(seat, t, false);
       sawSpeech = true;
       recErr = 0;               // 正常に認識できたのでエラー連続回数をリセット
+      dlog('stt','result',{ seat: seat, lang: rec ? rec.lang : null, chars: t.length, text: t.slice(0,120) });
       render(e); translate(e);
     });
   };
@@ -1245,6 +1292,7 @@ function buildRec(){
       return;
     }
     recErr++;
+    dlog('stt','ERROR',{ err: err, lang: rec ? rec.lang : null, count: recErr });
     if (recErrNotified) return;   // 同じ理由で何度も出さない
     recErrNotified = true;
     if (err === 'network')
@@ -1273,6 +1321,7 @@ function buildRec(){
     }
     // エラーが連続するとき（サーバーに繋がらない等）は間隔を空けて再試行する
     var wait = recErr > 2 ? Math.min(5000, 400 * recErr) : 120;
+    dlog('stt','restart',{ sawSpeech: sawSpeech, nextLang: L(langOf(S.listenSeat)).sr, waitMs: wait, errStreak: recErr });
     setTimeout(function(){
       restarting = false;
       if (!recRun || !rec) return;
@@ -1365,8 +1414,11 @@ function pickMime(){
 function transcribeBlob(blob, seat){
   var lang = langOf(seat);
   var holder = addEntry(seat, '（認識中…）', true);
+  var t0 = Date.now();
   sttCall(blob, lang).then(function(text){
     text = (text||'').trim();
+    dlog('stt','api-result',{ prov: CFG.sttProvider, model: CFG.sttModel, seat: seat, lang: lang,
+      ms: Date.now()-t0, bytes: blob.size, chars: text.length, text: text.slice(0,120) });
     if (!text || text.length<2 || /^[\s.,、。・…]*$/.test(text)){ removeEntry(holder); return; }
     // AUTO（言語自動判定）のときは、認識結果からどちらの話者かを推定して割り当て直す
     if (S.autoMode && micSeats().length > 1){
@@ -1383,6 +1435,8 @@ function transcribeBlob(blob, seat){
     translate(holder);
   }).catch(function(err){
     removeEntry(holder);
+    dlog('stt','api-FAIL',{ prov: CFG.sttProvider, model: CFG.sttModel, ms: Date.now()-t0,
+      bytes: blob.size, err: String(err.message||err).slice(0,200) });
     toast('音声認識失敗: ' + String(err.message||err));
   });
 }
@@ -1636,6 +1690,9 @@ function startAll(){
   S.running = true;
   $('mic').classList.add('live'); $('mic').textContent = '■ 停止';
   acquireWakeLock();
+  dlog('session','START',{ stt: CFG.sttProvider, sttModel: CFG.sttModel, prov: CFG.provider, model: CFG.model,
+    langA: CFG.langA, langB: CFG.langB, srcA: CFG.srcA, srcB: CFG.srcB,
+    auto: S.autoMode, tts: CFG.ttsMode, listenSeat: S.listenSeat });
 
   var jobs = [];
 
@@ -1768,6 +1825,7 @@ function stopVU(){
 }
 
 function stopAll(){
+  if (S.running) dlog('session','STOP',{ entries: S.entries.length });
   S.running = false;
   clearTimeout(altTimer); clearTimeout(altStreamTimer);
   $('mic').classList.remove('live'); $('mic').textContent = '● 開始';
@@ -1905,7 +1963,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.03</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.04</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -2523,6 +2581,120 @@ $('loadEmbedded').onclick = function(){
   saveGloss(); store.set('di.ctx', CFG.ctx);
   $('ctx').value = CFG.ctx; glRender();
   toast('埋め込みデータを読み込みました', true);
+};
+
+/* ===== 診断ログの書き出し =====
+   Claudeにそのまま貼れるよう、環境・設定・マイク・動作ログ・会話ログを1つの
+   Markdownにまとめる。APIキーは必ず伏せ字にする。                       */
+function diagText(devices){
+  var out = [], now = new Date();
+  var pad = function(s,n){ s=String(s); while(s.length<n) s+=' '; return s; };
+  var lpad = function(s,n){ s=String(s); while(s.length<n) s=' '+s; return s; };   // 時刻は右寄せで桁を揃える
+  var cell = function(v){ return String(v==null?'':v).replace(/\|/g,'\\|').replace(/\n/g,' '); };
+
+  out.push('# Duo Interpreter 診断ログ', '');
+  out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
+  out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
+  out.push('- 生成日時: ' + now.toLocaleString());
+  out.push('- バージョン: Duo Interpreter v1.04');
+  out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
+  out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
+
+  var isPWA = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+  out.push('## 環境', '', '| 項目 | 値 |', '|---|---|');
+  [['UserAgent', navigator.userAgent],
+   ['言語設定', navigator.language],
+   ['画面', window.innerWidth + '×' + window.innerHeight + ' / dpr ' + (window.devicePixelRatio||1)],
+   ['プロトコル', location.protocol + ' (' + (location.host || 'ローカルファイル') + ')'],
+   ['ホーム画面に追加(PWA)', isPWA ? 'はい' : 'いいえ'],
+   ['オンライン', navigator.onLine ? 'はい' : 'いいえ'],
+   ['内蔵音声認識(SpeechRecognition)', SR ? '利用可' : '利用不可'],
+   ['読み上げ音声の数', (function(){ try{ return ttsVoices().length; }catch(e){ return '?'; } })()],
+   ['画面スリープ防止(WakeLock)', ('wakeLock' in navigator) ? '対応' : '非対応']
+  ].forEach(function(r){ out.push('| ' + cell(r[0]) + ' | ' + cell(r[1]) + ' |'); });
+  out.push('');
+
+  out.push('## 設定', '', '| 項目 | 値 |', '|---|---|');
+  [['翻訳プロバイダ', CFG.provider], ['翻訳モデル', CFG.model],
+   ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel],
+   ['読み上げ', CFG.ttsMode], ['読み上げモデル', CFG.ttsModel], ['読み上げ対象', CFG.ttsWho],
+   ['言語A / B', CFG.langA + ' / ' + CFG.langB],
+   ['入力元A / B', CFG.srcA + ' / ' + CFG.srcB],
+   ['言語切替', S.autoMode ? 'AUTO' : '手動'], ['認識中の席', S.listenSeat],
+   ['翻訳スタイル', CFG.tone], ['VADしきい値', CFG.vad],
+   ['表示', CFG.focus + (CFG.swap?' / 入替':'') + (CFG.flipTop?' / 反転':'')],
+   ['用語集', (CFG.glossary||[]).length + ' 件'],
+   ['コンテキスト', (CFG.ctx||'').length + ' 文字']
+  ].forEach(function(r){ out.push('| ' + cell(r[0]) + ' | ' + cell(r[1]) + ' |'); });
+  var ks = Object.keys(KEYS||{}).filter(function(k){ return String(KEYS[k]||'').trim(); });
+  out.push('| APIキー設定済み | ' + (ks.length ? cell(ks.join(', ')) : 'なし') + ' |');
+  out.push('| Base URL | ' + cell(CFG.baseUrl ? redact(CFG.baseUrl) : '(未設定)') + ' |', '');
+
+  if (devices && devices.length){
+    out.push('## 検出された音声入力デバイス', '');
+    devices.forEach(function(d,i){ out.push('- ' + (i+1) + '. ' + cell(d.label || '(ラベル非公開)')); });
+    out.push('');
+  }
+
+  out.push('## 動作ログ', '');
+  if (!DLOG.length){
+    out.push('（記録なし。「開始」を押して操作したあとに書き出すと記録されます）', '');
+  } else {
+    out.push('```');
+    DLOG.forEach(function(e){
+      var ts = '+' + (e.t/1000).toFixed(3) + 's';
+      var line = '[' + lpad(ts, 10) + '] ' + pad(e.c, 9) + ' ' + pad(e.m, 14);
+      if (e.d !== undefined && e.d !== null){
+        var j; try{ j = JSON.stringify(e.d); }catch(_){ j = '(未整形)'; }
+        line += ' ' + j;
+      }
+      out.push(redact(line));
+    });
+    out.push('```', '');
+  }
+
+  var rows = logRows();
+  out.push('## 会話ログ（' + rows.length + ' 件）', '');
+  if (!rows.length) out.push('（なし）', '');
+  else {
+    rows.forEach(function(e){
+      out.push('- `' + e.time + '` **' + seatName(e.seat) + '** (' + L(e.srcLang).name + ') ' + cell(e.srcText));
+      out.push('  - → (' + L(e.dstLang).name + ') ' + cell(e.dstText || '(未翻訳)'));
+    });
+    out.push('');
+  }
+  return out.join('\n');
+}
+
+/* マイク一覧（どのマイクが繋がっているか）も入れられれば入れてから組み立てる */
+function withDiagText(cb){
+  var go = function(devs){ cb(diagText(devs)); };
+  if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices){
+    navigator.mediaDevices.enumerateDevices()
+      .then(function(ds){ go(ds.filter(function(d){ return d.kind === 'audioinput'; })); })
+      .catch(function(){ go(null); });
+  } else go(null);
+}
+$('dlDiag').onclick = function(){
+  withDiagText(function(t){
+    download('duo-diagnostics-' + stamp() + '.md', t, 'text/markdown;charset=utf-8');
+    toast('診断ログを書き出しました。そのまま Claude に貼り付けられます。', true);
+  });
+};
+/* スマホではファイルを保存して開き直すのが手間なので、クリップボードに直接入れる */
+$('copyDiag').onclick = function(){
+  withDiagText(function(t){
+    var ok = function(){ toast('診断ログをコピーしました（' + t.length + '文字）。Claudeの入力欄に貼り付けてください。', true); };
+    var ng = function(){
+      // クリップボードが使えない場合は、選択してコピーできる状態で見せる
+      $('minBody').textContent = t;
+      $('minutes').classList.add('on');
+      toast('自動コピーできませんでした。表示された内容を選択してコピーしてください。');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(t).then(ok).catch(ng);
+    else ng();
+  });
 };
 
 /* ログ */
