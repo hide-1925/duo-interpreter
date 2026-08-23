@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Duo Interpreter v1.08 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.09 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -105,6 +105,16 @@
   }
   .cbtn:hover{background:#26303f}
   .cbtn.icon{padding:9px 11px}
+  /* 読み上げOFFのとき：アイコンを薄くしたうえで、禁止マークのような斜線を重ねる */
+  #ttsToggle{position:relative}
+  #ttsToggle .ic{display:block;transition:opacity .15s}
+  #ttsToggle.muted .ic{opacity:.45}
+  #ttsToggle.muted::after{
+    content:'';position:absolute;left:50%;top:50%;
+    width:80%;height:2.5px;border-radius:2px;background:var(--danger);
+    transform:translate(-50%,-50%) rotate(-45deg);pointer-events:none;
+    box-shadow:0 0 0 1.5px rgba(11,14,20,.85);   /* 下地から浮かせて見やすくする */
+  }
   #mic{background:var(--a);color:#05221a;border-color:transparent;font-size:14px;padding:11px 20px;font-weight:800}
   #mic.live{background:var(--danger);color:#fff;animation:pulse 1.4s infinite}
   @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,92,108,.45)}50%{box-shadow:0 0 0 12px rgba(255,92,108,0)}}
@@ -197,6 +207,33 @@
   /* 下部の操作バーと絶対に被らないよう、通知は画面の上側に出す */
   #toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 14px);transform:translateX(-50%);z-index:95;background:var(--danger);color:#fff;
     padding:11px 17px;border-radius:10px;font-size:13.5px;max-width:92vw;display:none;box-shadow:0 8px 30px rgba(0,0,0,.5);line-height:1.6}
+  /* ---- カメラ翻訳 ---- */
+  #cam{position:fixed;inset:0;z-index:85;background:#000;display:none;flex-direction:column}
+  #cam.on{display:flex}
+  #camWrap{flex:1;min-height:0;position:relative;overflow:hidden;cursor:pointer}
+  #camVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+  #camHint{
+    position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 16px);
+    background:rgba(0,0,0,.66);color:#fff;padding:9px 16px;border-radius:999px;font-size:13px;
+    max-width:90%;text-align:center;pointer-events:none;line-height:1.6;
+  }
+  #camOut{
+    position:absolute;left:10px;right:10px;top:calc(env(safe-area-inset-top) + 54px);
+    max-height:52%;overflow-y:auto;background:rgba(11,14,20,.93);border:1px solid var(--line);
+    border-radius:12px;padding:12px 14px;display:none;
+  }
+  #camOut.on{display:block}
+  #camOut .cmMain{font-size:19px;font-weight:700;line-height:1.5;word-break:break-word}
+  #camOut .cmSub{font-size:12.5px;color:var(--dim);margin-top:8px;line-height:1.6;word-break:break-word}
+  #camBar{
+    flex:0 0 auto;display:flex;align-items:center;gap:8px;justify-content:center;flex-wrap:wrap;
+    padding:10px 12px calc(env(safe-area-inset-bottom) + 10px);background:var(--bg);border-top:1px solid var(--line);
+  }
+  #camTop{
+    position:absolute;left:10px;right:10px;top:calc(env(safe-area-inset-top) + 10px);
+    display:flex;align-items:center;gap:8px;
+  }
+  #camTop .lbl{font-size:12px;color:#cfd8e6;background:rgba(0,0,0,.55);padding:5px 10px;border-radius:999px}
   #scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:65;display:none}
   #scrim.on{display:block}
   #minutes{position:fixed;inset:5%;z-index:80;background:var(--panel);border:1px solid var(--line);border-radius:14px;display:none;flex-direction:column}
@@ -269,7 +306,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.08</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.09</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -279,7 +316,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.08</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.09</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -310,11 +347,28 @@
     <button id="fsDown" class="fsA" title="文字を小さく">A−</button>
     <button id="fsUp" class="fsB" title="文字を大きく">A＋</button>
   </div>
-  <button class="cbtn icon" id="ttsToggle" title="読み上げ ON/OFF">🔊</button>
+  <button class="cbtn icon" id="ttsToggle" title="読み上げ ON/OFF"><span class="ic">🔊</span></button>
+  <button class="cbtn icon" id="camBtn" title="カメラで文字を翻訳">📷</button>
   <button class="cbtn icon" id="clearBtn" title="ログ消去">🗑</button>
   <button class="cbtn icon" id="cog" title="設定">⚙</button>
 </div>
 
+<div id="cam">
+  <div id="camWrap">
+    <video id="camVideo" playsinline muted autoplay></video>
+    <div id="camTop">
+      <span class="lbl" id="camLangLbl">→ 日本語</span>
+      <button class="cbtn icon" id="camClose" style="margin-left:auto" title="閉じる">✕</button>
+    </div>
+    <div id="camOut"><div class="cmMain"></div><div class="cmSub"></div></div>
+    <div id="camHint">画面をタップすると、写っている文字を翻訳します（写真は保存されません）</div>
+  </div>
+  <div id="camBar">
+    <button class="cbtn" id="camShot">📷 ここを翻訳</button>
+    <button class="cbtn" id="camAdd" style="display:none">＋ 会話ログに追加</button>
+    <button class="cbtn icon" id="camFlip" title="カメラ切替">🔄</button>
+  </div>
+</div>
 <div id="scrim"></div>
 
 <aside id="drawer">
@@ -368,6 +422,13 @@
       <input type="text" id="modelCustom" placeholder="モデル名を直接入力" style="display:none">
       <button class="btn ghost" id="modelExpand" style="display:none;margin-top:2px"></button>
       <small id="modelNote">主要モデル（最新の5.6系）のみ表示しています。APIキーを入力すると、実際に使えるモデル一覧を自動で取得します。</small>
+    </div>
+
+    <div class="field">
+      <label>カメラ翻訳のモデル</label>
+      <input type="text" id="camModel" placeholder="gpt-4o-mini">
+      <small>📷ボタンで使う、画像を読めるモデルです（例：gpt-4o-mini / gpt-5.6 など）。
+      Gemini を選んでいる場合は上の翻訳モデルがそのまま使われます。</small>
     </div>
 
     <div class="field">
@@ -709,6 +770,7 @@ function loadCfg(){
     rtDir:     pref('di.rtdir','rtDir','B'),
     rtBoth:    pref('di.rtboth','rtBoth','0'),
     ttsModel:  pref('di.ttsm','ttsModel',''),
+    camModel:  pref('di.cam','camModel','gpt-4o-mini'),   // カメラ翻訳用（画像を読めるモデル）
     voiceA:    pref('di.va','voiceA','alloy'),
     voiceB:    pref('di.vb','voiceB','ash'),
     vad:       parseInt(pref('di.vad','vad','35'),10),
@@ -871,6 +933,177 @@ function paint(feedId, e, viewer){
   s.textContent = CFG.showSrc ? sub : '';
   s.style.display = (CFG.showSrc && sub) ? '' : 'none';
   feed.scrollTop = feed.scrollHeight;
+}
+
+/* =========================================================================
+   カメラ翻訳
+   ------------------------------------------------------------------
+   カメラ映像から1コマだけをメモリ上で切り出して画像認識に送る。
+   端末の写真ライブラリには一切書き込まないので、写真としては残らない。
+   ========================================================================= */
+var camStream = null, camFacing = 'environment', camBusy = false, camLast = null;
+
+function camSupported(){
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+/* 画像を読めるモデルが要るので、無料モードでは使えない */
+function camProvider(){
+  if (CFG.provider === 'gemini' && transKey()) return 'gemini';
+  var p = PROVIDERS[CFG.provider];
+  if (p && p.kind !== 'free' && p.kind !== 'anthropic' && transKey()) return 'openai';
+  if (keyOf('openai')) return 'openai';
+  return null;
+}
+function camOpen(){
+  if (!camSupported()){ toast('このブラウザはカメラに対応していません'); return; }
+  if (!camProvider()){
+    toast('カメラ翻訳には画像を読めるAIが必要です。<br>⚙→翻訳・API で <b>OpenAI</b> や <b>Gemini</b> を選び、APIキーを設定してください。');
+    return;
+  }
+  $('cam').classList.add('on');
+  $('camLangLbl').textContent = '→ ' + L(CFG.langA).name;
+  camHideResult();
+  camStart();
+}
+function camStart(){
+  camStop();
+  navigator.mediaDevices.getUserMedia({
+    video:{ facingMode: camFacing, width:{ideal:1920}, height:{ideal:1080} }, audio:false
+  }).then(function(st){
+    camStream = st;
+    var v = $('camVideo');
+    v.srcObject = st;
+    var pr = v.play(); if (pr && pr.catch) pr.catch(function(){});
+    dlog('cam','open',{ facing: camFacing });
+  }).catch(function(err){
+    dlog('cam','FAIL',{ err:String((err && (err.name+': '+err.message)) || err) });
+    toast('カメラを使用できません: ' + (err.message||err));
+  });
+}
+function camStop(){
+  if (camStream){ try{ camStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){} camStream = null; }
+  var v = $('camVideo'); if (v) v.srcObject = null;
+}
+function camClose(){
+  camStop();
+  $('cam').classList.remove('on');
+  camHideResult();
+}
+function camHideResult(){
+  camLast = null;
+  $('camOut').classList.remove('on');
+  $('camAdd').style.display = 'none';
+  $('camHint').style.display = '';
+}
+
+/* いま映っている1コマを取り出す。canvas上だけの処理でファイルにはしない。 */
+function camGrab(){
+  var v = $('camVideo');
+  var w = v.videoWidth, h = v.videoHeight;
+  if (!w || !h) return null;
+  var max = 1280, sc = Math.min(1, max / Math.max(w, h));   // 送信量を抑えるため長辺1280に縮小
+  var cv = document.createElement('canvas');
+  cv.width = Math.round(w*sc); cv.height = Math.round(h*sc);
+  cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+  return cv.toDataURL('image/jpeg', 0.82);
+}
+
+function camShoot(){
+  if (camBusy) return;
+  var img = camGrab();
+  if (!img){ toast('カメラの映像がまだ準備できていません'); return; }
+  var to = CFG.langA, t0 = Date.now();
+  camBusy = true;
+  $('camHint').style.display = 'none';
+  $('camOut').classList.add('on');
+  $('camOut').querySelector('.cmMain').textContent = '翻訳中…';
+  $('camOut').querySelector('.cmSub').textContent = '';
+  $('camShot').textContent = '⏳ 翻訳中…';
+
+  camTranslate(img, to).then(function(r){
+    dlog('cam','ok',{ ms: Date.now()-t0, chars:(r.translated||'').length, srcChars:(r.source||'').length });
+    if (!r.translated && !r.source){
+      $('camOut').querySelector('.cmMain').textContent = '文字を読み取れませんでした';
+      $('camOut').querySelector('.cmSub').textContent = 'もう少し近づける、明るくする、ピントを合わせるなどお試しください。';
+      return;
+    }
+    camLast = r;
+    $('camOut').querySelector('.cmMain').textContent = r.translated || '(訳を取得できませんでした)';
+    $('camOut').querySelector('.cmSub').textContent = r.source ? ('原文: ' + r.source) : '';
+    $('camAdd').style.display = '';
+  }).catch(function(err){
+    dlog('cam','FAIL',{ ms: Date.now()-t0, err:String(err.message||err).slice(0,200) });
+    $('camOut').querySelector('.cmMain').textContent = '翻訳に失敗しました';
+    $('camOut').querySelector('.cmSub').textContent = String(err.message||err).slice(0,200);
+  }).then(function(){
+    camBusy = false;
+    $('camShot').textContent = '📷 ここを翻訳';
+  });
+}
+
+/* 画像から「原文」と「訳」をまとめて取り出す。文字認識と翻訳を1回で済ませる。 */
+function camPrompt(toName){
+  return 'あなたは画像内の文字を読み取って翻訳するアシスタントです。\n'
+       + '画像に写っている文字をすべて読み取り、' + toName + 'に翻訳してください。\n'
+       + '出力は次のJSONのみ。説明や前置きは書かないでください。\n'
+       + '{"source":"画像内の原文（読み取れた全文。改行は空白に）","translated":"' + toName + 'の訳"}\n'
+       + '文字が写っていない場合は {"source":"","translated":""} と返してください。';
+}
+function camParse(txt){
+  var t = String(txt||'').trim().replace(/^```(?:json)?/i,'').replace(/```$/,'').trim();
+  try{
+    var j = JSON.parse(t);
+    return { source: String(j.source||'').trim(), translated: String(j.translated||'').trim() };
+  }catch(e){
+    // JSONで返らなかった場合も、本文を訳として扱って捨てない
+    return { source:'', translated: t };
+  }
+}
+function camTranslate(dataUrl, to){
+  var prov = camProvider();
+  var toName = L(to).name;
+  if (prov === 'gemini'){
+    var key = transKey();
+    var b64 = dataUrl.split(',')[1];
+    var url = PROVIDERS.gemini.base + '/models/' + encodeURIComponent(CFG.model || 'gemini-2.5-flash')
+            + ':generateContent?key=' + encodeURIComponent(key);
+    return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ contents:[{ role:'user', parts:[
+        { text: camPrompt(toName) },
+        { inlineData:{ mimeType:'image/jpeg', data: b64 } }
+      ]}]})
+    }).then(chk).then(function(j){
+      var c = j.candidates && j.candidates[0];
+      return camParse(c ? (c.content.parts||[]).map(function(p){return p.text||'';}).join('') : '');
+    });
+  }
+  // OpenAI（および互換エンドポイント）
+  var k = transKey() || keyOf('openai');
+  var base = (CFG.provider === 'openai' || !transKey()) ? PROVIDERS.openai.base : baseUrlOf();
+  var h = { 'Content-Type':'application/json' };
+  if (k) h['Authorization'] = 'Bearer ' + k;
+  var body = {
+    model: CFG.camModel || 'gpt-4o-mini',
+    messages:[{ role:'user', content:[
+      { type:'text', text: camPrompt(toName) },
+      { type:'image_url', image_url:{ url: dataUrl, detail:'low' } }
+    ]}]
+  };
+  if (!isReasoningModel(body.model)) body.temperature = 0.2;
+  return fetch(base + '/chat/completions', { method:'POST', headers:h, body: JSON.stringify(body) })
+    .then(chk).then(function(j){ return camParse(j.choices[0].message.content); });
+}
+
+/* 読み取った結果を会話ログに入れる。相手(B)の発言として扱い、Aの言語に訳した形で残す。 */
+function camAddToLog(){
+  if (!camLast) return;
+  var e = addEntry('B', camLast.source || '(カメラ)', false);
+  e.srcLang = CFG.langB; e.dstLang = CFG.langA;
+  e.dstText = camLast.translated;
+  render(e);
+  dlog('cam','added',{ chars:(camLast.translated||'').length });
+  toast('会話ログに追加しました', true);
+  camHideResult();
 }
 
 /* ---------------- APIキー取得 ---------------- */
@@ -1103,6 +1336,15 @@ function ttsEnd(){
   if (ttsActive > 0) return;            // まだ読み上げ中のものが残っている
   S.speaking = false;
 }
+/* 読み上げボタンの見た目を更新する。4か所で個別に書いていたのを1つにまとめ、
+   状態と表示がずれないようにする。 */
+function refreshTtsBtn(){
+  var b = $('ttsToggle'); if (!b) return;
+  var off = (CFG.ttsMode === 'off');
+  b.style.opacity = '';                 // 斜線まで薄くならないよう、要素全体の透過はやめる
+  b.classList.toggle('muted', off);
+  b.title = off ? '読み上げ OFF（押すとON）' : '読み上げ ON（押すとOFF）';
+}
 function ttsFailNotice(msg){
   if (ttsWarned) return; ttsWarned = true;   // 毎回出すとうるさいので最初の1回だけ
   toast(msg + '。<br>ブラウザ内蔵の読み上げは、音声認識と同時に使えない環境があります。'
@@ -1175,7 +1417,7 @@ function browserSpeak(text, tag){
       if (ttsSilentFails >= 2 && CFG.ttsMode === 'browser'){
         CFG.ttsMode = 'off'; store.set('di.tts','off');
         var sel = $('ttsMode'); if (sel) sel.value = 'off';
-        var tg = $('ttsToggle'); if (tg) tg.style.opacity = .45;
+        refreshTtsBtn();
         // 設定を勝手に変えた以上、これは必ず伝える（1回だけの抑制対象にしない）
         toast('ブラウザ内蔵の読み上げが鳴らないため、<b>読み上げを自動でOFF</b>にしました。'
             + '音声認識を優先します。<br>読み上げを使いたい場合は ⚙→音声 で <b>OpenAI</b> を選んでください。');
@@ -2171,7 +2413,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.08</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.09</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -2506,7 +2748,7 @@ function refreshProviderUI(){
   });
 
   $('sttKey').value = KEYS['stt:'+CFG.sttProvider] || '';
-  $('ttsToggle').style.opacity = (CFG.ttsMode==='off') ? .45 : 1;
+  refreshTtsBtn();
 
   var isRT = (CFG.sttProvider === 'realtime');
   $('realtimeNote').style.display = isRT ? '' : 'none';
@@ -2524,6 +2766,7 @@ function applyCfg(){
   fillSelect($('srcB'),  srcOptions(),  CFG.srcB);
   $('provider').value = CFG.provider;
   $('tone').value = CFG.tone;
+  $('camModel').value = CFG.camModel;
   $('ctx').value = CFG.ctx;
   $('sttProvider').value = CFG.sttProvider;
   $('ttsMode').value = CFG.ttsMode;
@@ -2632,6 +2875,18 @@ $('swapBtnB').onclick = function(ev){
 /* 手動モードでは、自分側のパネルをタップするだけで聞き取り言語が切り替わる */
 $('feedA').addEventListener('click', function(){ if (!S.autoMode) setListenSeat('A'); });
 $('feedB').addEventListener('click', function(){ if (!S.autoMode) setListenSeat('B'); });
+$('camBtn').onclick   = camOpen;
+$('camClose').onclick = camClose;
+$('camShot').onclick  = camShoot;
+$('camAdd').onclick   = camAddToLog;
+$('camWrap').onclick  = function(ev){
+  if (ev.target.closest('#camTop') || ev.target.closest('#camOut')) return;  // ボタンや結果欄のタップは除く
+  camShoot();
+};
+$('camFlip').onclick  = function(){
+  camFacing = (camFacing === 'environment') ? 'user' : 'environment';
+  camStart();
+};
 $('clearBtn').onclick = function(){
   if (S.entries.length && !confirm('会話ログを消去しますか？')) return;
   S.entries=[]; S.seq=0; $('feedA').innerHTML=''; $('feedB').innerHTML='';
@@ -2650,7 +2905,7 @@ $('fsize').oninput  = function(){ setFs(parseInt($('fsize').value,10)); };
 $('ttsToggle').onclick = function(){
   CFG.ttsMode = (CFG.ttsMode==='off') ? 'browser' : 'off';
   store.set('di.tts', CFG.ttsMode); $('ttsMode').value = CFG.ttsMode;
-  $('ttsToggle').style.opacity = (CFG.ttsMode==='off') ? .45 : 1;
+  refreshTtsBtn();
   ttsSkipStreak = 0; ttsSkipHinted = false;
   dlog('tts','toggle',{ mode: CFG.ttsMode, who: CFG.ttsWho });
   // 「誰の発言を読むか」を一緒に出す。ここが分からないと鳴らない理由に気づけないため
@@ -2732,10 +2987,11 @@ function simple(id, key, prop, isCheck){
     store.set(key, isCheck ? (v?'1':'0') : v);
     if (prop==='flipTop'||prop==='swap'||prop==='nameA'||prop==='nameB') layout();
     if (prop==='showSrc') S.entries.forEach(render);
-    if (prop==='ttsMode') $('ttsToggle').style.opacity = (v==='off')?.45:1;
+    if (prop==='ttsMode') refreshTtsBtn();
   };
 }
 simple('tone','di.tone','tone');
+simple('camModel','di.cam','camModel');
 simple('ctx','di.ctx','ctx');
 simple('ttsMode','di.tts','ttsMode');
 simple('ttsWho','di.ttsw','ttsWho');
@@ -2808,7 +3064,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.08');
+  out.push('- バージョン: Duo Interpreter v1.09');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
@@ -2941,7 +3197,7 @@ document.addEventListener('keydown', function(e){
   else if (e.key==='0'){ setMode(true); }
   else if (e.key==='Tab'){ e.preventDefault(); toggleListen(); }
 });
-window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); });
+window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); camStop(); });
 
 /* 初期化 */
 loadCfg();
