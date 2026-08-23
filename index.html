@@ -1344,17 +1344,17 @@ function buildRec(){
     var alive = recStartAt ? (Date.now() - recStartAt) : -1;
     if (!sawSpeech && alive >= 0 && alive < 1000) recDeadStart++; else recDeadStart = 0;
 
-    if (recDeadStart >= 8 && !recDeadNotified){
+    /* 即終了が続いても勝手に停止しない。
+       実機のログで「しばらく粘ると自力で復帰する」ことが確認できたため、
+       あきらめずに間隔を空けて再試行し続ける（以前はここで停止していて、
+       復帰できるはずの機会を潰していた）。 */
+    if (recDeadStart >= 12 && !recDeadNotified){
       recDeadNotified = true;
       dlog('stt','DEAD',{ restarts: recDeadStart, aliveMs: alive, standalone: !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) });
-      restarting = false;
-      stopAll();                       // 無意味な再起動ループを止める（電池を食うだけのため）
-      toast('<b>内蔵の音声認識が、開始直後に終了してしまい文字起こしできません。</b><br>'
-          + '① 一度「停止」してから、もう一度「開始」を押してみてください<br>'
-          + '② 他のアプリやタブがマイクを使っていないか確認してください<br>'
-          + '③ ブラウザ（Safari等）で開き直すと直ることがあります<br>'
-          + '④ それでも直らない場合は ⚙→音声 で <b>OpenAI などのAPI</b> の音声認識に切り替えてください');
-      return;
+      toast('内蔵の音声認識が開始直後に終了する状態が続いています（<b>再試行中</b>）。<br>'
+          + 'そのまま待つと復帰することがあります。<br>'
+          + '復帰しない場合は、一度「停止」→「開始」を押し直すか、'
+          + '⚙→音声 で <b>OpenAI などのAPI</b> の音声認識に切り替えてください。');
     }
 
     if (S.autoMode && micSeats().length > 1 && !sawSpeech){
@@ -1365,8 +1365,18 @@ function buildRec(){
     // エラーや即終了が続くときは間隔を空けて、無駄な連打をしない
     var wait = 120;
     if (recErr > 2)       wait = Math.min(5000, 400 * recErr);
-    else if (recDeadStart > 2) wait = Math.min(2000, 200 * recDeadStart);
+    else if (recDeadStart > 2) wait = Math.min(4000, 200 * recDeadStart);
     dlog('stt','restart',{ sawSpeech: sawSpeech, aliveMs: alive, nextLang: L(langOf(S.listenSeat)).sr, waitMs: wait, errStreak: recErr, deadStreak: recDeadStart });
+
+    /* 即終了が続くときは認識オブジェクトごと作り直す。
+       同じインスタンスを start() し直すだけでは状態が戻らないことがあるため。 */
+    if (recDeadStart >= 4 && recDeadStart % 4 === 0){
+      dlog('stt','rebuild',{ deadStreak: recDeadStart });
+      restarting = false;
+      setTimeout(function(){ if (recRun) buildRec(); }, wait);
+      return;
+    }
+
     setTimeout(function(){
       restarting = false;
       if (!recRun || !rec) return;
@@ -1819,7 +1829,12 @@ function startAll(){
       // 先にマイクを掴んで許可を1回だけ取り、以後は保持し続ける
       jobs.push(
         ensureMic()
+          /* マイクを掴んだ直後に認識を開始すると、オーディオの準備が整う前に
+             始まってしまい、開始直後に終了する（実機ログでは mic acquired の
+             2〜5ms後に失敗が始まっていた）。少し待ってから開始する。 */
+          .then(function(){ return new Promise(function(r){ setTimeout(r, 400); }); })
           .then(function(){
+            if (!S.running) return;
             if (!startWebSpeech()){ stopAll(); return; }
             // 無料モードは言語の自動判定ができないので、使い方を最初に案内する
             if (micSeats().length > 1)
