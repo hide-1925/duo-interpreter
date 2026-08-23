@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Duo Interpreter v1.04 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.05 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -261,7 +261,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.04</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.05</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。<span style="display:block;margin-top:10px;color:var(--warn);font-weight:700;font-size:14px">無料で使用する場合はブラウザから開いて使用してください。</span><span style="display:block;font-size:12px;margin-top:2px">ホーム画面に追加したアプリでは、内蔵（無料）の音声認識が使えません。</span></div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -271,7 +271,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.04</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」、PCはこのページをブックマークすると便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.05</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。<span style="display:block;margin-top:10px;color:var(--warn);font-weight:700;font-size:14px">無料で使用する場合はブラウザから開いて使用してください。</span><span style="display:block;font-size:12px;margin-top:2px">ホーム画面に追加したアプリでは、内蔵（無料）の音声認識が使えません。</span></div></div>
   </section>
 </div>
 
@@ -1142,10 +1142,27 @@ function apiSpeak(text, seat){
     }).catch(function(){ finish(); });
 }
 
+/* 読み上げ対象の設定で弾かれ続けると「壊れている」ように見えるので、
+   スキップした理由を必ず記録し、続くようなら一度だけ画面でも知らせる。 */
+var ttsSkipStreak = 0, ttsSkipHinted = false;
+function whoLabel(){
+  return CFG.ttsWho === 'B2A' ? '相手(B)の発言のみ'
+       : CFG.ttsWho === 'A2B' ? '自分(A)の発言のみ' : '両方';
+}
 function speak(e){
-  if (CFG.ttsMode === 'off' || !e.dstText) return;
-  if (CFG.ttsWho === 'B2A' && e.seat !== 'B') return;
-  if (CFG.ttsWho === 'A2B' && e.seat !== 'A') return;
+  if (CFG.ttsMode === 'off'){ dlog('tts','skip',{ why:'読み上げOFF' }); return; }
+  if (!e.dstText){ dlog('tts','skip',{ why:'訳文が空' }); return; }
+  if ((CFG.ttsWho === 'B2A' && e.seat !== 'B') || (CFG.ttsWho === 'A2B' && e.seat !== 'A')){
+    ttsSkipStreak++;
+    dlog('tts','skip',{ why:'読み上げ対象=' + CFG.ttsWho, seat:e.seat, streak:ttsSkipStreak });
+    if (ttsSkipStreak >= 3 && !ttsSkipHinted){
+      ttsSkipHinted = true;
+      toast('読み上げはONですが、対象が「' + whoLabel() + '」のため、いまの発言は読み上げていません。<br>'
+          + '⚙→音声 の「読み上げ対象」で変更できます。');
+    }
+    return;
+  }
+  ttsSkipStreak = 0;
   if (CFG.ttsMode === 'browser') browserSpeak(e.dstText, L(e.dstLang).tts);
   else apiSpeak(e.dstText, e.seat);
 }
@@ -1216,6 +1233,11 @@ document.addEventListener('visibilitychange', function(){
 var rec=null, recRun=false, itmEntry=null, altTimer=null, restarting=false;
 /* 認識エラーの連続回数。エラーが続くときは再起動の間隔を空けて暴走を防ぐ */
 var recErr = 0, recErrNotified = false;
+/* 認識が「開始直後にエラーも結果も無く終了する」環境の検出用。
+   iPad/iPhoneをホーム画面に追加して開いた場合、内蔵の音声認識が使えず
+   この症状になることがある。放置すると毎秒8回の再起動を延々と繰り返し、
+   何も起きないままバッテリーを消耗するので、検出したら止めて案内する。 */
+var recStartAt = 0, recDeadStart = 0, recDeadNotified = false;
 
 function micSeats(){
   var a = [];
@@ -1245,6 +1267,7 @@ function startWebSpeech(){
   if (!SR){ toast('このブラウザは Web Speech API 非対応です。設定の「音声」タブで API 側の音声認識を選んでください。'); return false; }
   S.listenSeat = S.listenSeat && seats.indexOf(S.listenSeat)>=0 ? S.listenSeat : seats[0];
   recErr = 0; recErrNotified = false;   // 開始のたびにエラー状態をリセット
+  recDeadStart = 0; recDeadNotified = false;
   buildRec();
   return true;
 }
@@ -1255,7 +1278,7 @@ function buildRec(){
   rec.lang = L(langOf(S.listenSeat)).sr;
   rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
 
-  rec.onstart = function(){ sawSpeech = false; };
+  rec.onstart = function(){ sawSpeech = false; recStartAt = Date.now(); };
 
   rec.onresult = function(ev){
     if (S.speaking) return;
@@ -1275,7 +1298,7 @@ function buildRec(){
       if (itmEntry){ e = itmEntry; itmEntry = null; e.interim = false; e.srcText = t; }
       else e = addEntry(seat, t, false);
       sawSpeech = true;
-      recErr = 0;               // 正常に認識できたのでエラー連続回数をリセット
+      recErr = 0; recDeadStart = 0;   // 正常に認識できたので連続失敗カウンタをリセット
       dlog('stt','result',{ seat: seat, lang: rec ? rec.lang : null, chars: t.length, text: t.slice(0,120) });
       render(e); translate(e);
     });
@@ -1314,14 +1337,34 @@ function buildRec(){
   rec.onend = function(){
     if (!recRun || restarting) return;
     restarting = true;
+
+    /* 「開始直後に、エラーも結果も無く終了した」かどうかを見る。
+       無音で自動終了する通常動作は数秒は続くので、1秒未満で終わるのは
+       この環境で認識が動いていないサイン。 */
+    var alive = recStartAt ? (Date.now() - recStartAt) : -1;
+    if (!sawSpeech && alive >= 0 && alive < 1000) recDeadStart++; else recDeadStart = 0;
+
+    if (recDeadStart >= 8 && !recDeadNotified){
+      recDeadNotified = true;
+      dlog('stt','DEAD',{ restarts: recDeadStart, aliveMs: alive, standalone: !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) });
+      restarting = false;
+      stopAll();                       // 無意味な再起動ループを止める（電池を食うだけのため）
+      toast('<b>無料版を使用する場合はブラウザから開いて使用してください。</b><br>'
+          + 'ホーム画面に追加したアプリでは、内蔵の音声認識が使えません。<br>'
+          + 'このまま使う場合は ⚙→音声 で <b>OpenAI などのAPI</b> の音声認識に切り替えてください。');
+      return;
+    }
+
     if (S.autoMode && micSeats().length > 1 && !sawSpeech){
       S.listenSeat = (S.listenSeat === 'A') ? 'B' : 'A';
       itmEntry = null;
       updateStatus();
     }
-    // エラーが連続するとき（サーバーに繋がらない等）は間隔を空けて再試行する
-    var wait = recErr > 2 ? Math.min(5000, 400 * recErr) : 120;
-    dlog('stt','restart',{ sawSpeech: sawSpeech, nextLang: L(langOf(S.listenSeat)).sr, waitMs: wait, errStreak: recErr });
+    // エラーや即終了が続くときは間隔を空けて、無駄な連打をしない
+    var wait = 120;
+    if (recErr > 2)       wait = Math.min(5000, 400 * recErr);
+    else if (recDeadStart > 2) wait = Math.min(2000, 200 * recDeadStart);
+    dlog('stt','restart',{ sawSpeech: sawSpeech, aliveMs: alive, nextLang: L(langOf(S.listenSeat)).sr, waitMs: wait, errStreak: recErr, deadStreak: recDeadStart });
     setTimeout(function(){
       restarting = false;
       if (!recRun || !rec) return;
@@ -1963,7 +2006,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.04</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.05</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。<span style=\"display:block;margin-top:10px;color:var(--warn);font-weight:700;font-size:14px\">無料で使用する場合はブラウザから開いて使用してください。</span></div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -2443,7 +2486,11 @@ $('ttsToggle').onclick = function(){
   CFG.ttsMode = (CFG.ttsMode==='off') ? 'browser' : 'off';
   store.set('di.tts', CFG.ttsMode); $('ttsMode').value = CFG.ttsMode;
   $('ttsToggle').style.opacity = (CFG.ttsMode==='off') ? .45 : 1;
-  toast(CFG.ttsMode==='off' ? '読み上げ OFF' : '読み上げ ON（ブラウザ内蔵音声）', true);
+  ttsSkipStreak = 0; ttsSkipHinted = false;
+  dlog('tts','toggle',{ mode: CFG.ttsMode, who: CFG.ttsWho });
+  // 「誰の発言を読むか」を一緒に出す。ここが分からないと鳴らない理由に気づけないため
+  toast(CFG.ttsMode==='off' ? '読み上げ OFF'
+      : '読み上げ ON（' + whoLabel() + ' / ブラウザ内蔵音声）', true);
 };
 
 /* 座席セレクタ */
@@ -2596,7 +2643,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.04');
+  out.push('- バージョン: Duo Interpreter v1.05');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
