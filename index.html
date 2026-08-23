@@ -105,6 +105,17 @@
   }
   .cbtn:hover{background:#26303f}
   .cbtn.icon{padding:9px 11px}
+  /* 表示切替ボタン：話者A/Bの言語選択欄と同じ色を、外枠として実際の配置順に並べる。
+     内側と外枠で背景を2枚重ねることで、角丸を保ったまま枠だけ2色にできる。 */
+  #focusBtn{
+    border:2px solid transparent;font-weight:800;letter-spacing:.02em;
+    background:linear-gradient(var(--panel-2),var(--panel-2)) padding-box,
+               var(--focusGrad, linear-gradient(90deg,var(--a),var(--b))) border-box;
+  }
+  #focusBtn:hover{
+    background:linear-gradient(#26303f,#26303f) padding-box,
+               var(--focusGrad, linear-gradient(90deg,var(--a),var(--b))) border-box;
+  }
   /* 読み上げOFFのとき：アイコンを薄くしたうえで、禁止マークのような斜線を重ねる */
   #ttsToggle{position:relative}
   #ttsToggle .ic{display:block;transition:opacity .15s}
@@ -822,10 +833,8 @@ function toast(msg, ok){
 }
 
 /* ---------------- 表示 ---------------- */
-/* 話者の色。CSSの --a / --b と同じ値を使う */
-function seatTint(seat, alpha){
-  return 'rgba(' + (seat === 'A' ? '61,220,151' : '221,136,164') + ',' + alpha + ')';
-}
+/* 話者の色。言語選択欄の外枠と同じ CSS 変数をそのまま使う */
+function seatTint(seat){ return seat === 'A' ? 'var(--a)' : 'var(--b)'; }
 function seatName(s){
   if (s === 'A') return CFG.nameA || '自分 / Me';
   return CFG.nameB || '相手 / Partner';
@@ -850,7 +859,7 @@ function updateFocusUI(){
   if (f === 'A' || f === 'B'){
     label = 'V：' + f;
     title = seatName(f) + ' 側だけを大きく表示中';
-    grad  = 'linear-gradient(180deg,' + seatTint(f,.30) + ',' + seatTint(f,.30) + ')';
+    grad  = 'linear-gradient(180deg,' + seatTint(f) + ',' + seatTint(f) + ')';
   } else {
     var vertical = (f === 'splitV');
     // 並び順は layout() と同じ判定にして、ボタンの表記と実際の配置を必ず一致させる
@@ -861,11 +870,11 @@ function updateFocusUI(){
                      : ('左右2分割（左=' + seatName(s1) + ' / 右=' + seatName(s2) + '）');
     // 実際の配置と同じ向き・同じ順で色を並べ、見ただけで対応が分かるようにする
     grad = 'linear-gradient(' + (vertical ? '180deg' : '90deg') + ','
-         + seatTint(s1,.30) + ' 0 50%,' + seatTint(s2,.30) + ' 50% 100%)';
+         + seatTint(s1) + ' 0 50%,' + seatTint(s2) + ' 50% 100%)';
   }
   btn.textContent = label;
   btn.title = title + '（クリックで次の表示に切替）';
-  btn.style.background = grad;
+  btn.style.setProperty('--focusGrad', grad);   // 背景そのものではなく外枠用の色として渡す
 }
 
 function layout(){
