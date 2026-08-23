@@ -73,7 +73,15 @@
   @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   .bubble.from-A{border-left-color:var(--a)}
   .bubble.from-B{border-left-color:var(--b)}
-  .bubble .who{font-size:11px;color:var(--dim);margin-bottom:5px}
+  .bubble .who{font-size:11px;color:var(--dim);margin-bottom:5px;display:flex;align-items:center;gap:6px}
+  /* 各発言を手動で読み上げるボタン（自動読み上げに頼らず、必要なときだけ鳴らす） */
+  .saybtn{
+    margin-left:auto;flex:0 0 auto;border:1px solid var(--line);background:var(--panel);
+    color:var(--dim);border-radius:999px;padding:2px 9px;font-size:12px;line-height:1.5;
+    cursor:pointer;font-family:inherit;-webkit-user-select:none;user-select:none;
+  }
+  .saybtn:hover{background:#26303f;color:var(--txt)}
+  .saybtn.on{border-color:var(--a);color:var(--a)}
   .bubble.from-A .who{color:var(--a)}
   .bubble.from-B .who{color:var(--b)}
   .bubble .main{font-size:var(--fs);line-height:1.35;font-weight:600;word-break:break-word}
@@ -835,7 +843,9 @@ function paint(feedId, e, viewer){
     el = document.createElement('div');
     el.className = 'bubble from-' + e.seat;
     el.setAttribute('data-eid', e.id);
-    el.innerHTML = '<div class="who"></div><div class="main"></div><div class="sub"></div>';
+    el.innerHTML = '<div class="who"><span class="whotxt"></span>'
+                 + '<button class="saybtn" title="この文を読み上げる">🔊</button></div>'
+                 + '<div class="main"></div><div class="sub"></div>';
     feed.appendChild(el);
   }
   var isSelf = (e.seat === viewer);
@@ -844,9 +854,19 @@ function paint(feedId, e, viewer){
   // 話者が後から確定した場合にも色分けが追従するよう毎回付け直す
   el.className = 'bubble from-' + e.seat +
                  (e.dstText ? '' : ' pending') + (e.interim ? ' interim' : '');
-  el.querySelector('.who').textContent =
+  el.querySelector('.whotxt').textContent =
     seatName(e.seat) + ' · ' + L(e.srcLang).name + ' · ' + e.time + (isSelf ? ' · 原文' : ' · 訳');
   el.querySelector('.main').textContent = main;
+
+  /* このパネルに表示している文を、その言語で読み上げる。
+     「今読んでいるものがそのまま鳴る」ので、どちらのパネルでも直感的に使える。 */
+  var say = el.querySelector('.saybtn');
+  var sayLang = isSelf ? e.srcLang : e.dstLang;
+  say.style.display = (main && main !== '…') ? '' : 'none';
+  say.onclick = function(ev){
+    ev.stopPropagation();      // パネルのタップ（聞き取り言語の切替）を誘発させない
+    speakManual(main, sayLang, say);
+  };
   var s = el.querySelector('.sub');
   s.textContent = CFG.showSrc ? sub : '';
   s.style.display = (CFG.showSrc && sub) ? '' : 'none';
@@ -1197,6 +1217,22 @@ function whoLabel(){
   return CFG.ttsWho === 'B2A' ? '相手(B)の発言のみ'
        : CFG.ttsWho === 'A2B' ? '自分(A)の発言のみ' : '両方';
 }
+/* ボタンから明示的に読み上げる。自動読み上げの設定（OFF・読み上げ対象）に
+   関係なく鳴らす ―― 押したのだから鳴らす、が期待される動作のため。 */
+function speakManual(text, lang, btn){
+  if (!text){ toast('読み上げる文がありません'); return; }
+  dlog('tts','manual',{ lang: lang, chars: text.length, mode: CFG.ttsMode });
+  // 押した直後に鳴ってほしいので、再生中のものは止めてこちらを優先する
+  try{ if (window.speechSynthesis) speechSynthesis.cancel(); }catch(_){}
+  try{ audioEl.pause(); }catch(_){}
+  if (btn){
+    btn.classList.add('on');
+    setTimeout(function(){ btn.classList.remove('on'); }, 1200);
+  }
+  if (CFG.ttsMode === 'openai') apiSpeak(text, 'A');
+  else browserSpeak(text, L(lang).tts);
+}
+
 function speak(e){
   if (CFG.ttsMode === 'off'){ dlog('tts','skip',{ why:'読み上げOFF' }); return; }
   if (!e.dstText){ dlog('tts','skip',{ why:'訳文が空' }); return; }
