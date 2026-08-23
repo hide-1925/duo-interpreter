@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Duo Interpreter v1.07 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.08 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -261,7 +261,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.07</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.08</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -271,7 +271,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.07</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.08</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1037,13 +1037,46 @@ var audioEl = new Audio();
    ―― 以前は読み上げ中に認識を止めていたが、読み上げが無音で失敗する環境では
    そのぶん認識が止まるだけで損しかない。認識が動かないとアプリ全体が
    何もしなくなるため、読み上げの都合で認識を止めることは一切しない。
-   自分の読み上げをマイクが拾うのを防ぐ S.speaking ガードだけ残し、
-   それも監視タイマーで必ず短時間で解除する。                          */
+   認識結果は読み上げ中も一切捨てない。自分の読み上げを拾ってしまった分だけ、
+   内容を照合して除外する（isEcho）。S.speaking は状態表示と保険用に残す。  */
 var ttsActive = 0, ttsWarned = false, ttsSilentFails = 0;
+
+/* 読み上げ中でも音声認識の結果は絶対に捨てない（取りこぼしが最も困るため）。
+   代わりに「自分が読み上げた文章をマイクが拾ってしまった分」だけを、
+   内容を照合して除外する。時間で一律に捨てると本物の発言まで失われる。 */
+var spokenRecent = [];
+function normTxt(s){ return String(s||'').toLowerCase().replace(/[\s\u3000]/g,'').replace(/[.,!?;:、。・…「」『』()（）]/g,''); }
+function rememberSpoken(t){
+  spokenRecent.push({ t: normTxt(t), at: Date.now() });
+  if (spokenRecent.length > 8) spokenRecent.shift();
+}
+function biDice(a, b){                 // 文字2-gramの重なり具合（0〜1）
+  if (a.length < 2 || b.length < 2) return 0;
+  var map = {}, hit = 0, i;
+  for (i=0;i<a.length-1;i++){ var g=a.substr(i,2); map[g]=(map[g]||0)+1; }
+  for (i=0;i<b.length-1;i++){ var h=b.substr(i,2); if (map[h]>0){ map[h]--; hit++; } }
+  return 2*hit / ((a.length-1) + (b.length-1));
+}
+function isEcho(text){
+  var n = normTxt(text);
+  if (n.length < 8) return false;      // 短い文は誤って本物を消しかねないので判定しない
+  var now = Date.now();
+  for (var i=0;i<spokenRecent.length;i++){
+    var r = spokenRecent[i];
+    if (now - r.at > 30000) continue;  // 30秒より前の読み上げは対象外
+    if (r.t.length < 8) continue;
+    if (biDice(n, r.t) >= 0.6) return true;
+    if (r.t.indexOf(n) >= 0 || n.indexOf(r.t) >= 0) return true;
+  }
+  return false;
+}
+/* 読み上げを中断してよい最短再生時間。これより短い再生は中断しない
+   （騒がしい場所で第三者の声を拾うたびにブツ切りになるのを防ぐため） */
+var TTS_CUT_AFTER_MS = 6000, ttsPlayStart = 0;
 
 function ttsBegin(){
   ttsActive++;
-  S.speaking = true;      // 認識は止めない。自分の声を拾わないための目印だけ立てる
+  S.speaking = true;      // 認識は止めない・結果も捨てない。状態の目印としてだけ使う
 }
 function ttsEnd(){
   ttsActive = Math.max(0, ttsActive - 1);
@@ -1075,30 +1108,44 @@ function pickVoice(tag){
 
 function browserSpeak(text, tag){
   if (!window.speechSynthesis){ ttsFailNotice('このブラウザは読み上げに対応していません'); return; }
-  var done = false, started = false, tStart = null, tEnd = null;
-  var finish = function(){
+  var done = false, started = false, tStart = null, tEnd = null, t0 = Date.now();
+  var finish = function(why){
     if (done) return; done = true;
     clearTimeout(tStart); clearTimeout(tEnd);
+    // 読み上げが終わった時刻を残す。ここまでの間は認識結果を捨てているため、
+    // 「どれだけ認識が埋まっていたか」を後から追えるようにする。
+    dlog('tts','browser-end',{ why: why || 'ended', ms: Date.now()-t0, chars: text.length });
+    // ttsPlayStart はここでクリアしない。別の読み上げが再生中の場合に、
+    // 先に終わったほうが再生時刻を消してしまい判定を狂わせるため。
+    // 次の onstart で必ず上書きされ、未再生時は再生中判定で弾かれる。
     ttsEnd();
   };
   try{
-    // 前の読み上げが詰まったままだと次が鳴らないので、取り残しがあれば消す
-    if (!ttsActive && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
+    /* 再生中の読み上げは中断しない。
+       第三者の声を誤認識するたびに読み上げが切れると、会話が成立しなくなるため。
+       読み上げが認識を妨げることは無くなったので、最後まで読ませて問題ない。
+       （取り残しで固まっている場合だけ、次が鳴らなくなるので掃除する） */
+    if (!ttsActive && (speechSynthesis.speaking || speechSynthesis.pending)){
+      dlog('tts','browser-clear',{ why:'前の読み上げが残ったままなので解放' });
+      speechSynthesis.cancel();
+    }
+    rememberSpoken(text);
     var u = new SpeechSynthesisUtterance(text);
     u.lang = tag; u.rate = 1.05;
-    var v = pickVoice(tag); if (v) u.voice = v;
-    u.onstart = function(){ started = true; ttsSilentFails = 0; dlog('tts','browser-start',{ lang: tag, voice: v ? v.name : null, chars: text.length }); };
-    u.onend   = finish;
+    // 声の指定に失敗しても読み上げ自体は続行させる（ここで例外を出さない）
+    var v = pickVoice(tag);
+    if (v){ try{ u.voice = v; }catch(e){ dlog('tts','voice-set-FAIL',{ err:String((e&&e.message)||e) }); v = null; } }
+    u.onstart = function(){ started = true; ttsSilentFails = 0; ttsPlayStart = Date.now(); dlog('tts','browser-start',{ lang: tag, voice: v ? v.name : null, chars: text.length }); };
+    u.onend   = function(){ finish('ended'); };
     u.onerror = function(ev){
       var err = (ev && ev.error) || '';
       dlog('tts','browser-ERROR',{ err: err, lang: tag });
       if (err !== 'interrupted' && err !== 'canceled') ttsFailNotice('読み上げを再生できませんでした（' + err + '）');
-      finish();
+      finish('error:' + err);
     };
     ttsBegin();
     speechSynthesis.speak(u);
     // 監視1：鳴り始めない環境では何も起きずに終わるので、短めに打ち切る。
-    // 認識結果を捨てる時間（S.speaking が立っている時間）を最小限にするため。
     tStart = setTimeout(function(){
       if (started || done) return;
       try{ speechSynthesis.cancel(); }catch(e){}
@@ -1115,11 +1162,11 @@ function browserSpeak(text, tag){
       } else {
         ttsFailNotice('読み上げが再生されませんでした');
       }
-      finish();
+      finish('no-start');
     }, 1200);
-    // 監視2：onend が来ないまま固まると S.speaking が戻らず、音声認識まで止まってしまう
-    tEnd = setTimeout(finish, Math.min(60000, 5000 + text.length * 150));
-  }catch(err){ finish(); }
+    // 監視2：onend が来ないまま固まったときに、状態を必ず元に戻すための保険
+    tEnd = setTimeout(function(){ finish('watchdog'); }, Math.min(60000, 5000 + text.length * 150));
+  }catch(err){ dlog('tts','browser-EXCEPTION',{ err:String((err&&err.message)||err) }); finish('exception'); }
 }
 
 function apiSpeak(text, seat){
@@ -1127,8 +1174,9 @@ function apiSpeak(text, seat){
   if (!key){ toast('OpenAI音声にはOpenAIのAPIキーが必要です'); return; }
   var done = false, tEnd = null;
   var finish = function(){ if (done) return; done = true; clearTimeout(tEnd); ttsEnd(); };
+  rememberSpoken(text);
   ttsBegin();
-  // 応答が返らない・再生が終わらない場合の保険（S.speaking を必ず戻す）
+  // 応答が返らない・再生が終わらない場合の保険（状態を必ず戻す）
   tEnd = setTimeout(finish, Math.min(90000, 8000 + text.length * 150));
   fetch('https://api.openai.com/v1/audio/speech', {
     method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
@@ -1163,6 +1211,11 @@ function speak(e){
     return;
   }
   ttsSkipStreak = 0;
+  // 溜まりすぎた場合は、再生中のものを止めるのではなく新しい方を見送る
+  if (ttsActive >= 3){
+    dlog('tts','skip',{ why:'読み上げが溜まっているため見送り', queued: ttsActive });
+    return;
+  }
   if (CFG.ttsMode === 'browser') browserSpeak(e.dstText, L(e.dstLang).tts);
   else apiSpeak(e.dstText, e.seat);
 }
@@ -1283,7 +1336,7 @@ function buildRec(){
   rec.onstart = function(){ sawSpeech = false; recStartAt = Date.now(); };
 
   rec.onresult = function(ev){
-    if (S.speaking) return;
+    // 読み上げ中でも捨てない。自分の読み上げを拾った分だけ下で内容照合して除く。
     var itm='', fin=[];
     for (var i=ev.resultIndex;i<ev.results.length;i++){
       var r=ev.results[i];
@@ -1297,6 +1350,11 @@ function buildRec(){
     fin.forEach(function(t){
       t = t.trim(); if (!t) return;
       var e;
+      if (isEcho(t)){                       // 自分の読み上げを拾っただけ
+        dlog('stt','echo-drop',{ text: t.slice(0,60) });
+        if (itmEntry){ removeEntry(itmEntry); itmEntry = null; }
+        return;
+      }
       if (itmEntry){ e = itmEntry; itmEntry = null; e.interim = false; e.srcText = t; }
       else e = addEntry(seat, t, false);
       sawSpeech = true;
@@ -1457,7 +1515,6 @@ StreamEngine.prototype.start = function(){
       self.hbAt = t; self.hbPeak = 0;
     }
 
-    if (self.opts.isMic && S.speaking){ self.voice=false; self.last=t; return; }
     if (rms > CFG.vad/1000) { self.voice=true; self.last=t; }
     if (self.voice && (t-self.last)>900 && (t-self.segStart)>700) self.cut(true);
     else if (!self.voice && (t-self.segStart)>8000) self.cut(false);
@@ -1519,6 +1576,7 @@ function transcribeBlob(blob, seat){
     dlog('stt','api-result',{ prov: CFG.sttProvider, model: CFG.sttModel, seat: seat, lang: lang,
       ms: Date.now()-t0, bytes: blob.size, chars: text.length, text: text.slice(0,120) });
     if (!text || text.length<2 || /^[\s.,、。・…]*$/.test(text)){ removeEntry(holder); return; }
+    if (isEcho(text)){ dlog('stt','echo-drop',{ text: text.slice(0,60) }); removeEntry(holder); return; }
     // AUTO（言語自動判定）のときは、認識結果からどちらの話者かを推定して割り当て直す
     if (S.autoMode && micSeats().length > 1){
       var g = guessSeatFromText(text);
@@ -2077,7 +2135,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.07</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.08</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -2714,7 +2772,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.07');
+  out.push('- バージョン: Duo Interpreter v1.08');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
