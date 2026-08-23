@@ -1238,6 +1238,8 @@ var recErr = 0, recErrNotified = false;
    この症状になることがある。放置すると毎秒8回の再起動を延々と繰り返し、
    何も起きないままバッテリーを消耗するので、検出したら止めて案内する。 */
 var recStartAt = 0, recDeadStart = 0, recDeadNotified = false;
+/* iOSの音声入力設定の案内は、このページを開いている間に1回だけ出す */
+var iosDictationHinted = false;
 
 function micSeats(){
   var a = [];
@@ -1836,9 +1838,19 @@ function startAll(){
           .then(function(){
             if (!S.running) return;
             if (!startWebSpeech()){ stopAll(); return; }
-            // 無料モードは言語の自動判定ができないので、使い方を最初に案内する
+            var hints = [];
+            /* iOSの内蔵音声認識はキーボードの音声入力（ディクテーション）機能を使うため、
+               そこがOFFだと認識が開始直後に終了してしまう。最初の1回だけ案内する。 */
+            if (IS_IOS && !iosDictationHinted){
+              iosDictationHinted = true;
+              hints.push('無料（内蔵）の音声認識を使うには、'
+                       + '<b>設定 → 一般 → キーボード → 音声入力</b> をONにしてください。');
+            }
+            // 無料モードは言語の自動判定ができないので、使い方も案内する
             if (micSeats().length > 1)
-              toast('無料モードは言語の自動判定ができません。話す前に「認識中言語」ボタン（または自分側のパネル）をタップして、これから話す言語に切り替えてください。', true);
+              hints.push('無料モードは言語の自動判定ができません。話す前に「認識中言語」ボタン（または自分側のパネル）をタップして、これから話す言語に切り替えてください。');
+            // 続けて出すと前のメッセージを上書きしてしまうので、間隔を空けて順に出す
+            hints.forEach(function(m, i){ setTimeout(function(){ toast(m, true); }, i * 3000); });
           })
           .catch(function(err){
             toast('マイクにアクセスできません: ' + err.message);
