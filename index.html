@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Duo Interpreter v1.09 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.10 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -155,6 +155,32 @@
   .cbtn.listen #lvlFill{position:absolute;left:0;top:0;bottom:0;width:0%;background:rgba(61,220,151,.28);transition:width .08s linear;pointer-events:none}
   .cbtn.listen span{position:relative;z-index:1}
   .cbtn.listen.langA{border-color:var(--a)} .cbtn.listen.langB{border-color:var(--b)}
+  /* ---- テキスト入力バー（操作バーの上に展開）---- */
+  #txtbar{
+    flex:0 0 auto;position:relative;z-index:41;
+    width:min(720px,97vw);margin:0 auto 6px;display:none;align-items:flex-end;gap:8px;
+    background:rgba(11,14,20,.94);border:1px solid var(--line);border-radius:18px;
+    padding:8px 10px;backdrop-filter:blur(8px);box-shadow:0 -6px 24px rgba(0,0,0,.45);
+  }
+  #txtbar.on{display:flex}
+  #txtInput{
+    flex:1 1 auto;min-width:0;resize:none;overflow-y:auto;max-height:112px;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:14px;color:var(--txt);
+    font-family:inherit;font-size:16px;line-height:1.45;padding:9px 12px;min-height:41px;
+  }
+  #txtInput:focus{outline:none;border-color:#4a5a72}
+  #txtInput::placeholder{color:var(--dim)}
+  #txtSeatBtn{flex:0 0 auto}
+  #txtSeatBtn.seatA{border-color:var(--a)} #txtSeatBtn.seatA .val{color:var(--a)}
+  #txtSeatBtn.seatB{border-color:var(--b)} #txtSeatBtn.seatB .val{color:var(--b)}
+  #txtSend{flex:0 0 auto;font-weight:800}
+  #txtSend:disabled{opacity:.5;cursor:default}
+  #kbdBtn.on{border-color:var(--a);color:var(--a)}
+  @media (max-width:480px){
+    #txtbar{width:calc(100vw - 12px);gap:6px;padding:7px 8px;border-radius:14px}
+    #txtInput{padding:8px 10px}
+    #txtSend{padding:8px 10px}
+  }
   body.manual .feed{cursor:pointer}
 
   /* ---- 片側だけを大きく表示するモード ---- */
@@ -317,7 +343,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.09</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.10</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -327,8 +353,17 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.09</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.10</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
+</div>
+
+<div id="txtbar">
+  <button class="cbtn stack" id="txtSeatBtn" title="入力された言語からA/Bを自動で判定します（クリックで固定に切替）">
+    <small>話者</small><span class="val" id="txtSeatTxt">自動</span>
+  </button>
+  <textarea id="txtInput" rows="1" placeholder="入力してEnterで翻訳" title="言語はA/B自動で判定します"></textarea>
+  <button class="cbtn" id="txtSend" title="翻訳する">送信</button>
+  <button class="cbtn icon" id="txtClose" title="閉じる">✕</button>
 </div>
 
 <div id="bar">
@@ -359,6 +394,7 @@
     <button id="fsUp" class="fsB" title="文字を大きく">A＋</button>
   </div>
   <button class="cbtn icon" id="ttsToggle" title="読み上げ ON/OFF"><span class="ic">🔊</span></button>
+  <button class="cbtn icon" id="kbdBtn" title="キーボードで入力して翻訳">⌨</button>
   <button class="cbtn icon" id="camBtn" title="カメラで文字を翻訳">📷</button>
   <button class="cbtn icon" id="clearBtn" title="ログ消去">🗑</button>
   <button class="cbtn icon" id="cog" title="設定">⚙</button>
@@ -1124,6 +1160,179 @@ function camAddToLog(){
   dlog('cam','added',{ chars:(camLast.translated||'').length });
   toast('会話ログに追加しました', true);
   camHideResult();
+}
+
+/* ---------------- テキスト入力（A/Bは自動判定） ---------------- */
+/* キーボードで打った文章も通訳できるようにする。
+   どちらの話者の発言かは「文字種 ＋ その言語らしい単語」で判定し、
+   決め手に欠けるときだけ Google翻訳の言語判定（無料・キー不要）に問い合わせる。
+   ネットワークに出るのは判定が割れたときだけなので、通常はゼロ遅延で送れる。 */
+var txtSeatMode = 'auto';        /* 'auto' | 'A' | 'B' */
+var txtBusy = false;
+
+var TXT_SCRIPT = {
+  ja:'kana', en:'latin', de:'latin', it:'latin', fr:'latin', es:'latin', pt:'latin',
+  zh:'han', 'zh-TW':'han', ko:'hangul', ru:'cyr', vi:'latin', th:'thai',
+  id:'latin', hi:'deva', ar:'arab', nl:'latin', pl:'latin', tr:'latin'
+};
+/* ラテン文字の言語同士は文字種で区別できないので、その言語によく出る語で見分ける */
+var TXT_WORDS = {
+  en:['the','is','are','and','you','for','this','that','with','have','what','not','will','can','please','thank','thanks','we','of','to','in','on','do','does','my','your','it','was','about','from'],
+  de:['der','die','das','und','ist','nicht','ich','sie','mit','ein','eine','wir','für','auch','aber','was','wie','danke','bitte','haben','sind','noch','sehr','oder','auf','von','zu','nach','kann'],
+  fr:['le','la','les','des','est','une','un','je','vous','nous','pour','avec','que','qui','ne','pas','dans','merci','bonjour','oui','sur','il','elle','être','avoir','très','mais','aussi','ce'],
+  es:['el','la','los','las','que','de','no','es','para','con','una','un','por','muy','está','gracias','hola','sí','usted','pero','como','también','esto','tiene','hay','más','porque'],
+  it:['il','lo','la','gli','che','di','non','sono','per','con','una','un','questo','molto','grazie','ciao','sì','ma','anche','come','più','siamo','della','del','dei'],
+  pt:['os','as','que','não','de','para','com','uma','um','você','isso','muito','obrigado','olá','sim','mas','também','como','mais','está','tem','porque','isto'],
+  nl:['de','het','een','en','is','niet','ik','je','we','voor','met','van','dat','maar','ook','hoe','wat','zijn','heb','dank','graag','naar','deze','goed'],
+  pl:['nie','jest','to','się','na','że','do','jak','czy','dziękuję','proszę','ale','jestem','bardzo','tak','mam','może','tego','przez'],
+  tr:['bir','ve','bu','için','değil','ne','var','yok','ile','çok','ben','sen','nasıl','teşekkür','ama','olarak','daha','evet','hayır'],
+  id:['yang','dan','tidak','saya','ini','itu','untuk','dengan','adalah','ada','ke','di','bisa','terima','kasih','atau','dari','akan','sudah','juga'],
+  vi:['không','của','là','và','tôi','có','được','một','cho','bạn','này','những','người','đã','rất','cảm','ơn','nhưng','với','để']
+};
+var TXT_CHARS = {
+  de:/[äöüß]/g, fr:/[àâçéèêëîïôûùœ]/g, es:/[áéíóúñ¿¡]/g, it:/[àèéìòù]/g,
+  pt:/[ãõçáêóâ]/g, pl:/[ąćęłńóśźż]/g, tr:/[çğışöü]/g,
+  vi:/[ăâđêôơưẠ-ỹ]/g
+};
+/* 簡体字／繁体字のどちらかにしか出ない字。中文(简体)と中文(繁體)の判別に使う */
+var TXT_HANS = '国语学会说时这个们从对应发现关门电车东长头马鸟龙点无与书买卖见觉爱图华汉尽义乐医万边风飞习实动务开请题样张';
+var TXT_HANT = '國語學會說時這個們從對應發現關門電車東長頭馬鳥龍點無與書買賣見覺愛圖華漢盡義樂醫萬邊風飛習實動務開請題樣張';
+
+function txtScripts(t){
+  var r = { kana:0, han:0, hangul:0, cyr:0, thai:0, arab:0, deva:0, latin:0, total:0, hanStr:'' };
+  for (var i=0;i<t.length;i++){
+    var c = t.charCodeAt(i), k = null;
+    if ((c>=0x3040&&c<=0x30ff)||(c>=0xff66&&c<=0xff9d)) k='kana';
+    else if ((c>=0x4e00&&c<=0x9fff)||(c>=0x3400&&c<=0x4dbf)){ k='han'; r.hanStr += t.charAt(i); }
+    else if ((c>=0xac00&&c<=0xd7a3)||(c>=0x1100&&c<=0x11ff)) k='hangul';
+    else if (c>=0x0400&&c<=0x04ff) k='cyr';
+    else if (c>=0x0e00&&c<=0x0e7f) k='thai';
+    else if ((c>=0x0600&&c<=0x06ff)||(c>=0x0750&&c<=0x077f)) k='arab';
+    else if (c>=0x0900&&c<=0x097f) k='deva';
+    else if ((c>=0x41&&c<=0x5a)||(c>=0x61&&c<=0x7a)||(c>=0xc0&&c<=0x24f)||(c>=0x1e00&&c<=0x1eff)) k='latin';
+    if (k){ r[k]++; r.total++; }
+  }
+  return r;
+}
+function txtScore(code, sc, words, low){
+  var total = sc.total || 1, s = 0, i;
+  if (code === 'ja'){
+    s = (sc.kana + sc.han) / total * 100;
+    if (sc.kana) s += 45;                       /* かながあれば日本語で確定に近い */
+  } else if (code === 'zh' || code === 'zh-TW'){
+    s = sc.han / total * 100;
+    if (sc.kana) s -= 70;                       /* かな交じりは中国語ではない */
+    var simp = 0, trad = 0;
+    for (i=0;i<sc.hanStr.length;i++){
+      var ch = sc.hanStr.charAt(i);
+      if (TXT_HANS.indexOf(ch) >= 0) simp++;
+      else if (TXT_HANT.indexOf(ch) >= 0) trad++;
+    }
+    var mine = (code === 'zh') ? simp : trad, other = (code === 'zh') ? trad : simp;
+    s += Math.min(30, mine*15) - Math.min(30, other*15);
+  } else if (TXT_SCRIPT[code] === 'latin'){
+    s = sc.latin / total * 100;
+    var w = TXT_WORDS[code] || [], hit = 0;
+    for (i=0;i<words.length;i++) if (w.indexOf(words[i]) >= 0) hit++;
+    if (words.length) s += Math.min(55, hit / words.length * 130);
+    var rx = TXT_CHARS[code];
+    if (rx){ var m = low.match(rx); if (m) s += Math.min(35, m.length * 12); }
+  } else {
+    s = (sc[TXT_SCRIPT[code]] || 0) / total * 100;
+  }
+  return s;
+}
+function txtDetectLocal(text){
+  var low = text.toLowerCase();
+  var sc = txtScripts(text);
+  var words = low.split(/[^a-zÀ-ɏḀ-ỿ]+/).filter(function(x){ return x.length >= 2; });
+  var sa = txtScore(CFG.langA, sc, words, low);
+  var sb = txtScore(CFG.langB, sc, words, low);
+  return { seat: (sb > sa) ? 'B' : 'A', margin: Math.abs(sa - sb) };
+}
+function txtGBase(g){ return String(g||'').toLowerCase().split('-')[0]; }
+function txtSeatFromDetect(det){
+  if (!det) return null;
+  var d  = String(det).toLowerCase();
+  var ga = String(L(CFG.langA).g).toLowerCase(), gb = String(L(CFG.langB).g).toLowerCase();
+  if (d === ga && d !== gb) return 'A';
+  if (d === gb && d !== ga) return 'B';
+  var pa = (txtGBase(ga) === txtGBase(d)), pb = (txtGBase(gb) === txtGBase(d));
+  if (pa && !pb) return 'A';
+  if (pb && !pa) return 'B';
+  return null;
+}
+/* Google翻訳のウェブ版エンドポイントは sl=auto で判定結果を返す（キー不要）。
+   失敗しても握りつぶして、手元の判定にそのまま任せる。 */
+function txtDetectRemote(text){
+  var url = 'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q='
+          + encodeURIComponent(text.slice(0,180));
+  return fetch(url).then(function(r){ if (!r.ok) throw new Error('g'+r.status); return r.json(); })
+    .then(function(j){ return (j && j[2]) ? String(j[2]) : null; })
+    .catch(function(){ return null; });
+}
+function txtDetectSeat(text){
+  if (txtSeatMode !== 'auto') return Promise.resolve(txtSeatMode);
+  if (CFG.langA === CFG.langB) return Promise.resolve('A');
+  var r = txtDetectLocal(text);
+  if (r.margin >= 18){
+    dlog('text','detect',{ by:'local', seat:r.seat, margin:Math.round(r.margin) });
+    return Promise.resolve(r.seat);
+  }
+  return txtDetectRemote(text).then(function(det){
+    var s = txtSeatFromDetect(det);
+    dlog('text','detect',{ by:(s?'remote':'local-weak'), det:det, seat:(s||r.seat), margin:Math.round(r.margin) });
+    return s || r.seat;
+  });
+}
+
+function txtGrow(){
+  var ta = $('txtInput'); if (!ta) return;
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(112, ta.scrollHeight) + 'px';
+}
+function txtOpen(on){
+  var bar = $('txtbar'), btn = $('kbdBtn'); if (!bar) return;
+  if (on === undefined) on = !bar.classList.contains('on');
+  bar.classList.toggle('on', on);
+  if (btn) btn.classList.toggle('on', on);
+  if (on){ txtGrow(); try{ $('txtInput').focus(); }catch(e){} }
+  dlog('text', on ? 'open' : 'close', null);
+}
+function setTxtSeatMode(m){
+  txtSeatMode = (m === 'A' || m === 'B') ? m : 'auto';
+  store.set('di.txtseat', txtSeatMode);
+  var b = $('txtSeatBtn'), v = $('txtSeatTxt'); if (!b || !v) return;
+  b.classList.remove('seatA','seatB');
+  if (txtSeatMode === 'A'){
+    v.textContent = 'A固定'; b.classList.add('seatA');
+    b.title = seatName('A') + 'の発言として入力します（クリックで切替）';
+  } else if (txtSeatMode === 'B'){
+    v.textContent = 'B固定'; b.classList.add('seatB');
+    b.title = seatName('B') + 'の発言として入力します（クリックで切替）';
+  } else {
+    v.textContent = '自動';
+    b.title = '入力された言語からA/Bを自動で判定します（クリックで固定に切替）';
+  }
+}
+function txtSubmit(){
+  var ta = $('txtInput'); if (!ta) return;
+  var text = (ta.value || '').trim();
+  if (!text || txtBusy) return;
+  ta.value = ''; txtGrow();
+  txtBusy = true;
+  var btn = $('txtSend'); if (btn) btn.disabled = true;
+  var done = function(){ txtBusy = false; if (btn) btn.disabled = false; };
+  txtDetectSeat(text).then(function(seat){
+    var e = addEntry(seat, text, false);
+    e.typed = true;
+    dlog('text','send',{ seat:seat, mode:txtSeatMode, chars:text.length });
+    return translate(e);
+  }).then(done, function(err){
+    done();
+    dlog('text','FAIL',{ err:String((err && err.message) || err).slice(0,140) });
+    toast('テキストの翻訳に失敗しました');
+  });
 }
 
 /* ---------------- APIキー取得 ---------------- */
@@ -2433,7 +2642,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.09</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.10</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -2907,6 +3116,21 @@ $('camFlip').onclick  = function(){
   camFacing = (camFacing === 'environment') ? 'user' : 'environment';
   camStart();
 };
+$('kbdBtn').onclick     = function(){ txtOpen(); };
+$('txtClose').onclick   = function(){ txtOpen(false); };
+$('txtSend').onclick    = txtSubmit;
+$('txtSeatBtn').onclick = function(){
+  setTxtSeatMode(txtSeatMode === 'auto' ? 'A' : (txtSeatMode === 'A' ? 'B' : 'auto'));
+};
+$('txtInput').addEventListener('input', txtGrow);
+$('txtInput').addEventListener('keydown', function(ev){
+  /* 日本語入力の変換確定Enterで送信されないよう、変換中(isComposing/229)は無視する */
+  if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing && ev.keyCode !== 229){
+    ev.preventDefault(); txtSubmit();
+  }
+});
+setTxtSeatMode(store.get('di.txtseat','auto'));
+
 $('clearBtn').onclick = function(){
   if (S.entries.length && !confirm('会話ログを消去しますか？')) return;
   S.entries=[]; S.seq=0; $('feedA').innerHTML=''; $('feedB').innerHTML='';
@@ -3084,7 +3308,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.09');
+  out.push('- バージョン: Duo Interpreter v1.10');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
