@@ -97,14 +97,16 @@
     width:max-content;max-width:97vw;margin:0 auto;
     display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center;
     background:rgba(11,14,20,.94);border:1px solid var(--line);border-top:1px solid var(--line);border-radius:22px 22px 0 0;
-    padding:8px 10px;backdrop-filter:blur(8px);box-shadow:0 -6px 24px rgba(0,0,0,.5);
+    padding:8px 10px calc(8px + env(safe-area-inset-bottom));backdrop-filter:blur(8px);box-shadow:0 -6px 24px rgba(0,0,0,.5);
   }
   .cbtn{
     border:1px solid var(--line);background:var(--panel-2);color:var(--txt);border-radius:999px;
     padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;
   }
   .cbtn:hover{background:#26303f}
-  .cbtn.icon{padding:9px 11px}
+  /* アイコンだけのボタンは、絵文字の字幅の差で横幅がバラつくため固定幅にそろえる。
+     操作バーの段数が増えないよう、余白は最小限にしている。 */
+  .cbtn.icon{width:38px;padding:9px 0;justify-content:center}
   /* 表示切替ボタン：話者A/Bの言語選択欄と同じ色を、外枠として実際の配置順に並べる。
      内側と外枠で背景を2枚重ねることで、角丸を保ったまま枠だけ2色にできる。 */
   #focusBtn{
@@ -280,7 +282,9 @@
 
   /* ===== iPhone 向け調整 ===== */
   html,body{overscroll-behavior:none;-webkit-text-size-adjust:100%}
-  body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  /* 画面下端（ホームバー領域）は操作バー自身が余白を持つので、bodyでは空けない。
+     bodyで空けるとバーの下に地の色の帯が残ってしまう。 */
+  body{padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left)}
   .feed{-webkit-overflow-scrolling:touch}
   /* iOSでは入力欄のフォントが16px未満だと自動ズームするので下限を16pxにする */
   input[type=text],input[type=password],select,textarea{font-size:16px}
@@ -298,8 +302,9 @@
 
   @media (max-width:700px){
     :root{--fs:23px}
-    #bar{gap:6px;padding:7px 8px;border-radius:18px}
+    #bar{gap:6px;padding:7px 8px calc(7px + env(safe-area-inset-bottom));border-radius:18px 18px 0 0}
     .cbtn{padding:8px 10px;font-size:12px}
+    .cbtn.icon{width:36px;padding:8px 0}
     #mic{padding:10px 14px}
     .cbtn.listen{min-width:104px}
     .seatctl{padding:3px 6px 3px 8px;gap:2px}
@@ -310,8 +315,9 @@
 
   /* iPhone 縦画面：バーが場所を取りすぎないよう2段までに収める */
   @media (max-width:480px){
-    #bar{gap:5px;padding:6px 7px;border-radius:16px;max-width:calc(100vw - 12px)}
+    #bar{gap:4px;padding:6px 7px calc(6px + env(safe-area-inset-bottom));border-radius:16px 16px 0 0;width:100%;max-width:100%}
     .cbtn{padding:8px 9px;font-size:12px;gap:4px}
+    .cbtn.icon{width:34px;padding:8px 0}
     #mic{padding:10px 13px;font-size:13px}
     .seatctl{padding:2px 5px 2px 7px}
     .seatctl select{max-width:58px;font-size:11px}
