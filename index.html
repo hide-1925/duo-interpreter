@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
+     アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
+<meta name="color-scheme" content="dark">
 <title>Duo Interpreter v1.10 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
@@ -31,6 +34,9 @@
     --fs:30px;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  /* ブラウザ側のUI（フォーム部品・スクロールバー・ラバーバンド領域）も暗い側にそろえる */
+  :root{color-scheme:dark}
+  html{background:var(--bg)}
   html,body{height:100%;margin:0}
   body{
     background:var(--bg);color:var(--txt);overflow:hidden;
