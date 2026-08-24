@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.10 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.11 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -76,7 +76,8 @@
   .badge{font-weight:800;padding:2px 9px;border-radius:999px;font-size:11px;letter-spacing:.05em}
   .badge.a{background:rgba(61,220,151,.15);color:var(--a)}
   .badge.b{background:rgba(221,136,164,.15);color:var(--b)}
-  .feed{flex:1;min-height:0;overflow-y:auto;padding:12px 18px 18px;display:flex;flex-direction:column;gap:12px}
+  /* 発言ブロックの位置をスクロール量と同じ座標系で測れるようにする（A/Bのスクロール連動用） */
+  .feed{flex:1;min-height:0;overflow-y:auto;padding:12px 18px 18px;display:flex;flex-direction:column;gap:12px;position:relative}
   .feed::-webkit-scrollbar{width:6px}
   .feed::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
   .bubble{border-radius:14px;padding:11px 15px;background:var(--panel-2);border-left:4px solid var(--line);animation:pop .16s ease-out}
@@ -362,7 +363,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.10</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.11</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -372,7 +373,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.10</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.11</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -657,6 +658,7 @@
       <label class="switch"><input type="checkbox" id="showSrc" checked> 原文も小さく併記する</label>
       <label class="switch"><input type="checkbox" id="swapSides"> AとBの表示位置を入れ替える</label>
       <label class="switch"><input type="checkbox" id="interimOn" checked> 認識途中の文字も表示する</label>
+      <label class="switch"><input type="checkbox" id="syncScroll" checked> A/Bの会話ログのスクロールを連動させる</label>
     </div>
     <div class="field">
       <label>名前（表示ラベル）</label>
@@ -851,6 +853,7 @@ function loadCfg(){
     showSrc:   pref('di.src','showSrc','1')+'' === '1',
     swap:      pref('di.swap','swap','0')+'' === '1',
     interimOn: pref('di.itm','interimOn','1')+'' === '1',
+    syncScroll:pref('di.sync','syncScroll','1')+'' === '1',
     remember:  store.get('di.remember','1') === '1',
     glossary:  []
   };
@@ -1379,6 +1382,55 @@ function fitSafeBottom(){
   var v = covered ? measureSafeBottom() : 0;
   document.documentElement.style.setProperty('--sab', Math.round(v) + 'px');
   dlog('layout','safe-bottom',{ inner:window.innerHeight, screen:screenH, covered:covered, sab:Math.round(v) });
+}
+
+/* ---------------- A/B会話ログのスクロール連動 ---------------- */
+/* 同じ発言が両側に出ているので、「いま上端に見えている発言」を手がかりに
+   もう片方も同じ発言まで動かす。文の長さが左右で違っても行がズレない。
+   相手側を動かしたときのscrollイベントで押し返し合わないよう、
+   先に触られた側を一定時間だけ「駆動側」として扱う。 */
+var syncDriver = null, syncTimer = 0;
+
+function feedTopAnchor(feed){
+  var top = feed.scrollTop;
+  var bs = feed.getElementsByClassName('bubble');
+  for (var i=0;i<bs.length;i++){
+    var b = bs[i], bt = b.offsetTop, bh = b.offsetHeight;
+    if (bt + bh > top + 1){
+      return { id: b.getAttribute('data-eid'), frac: bh ? (top - bt) / bh : 0 };
+    }
+  }
+  return null;
+}
+function syncFeeds(srcId, dstId){
+  var src = $(srcId), dst = $(dstId);
+  if (!src || !dst) return;
+  var maxD = dst.scrollHeight - dst.clientHeight;
+  if (maxD <= 0) return;
+  var want, a = feedTopAnchor(src);
+  var tgt = a && dst.querySelector('[data-eid="' + a.id + '"]');
+  if (tgt){
+    want = tgt.offsetTop + a.frac * tgt.offsetHeight;
+  } else {
+    var maxS = src.scrollHeight - src.clientHeight;      // 同じ発言が見つからないときは割合で合わせる
+    want = maxS > 0 ? (src.scrollTop / maxS) * maxD : 0;
+  }
+  want = Math.max(0, Math.min(maxD, want));
+  if (Math.abs(dst.scrollTop - want) > 1) dst.scrollTop = want;
+}
+function syncEnabled(){
+  if (!CFG.syncScroll) return false;
+  if (CFG.focus === 'A' || CFG.focus === 'B') return false;   // 片側だけ表示中は連動しない
+  var a = $('sideA'), b = $('sideB');
+  return !!(a && b && !a.classList.contains('mini') && !b.classList.contains('mini'));
+}
+function onFeedScroll(srcId, dstId){
+  if (!syncEnabled()) return;
+  if (syncDriver && syncDriver !== srcId) return;   // もう片方が駆動中
+  syncDriver = srcId;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(function(){ syncDriver = null; }, 200);
+  syncFeeds(srcId, dstId);
 }
 
 /* ---------------- APIキー取得 ---------------- */
@@ -2679,6 +2731,7 @@ function exportHtml(){
     langA: CFG.langA, langB: CFG.langB, srcA: CFG.srcA, srcB: CFG.srcB,
     nameA: CFG.nameA, nameB: CFG.nameB, fsize: CFG.fsize,
     flipTop: CFG.flipTop?'1':'0', showSrc: CFG.showSrc?'1':'0', swap: CFG.swap?'1':'0', interimOn: CFG.interimOn?'1':'0',
+    syncScroll: CFG.syncScroll?'1':'0',
     focus: CFG.focus, rtDir: CFG.rtDir, rtBoth: CFG.rtBoth,
     savedAt: new Date().toISOString()
   };
@@ -2688,7 +2741,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.10</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.11</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -3054,6 +3107,7 @@ function applyCfg(){
   $('showSrc').checked = CFG.showSrc;
   $('swapSides').checked = CFG.swap;
   $('interimOn').checked = CFG.interimOn;
+  $('syncScroll').checked = CFG.syncScroll;
   $('remember').checked = CFG.remember;
   $('nameA').value = CFG.nameA;
   $('nameB').value = CFG.nameB;
@@ -3181,6 +3235,9 @@ fitSafeBottom();
 window.addEventListener('resize', fitSafeBottom);
 window.addEventListener('orientationchange', function(){ setTimeout(fitSafeBottom, 300); });
 
+$('feedA').addEventListener('scroll', function(){ onFeedScroll('feedA','feedB'); }, { passive:true });
+$('feedB').addEventListener('scroll', function(){ onFeedScroll('feedB','feedA'); }, { passive:true });
+
 $('clearBtn').onclick = function(){
   if (S.entries.length && !confirm('会話ログを消去しますか？')) return;
   S.entries=[]; S.seq=0; $('feedA').innerHTML=''; $('feedB').innerHTML='';
@@ -3297,6 +3354,7 @@ simple('flipTop','di.flip','flipTop',true);
 simple('showSrc','di.src','showSrc',true);
 simple('swapSides','di.swap','swap',true);
 simple('interimOn','di.itm','interimOn',true);
+simple('syncScroll','di.sync','syncScroll',true);
 simple('nameA','di.na','nameA');
 simple('nameB','di.nb','nameB');
 $('vad').oninput = function(){ CFG.vad = parseInt(this.value,10); store.set('di.vad', this.value); };
@@ -3358,7 +3416,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.10');
+  out.push('- バージョン: Duo Interpreter v1.11');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
