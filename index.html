@@ -215,8 +215,15 @@
     border-left:1px solid var(--line);transform:translateX(100%);transition:transform .24s ease;display:flex;flex-direction:column;
   }
   #drawer.open{transform:none}
-  #drawer > header{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  #drawer > header{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
   #drawer > header h2{margin:0;font-size:16px}
+  #drawer > header #closeDrawer{margin-left:auto}
+  /* 使い方（README）への外部リンク。見出しの隣に小さく置く */
+  #drawer > header .headlink{
+    font-size:11.5px;font-weight:700;color:var(--dim);text-decoration:none;white-space:nowrap;
+    border:1px solid var(--line);border-radius:999px;padding:4px 10px;
+  }
+  #drawer > header .headlink:hover{color:var(--txt);background:#26303f}
   .tabs{display:flex;border-bottom:1px solid var(--line);background:var(--bg)}
   .tabs button{flex:1;border:0;background:transparent;color:var(--dim);padding:11px 4px;font-size:12.5px;font-weight:700;cursor:pointer;border-bottom:2px solid transparent}
   .tabs button.on{color:var(--txt);border-bottom-color:var(--a)}
@@ -439,7 +446,7 @@
 <div id="scrim"></div>
 
 <aside id="drawer">
-  <header><h2>設定 / Settings</h2><button class="cbtn icon" id="closeDrawer">✕</button></header>
+  <header><h2>設定 / Settings</h2><a class="headlink" id="readmeLink" href="https://github.com/hide-1925/duo-interpreter#readme" target="_blank" rel="noopener noreferrer" title="使い方・設定の説明（GitHub）">📖 README</a><button class="cbtn icon" id="closeDrawer">✕</button></header>
   <div class="tabs">
     <button data-tab="p1" class="on">翻訳・API</button>
     <button data-tab="p2">音声</button>
