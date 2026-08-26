@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.15 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.16 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -380,7 +380,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.15</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.16</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -390,7 +390,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.15</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.16</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -612,6 +612,8 @@
         <option value="browser">🆓 ブラウザ内蔵音声（無料・即時）</option>
         <option value="openai">OpenAI 音声（自然）</option>
         <option value="voicevox">🫛 VOICEVOX WEB版（ずんだもん等・日本語のみ／お遊び）</option>
+        <option value="aivis">🎙 Aivis Cloud API（高品質・低遅延・日本語のみ）</option>
+        <option value="localvv">🖥 ローカルエンジン（AivisSpeech / VOICEVOX・日本語のみ）</option>
       </select>
       <select id="ttsWho">
         <option value="all">両方の訳を読み上げる</option>
@@ -639,6 +641,30 @@
         <button class="btn ghost" id="outRefresh" title="出力デバイスの一覧を取り直す">🔄 更新</button>
       </div>
       <small id="outNote"></small>
+    </div>
+
+    <div class="field" id="aivisField" style="display:none">
+      <label>🎙 Aivis Cloud API</label>
+      <input type="password" id="aivisKey" placeholder="Aivis Cloud API キー" autocomplete="off">
+      <input type="text" id="aivisModel" placeholder="モデルUUID" autocomplete="off">
+      <small>キーは <a href="https://hub.aivis-project.com/cloud-api/dashboard" target="_blank" rel="noopener noreferrer">Aivis Cloud API ダッシュボード</a> で取得できます（登録時に無料クレジット付き・その後は従量課金または月額）。
+      モデルUUIDは <a href="https://hub.aivis-project.com/" target="_blank" rel="noopener noreferrer">AivisHub</a> の各モデルのページからコピーして貼り付けてください。初期値は「Anneli」です。
+      日本語の読み上げだけがこの声になり、それ以外の言語はブラウザ内蔵音声で読み上げます。
+      失敗した場合もブラウザ内蔵音声に自動で切り替わります。</small>
+    </div>
+
+    <div class="field" id="lvvField" style="display:none">
+      <label>🖥 ローカルの音声合成エンジン</label>
+      <input type="text" id="lvvBase" placeholder="http://127.0.0.1:10101" autocomplete="off">
+      <div class="row">
+        <select id="lvvSpeaker" style="flex:1"></select>
+        <button class="btn ghost" id="lvvFetch" title="エンジンから話者一覧を取得">🔄 話者取得</button>
+      </div>
+      <small>PCで動かしている <a href="https://aivis-project.com/" target="_blank" rel="noopener noreferrer">AivisSpeech</a>（既定 <code>http://127.0.0.1:10101</code>）や
+      <a href="https://voicevox.hiroshiba.jp/" target="_blank" rel="noopener noreferrer">VOICEVOX</a>（既定 <code>http://127.0.0.1:50021</code>）に接続します。API互換なのでどちらでも動きます。無料・回数制限なしです。<br>
+      <b>エンジンは CORS を許可して起動してください。</b>（例：<code>run.exe --cors_policy_mode all</code>）<br>
+      ブラウザがローカル宛の通信を遮断する場合があり、そのときは繋がりません。うまくいかないときは Aivis Cloud API か VOICEVOX WEB版をお使いください。
+      iPhone / iPad ではローカルエンジンを動かせないため使えません。</small>
     </div>
 
     <div class="field" id="vvField" style="display:none">
@@ -898,6 +924,10 @@ function loadCfg(){
     interimOn: pref('di.itm','interimOn','1')+'' === '1',
     syncScroll:pref('di.sync','syncScroll','1')+'' === '1',
     vvSpeaker: pref('di.vvsp','vvSpeaker','3'),
+    aivisModel:pref('di.aim','aivisModel','a59cb814-0083-4369-8542-f51a29e72af7'),  /* 既定はAnneli */
+    lvvBase:   pref('di.lvb','lvvBase','http://127.0.0.1:10101'),
+    lvvSpeaker:pref('di.lvs','lvvSpeaker',''),
+    lvvSpeakerLbl:pref('di.lvsl','lvvSpeakerLbl',''),
     ttsSrc:    pref('di.ttssrc','ttsSrc','0')+'' === '1',
     outDev:    store.get('di.outdev',''),      /* 端末ごとの値なのでHTMLには焼き込まない */
     outDevLbl: store.get('di.outdevl',''),
@@ -2019,6 +2049,135 @@ function ensureSink(){
   try { audioEl.setSinkId(CFG.outDev); } catch(e){}
 }
 
+/* ---------------- 日本語専用エンジン共通の下ごしらえ ----------------
+   VOICEVOX・Aivis Cloud・ローカルエンジンはいずれも日本語専用。
+   日本語以外や設定不足のときは、黙って止まらずブラウザ内蔵音声に逃がす。 */
+function jaOnlyMode(m){ return m === 'voicevox' || m === 'aivis' || m === 'localvv'; }
+function ttsFallback(text, lang, why, warnMsg, flagName){
+  dlog('tts','fallback',{ mode: CFG.ttsMode, why: why, lang: lang });
+  if (warnMsg && !window[flagName]){
+    window[flagName] = true;
+    toast(warnMsg + '<br>今回はブラウザ内蔵の音声で読み上げます。');
+  }
+  browserSpeak(text, L(lang).tts);
+}
+/* 音声データを受け取って鳴らすところは各エンジン共通 */
+function playBlob(blob, finish){
+  ensureSink();
+  audioEl.src = URL.createObjectURL(blob);
+  audioEl.onended = audioEl.onerror = finish;
+  var pr = audioEl.play();
+  if (pr && pr.catch) pr.catch(function(){ finish(); });
+}
+function ttsGuard(text, ms){
+  var done = false, tEnd = null;
+  var finish = function(){ if (done) return; done = true; clearTimeout(tEnd); ttsEnd(); };
+  rememberSpoken(text);
+  ttsBegin();
+  tEnd = setTimeout(finish, ms);
+  return finish;
+}
+
+/* ---------------- Aivis Cloud API（HTTPS・キー方式） ---------------- */
+var AIVIS_URL = 'https://api.aivis-project.com/v1/tts/synthesize';
+var aivisWarned = false;
+function aivisKey(){ return (KEYS['aivis'] || '').trim(); }
+function aivisSpeak(text, lang){
+  if (lang !== 'ja') return ttsFallback(text, lang, '日本語以外');
+  if (!aivisKey() || !(CFG.aivisModel || '').trim())
+    return ttsFallback(text, lang, '未設定',
+      'Aivis Cloud API のキーまたはモデルUUIDが未設定です。⚙→音声 でご確認ください。', 'aivisWarned');
+  var t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150));
+  fetch(AIVIS_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + aivisKey() },
+    body: JSON.stringify({ model_uuid:(CFG.aivisModel||'').trim(), text:text, output_format:'mp3' })
+  }).then(function(r){
+    if (!r.ok) return r.text().then(function(x){ throw new Error(r.status + ' ' + String(x).slice(0,120)); });
+    return r.blob();
+  }).then(function(b){
+    dlog('tts','aivis-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size });
+    playBlob(b, finish);
+  }).catch(function(err){
+    var m = String((err && err.message) || err);
+    dlog('tts','aivis-FAIL',{ err:m.slice(0,140), ms:Date.now()-t0 });
+    finish();
+    var hint = /failed to fetch|networkerror|load failed/i.test(m)
+      ? 'Aivis Cloud API に接続できませんでした（ブラウザから直接呼べない可能性があります）。'
+      : 'Aivis Cloud API でエラーが返りました（' + m.slice(0,70) + '）。';
+    ttsFallback(text, lang, 'API失敗', hint, 'aivisWarned');
+  });
+}
+
+/* ---------------- ローカルエンジン（AivisSpeech / VOICEVOX 互換） ----------------
+   audio_query で読み仮名やアクセントを作り、synthesis で音声にする2段構え。
+   どちらのエンジンも同じAPIなので、ベースURLとポートを変えるだけで両対応できる。 */
+var lvvWarned = false;
+function lvvBase(){ return String(CFG.lvvBase || 'http://127.0.0.1:10101').replace(/\/+$/,''); }
+function lvvSpeakerId(){ return String(CFG.lvvSpeaker || '0'); }
+function lvvSpeak(text, lang){
+  if (lang !== 'ja') return ttsFallback(text, lang, '日本語以外');
+  var base = lvvBase(), sp = encodeURIComponent(lvvSpeakerId()), t0 = Date.now();
+  var finish = ttsGuard(text, Math.min(90000, 10000 + text.length * 200));
+  fetch(base + '/audio_query?text=' + encodeURIComponent(text) + '&speaker=' + sp, { method:'POST' })
+    .then(function(r){ if (!r.ok) throw new Error('audio_query ' + r.status); return r.json(); })
+    .then(function(q){
+      return fetch(base + '/synthesis?speaker=' + sp, {
+        method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(q)
+      });
+    })
+    .then(function(r){ if (!r.ok) throw new Error('synthesis ' + r.status); return r.blob(); })
+    .then(function(b){
+      dlog('tts','local-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size, speaker:lvvSpeakerId() });
+      playBlob(b, finish);
+    })
+    .catch(function(err){
+      var m = String((err && err.message) || err);
+      dlog('tts','local-FAIL',{ err:m.slice(0,140), base:base, ms:Date.now()-t0 });
+      finish();
+      ttsFallback(text, lang, 'ローカル失敗',
+        'ローカルエンジン（' + base + '）に接続できませんでした。'
+        + 'エンジンを起動しているか、<code>--cors_policy_mode all</code> を付けて起動しているかご確認ください。',
+        'lvvWarned');
+    });
+}
+function lvvFetchSpeakers(){
+  var base = lvvBase();
+  return fetch(base + '/speakers').then(function(r){
+    if (!r.ok) throw new Error('speakers ' + r.status);
+    return r.json();
+  }).then(function(list){
+    var sel = $('lvvSpeaker'); if (!sel) return list;
+    sel.innerHTML = '';
+    (list || []).forEach(function(sp){
+      (sp.styles || []).forEach(function(st){
+        var o = document.createElement('option');
+        o.value = String(st.id);
+        o.textContent = sp.name + '（' + st.name + '）';
+        sel.appendChild(o);
+      });
+    });
+    /* 前回の話者が一覧に居ればそれを、居なければ先頭を選び、設定にも必ず反映する
+       （画面の表示と実際に使うIDがずれると、別の声で鳴って原因が分からなくなる） */
+    var keep = String(CFG.lvvSpeaker || ''), found = false;
+    for (var i2=0;i2<sel.options.length;i2++) if (sel.options[i2].value === keep) found = true;
+    if (found) sel.value = keep;
+    if (sel.options.length){
+      CFG.lvvSpeaker = sel.value;
+      CFG.lvvSpeakerLbl = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+      store.set('di.lvs', CFG.lvvSpeaker); store.set('di.lvsl', CFG.lvvSpeakerLbl);
+    }
+    dlog('tts','local-speakers',{ n: sel.options.length, base: base });
+    toast('話者を ' + sel.options.length + ' 件取得しました。', true);
+    return list;
+  }).catch(function(err){
+    var m = String((err && err.message) || err);
+    dlog('tts','local-speakers-FAIL',{ err:m.slice(0,140), base:base });
+    toast('話者一覧を取得できませんでした（' + base + '）。<br>'
+        + 'エンジンが起動しているか、<code>--cors_policy_mode all</code> 付きで起動しているかご確認ください。');
+  });
+}
+
 /* ---------------- VOICEVOX WEB版（お遊び機能） ----------------
    有志が公開している非公式のWEB版VOICEVOX APIを叩いて、ずんだもん等の声で読み上げる。
    fetchではなく<audio>のsrcに直接URLを入れているのは、相手側のCORS設定に
@@ -2102,6 +2261,16 @@ function ttsPlanRows(){
   if (CFG.ttsWho !== 'B2A') rows.push({ who:'自分(A)', lang: useSrc ? CFG.langA : CFG.langB });
   return rows;
 }
+/* 選んだエンジンを実際に鳴らせる状態かどうか。足りない設定を文章で返す */
+function ttsSetupMissing(){
+  if (CFG.ttsMode === 'voicevox' && !vvKey())  return 'VOICEVOXのAPIキーが未設定です。';
+  if (CFG.ttsMode === 'aivis'){
+    if (!aivisKey())                    return 'Aivis Cloud API のキーが未設定です。';
+    if (!(CFG.aivisModel||'').trim())   return 'Aivis Cloud API のモデルUUIDが未設定です。';
+  }
+  if (CFG.ttsMode === 'localvv' && !(CFG.lvvBase||'').trim()) return 'ローカルエンジンのURLが未設定です。';
+  return '';
+}
 function ttsPlanText(){
   if (CFG.ttsMode === 'off') return { html:'読み上げは <b>OFF</b> です。', warn:false };
   var rows = ttsPlanRows(), what = CFG.ttsSrc ? '原文' : '訳文', warn = false;
@@ -2115,16 +2284,16 @@ function ttsPlanText(){
   } else if (CFG.outDev){
     t += '<br>出力先：<b>' + (CFG.outDevLbl || '指定したデバイス') + '</b>';
   }
-  if (CFG.ttsMode === 'voicevox'){
-    if (!vvKey()){
-      t += '<br><b>⚠ VOICEVOXのAPIキーが未設定です。</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。'
-         + '下の欄にキーを入力してください。';
+  if (jaOnlyMode(CFG.ttsMode)){
+    var miss = ttsSetupMissing();
+    if (miss){
+      t += '<br><b>⚠ ' + miss + '</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';
       warn = true;
     } else {
       var non = rows.filter(function(r){ return r.lang !== 'ja'; });
       if (non.length){
-        t += '<br>⚠ VOICEVOXは日本語専用のため、' + non.map(function(r){ return L(r.lang).name; }).join('・')
-           + ' はブラウザ内蔵音声になります。';
+        t += '<br>⚠ ' + ttsModeLabel(CFG.ttsMode) + ' は日本語専用のため、'
+           + non.map(function(r){ return L(r.lang).name; }).join('・') + ' はブラウザ内蔵音声になります。';
         warn = true;
       }
     }
@@ -2132,6 +2301,23 @@ function ttsPlanText(){
   return { html:t, warn:warn };
 }
 function refreshVvUI(){
+  var af = $('aivisField');
+  if (af){
+    af.style.display = (CFG.ttsMode === 'aivis') ? '' : 'none';
+    var ak = $('aivisKey');   if (ak && ak !== document.activeElement) ak.value = KEYS['aivis'] || '';
+    var am = $('aivisModel'); if (am && am !== document.activeElement) am.value = CFG.aivisModel || '';
+  }
+  var lf = $('lvvField');
+  if (lf){
+    lf.style.display = (CFG.ttsMode === 'localvv') ? '' : 'none';
+    var lb = $('lvvBase'); if (lb && lb !== document.activeElement) lb.value = CFG.lvvBase || '';
+    var ls = $('lvvSpeaker');
+    if (ls && !ls.options.length && CFG.lvvSpeaker){      /* 取得前でも前回の話者を出しておく */
+      var o = document.createElement('option');
+      o.value = CFG.lvvSpeaker; o.textContent = CFG.lvvSpeakerLbl || ('話者 ' + CFG.lvvSpeaker);
+      ls.appendChild(o); ls.value = CFG.lvvSpeaker;
+    }
+  }
   var f = $('vvField'); if (!f) return;
   f.style.display = (CFG.ttsMode === 'voicevox') ? '' : 'none';
   var k = $('vvKey'); if (k && k !== document.activeElement) k.value = KEYS['voicevox'] || '';
@@ -2177,6 +2363,8 @@ function speakManual(text, lang, btn){
   }
   if (CFG.ttsMode === 'openai') apiSpeak(text, 'A');
   else if (CFG.ttsMode === 'voicevox') vvSpeak(text, lang);
+  else if (CFG.ttsMode === 'aivis')    aivisSpeak(text, lang);
+  else if (CFG.ttsMode === 'localvv')  lvvSpeak(text, lang);
   else browserSpeak(text, L(lang).tts);
 }
 
@@ -2208,6 +2396,8 @@ function speak(e){
   }
   if (CFG.ttsMode === 'browser') browserSpeak(sayText, L(sayLang).tts);
   else if (CFG.ttsMode === 'voicevox') vvSpeak(sayText, sayLang);
+  else if (CFG.ttsMode === 'aivis')    aivisSpeak(sayText, sayLang);
+  else if (CFG.ttsMode === 'localvv')  lvvSpeak(sayText, sayLang);
   else apiSpeak(sayText, e.seat);
 }
 
@@ -3119,6 +3309,8 @@ function exportHtml(){
     nameA: CFG.nameA, nameB: CFG.nameB, fsize: CFG.fsize,
     flipTop: CFG.flipTop?'1':'0', showSrc: CFG.showSrc?'1':'0', swap: CFG.swap?'1':'0', interimOn: CFG.interimOn?'1':'0',
     syncScroll: CFG.syncScroll?'1':'0', vvSpeaker: CFG.vvSpeaker, ttsSrc: CFG.ttsSrc?'1':'0',
+    aivisModel: CFG.aivisModel, lvvBase: CFG.lvvBase,
+    lvvSpeaker: CFG.lvvSpeaker, lvvSpeakerLbl: CFG.lvvSpeakerLbl,
     focus: CFG.focus, rtDir: CFG.rtDir, rtBoth: CFG.rtBoth,
     savedAt: new Date().toISOString()
   };
@@ -3128,7 +3320,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.15</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.16</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -3650,7 +3842,11 @@ $('fsize').oninput  = function(){ setFs(parseInt($('fsize').value,10)); };
    （VOICEVOXを選んでいたのに毎回ブラウザ内蔵音声へ戻ってしまうのを防ぐ） */
 var ttsLastMode = (CFG.ttsMode && CFG.ttsMode !== 'off') ? CFG.ttsMode : 'browser';
 function ttsModeLabel(m){
-  return m === 'openai' ? 'OpenAI音声' : m === 'voicevox' ? 'VOICEVOX' : 'ブラウザ内蔵音声';
+  return m === 'openai'   ? 'OpenAI音声'
+       : m === 'voicevox' ? 'VOICEVOX WEB版'
+       : m === 'aivis'    ? 'Aivis Cloud API'
+       : m === 'localvv'  ? 'ローカルエンジン'
+       : 'ブラウザ内蔵音声';
 }
 $('ttsToggle').onclick = function(){
   if (CFG.ttsMode === 'off') CFG.ttsMode = ttsLastMode || 'browser';
@@ -3768,6 +3964,24 @@ $('vvKey').oninput = function(){
   vvWarned = false;          // キーを入れ直したら、失敗時の案内をもう一度出せるようにする
   refreshVvUI();
 };
+$('aivisKey').oninput = function(){
+  KEYS['aivis'] = this.value.trim(); saveKeys();
+  aivisWarned = false; refreshVvUI();
+};
+$('aivisModel').oninput = function(){
+  CFG.aivisModel = this.value.trim(); store.set('di.aim', CFG.aivisModel);
+  aivisWarned = false; refreshVvUI();
+};
+$('lvvBase').oninput = function(){
+  CFG.lvvBase = this.value.trim(); store.set('di.lvb', CFG.lvvBase);
+  lvvWarned = false; refreshVvUI();
+};
+$('lvvSpeaker').onchange = function(){
+  CFG.lvvSpeaker = this.value;
+  CFG.lvvSpeakerLbl = this.options[this.selectedIndex] ? this.options[this.selectedIndex].textContent : '';
+  store.set('di.lvs', CFG.lvvSpeaker); store.set('di.lvsl', CFG.lvvSpeakerLbl);
+};
+$('lvvFetch').onclick = function(){ lvvFetchSpeakers(); };
 $('outDev').onchange = function(){
   var sel = this, id = sel.value;
   /* 表示名には🎚などの目印を付けているので、保存には元のラベルを使う
@@ -3850,7 +4064,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.15');
+  out.push('- バージョン: Duo Interpreter v1.16');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
@@ -3873,6 +4087,8 @@ function diagText(devices){
    ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel],
    ['読み上げ', CFG.ttsMode], ['読み上げモデル', CFG.ttsModel], ['読み上げ対象', CFG.ttsWho],
    ['原文読み上げ', CFG.ttsSrc ? 'ON' : 'OFF'],
+   ['読み上げの設定不足', ttsSetupMissing() || 'なし'],
+   ['ローカルエンジンURL', CFG.ttsMode === 'localvv' ? CFG.lvvBase : '(未使用)'],
    ['読み上げの出力先', OUT_SUPPORTED ? (CFG.outDevLbl || (CFG.outDev ? '(名称不明)' : '既定')) : '(このブラウザは非対応)'],
    ['言語A / B', CFG.langA + ' / ' + CFG.langB],
    ['入力元A / B', CFG.srcA + ' / ' + CFG.srcB],
