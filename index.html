@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.11 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.13 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -370,7 +370,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.11</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.13</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -380,7 +380,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.11</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.13</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -601,6 +601,7 @@
         <option value="off">なし</option>
         <option value="browser">🆓 ブラウザ内蔵音声（無料・即時）</option>
         <option value="openai">OpenAI 音声（自然）</option>
+        <option value="voicevox">🫛 VOICEVOX WEB版（ずんだもん等・日本語のみ／お遊び）</option>
       </select>
       <select id="ttsWho">
         <option value="all">両方の訳を読み上げる</option>
@@ -613,7 +614,22 @@
       </div>
       <select id="ttsModel"></select>
       <input type="text" id="ttsModelCustom" placeholder="モデル名を直接入力" style="display:none">
-      <small>読み上げ中はマイク認識を自動で停止し、ハウリングを防ぎます。</small>
+      <label class="switch"><input type="checkbox" id="ttsSrc"> 訳文ではなく<b>原文</b>をそのまま読み上げる</label>
+      <small>読み上げ中はマイク認識を自動で停止し、ハウリングを防ぎます。<br>
+      「原文をそのまま読み上げる」は翻訳を待たずに発話するので、<b>ボイスチェンジャーのように</b>使えます。
+      自分の声をずんだもんにするなら、読み上げ＝<b>VOICEVOX</b>／読み上げ対象＝<b>自分(A)の発言だけ</b>／原文読み上げ＝<b>ON</b> の組み合わせです。
+      （会話ログの翻訳表示はこれまで通り出ます。リアルタイム同時通訳モードは音声がAPI側から返るため対象外です。）</small>
+    </div>
+
+    <div class="field" id="vvField" style="display:none">
+      <label>🫛 VOICEVOX WEB版 API（お遊び機能）</label>
+      <select id="vvSpeaker"></select>
+      <input type="password" id="vvKey" placeholder="WEB版VOICEVOX APIキー" autocomplete="off">
+      <small>キーは <a href="https://su-shiki.com/api/" target="_blank" rel="noopener noreferrer">su-shiki.com/api/</a> で無料取得できます（有志が運営する非公式APIです）。
+      日本語の読み上げだけがこの声になり、<b>それ以外の言語はブラウザ内蔵音声</b>で読み上げます。
+      ポイント制の1日上限があり、混雑時は失敗することがあります（失敗時はブラウザ内蔵音声に自動で切り替わります）。
+      個人利用向けのAPIなので、業務での常用には向きません。</small>
+      <div class="note" id="vvCredit"></div>
     </div>
 
     <div class="field">
@@ -861,6 +877,8 @@ function loadCfg(){
     swap:      pref('di.swap','swap','0')+'' === '1',
     interimOn: pref('di.itm','interimOn','1')+'' === '1',
     syncScroll:pref('di.sync','syncScroll','1')+'' === '1',
+    vvSpeaker: pref('di.vvsp','vvSpeaker','3'),
+    ttsSrc:    pref('di.ttssrc','ttsSrc','0')+'' === '1',
     remember:  store.get('di.remember','1') === '1',
     glossary:  []
   };
@@ -1356,6 +1374,7 @@ function txtSubmit(){
     var e = addEntry(seat, text, false);
     e.typed = true;
     dlog('text','send',{ seat:seat, mode:txtSeatMode, chars:text.length });
+    speakSrcNow(e);
     return translate(e);
   }).then(done, function(err){
     done();
@@ -1487,7 +1506,8 @@ function translate(e){
   return job.then(function(out){
     e.dstText = (out||'').trim();
     dlog('translate','ok',{ prov:CFG.provider, model:CFG.model, from:from, to:to, ms:Date.now()-t0, chars:(e.dstText||'').length });
-    render(e); speak(e);
+    render(e);
+    if (!CFG.ttsSrc) speak(e);      // 原文モードでは認識時点で読み上げ済み
   }).catch(function(err){
     e.dstText = '(翻訳エラー)';
     render(e);
@@ -1786,6 +1806,97 @@ function apiSpeak(text, seat){
     }).catch(function(){ finish(); });
 }
 
+/* ---------------- VOICEVOX WEB版（お遊び機能） ----------------
+   有志が公開している非公式のWEB版VOICEVOX APIを叩いて、ずんだもん等の声で読み上げる。
+   fetchではなく<audio>のsrcに直接URLを入れているのは、相手側のCORS設定に
+   依存せず再生できるようにするため（キーがURLに乗るので個人用キー前提）。
+   VOICEVOXは日本語専用なので、日本語以外はブラウザ内蔵音声に回す。 */
+var VV_BASE = 'https://deprecatedapis.tts.quest/v2/voicevox/audio/';
+var VV_SPEAKERS = [
+  { id:'3',  name:'ずんだもん',   style:'ノーマル' },
+  { id:'1',  name:'ずんだもん',   style:'あまあま' },
+  { id:'7',  name:'ずんだもん',   style:'ツンツン' },
+  { id:'5',  name:'ずんだもん',   style:'セクシー' },
+  { id:'2',  name:'四国めたん',   style:'ノーマル' },
+  { id:'0',  name:'四国めたん',   style:'あまあま' },
+  { id:'8',  name:'春日部つむぎ', style:'ノーマル' },
+  { id:'10', name:'雨晴はう',     style:'ノーマル' },
+  { id:'9',  name:'波音リツ',     style:'ノーマル' },
+  { id:'11', name:'玄野武宏',     style:'ノーマル' },
+  { id:'13', name:'青山龍星',     style:'ノーマル' },
+  { id:'14', name:'冥鳴ひまり',   style:'ノーマル' }
+];
+var vvWarned = false;
+function vvKey(){ return (KEYS['voicevox'] || '').trim(); }
+function vvSpeakerInfo(){
+  var id = String(CFG.vvSpeaker || '3');
+  for (var i=0;i<VV_SPEAKERS.length;i++) if (VV_SPEAKERS[i].id === id) return VV_SPEAKERS[i];
+  return VV_SPEAKERS[0];
+}
+function vvUrl(text){
+  return VV_BASE + '?key=' + encodeURIComponent(vvKey())
+       + '&speaker=' + encodeURIComponent(String(CFG.vvSpeaker || '3'))
+       + '&pitch=0&intonationScale=1&speed=1'
+       + '&text=' + encodeURIComponent(text);
+}
+function vvSpeak(text, lang){
+  if (lang !== 'ja'){                       // VOICEVOXは日本語専用
+    dlog('tts','vv-skip',{ why:'日本語以外', lang: lang });
+    browserSpeak(text, L(lang).tts);
+    return;
+  }
+  if (!vvKey()){
+    dlog('tts','vv-skip',{ why:'キー未設定' });
+    if (!vvWarned){
+      vvWarned = true;
+      toast('VOICEVOXのAPIキーが未設定です。⚙→音声 の「VOICEVOX WEB版 API」欄に入力してください。<br>今回はブラウザ内蔵の音声で読み上げます。');
+    }
+    browserSpeak(text, 'ja-JP');
+    return;
+  }
+  var done = false, tEnd = null, t0 = Date.now();
+  var finish = function(){ if (done) return; done = true; clearTimeout(tEnd); ttsEnd(); };
+  rememberSpoken(text);
+  ttsBegin();
+  tEnd = setTimeout(function(){
+    dlog('tts','vv-TIMEOUT',{ ms: Date.now()-t0 });
+    finish();
+  }, Math.min(90000, 10000 + text.length * 200));
+  audioEl.src = vvUrl(text);
+  audioEl.onended = function(){
+    dlog('tts','vv-end',{ speaker: CFG.vvSpeaker, chars: text.length, ms: Date.now()-t0 });
+    finish();
+  };
+  audioEl.onerror = function(){
+    dlog('tts','vv-FAIL',{ speaker: CFG.vvSpeaker, chars: text.length, ms: Date.now()-t0 });
+    finish();
+    if (!vvWarned){
+      vvWarned = true;
+      toast('VOICEVOXの音声を取得できませんでした。キー・ポイント残量・混雑状況をご確認ください。<br>今回はブラウザ内蔵の音声で読み上げます。');
+    }
+    browserSpeak(text, 'ja-JP');    // 鳴らないより内蔵音声で鳴らす方がまし
+  };
+  var pr = audioEl.play();
+  if (pr && pr.catch) pr.catch(function(){ /* 失敗は onerror 側で拾う */ });
+}
+function refreshVvUI(){
+  var f = $('vvField'); if (!f) return;
+  f.style.display = (CFG.ttsMode === 'voicevox') ? '' : 'none';
+  var k = $('vvKey'); if (k) k.value = KEYS['voicevox'] || '';
+  var sel = $('vvSpeaker');
+  if (sel && !sel.options.length){
+    for (var i=0;i<VV_SPEAKERS.length;i++){
+      var v = VV_SPEAKERS[i], o = document.createElement('option');
+      o.value = v.id; o.textContent = v.name + '（' + v.style + '）';
+      sel.appendChild(o);
+    }
+  }
+  if (sel) sel.value = String(CFG.vvSpeaker || '3');
+  var c = $('vvCredit');
+  if (c) c.innerHTML = '規約により、この音声を含む録音・書き起こしを公開・配布する場合は'
+                     + 'クレジット表記が必要です　→　<b>VOICEVOX:' + vvSpeakerInfo().name + '</b>';
+}
+
 /* 読み上げ対象の設定で弾かれ続けると「壊れている」ように見えるので、
    スキップした理由を必ず記録し、続くようなら一度だけ画面でも知らせる。 */
 var ttsSkipStreak = 0, ttsSkipHinted = false;
@@ -1806,12 +1917,20 @@ function speakManual(text, lang, btn){
     setTimeout(function(){ btn.classList.remove('on'); }, 1200);
   }
   if (CFG.ttsMode === 'openai') apiSpeak(text, 'A');
+  else if (CFG.ttsMode === 'voicevox') vvSpeak(text, lang);
   else browserSpeak(text, L(lang).tts);
 }
 
+/* 原文読み上げモードでは、翻訳を待たず認識できた時点で読み上げる。
+   （ボイスチェンジャーとして使うので、翻訳の往復時間が乗ると使い物にならない） */
+function speakSrcNow(e){ if (CFG.ttsSrc) speak(e); }
+
 function speak(e){
   if (CFG.ttsMode === 'off'){ dlog('tts','skip',{ why:'読み上げOFF' }); return; }
-  if (!e.dstText){ dlog('tts','skip',{ why:'訳文が空' }); return; }
+  var useSrc = !!CFG.ttsSrc;
+  var sayText = useSrc ? e.srcText : e.dstText;
+  var sayLang = useSrc ? e.srcLang : e.dstLang;
+  if (!sayText){ dlog('tts','skip',{ why: useSrc ? '原文が空' : '訳文が空' }); return; }
   if ((CFG.ttsWho === 'B2A' && e.seat !== 'B') || (CFG.ttsWho === 'A2B' && e.seat !== 'A')){
     ttsSkipStreak++;
     dlog('tts','skip',{ why:'読み上げ対象=' + CFG.ttsWho, seat:e.seat, streak:ttsSkipStreak });
@@ -1828,8 +1947,9 @@ function speak(e){
     dlog('tts','skip',{ why:'読み上げが溜まっているため見送り', queued: ttsActive });
     return;
   }
-  if (CFG.ttsMode === 'browser') browserSpeak(e.dstText, L(e.dstLang).tts);
-  else apiSpeak(e.dstText, e.seat);
+  if (CFG.ttsMode === 'browser') browserSpeak(sayText, L(sayLang).tts);
+  else if (CFG.ttsMode === 'voicevox') vvSpeak(sayText, sayLang);
+  else apiSpeak(sayText, e.seat);
 }
 
 /* =========================================================================
@@ -1972,7 +2092,7 @@ function buildRec(){
       sawSpeech = true;
       recErr = 0; recDeadStart = 0;   // 正常に認識できたので連続失敗カウンタをリセット
       dlog('stt','result',{ seat: seat, lang: rec ? rec.lang : null, chars: t.length, text: t.slice(0,120) });
-      render(e); translate(e);
+      render(e); speakSrcNow(e); translate(e);
     });
   };
   /* 認識エラーは以前まったく画面に出していなかったため、
@@ -2201,6 +2321,7 @@ function transcribeBlob(blob, seat){
       }
     }
     holder.srcText = text; holder.interim = false; render(holder);
+    speakSrcNow(holder);
     translate(holder);
   }).catch(function(err){
     removeEntry(holder);
@@ -2738,7 +2859,7 @@ function exportHtml(){
     langA: CFG.langA, langB: CFG.langB, srcA: CFG.srcA, srcB: CFG.srcB,
     nameA: CFG.nameA, nameB: CFG.nameB, fsize: CFG.fsize,
     flipTop: CFG.flipTop?'1':'0', showSrc: CFG.showSrc?'1':'0', swap: CFG.swap?'1':'0', interimOn: CFG.interimOn?'1':'0',
-    syncScroll: CFG.syncScroll?'1':'0',
+    syncScroll: CFG.syncScroll?'1':'0', vvSpeaker: CFG.vvSpeaker, ttsSrc: CFG.ttsSrc?'1':'0',
     focus: CFG.focus, rtDir: CFG.rtDir, rtBoth: CFG.rtBoth,
     savedAt: new Date().toISOString()
   };
@@ -2748,7 +2869,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.11</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.13</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -3091,6 +3212,7 @@ function refreshProviderUI(){
   $('sttModel').style.display     = isRT ? 'none' : '';
   $('rtDir').value  = CFG.rtDir;
   $('rtBoth').value = CFG.rtBoth;
+  refreshVvUI();
   refreshListenBtn();
 }
 
@@ -3115,6 +3237,7 @@ function applyCfg(){
   $('swapSides').checked = CFG.swap;
   $('interimOn').checked = CFG.interimOn;
   $('syncScroll').checked = CFG.syncScroll;
+  $('ttsSrc').checked = CFG.ttsSrc;
   $('remember').checked = CFG.remember;
   $('nameA').value = CFG.nameA;
   $('nameB').value = CFG.nameB;
@@ -3260,15 +3383,22 @@ $('fsUp').onclick   = function(){ setFs(parseInt(CFG.fsize,10)+3); };
 $('fsDown').onclick = function(){ setFs(parseInt(CFG.fsize,10)-3); };
 $('fsize').oninput  = function(){ setFs(parseInt($('fsize').value,10)); };
 
+/* OFFにする前のモードを覚えておき、ONに戻すときはそれを復元する
+   （VOICEVOXを選んでいたのに毎回ブラウザ内蔵音声へ戻ってしまうのを防ぐ） */
+var ttsLastMode = (CFG.ttsMode && CFG.ttsMode !== 'off') ? CFG.ttsMode : 'browser';
+function ttsModeLabel(m){
+  return m === 'openai' ? 'OpenAI音声' : m === 'voicevox' ? 'VOICEVOX' : 'ブラウザ内蔵音声';
+}
 $('ttsToggle').onclick = function(){
-  CFG.ttsMode = (CFG.ttsMode==='off') ? 'browser' : 'off';
+  if (CFG.ttsMode === 'off') CFG.ttsMode = ttsLastMode || 'browser';
+  else { ttsLastMode = CFG.ttsMode; CFG.ttsMode = 'off'; }
   store.set('di.tts', CFG.ttsMode); $('ttsMode').value = CFG.ttsMode;
-  refreshTtsBtn();
+  refreshTtsBtn(); refreshVvUI();
   ttsSkipStreak = 0; ttsSkipHinted = false;
   dlog('tts','toggle',{ mode: CFG.ttsMode, who: CFG.ttsWho });
   // 「誰の発言を読むか」を一緒に出す。ここが分からないと鳴らない理由に気づけないため
   toast(CFG.ttsMode==='off' ? '読み上げ OFF'
-      : '読み上げ ON（' + whoLabel() + ' / ブラウザ内蔵音声）', true);
+      : '読み上げ ON（' + whoLabel() + ' / ' + ttsModeLabel(CFG.ttsMode) + '）', true);
 };
 
 /* 座席セレクタ */
@@ -3345,7 +3475,13 @@ function simple(id, key, prop, isCheck){
     store.set(key, isCheck ? (v?'1':'0') : v);
     if (prop==='flipTop'||prop==='swap'||prop==='nameA'||prop==='nameB') layout();
     if (prop==='showSrc') S.entries.forEach(render);
-    if (prop==='ttsMode') refreshTtsBtn();
+    if (prop==='ttsMode'){ refreshTtsBtn(); refreshVvUI(); ttsLastMode = (v==='off') ? ttsLastMode : v; }
+    if (prop==='vvSpeaker') refreshVvUI();
+    if (prop==='ttsSrc'){
+      dlog('tts','src-mode',{ on:!!v, mode:CFG.ttsMode, who:CFG.ttsWho });
+      if (v) toast('原文をそのまま読み上げます（' + whoLabel() + ' / ' + ttsModeLabel(CFG.ttsMode) + '）。'
+               + '<br>翻訳は会話ログに表示だけされます。', true);
+    }
   };
 }
 simple('tone','di.tone','tone');
@@ -3362,6 +3498,9 @@ simple('showSrc','di.src','showSrc',true);
 simple('swapSides','di.swap','swap',true);
 simple('interimOn','di.itm','interimOn',true);
 simple('syncScroll','di.sync','syncScroll',true);
+simple('vvSpeaker','di.vvsp','vvSpeaker');
+simple('ttsSrc','di.ttssrc','ttsSrc',true);
+$('vvKey').oninput = function(){ KEYS['voicevox'] = this.value.trim(); saveKeys(); };
 simple('nameA','di.na','nameA');
 simple('nameB','di.nb','nameB');
 $('vad').oninput = function(){ CFG.vad = parseInt(this.value,10); store.set('di.vad', this.value); };
@@ -3423,7 +3562,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.11');
+  out.push('- バージョン: Duo Interpreter v1.13');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
