@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.18 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.19 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -380,7 +380,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.18</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.19</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -390,7 +390,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.18</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.19</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -2086,6 +2086,7 @@ function silentWavUrl(ms){
 }
 function primeOutput(){
   if (CFG.ttsMode === 'off') return;
+  if (waMode) return;          /* 開きっぱなしの経路が動いていれば呼び水は不要 */
   try{
     if (!primeEl){ primeEl = new Audio(silentWavUrl(400)); primeEl.loop = true; }
     if (OUT_SUPPORTED && CFG.outDev && primeEl.sinkId !== CFG.outDev){
@@ -2165,39 +2166,116 @@ function padAudioBlob(blob, ms){
     });
 }
 
+/* ---------------- ずっと開いたままの再生経路（頭切れの本命対策） ----------------
+   <audio> は発話ごとに音声ストリームを開き直す。無線ヘッドホンだと、その開き直しに
+   数百ms〜1秒かかり、その間の音が失われる。先頭に無音を足しても直らなかったのは、
+   「無音を含めた音声全体」の頭が飲まれるのではなく、ストリームを開く動作そのもので
+   欠けているため。
+   そこで Web Audio で出力を1本だけ開きっぱなしにして、そこへ各発話を流し込む。
+   無音を鳴らし続ける番人（keeper）を常時つないでおくので、ストリームは閉じない。 */
+var ttsCtx = null, ttsGain = null, ttsKeeper = null, waMode = false;
+function ttsAudioCtx(){
+  var AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  if (!ttsCtx){
+    try { ttsCtx = new AC(); } catch(e){ dlog('tts','wa-noctx',{ err:String(e.message||e).slice(0,80) }); return null; }
+    ttsGain = ttsCtx.createGain();
+    ttsGain.gain.value = 1;
+    ttsGain.connect(ttsCtx.destination);
+    /* 無音を流し続ける番人。出力の流れが途切れないので、機器が寝ない・開き直さない */
+    try {
+      var keepBuf = ttsCtx.createBuffer(1, Math.max(1, Math.round(ttsCtx.sampleRate)), ttsCtx.sampleRate);
+      ttsKeeper = ttsCtx.createBufferSource();
+      ttsKeeper.buffer = keepBuf; ttsKeeper.loop = true;
+      var kg = ttsCtx.createGain(); kg.gain.value = 0;
+      ttsKeeper.connect(kg); kg.connect(ttsCtx.destination);
+      ttsKeeper.start(0);
+    } catch(e){}
+    dlog('tts','wa-init',{ rate: ttsCtx.sampleRate, state: ttsCtx.state });
+  }
+  if (ttsCtx.state === 'suspended'){
+    try { ttsCtx.resume().then(function(){ dlog('tts','wa-resume',{ state: ttsCtx.state }); }, function(){}); } catch(e){}
+  }
+  return ttsCtx;
+}
+/* 出力先を指定しているときは、こちらの経路にも同じ機器を割り当てる */
+function ensureCtxSink(ctx){
+  if (!CFG.outDev || !ctx.setSinkId) return;
+  try { if (ctx.sinkId !== CFG.outDev) ctx.setSinkId(CFG.outDev); } catch(e){}
+}
+
 function playBlob(blob, finish, tag){
-  padAudioBlob(blob, ttsPadMs()).then(function(b){
-    ttsQueue.push({ blob:b, finish:finish, tag:tag||'', at:Date.now() });
-    pumpTtsQueue();
-  });
+  ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:Date.now() });
+  pumpTtsQueue();
 }
 function clearTtsQueue(){
   while (ttsQueue.length){ var j = ttsQueue.shift(); try{ j.finish(); }catch(e){} }
 }
 function pumpTtsQueue(){
   if (ttsPlayingNow || !ttsQueue.length) return;
-  var job = ttsQueue.shift(), done = false, t0 = Date.now();
+  var job = ttsQueue.shift(), done = false;
   ttsPlayingNow = true;
   var end = function(){
     if (done) return; done = true;
     ttsPlayingNow = false;
-    audioEl.onplaying = null;
     try{ job.finish(); }catch(e){}
     pumpTtsQueue();
   };
-  ensureSink();
-  primeOutput();                       /* 念のため再生直前にも起こしておく */
-  if (ttsLastUrl){ try{ URL.revokeObjectURL(ttsLastUrl); }catch(e){} }
-  ttsLastUrl = URL.createObjectURL(job.blob);
-  audioEl.onended = end;
-  audioEl.onerror = end;
-  audioEl.onplaying = function(){
-    dlog('tts','play-start',{ src: job.tag, waitMs: Date.now()-t0,
-      queuedMs: t0 - job.at, dur: Math.round((audioEl.duration || 0) * 1000) });
-  };
-  audioEl.src = ttsLastUrl;
-  var pr = audioEl.play();
-  if (pr && pr.catch) pr.catch(function(){ end(); });
+  playJob(job, end);
+}
+/* まず開きっぱなしの経路で試し、使えないときだけ従来の <audio> に落とす */
+function playJob(job, end){
+  var ctx = ttsAudioCtx();
+  if (!ctx || !job.blob.arrayBuffer){ playViaAudioEl(job, end); return; }
+  /* 出力先を指定しているのにこの経路が対応していなければ、
+     指定が無視されて既定のスピーカーから鳴ってしまう。従来の経路に回す */
+  if (CFG.outDev && !ctx.setSinkId){ playViaAudioEl(job, end); return; }
+  var t0 = Date.now();
+  job.blob.arrayBuffer()
+    .then(function(buf){
+      return new Promise(function(res, rej){
+        var p = ctx.decodeAudioData(buf, res, rej);
+        if (p && p.catch) p.catch(function(){});
+      });
+    })
+    .then(function(ab){
+      ensureCtxSink(ctx);
+      var srcNode = ctx.createBufferSource();
+      srcNode.buffer = ab;
+      srcNode.connect(ttsGain);
+      /* 少しだけ先の時刻に鳴らす。設定の「鳴り始めの無音」はここで効かせる
+         （音声を作り直す必要がないので、その分の処理も要らなくなる） */
+      var lead = Math.max(0.06, ttsPadMs() / 1000);
+      srcNode.onended = function(){ end(); };
+      srcNode.start(ctx.currentTime + lead);
+      waMode = true;
+      dlog('tts','wa-play',{ src: job.tag, leadMs: Math.round(lead*1000), queuedMs: t0 - job.at,
+        decodeMs: Date.now()-t0, dur: Math.round(ab.duration*1000), state: ctx.state, rate: ab.sampleRate });
+      /* onended が来ない機種の保険 */
+      setTimeout(function(){ end(); }, (lead + ab.duration) * 1000 + 1500);
+    })
+    .catch(function(err){
+      dlog('tts','wa-FAIL',{ err:String((err&&err.message)||err).slice(0,90) });
+      playViaAudioEl(job, end);
+    });
+}
+function playViaAudioEl(job, end){
+  var t0 = Date.now();
+  padAudioBlob(job.blob, ttsPadMs()).then(function(b){
+    ensureSink();
+    primeOutput();
+    if (ttsLastUrl){ try{ URL.revokeObjectURL(ttsLastUrl); }catch(e){} }
+    ttsLastUrl = URL.createObjectURL(b);
+    audioEl.onended = end;
+    audioEl.onerror = end;
+    audioEl.onplaying = function(){
+      dlog('tts','play-start',{ src: job.tag, waitMs: Date.now()-t0,
+        queuedMs: t0 - job.at, dur: Math.round((audioEl.duration || 0) * 1000) });
+    };
+    audioEl.src = ttsLastUrl;
+    var pr = audioEl.play();
+    if (pr && pr.catch) pr.catch(function(){ end(); });
+  });
 }
 function ttsGuard(text, ms){
   var done = false, tEnd = null;
@@ -2522,7 +2600,8 @@ function speak(e){
     return;
   }
   ttsSkipStreak = 0;
-  primeOutput();          // 合成を待つ間に出力デバイスを起こしておく（頭切れ対策）
+  ttsAudioCtx();          // 出力経路を先に開いておく（頭切れ対策）
+  primeOutput();          // Web Audio が使えない環境向けの保険
   // 溜まりすぎた場合は、再生中のものを止めるのではなく新しい方を見送る
   if (ttsActive >= 3){
     dlog('tts','skip',{ why:'読み上げが溜まっているため見送り', queued: ttsActive });
@@ -3454,7 +3533,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.18</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.19</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -4200,7 +4279,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.18');
+  out.push('- バージョン: Duo Interpreter v1.19');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
@@ -4224,6 +4303,8 @@ function diagText(devices){
    ['読み上げ', CFG.ttsMode], ['読み上げモデル', CFG.ttsModel], ['読み上げ対象', CFG.ttsWho],
    ['原文読み上げ', CFG.ttsSrc ? 'ON' : 'OFF'],
    ['鳴り始めの無音', CFG.ttsPad + ' ms'],
+   ['再生経路', waMode ? 'Web Audio（開きっぱなし）' : '<audio>'],
+   ['再生経路の状態', ttsCtx ? (ttsCtx.state + ' / ' + ttsCtx.sampleRate + 'Hz') : '(未使用)'],
    ['読み上げの設定不足', ttsSetupMissing() || 'なし'],
    ['ローカルエンジンURL', CFG.ttsMode === 'localvv' ? CFG.lvvBase : '(未使用)'],
    ['読み上げの出力先', OUT_SUPPORTED ? (CFG.outDevLbl || (CFG.outDev ? '(名称不明)' : '既定')) : '(このブラウザは非対応)'],
