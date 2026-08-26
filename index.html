@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.14 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.15 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -370,7 +370,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.14</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.15</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -380,7 +380,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.14</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.15</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -620,6 +620,15 @@
       自分の声をずんだもんにするなら、読み上げ＝<b>VOICEVOX</b>／読み上げ対象＝<b>自分(A)の発言だけ</b>／原文読み上げ＝<b>ON</b> の組み合わせです。
       （会話ログの翻訳表示はこれまで通り出ます。リアルタイム同時通訳モードは音声がAPI側から返るため対象外です。）</small>
       <div class="note" id="ttsPlan"></div>
+    </div>
+
+    <div class="field" id="outField">
+      <label>読み上げの出力先デバイス</label>
+      <div class="row">
+        <select id="outDev" style="flex:1"></select>
+        <button class="btn ghost" id="outRefresh" title="出力デバイスの一覧を取り直す">🔄 更新</button>
+      </div>
+      <small id="outNote"></small>
     </div>
 
     <div class="field" id="vvField" style="display:none">
@@ -880,6 +889,8 @@ function loadCfg(){
     syncScroll:pref('di.sync','syncScroll','1')+'' === '1',
     vvSpeaker: pref('di.vvsp','vvSpeaker','3'),
     ttsSrc:    pref('di.ttssrc','ttsSrc','0')+'' === '1',
+    outDev:    store.get('di.outdev',''),      /* 端末ごとの値なのでHTMLには焼き込まない */
+    outDevLbl: store.get('di.outdevl',''),
     remember:  store.get('di.remember','1') === '1',
     glossary:  []
   };
@@ -1801,10 +1812,99 @@ function apiSpeak(text, seat){
                            instructions:'Speak clearly and naturally, at a business meeting pace.' })
   }).then(function(r){ if(!r.ok) throw new Error('TTS '+r.status); return r.blob(); })
     .then(function(b){
+      ensureSink();
       audioEl.src = URL.createObjectURL(b);
       audioEl.onended = audioEl.onerror = finish;
       return audioEl.play();
     }).catch(function(){ finish(); });
+}
+
+/* ---------------- 読み上げの出力先デバイス ----------------
+   ブラウザには「仮想マイクを作る」APIが無いので、こちらから出せるのは出力先まで。
+   仮想オーディオケーブル（VB-CABLE / BlackHole 等）を出力先に選べば、
+   読み上げをZoom等のマイク入力として流せる。
+   注意：speechSynthesis（ブラウザ内蔵音声）は経路を変えられない仕様なので、
+   ここで効くのは <audio> で鳴らす OpenAI音声 と VOICEVOX だけ。 */
+var OUT_SUPPORTED = (typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype);
+var outDevs = [];
+
+function outNoteText(){
+  if (!OUT_SUPPORTED)
+    return 'このブラウザは出力先の指定に対応していません（Chrome / Edge のデスクトップ版でご利用ください）。';
+  var t = '<b>OpenAI音声</b>と<b>VOICEVOX</b>の読み上げに適用されます。'
+        + 'ブラウザ内蔵音声は仕様上、既定のスピーカーからしか鳴らせません。<br>'
+        + '仮想オーディオケーブル（Windows: VB-CABLE / VoiceMeeter、macOS: BlackHole / Loopback）を選ぶと、'
+        + '読み上げを Zoom や Teams のマイク入力として流せます。'
+        + 'ただしその場合、<b>自分の生声は相手に届きません</b>（両方流すにはミキサー側での合成が必要です）。';
+  if (outDevs.length && !outDevs.some(function(d){ return !!d.label; }))
+    t += '<br>デバイス名が出ないときは、一度「● 開始」でマイクを許可してから 🔄 更新 を押してください。';
+  return t;
+}
+function renderOutDevs(){
+  var sel = $('outDev'); if (!sel) return;
+  sel.disabled = !OUT_SUPPORTED;
+  sel.innerHTML = '';
+  var o0 = document.createElement('option');
+  o0.value = ''; o0.textContent = '既定のスピーカー（変更しない）';
+  sel.appendChild(o0);
+  outDevs.forEach(function(d, i){
+    var o = document.createElement('option');
+    o.value = d.deviceId;
+    o.textContent = d.label || ('出力デバイス ' + (i + 1) + '（名称は未取得）');
+    sel.appendChild(o);
+  });
+  /* 保存しておいたIDは環境が変わると無効になるので、名前が一致するものに付け替える */
+  var id = CFG.outDev || '';
+  if (id && !outDevs.some(function(d){ return d.deviceId === id; })){
+    var byLabel = CFG.outDevLbl && outDevs.filter(function(d){ return d.label === CFG.outDevLbl; })[0];
+    if (byLabel){ id = byLabel.deviceId; CFG.outDev = id; store.set('di.outdev', id); }
+    else if (outDevs.length){ id = ''; }        /* 一覧は取れたが見つからない＝そのデバイスは無い */
+  }
+  sel.value = id;
+  var n = $('outNote'); if (n) n.innerHTML = outNoteText();
+}
+function loadOutDevs(){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices){ renderOutDevs(); return Promise.resolve([]); }
+  return navigator.mediaDevices.enumerateDevices().then(function(ds){
+    outDevs = ds.filter(function(d){ return d.kind === 'audiooutput'; });
+    renderOutDevs();
+    dlog('audio','out-devices',{ n: outDevs.length,
+      labeled: outDevs.filter(function(d){ return !!d.label; }).length });
+    return outDevs;
+  }).catch(function(err){
+    dlog('audio','out-devices-FAIL',{ err:String((err&&err.message)||err).slice(0,120) });
+    renderOutDevs();
+    return [];
+  });
+}
+function applySink(announce){
+  if (!OUT_SUPPORTED) return Promise.resolve(false);
+  var id = CFG.outDev || '', p;
+  try { p = audioEl.setSinkId(id); } catch(err){ p = Promise.reject(err); }
+  if (!p || !p.then) p = Promise.resolve();
+  return p.then(function(){
+    dlog('audio','sink-ok',{ dev: CFG.outDevLbl || '(既定)' });
+    if (announce){
+      toast('読み上げの出力先を「' + (CFG.outDevLbl || '既定のスピーカー') + '」にしました。'
+          + (CFG.ttsMode === 'browser' ? '<br>※ ブラウザ内蔵音声はこの設定の対象外です。' : ''), true);
+    }
+    return true;
+  }).catch(function(err){
+    var m = String((err && err.message) || err);
+    dlog('audio','sink-FAIL',{ err:m.slice(0,140) });
+    CFG.outDev = ''; CFG.outDevLbl = '';
+    store.set('di.outdev',''); store.set('di.outdevl','');
+    renderOutDevs(); refreshVvUI();
+    toast('その出力先には切り替えられませんでした。既定のスピーカーに戻します。<br><small>' + m.slice(0,90) + '</small>');
+    return false;
+  });
+}
+/* 再生の直前に、指定した出力先が外れていないか確かめる（デバイスの抜き差し対策） */
+function ensureSink(){
+  if (!OUT_SUPPORTED || !CFG.outDev) return;
+  if (audioEl.sinkId === CFG.outDev) return;
+  dlog('audio','sink-reapply',{ now: String(audioEl.sinkId||'').slice(0,8), want: CFG.outDev.slice(0,8) });
+  try { audioEl.setSinkId(CFG.outDev); } catch(e){}
 }
 
 /* ---------------- VOICEVOX WEB版（お遊び機能） ----------------
@@ -1863,6 +1963,7 @@ function vvSpeak(text, lang){
     dlog('tts','vv-TIMEOUT',{ ms: Date.now()-t0 });
     finish();
   }, Math.min(90000, 10000 + text.length * 200));
+  ensureSink();
   audioEl.src = vvUrl(text);
   audioEl.onended = function(){
     dlog('tts','vv-end',{ speaker: CFG.vvSpeaker, chars: text.length, ms: Date.now()-t0 });
@@ -1895,6 +1996,13 @@ function ttsPlanText(){
   var t = 'いまの設定：' + rows.map(function(r){
             return r.who + 'の発言の' + what + '（' + L(r.lang).name + '）';
           }).join(' と ') + ' を <b>' + ttsModeLabel(CFG.ttsMode) + '</b> で読み上げます。';
+  if (CFG.outDev && CFG.ttsMode === 'browser'){
+    t += '<br>⚠ 出力先に「' + (CFG.outDevLbl || '別のデバイス') + '」を指定していますが、'
+       + 'ブラウザ内蔵音声は出力先を変えられません。既定のスピーカーから鳴ります。';
+    warn = true;
+  } else if (CFG.outDev){
+    t += '<br>出力先：<b>' + (CFG.outDevLbl || '指定したデバイス') + '</b>';
+  }
   if (CFG.ttsMode === 'voicevox'){
     if (!vvKey()){
       t += '<br><b>⚠ VOICEVOXのAPIキーが未設定です。</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。'
@@ -2907,7 +3015,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.14</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.15</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -3543,6 +3651,23 @@ $('vvKey').oninput = function(){
   vvWarned = false;          // キーを入れ直したら、失敗時の案内をもう一度出せるようにする
   refreshVvUI();
 };
+$('outDev').onchange = function(){
+  var sel = this;
+  CFG.outDev = sel.value;
+  CFG.outDevLbl = sel.value ? (sel.options[sel.selectedIndex].textContent || '') : '';
+  store.set('di.outdev', CFG.outDev); store.set('di.outdevl', CFG.outDevLbl);
+  applySink(true).then(refreshVvUI);
+};
+$('outRefresh').onclick = function(){
+  loadOutDevs().then(function(ds){
+    if (ds.length) toast('出力デバイスを ' + ds.length + ' 件見つけました。', true);
+    else toast('出力デバイスを取得できませんでした。ブラウザの対応状況をご確認ください。');
+  });
+};
+loadOutDevs().then(function(){ if (CFG.outDev) applySink(false); });
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener){
+  navigator.mediaDevices.addEventListener('devicechange', function(){ loadOutDevs(); });
+}
 simple('nameA','di.na','nameA');
 simple('nameB','di.nb','nameB');
 $('vad').oninput = function(){ CFG.vad = parseInt(this.value,10); store.set('di.vad', this.value); };
@@ -3604,7 +3729,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.14');
+  out.push('- バージョン: Duo Interpreter v1.15');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
@@ -3626,6 +3751,8 @@ function diagText(devices){
   [['翻訳プロバイダ', CFG.provider], ['翻訳モデル', CFG.model],
    ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel],
    ['読み上げ', CFG.ttsMode], ['読み上げモデル', CFG.ttsModel], ['読み上げ対象', CFG.ttsWho],
+   ['原文読み上げ', CFG.ttsSrc ? 'ON' : 'OFF'],
+   ['読み上げの出力先', OUT_SUPPORTED ? (CFG.outDevLbl || (CFG.outDev ? '(名称不明)' : '既定')) : '(このブラウザは非対応)'],
    ['言語A / B', CFG.langA + ' / ' + CFG.langB],
    ['入力元A / B', CFG.srcA + ' / ' + CFG.srcB],
    ['言語切替', S.autoMode ? 'AUTO' : '手動'], ['認識中の席', S.listenSeat],
