@@ -232,6 +232,16 @@
   .field{display:flex;flex-direction:column;gap:6px}
   .field > label{font-size:11.5px;color:var(--dim);font-weight:800;letter-spacing:.05em}
   .field small{font-size:11px;color:var(--dim);line-height:1.65}
+  /* 長い説明は既定でたたむ。小さなボタンで開閉する */
+  .notetog{
+    align-self:flex-start;border:1px solid var(--line);background:transparent;color:var(--dim);
+    border-radius:999px;padding:2px 10px;font-size:10.5px;font-weight:700;line-height:1.7;
+    font-family:inherit;cursor:pointer;white-space:nowrap;
+    -webkit-user-select:none;user-select:none;
+  }
+  .notetog:hover{color:var(--txt);background:#26303f}
+  .notetog.warn{color:var(--warn);border-color:var(--warn)}
+  .field small.folded,.field .note.folded{display:none}
   input[type=text],input[type=password],select,textarea{
     background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:9px;
     padding:9px 11px;font-size:13.5px;font-family:inherit;width:100%;
@@ -623,7 +633,7 @@
     </div>
 
     <div class="field" id="outField">
-      <label>読み上げの出力先デバイス</label>
+      <label>読み上げの出力先デバイス（会議のマイクに流す）</label>
       <div class="row">
         <select id="outDev" style="flex:1"></select>
         <button class="btn ghost" id="outRefresh" title="出力デバイスの一覧を取り直す">🔄 更新</button>
@@ -1819,6 +1829,81 @@ function apiSpeak(text, seat){
     }).catch(function(){ finish(); });
 }
 
+/* ---------------- 設定画面の長い説明のたたみ込み ----------------
+   説明を厚くしたぶん設定欄が縦に伸びて、肝心の設定項目が探しにくくなった。
+   一定の長さを超える <small> は既定でたたみ、小さなボタンで開けるようにする。
+   注意書き（.note / .warnbox）と「いまの設定」は常に見えたままにする。 */
+var NOTE_FOLD_MIN = 70;      /* この文字数を超える説明だけたたむ */
+
+function hasClass(el, c){ return !!el && (' ' + (el.className||'') + ' ').indexOf(' ' + c + ' ') >= 0; }
+function setFolded(el, on){
+  el.className = (el.className || '').replace(/\s*\bfolded\b/g, '') + (on ? ' folded' : '');
+}
+function noteTargets(btn){ return btn.__targets || []; }
+function markNoteToggles(){
+  var btns = document.querySelectorAll('#drawer .notetog');
+  for (var i=0;i<btns.length;i++){
+    var btn = btns[i], t = noteTargets(btn);
+    if (!t.length) continue;
+    var open = !hasClass(t[0], 'folded'), warn = false;
+    for (var j=0;j<t.length;j++) if (/⚠/.test(t[j].textContent || '')) warn = true;
+    /* たたんだ中に注意書きが隠れている場合は、ボタン側で気づけるようにする */
+    var title = btn.getAttribute('data-title') || '説明';
+    btn.className = 'notetog' + ((warn && !open) ? ' warn' : '');
+    btn.textContent = (warn && !open ? '⚠ ' : '') + title + (open ? 'を閉じる ▲' : 'を開く ▼');
+  }
+}
+/* 対象をまとめて1つのボタンで開閉する。説明が連続しているときにボタンが並ばないようにするため。 */
+function attachToggle(targets, title){
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'notetog';
+  btn.setAttribute('data-title', title);
+  btn.__targets = targets;
+  for (var i=0;i<targets.length;i++){
+    targets[i].setAttribute('data-fold','1');
+    setFolded(targets[i], true);
+  }
+  btn.onclick = function(){
+    var open = !hasClass(targets[0], 'folded');
+    for (var k=0;k<targets.length;k++) setFolded(targets[k], open);
+    markNoteToggles();
+  };
+  targets[0].parentNode.insertBefore(btn, targets[0]);
+}
+function foldableNote(el){
+  if (!el || el.nodeType !== 1) return false;
+  if (el.getAttribute('data-fold')) return false;
+  if (el.id === 'ttsPlan' || el.id === 'vvCredit') return false;   // 状況表示と規約表記は常に見せる
+  if (hasClass(el, 'warnbox')) return false;                       // 注意喚起も常に見せる
+  return hasClass(el, 'note');
+}
+function foldLongNotes(){
+  /* 単独の <small> */
+  var list = document.querySelectorAll('#drawer .field small');
+  for (var i=0;i<list.length;i++){
+    var el = list[i];
+    if (el.getAttribute('data-fold')) continue;
+    if ((el.textContent || '').trim().length < NOTE_FOLD_MIN) continue;
+    attachToggle([el], '説明');
+  }
+  /* 続けて置かれている .note はまとめて1つのボタンにする */
+  var fields = document.querySelectorAll('#drawer .field');
+  for (var f=0; f<fields.length; f++){
+    var kids = fields[f].children, run = [], chars = 0;
+    for (var k=0; k<=kids.length; k++){
+      var el2 = kids[k];
+      if (foldableNote(el2)){
+        run.push(el2); chars += (el2.textContent || '').trim().length;
+      } else {
+        if (run.length && chars >= NOTE_FOLD_MIN) attachToggle(run, '使い方');
+        run = []; chars = 0;
+      }
+    }
+  }
+  markNoteToggles();
+}
+
 /* ---------------- 読み上げの出力先デバイス ----------------
    ブラウザには「仮想マイクを作る」APIが無いので、こちらから出せるのは出力先まで。
    仮想オーディオケーブル（VB-CABLE / BlackHole 等）を出力先に選べば、
@@ -1828,16 +1913,41 @@ function apiSpeak(text, seat){
 var OUT_SUPPORTED = (typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype);
 var outDevs = [];
 
+/* ブラウザから見えるのは「スピーカー（出力先）」だけで、マイクを作ることはできない。
+   会議に流すには、OS側の仮想オーディオケーブルを出力先に選び、
+   会議アプリ側でそのケーブルをマイクとして選ぶ、という2段構えになる。
+   一覧にケーブルが出ていない＝未インストール、なのでそこを案内する。 */
+function isVirtualDev(label){
+  return /cable|blackhole|voicemeeter|virtual|loopback|soundflower|vb-audio|vb-cable/i.test(String(label||''));
+}
 function outNoteText(){
   if (!OUT_SUPPORTED)
     return 'このブラウザは出力先の指定に対応していません（Chrome / Edge のデスクトップ版でご利用ください）。';
+  var labeled  = outDevs.some(function(d){ return !!d.label; });
+  var hasCable = outDevs.some(function(d){ return isVirtualDev(d.label); });
   var t = '<b>OpenAI音声</b>と<b>VOICEVOX</b>の読み上げに適用されます。'
-        + 'ブラウザ内蔵音声は仕様上、既定のスピーカーからしか鳴らせません。<br>'
-        + '仮想オーディオケーブル（Windows: VB-CABLE / VoiceMeeter、macOS: BlackHole / Loopback）を選ぶと、'
-        + '読み上げを Zoom や Teams のマイク入力として流せます。'
-        + 'ただしその場合、<b>自分の生声は相手に届きません</b>（両方流すにはミキサー側での合成が必要です）。';
-  if (outDevs.length && !outDevs.some(function(d){ return !!d.label; }))
-    t += '<br>デバイス名が出ないときは、一度「● 開始」でマイクを許可してから 🔄 更新 を押してください。';
+        + 'ブラウザ内蔵音声は仕様上、既定のスピーカーからしか鳴らせません。';
+  if (!labeled && outDevs.length){
+    t += '<br>デバイス名が出ていません。一度「● 開始」でマイクを許可してから 🔄 更新 を押してください。';
+    return t;
+  }
+  if (hasCable){
+    t += '<br>🎚 が付いているものが仮想オーディオケーブルです。これを選ぶと、読み上げが'
+       + '<b>スピーカーからは鳴らずに</b>ケーブルへ流れます（自分のマイクが拾わないので、ハウリングしません）。'
+       + '<br>会議アプリ側では、マイクとして<b>ケーブルの出口側</b>'
+       + '（VB-CABLEなら「CABLE Output」、BlackHoleなら同名のデバイス）を選んでください。';
+  } else {
+    t += '<br><b>⚠ このブラウザからは「スピーカー」しか指定できません。</b>'
+       + '読み上げを会議のマイクとして流すには、OS側に<b>仮想オーディオケーブル</b>を入れる必要があります。'
+       + 'インストールすると、この一覧に出力先として出てきます。'
+       + '<br>Windows：<a href="https://vb-audio.com/Cable/" target="_blank" rel="noopener noreferrer">VB-CABLE</a>（無料）'
+       + ' / <a href="https://vb-audio.com/Voicemeeter/" target="_blank" rel="noopener noreferrer">VoiceMeeter</a>（無料・生声と合成できる）'
+       + '<br>macOS：<a href="https://existential.audio/blackhole/" target="_blank" rel="noopener noreferrer">BlackHole</a>（無料）'
+       + ' / <a href="https://rogueamoeba.com/loopback/" target="_blank" rel="noopener noreferrer">Loopback</a>（有料・合成できる）';
+  }
+  t += '<br><small>※ ケーブルをマイクにすると<b>自分の生声は相手に届きません</b>。'
+     + '両方流すには VoiceMeeter / Loopback で合成してください。'
+     + 'また、読み上げが自分の耳にも聞こえなくなります。</small>';
   return t;
 }
 function renderOutDevs(){
@@ -1850,7 +1960,8 @@ function renderOutDevs(){
   outDevs.forEach(function(d, i){
     var o = document.createElement('option');
     o.value = d.deviceId;
-    o.textContent = d.label || ('出力デバイス ' + (i + 1) + '（名称は未取得）');
+    var lbl = d.label || ('出力デバイス ' + (i + 1) + '（名称は未取得）');
+    o.textContent = (isVirtualDev(d.label) ? '🎚 ' : '') + lbl;   /* 仮想ケーブルはすぐ見つかるよう印を付ける */
     sel.appendChild(o);
   });
   /* 保存しておいたIDは環境が変わると無効になるので、名前が一致するものに付け替える */
@@ -1862,6 +1973,7 @@ function renderOutDevs(){
   }
   sel.value = id;
   var n = $('outNote'); if (n) n.innerHTML = outNoteText();
+  foldLongNotes();
 }
 function loadOutDevs(){
   if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices){ renderOutDevs(); return Promise.resolve([]); }
@@ -2041,6 +2153,7 @@ function refreshVvUI(){
     p.innerHTML = plan.html;
     p.classList.toggle('warnbox', plan.warn);
   }
+  markNoteToggles();
 }
 
 /* 読み上げ対象の設定で弾かれ続けると「壊れている」ように見えるので、
@@ -3079,7 +3192,11 @@ function genMinutes(){
 /* =========================================================================
    UI 配線
    ========================================================================= */
-function openDrawer(o){ $('drawer').classList.toggle('open',o); $('scrim').classList.toggle('on',o); }
+function openDrawer(o){
+  $('drawer').classList.toggle('open',o); $('scrim').classList.toggle('on',o);
+  /* 説明文は後から差し込まれるものがあるので、開くたびにたたみ込みを掛け直す */
+  if (o) foldLongNotes();
+}
 
 function fillSelect(el, items, val){
   el.innerHTML = '';
@@ -3652,9 +3769,12 @@ $('vvKey').oninput = function(){
   refreshVvUI();
 };
 $('outDev').onchange = function(){
-  var sel = this;
-  CFG.outDev = sel.value;
-  CFG.outDevLbl = sel.value ? (sel.options[sel.selectedIndex].textContent || '') : '';
+  var sel = this, id = sel.value;
+  /* 表示名には🎚などの目印を付けているので、保存には元のラベルを使う
+     （次回起動時にIDが変わっていても、名前で同じデバイスを探せるようにするため） */
+  var dev = outDevs.filter(function(d){ return d.deviceId === id; })[0];
+  CFG.outDev = id;
+  CFG.outDevLbl = id ? ((dev && dev.label) || sel.options[sel.selectedIndex].textContent || '') : '';
   store.set('di.outdev', CFG.outDev); store.set('di.outdevl', CFG.outDevLbl);
   applySink(true).then(refreshVvUI);
 };
@@ -3665,6 +3785,7 @@ $('outRefresh').onclick = function(){
   });
 };
 loadOutDevs().then(function(){ if (CFG.outDev) applySink(false); });
+foldLongNotes();
 if (navigator.mediaDevices && navigator.mediaDevices.addEventListener){
   navigator.mediaDevices.addEventListener('devicechange', function(){ loadOutDevs(); });
 }
