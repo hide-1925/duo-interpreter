@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.17 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.18 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -380,7 +380,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.17</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.18</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -390,7 +390,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.17</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.18</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -627,6 +627,16 @@
       <select id="ttsModel"></select>
       <input type="text" id="ttsModelCustom" placeholder="モデル名を直接入力" style="display:none">
       <label class="switch"><input type="checkbox" id="ttsSrc"> 訳文ではなく<b>原文</b>をそのまま読み上げる</label>
+      <div class="row">
+        <span style="font-size:11.5px;color:var(--dim);width:104px;flex:0 0 auto">鳴り始めの無音</span>
+        <select id="ttsPad" style="flex:1">
+          <option value="0">なし</option>
+          <option value="150">0.15秒</option>
+          <option value="300">0.3秒（推奨）</option>
+          <option value="500">0.5秒</option>
+          <option value="800">0.8秒</option>
+        </select>
+      </div>
       <small>読み上げ中はマイク認識を自動で停止し、ハウリングを防ぎます。<br>
       「原文をそのまま読み上げる」は翻訳を待たずに発話するので、<b>ボイスチェンジャーのように</b>使えます。
       自分の声をずんだもんにするなら、読み上げ＝<b>VOICEVOX</b>／読み上げ対象＝<b>自分(A)の発言だけ</b>／原文読み上げ＝<b>ON</b> の組み合わせです。
@@ -929,6 +939,7 @@ function loadCfg(){
     lvvSpeaker:pref('di.lvs','lvvSpeaker',''),
     lvvSpeakerLbl:pref('di.lvsl','lvvSpeakerLbl',''),
     ttsSrc:    pref('di.ttssrc','ttsSrc','0')+'' === '1',
+    ttsPad:    pref('di.ttspad','ttsPad','300'),
     outDev:    store.get('di.outdev',''),      /* 端末ごとの値なのでHTMLには焼き込まない */
     outDevLbl: store.get('di.outdevl',''),
     remember:  store.get('di.remember','1') === '1',
@@ -2082,7 +2093,10 @@ function primeOutput(){
     }
     if (primeEl.paused){
       var pr = primeEl.play();
-      if (pr && pr.catch) pr.catch(function(){});   /* 自動再生が許可されていない場合は諦める */
+      if (pr && pr.then){
+        pr.then(function(){ dlog('audio','prime-on', null); })
+          .catch(function(err){ dlog('audio','prime-BLOCKED',{ err:String((err&&err.message)||err).slice(0,80) }); });
+      }
     }
     clearTimeout(primeTimer);
     /* 会話が続くうちは起こしたままにし、しばらく使わなければ止める */
@@ -2094,9 +2108,68 @@ function primeOutput(){
    <audio> は1つしかないので、前の再生中に次のsrcを入れると前が途中で切れる。
    順番待ちの列にして、必ず最後まで鳴らしてから次に進む。 */
 var ttsQueue = [], ttsPlayingNow = false, ttsLastUrl = '';
+/* 鳴り始めの欠けを確実に潰す ------------------------------------------
+   Bluetooth機器やOSのオーディオ経路は、鳴らし始めの数百msを取りこぼすことがある。
+   呼び水（無音の先出し）だけでは環境によって効かないので、音声データそのものの
+   先頭に無音を足す。欠けるのが無音の部分になるので、原因が何であれ本文は残る。
+   受け取った音声を一度デコードしてから16bitのWAVに組み直している。
+   （mp3のまま送ってもらってデータ量は抑えつつ、先頭だけ加工できる） */
+var padCtx = null;
+function ttsPadMs(){ var n = parseInt(CFG.ttsPad, 10); return isNaN(n) ? 0 : Math.max(0, Math.min(2000, n)); }
+function audioBufferToWav(ab, padSamples){
+  var ch = Math.min(2, ab.numberOfChannels), n = ab.length + padSamples;
+  var bytes = 44 + n * ch * 2, out = new ArrayBuffer(bytes), v = new DataView(out), i, c;
+  function put(o, str){ for (var k=0;k<str.length;k++) v.setUint8(o+k, str.charCodeAt(k)); }
+  put(0,'RIFF'); v.setUint32(4, bytes-8, true); put(8,'WAVEfmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,ch,true);
+  v.setUint32(24, ab.sampleRate, true); v.setUint32(28, ab.sampleRate*ch*2, true);
+  v.setUint16(32, ch*2, true); v.setUint16(34,16,true);
+  put(36,'data'); v.setUint32(40, n*ch*2, true);
+  var data = [];
+  for (c=0;c<ch;c++) data.push(ab.getChannelData(c));
+  var o = 44 + padSamples * ch * 2;          /* 先頭の無音ぶんは 0 のまま飛ばす */
+  for (i=0;i<ab.length;i++){
+    for (c=0;c<ch;c++){
+      var x = data[c][i];
+      if (x > 1) x = 1; else if (x < -1) x = -1;
+      v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7fff, true);
+      o += 2;
+    }
+  }
+  return new Blob([out], { type:'audio/wav' });
+}
+function padAudioBlob(blob, ms){
+  if (!ms) return Promise.resolve(blob);
+  var AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC || !blob.arrayBuffer) return Promise.resolve(blob);
+  try { if (!padCtx) padCtx = new AC(); } catch(e){ return Promise.resolve(blob); }
+  var t0 = Date.now();
+  return blob.arrayBuffer()
+    .then(function(buf){
+      return new Promise(function(res, rej){
+        /* コールバック版と Promise 版の両方で結果が返るブラウザがあり、
+           拾わないと「Uncaught (in promise)」がコンソールに出続けるので黙らせる */
+        var p = padCtx.decodeAudioData(buf, res, rej);
+        if (p && p.catch) p.catch(function(){});
+      });
+    })
+    .then(function(ab){
+      var out = audioBufferToWav(ab, Math.round(ab.sampleRate * ms / 1000));
+      dlog('tts','pad',{ ms:ms, decodeMs:Date.now()-t0, inBytes:blob.size, outBytes:out.size,
+                         dur:Math.round(ab.duration*1000), rate:ab.sampleRate });
+      return out;
+    })
+    .catch(function(err){
+      dlog('tts','pad-skip',{ err:String((err&&err.message)||err).slice(0,90) });
+      return blob;                       /* 加工できなければ元のまま鳴らす */
+    });
+}
+
 function playBlob(blob, finish, tag){
-  ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:Date.now() });
-  pumpTtsQueue();
+  padAudioBlob(blob, ttsPadMs()).then(function(b){
+    ttsQueue.push({ blob:b, finish:finish, tag:tag||'', at:Date.now() });
+    pumpTtsQueue();
+  });
 }
 function clearTtsQueue(){
   while (ttsQueue.length){ var j = ttsQueue.shift(); try{ j.finish(); }catch(e){} }
@@ -3370,7 +3443,7 @@ function exportHtml(){
     nameA: CFG.nameA, nameB: CFG.nameB, fsize: CFG.fsize,
     flipTop: CFG.flipTop?'1':'0', showSrc: CFG.showSrc?'1':'0', swap: CFG.swap?'1':'0', interimOn: CFG.interimOn?'1':'0',
     syncScroll: CFG.syncScroll?'1':'0', vvSpeaker: CFG.vvSpeaker, ttsSrc: CFG.ttsSrc?'1':'0',
-    aivisModel: CFG.aivisModel, lvvBase: CFG.lvvBase,
+    ttsPad: CFG.ttsPad, aivisModel: CFG.aivisModel, lvvBase: CFG.lvvBase,
     lvvSpeaker: CFG.lvvSpeaker, lvvSpeakerLbl: CFG.lvvSpeakerLbl,
     focus: CFG.focus, rtDir: CFG.rtDir, rtBoth: CFG.rtBoth,
     savedAt: new Date().toISOString()
@@ -3381,7 +3454,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.17</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.18</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -3754,6 +3827,7 @@ function applyCfg(){
   $('interimOn').checked = CFG.interimOn;
   $('syncScroll').checked = CFG.syncScroll;
   $('ttsSrc').checked = CFG.ttsSrc;
+  $('ttsPad').value = String(CFG.ttsPad);
   $('remember').checked = CFG.remember;
   $('nameA').value = CFG.nameA;
   $('nameB').value = CFG.nameB;
@@ -4020,6 +4094,7 @@ simple('interimOn','di.itm','interimOn',true);
 simple('syncScroll','di.sync','syncScroll',true);
 simple('vvSpeaker','di.vvsp','vvSpeaker');
 simple('ttsSrc','di.ttssrc','ttsSrc',true);
+simple('ttsPad','di.ttspad','ttsPad');
 $('vvKey').oninput = function(){
   KEYS['voicevox'] = this.value.trim(); saveKeys();
   vvWarned = false;          // キーを入れ直したら、失敗時の案内をもう一度出せるようにする
@@ -4125,7 +4200,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.17');
+  out.push('- バージョン: Duo Interpreter v1.18');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
@@ -4148,6 +4223,7 @@ function diagText(devices){
    ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel],
    ['読み上げ', CFG.ttsMode], ['読み上げモデル', CFG.ttsModel], ['読み上げ対象', CFG.ttsWho],
    ['原文読み上げ', CFG.ttsSrc ? 'ON' : 'OFF'],
+   ['鳴り始めの無音', CFG.ttsPad + ' ms'],
    ['読み上げの設定不足', ttsSetupMissing() || 'なし'],
    ['ローカルエンジンURL', CFG.ttsMode === 'localvv' ? CFG.lvvBase : '(未使用)'],
    ['読み上げの出力先', OUT_SUPPORTED ? (CFG.outDevLbl || (CFG.outDev ? '(名称不明)' : '既定')) : '(このブラウザは非対応)'],
