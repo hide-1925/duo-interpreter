@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.19 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.20 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -41,6 +41,7 @@
   /* ブラウザ側のUI（フォーム部品・スクロールバー・ラバーバンド領域）も暗い側にそろえる */
   :root{color-scheme:dark}
   html{background:var(--bg)}
+  html.ovl{background:transparent}
   html,body{height:100%;margin:0}
   body{
     background:var(--bg);color:var(--txt);overflow:hidden;
@@ -189,6 +190,37 @@
   #txtSend{flex:0 0 auto;font-weight:800}
   #txtSend:disabled{opacity:.5;cursor:default}
   #kbdBtn.on{border-color:var(--a);color:var(--a)}
+  #ovlBtn{font-weight:800}
+  #ovlBtn.on{border-color:var(--a);color:var(--a);background:rgba(61,220,151,.12)}
+
+  /* ---- 字幕オーバーレイ表示 ----
+     背景を透かして、訳文だけを大きく浮かせる。作業画面に重ねて使うための表示。
+     ページ自体は透明にできるが、ブラウザの窓そのものは透明にならない点に注意
+     （OBSのブラウザソースや、ウィンドウ透過ツールと組み合わせて使う）。 */
+  body.ovl{background:transparent}
+  body.ovl #stage{background:transparent;gap:0}
+  body.ovl .side{background:rgba(11,14,20,var(--ovlA,0));border:0}
+  body.ovl .side-head{display:none}
+  body.ovl .feed{padding:10px 16px;gap:6px;justify-content:flex-end}
+  body.ovl .feed::-webkit-scrollbar{width:0}
+  body.ovl .bubble{
+    background:transparent;border-left:0;padding:2px 0;animation:none;
+    /* どんな背景に重ねても読めるよう、文字に黒い縁を付ける */
+    text-shadow:0 0 3px #000,0 2px 6px #000,1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000;
+  }
+  body.ovl .bubble .who{display:none}
+  body.ovl .bubble .main{font-weight:800}
+  body.ovl .bubble .sub{color:#cfd6e4}
+  body.ovl .empty{display:none}
+  /* 直近だけを残す（古い行は隠す） */
+  body.ovl.ln2 .feed .bubble:nth-last-child(n+3),
+  body.ovl.ln3 .feed .bubble:nth-last-child(n+4),
+  body.ovl.ln5 .feed .bubble:nth-last-child(n+6){display:none}
+  /* 操作バーは邪魔なので普段は消し、画面下にマウスを近づけたときだけ出す */
+  body.ovl #bar{opacity:0;transition:opacity .18s}
+  body.ovl #bar:hover,body.ovl #bar:focus-within{opacity:1}
+  body.ovl #txtbar{opacity:.35;transition:opacity .18s}
+  body.ovl #txtbar:hover,body.ovl #txtbar:focus-within{opacity:1}
   @media (max-width:480px){
     #txtbar{width:calc(100vw - 12px);gap:6px;padding:7px 8px;border-radius:14px}
     #txtInput{padding:8px 10px}
@@ -380,7 +412,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.19</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.20</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -390,7 +422,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.19</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.20</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -432,6 +464,7 @@
   </div>
   <button class="cbtn icon" id="ttsToggle" title="読み上げ ON/OFF"><span class="ic">🔊</span></button>
   <button class="cbtn icon" id="kbdBtn" title="キーボードで入力して翻訳">⌨</button>
+  <button class="cbtn icon" id="ovlBtn" title="字幕オーバーレイ表示（背景を透過）">字</button>
   <button class="cbtn icon" id="camBtn" title="カメラで文字を翻訳">📷</button>
   <button class="cbtn icon" id="clearBtn" title="ログ消去">🗑</button>
   <button class="cbtn icon" id="cog" title="設定">⚙</button>
@@ -737,6 +770,28 @@
       <label class="switch"><input type="checkbox" id="showSrc" checked> 原文も小さく併記する</label>
       <label class="switch"><input type="checkbox" id="swapSides"> AとBの表示位置を入れ替える</label>
       <label class="switch"><input type="checkbox" id="interimOn" checked> 認識途中の文字も表示する</label>
+    </div>
+
+    <div class="field">
+      <label>字幕オーバーレイ表示</label>
+      <label class="switch"><input type="checkbox" id="ovlOn"> 背景を透かして字幕だけを表示する</label>
+      <div class="row">
+        <span style="font-size:11.5px;color:var(--dim);width:82px;flex:0 0 auto">背景の濃さ</span>
+        <input type="range" id="ovlA" min="0" max="90" value="0">
+      </div>
+      <select id="ovlLines">
+        <option value="2">直近2件だけ表示</option>
+        <option value="3">直近3件だけ表示</option>
+        <option value="5">直近5件だけ表示</option>
+        <option value="0">すべて表示</option>
+      </select>
+      <small><b>ブラウザの窓そのものは透明になりません。</b>ページの背景を透かすだけなので、
+      そのままでは後ろのデスクトップは見えず、ブラウザの地の色が見えます。実際に作業画面へ重ねるには、次のどちらかと組み合わせてください。<br>
+      <b>① OBSのブラウザソース</b>：背景の濃さを0にすると<b>完全に透過</b>します。配信・録画に字幕を重ねる用途はこれが確実です。<br>
+      <b>② ウィンドウ透過ツール</b>：Windowsなら
+      <a href="https://learn.microsoft.com/ja-jp/windows/powertoys/always-on-top" target="_blank" rel="noopener noreferrer">PowerToys の「常に手前に表示」</a>（Win+Ctrl+T）で最前面に固定し、
+      Glass2k などのウィンドウ半透明化ツールで窓ごと透かします。この場合は文字も一緒に薄くなるので、背景の濃さは0のまま、透過率は70〜85%あたりが読みやすいです。<br>
+      文字には黒い縁取りが付くので、明るい画面に重ねても読めます。操作バーは画面下にマウスを近づけると出てきます。</small>
       <label class="switch"><input type="checkbox" id="syncScroll" checked> A/Bの会話ログのスクロールを連動させる</label>
     </div>
     <div class="field">
@@ -933,6 +988,9 @@ function loadCfg(){
     swap:      pref('di.swap','swap','0')+'' === '1',
     interimOn: pref('di.itm','interimOn','1')+'' === '1',
     syncScroll:pref('di.sync','syncScroll','1')+'' === '1',
+    ovlOn:     pref('di.ovl','ovlOn','0')+'' === '1',
+    ovlA:      pref('di.ovla','ovlA','0'),
+    ovlLines:  pref('di.ovln','ovlLines','3'),
     vvSpeaker: pref('di.vvsp','vvSpeaker','3'),
     aivisModel:pref('di.aim','aivisModel','a59cb814-0083-4369-8542-f51a29e72af7'),  /* 既定はAnneli */
     lvvBase:   pref('di.lvb','lvvBase','http://127.0.0.1:10101'),
@@ -1471,6 +1529,33 @@ function fitSafeBottom(){
   var v = covered ? measureSafeBottom() : 0;
   document.documentElement.style.setProperty('--sab', Math.round(v) + 'px');
   dlog('layout','safe-bottom',{ inner:window.innerHeight, screen:screenH, covered:covered, sab:Math.round(v) });
+}
+
+/* ---------------- 字幕オーバーレイ表示 ----------------
+   背景を透かして訳文だけを浮かせる表示。作業画面に重ねて使うためのもの。
+   ページの背景は透明にできるが、ブラウザの窓自体は透明にならないので、
+   OBSのブラウザソースやウィンドウ透過ツールと組み合わせて使う想定。 */
+function applyOverlay(){
+  var on = !!CFG.ovlOn;
+  document.body.classList.toggle('ovl', on);
+  document.documentElement.classList.toggle('ovl', on);
+  ['ln2','ln3','ln5'].forEach(function(c){ document.body.classList.remove(c); });
+  if (on && CFG.ovlLines !== '0') document.body.classList.add('ln' + CFG.ovlLines);
+  var a = parseInt(CFG.ovlA, 10); if (isNaN(a)) a = 0;
+  document.documentElement.style.setProperty('--ovlA', (a / 100).toFixed(2));
+  var btn = $('ovlBtn'); if (btn) btn.classList.toggle('on', on);
+  var cb = $('ovlOn'); if (cb) cb.checked = on;
+}
+function setOverlay(on){
+  CFG.ovlOn = !!on; store.set('di.ovl', CFG.ovlOn ? '1' : '0');
+  applyOverlay();
+  dlog('view','overlay',{ on: CFG.ovlOn, alpha: CFG.ovlA, lines: CFG.ovlLines });
+  if (CFG.ovlOn){
+    toast('字幕オーバーレイ表示にしました。<br>画面下にマウスを近づけると操作バーが出ます。'
+        + '濃さや行数は ⚙→表示・記録 で変えられます。', true);
+  } else {
+    toast('通常表示に戻しました', true);
+  }
 }
 
 /* ---------------- A/B会話ログのスクロール連動 ---------------- */
@@ -3522,6 +3607,7 @@ function exportHtml(){
     nameA: CFG.nameA, nameB: CFG.nameB, fsize: CFG.fsize,
     flipTop: CFG.flipTop?'1':'0', showSrc: CFG.showSrc?'1':'0', swap: CFG.swap?'1':'0', interimOn: CFG.interimOn?'1':'0',
     syncScroll: CFG.syncScroll?'1':'0', vvSpeaker: CFG.vvSpeaker, ttsSrc: CFG.ttsSrc?'1':'0',
+    ovlOn: CFG.ovlOn?'1':'0', ovlA: CFG.ovlA, ovlLines: CFG.ovlLines,
     ttsPad: CFG.ttsPad, aivisModel: CFG.aivisModel, lvvBase: CFG.lvvBase,
     lvvSpeaker: CFG.lvvSpeaker, lvvSpeakerLbl: CFG.lvvSpeakerLbl,
     focus: CFG.focus, rtDir: CFG.rtDir, rtBoth: CFG.rtBoth,
@@ -3533,7 +3619,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.19</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.20</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -3905,6 +3991,10 @@ function applyCfg(){
   $('swapSides').checked = CFG.swap;
   $('interimOn').checked = CFG.interimOn;
   $('syncScroll').checked = CFG.syncScroll;
+  $('ovlOn').checked = CFG.ovlOn;
+  $('ovlA').value = CFG.ovlA;
+  $('ovlLines').value = CFG.ovlLines;
+  applyOverlay();
   $('ttsSrc').checked = CFG.ttsSrc;
   $('ttsPad').value = String(CFG.ttsPad);
   $('remember').checked = CFG.remember;
@@ -4016,6 +4106,10 @@ $('camFlip').onclick  = function(){
   camStart();
 };
 $('kbdBtn').onclick     = function(){ txtOpen(); };
+$('ovlBtn').onclick     = function(){ setOverlay(!CFG.ovlOn); };
+$('ovlOn').onchange     = function(){ setOverlay(this.checked); };
+$('ovlA').oninput       = function(){ CFG.ovlA = this.value; store.set('di.ovla', this.value); applyOverlay(); };
+$('ovlLines').onchange  = function(){ CFG.ovlLines = this.value; store.set('di.ovln', this.value); applyOverlay(); };
 $('txtClose').onclick   = function(){ txtOpen(false); };
 $('txtSend').onclick    = txtSubmit;
 $('txtSeatBtn').onclick = function(){
@@ -4279,7 +4373,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.19');
+  out.push('- バージョン: Duo Interpreter v1.20');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
@@ -4313,6 +4407,7 @@ function diagText(devices){
    ['言語切替', S.autoMode ? 'AUTO' : '手動'], ['認識中の席', S.listenSeat],
    ['翻訳スタイル', CFG.tone], ['VADしきい値', CFG.vad],
    ['表示', CFG.focus + (CFG.swap?' / 入替':'') + (CFG.flipTop?' / 反転':'')],
+   ['字幕オーバーレイ', CFG.ovlOn ? ('ON / 濃さ' + CFG.ovlA + '% / ' + (CFG.ovlLines==='0'?'全件':'直近'+CFG.ovlLines+'件')) : 'OFF'],
    ['用語集', (CFG.glossary||[]).length + ' 件'],
    ['コンテキスト', (CFG.ctx||'').length + ' 文字']
   ].forEach(function(r){ out.push('| ' + cell(r[0]) + ' | ' + cell(r[1]) + ' |'); });
