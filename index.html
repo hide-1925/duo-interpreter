@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.16 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.17 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -380,7 +380,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.16</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.17</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -390,7 +390,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.16</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.17</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1851,12 +1851,8 @@ function apiSpeak(text, seat){
     body: JSON.stringify({ model:(CFG.ttsModel||'gpt-4o-mini-tts'), voice:(seat==='A'?CFG.voiceA:CFG.voiceB), input:text,
                            instructions:'Speak clearly and naturally, at a business meeting pace.' })
   }).then(function(r){ if(!r.ok) throw new Error('TTS '+r.status); return r.blob(); })
-    .then(function(b){
-      ensureSink();
-      audioEl.src = URL.createObjectURL(b);
-      audioEl.onended = audioEl.onerror = finish;
-      return audioEl.play();
-    }).catch(function(){ finish(); });
+    .then(function(b){ playBlob(b, finish, 'openai'); })
+    .catch(function(){ finish(); });
 }
 
 /* ---------------- 設定画面の長い説明のたたみ込み ----------------
@@ -2061,13 +2057,74 @@ function ttsFallback(text, lang, why, warnMsg, flagName){
   }
   browserSpeak(text, L(lang).tts);
 }
-/* 音声データを受け取って鳴らすところは各エンジン共通 */
-function playBlob(blob, finish){
+/* 鳴らし始めが欠けるのを防ぐ ------------------------------------------
+   Bluetoothヘッドセットや一部のオーディオ機器は、無音が続くと省電力状態に入り、
+   音を出し始めてから実際に鳴るまでの数百msが欠ける。診断ログでも、読み上げの
+   間隔が7〜26秒空いたあとの再生で頭が切れていた。
+   そこで合成を始めた時点から極小の無音を流し続け、出力を起こしたままにする。 */
+var primeEl = null, primeTimer = 0;
+function silentWavUrl(ms){
+  var sr = 8000, n = Math.round(sr * ms / 1000), len = 44 + n * 2;
+  var buf = new ArrayBuffer(len), v = new DataView(buf);
+  function put(o, str){ for (var i=0;i<str.length;i++) v.setUint8(o+i, str.charCodeAt(i)); }
+  put(0,'RIFF'); v.setUint32(4, len-8, true); put(8,'WAVEfmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
+  put(36,'data'); v.setUint32(40, n*2, true);
+  return URL.createObjectURL(new Blob([buf], { type:'audio/wav' }));
+}
+function primeOutput(){
+  if (CFG.ttsMode === 'off') return;
+  try{
+    if (!primeEl){ primeEl = new Audio(silentWavUrl(400)); primeEl.loop = true; }
+    if (OUT_SUPPORTED && CFG.outDev && primeEl.sinkId !== CFG.outDev){
+      try{ primeEl.setSinkId(CFG.outDev); }catch(e){}
+    }
+    if (primeEl.paused){
+      var pr = primeEl.play();
+      if (pr && pr.catch) pr.catch(function(){});   /* 自動再生が許可されていない場合は諦める */
+    }
+    clearTimeout(primeTimer);
+    /* 会話が続くうちは起こしたままにし、しばらく使わなければ止める */
+    primeTimer = setTimeout(function(){ try{ primeEl.pause(); }catch(e){} }, 30000);
+  }catch(e){}
+}
+
+/* 音声データを受け取って鳴らすところは各エンジン共通。
+   <audio> は1つしかないので、前の再生中に次のsrcを入れると前が途中で切れる。
+   順番待ちの列にして、必ず最後まで鳴らしてから次に進む。 */
+var ttsQueue = [], ttsPlayingNow = false, ttsLastUrl = '';
+function playBlob(blob, finish, tag){
+  ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:Date.now() });
+  pumpTtsQueue();
+}
+function clearTtsQueue(){
+  while (ttsQueue.length){ var j = ttsQueue.shift(); try{ j.finish(); }catch(e){} }
+}
+function pumpTtsQueue(){
+  if (ttsPlayingNow || !ttsQueue.length) return;
+  var job = ttsQueue.shift(), done = false, t0 = Date.now();
+  ttsPlayingNow = true;
+  var end = function(){
+    if (done) return; done = true;
+    ttsPlayingNow = false;
+    audioEl.onplaying = null;
+    try{ job.finish(); }catch(e){}
+    pumpTtsQueue();
+  };
   ensureSink();
-  audioEl.src = URL.createObjectURL(blob);
-  audioEl.onended = audioEl.onerror = finish;
+  primeOutput();                       /* 念のため再生直前にも起こしておく */
+  if (ttsLastUrl){ try{ URL.revokeObjectURL(ttsLastUrl); }catch(e){} }
+  ttsLastUrl = URL.createObjectURL(job.blob);
+  audioEl.onended = end;
+  audioEl.onerror = end;
+  audioEl.onplaying = function(){
+    dlog('tts','play-start',{ src: job.tag, waitMs: Date.now()-t0,
+      queuedMs: t0 - job.at, dur: Math.round((audioEl.duration || 0) * 1000) });
+  };
+  audioEl.src = ttsLastUrl;
   var pr = audioEl.play();
-  if (pr && pr.catch) pr.catch(function(){ finish(); });
+  if (pr && pr.catch) pr.catch(function(){ end(); });
 }
 function ttsGuard(text, ms){
   var done = false, tEnd = null;
@@ -2097,7 +2154,7 @@ function aivisSpeak(text, lang){
     return r.blob();
   }).then(function(b){
     dlog('tts','aivis-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size });
-    playBlob(b, finish);
+    playBlob(b, finish, 'aivis');
   }).catch(function(err){
     var m = String((err && err.message) || err);
     dlog('tts','aivis-FAIL',{ err:m.slice(0,140), ms:Date.now()-t0 });
@@ -2129,7 +2186,7 @@ function lvvSpeak(text, lang){
     .then(function(r){ if (!r.ok) throw new Error('synthesis ' + r.status); return r.blob(); })
     .then(function(b){
       dlog('tts','local-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size, speaker:lvvSpeakerId() });
-      playBlob(b, finish);
+      playBlob(b, finish, 'local');
     })
     .catch(function(err){
       var m = String((err && err.message) || err);
@@ -2235,6 +2292,7 @@ function vvSpeak(text, lang){
     finish();
   }, Math.min(90000, 10000 + text.length * 200));
   ensureSink();
+  primeOutput();
   audioEl.src = vvUrl(text);
   audioEl.onended = function(){
     dlog('tts','vv-end',{ speaker: CFG.vvSpeaker, chars: text.length, ms: Date.now()-t0 });
@@ -2357,6 +2415,8 @@ function speakManual(text, lang, btn){
   // 押した直後に鳴ってほしいので、再生中のものは止めてこちらを優先する
   try{ if (window.speechSynthesis) speechSynthesis.cancel(); }catch(_){}
   try{ audioEl.pause(); }catch(_){}
+  clearTtsQueue(); ttsPlayingNow = false;   // 押した文をすぐ鳴らすため、順番待ちは流す
+  primeOutput();
   if (btn){
     btn.classList.add('on');
     setTimeout(function(){ btn.classList.remove('on'); }, 1200);
@@ -2389,6 +2449,7 @@ function speak(e){
     return;
   }
   ttsSkipStreak = 0;
+  primeOutput();          // 合成を待つ間に出力デバイスを起こしておく（頭切れ対策）
   // 溜まりすぎた場合は、再生中のものを止めるのではなく新しい方を見送る
   if (ttsActive >= 3){
     dlog('tts','skip',{ why:'読み上げが溜まっているため見送り', queued: ttsActive });
@@ -3320,7 +3381,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.16</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.17</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -4064,7 +4125,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.16');
+  out.push('- バージョン: Duo Interpreter v1.17');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
