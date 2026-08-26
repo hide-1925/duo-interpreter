@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.13 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.14 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -370,7 +370,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.13</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.14</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -380,7 +380,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.13</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.14</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -619,6 +619,7 @@
       「原文をそのまま読み上げる」は翻訳を待たずに発話するので、<b>ボイスチェンジャーのように</b>使えます。
       自分の声をずんだもんにするなら、読み上げ＝<b>VOICEVOX</b>／読み上げ対象＝<b>自分(A)の発言だけ</b>／原文読み上げ＝<b>ON</b> の組み合わせです。
       （会話ログの翻訳表示はこれまで通り出ます。リアルタイム同時通訳モードは音声がAPI側から返るため対象外です。）</small>
+      <div class="note" id="ttsPlan"></div>
     </div>
 
     <div class="field" id="vvField" style="display:none">
@@ -1879,10 +1880,41 @@ function vvSpeak(text, lang){
   var pr = audioEl.play();
   if (pr && pr.catch) pr.catch(function(){ /* 失敗は onerror 側で拾う */ });
 }
+/* 設定の組み合わせで「結局どれが何語で読まれるのか」は分かりにくく、
+   鳴らない・別の声で鳴る理由に気づけない。実際の動作を文章にして常に見せる。 */
+function ttsPlanRows(){
+  var useSrc = !!CFG.ttsSrc, rows = [];
+  /* B席の発言: 原文=Bの言語 / 訳文=Aの言語　　A席の発言: 原文=Aの言語 / 訳文=Bの言語 */
+  if (CFG.ttsWho !== 'A2B') rows.push({ who:'相手(B)', lang: useSrc ? CFG.langB : CFG.langA });
+  if (CFG.ttsWho !== 'B2A') rows.push({ who:'自分(A)', lang: useSrc ? CFG.langA : CFG.langB });
+  return rows;
+}
+function ttsPlanText(){
+  if (CFG.ttsMode === 'off') return { html:'読み上げは <b>OFF</b> です。', warn:false };
+  var rows = ttsPlanRows(), what = CFG.ttsSrc ? '原文' : '訳文', warn = false;
+  var t = 'いまの設定：' + rows.map(function(r){
+            return r.who + 'の発言の' + what + '（' + L(r.lang).name + '）';
+          }).join(' と ') + ' を <b>' + ttsModeLabel(CFG.ttsMode) + '</b> で読み上げます。';
+  if (CFG.ttsMode === 'voicevox'){
+    if (!vvKey()){
+      t += '<br><b>⚠ VOICEVOXのAPIキーが未設定です。</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。'
+         + '下の欄にキーを入力してください。';
+      warn = true;
+    } else {
+      var non = rows.filter(function(r){ return r.lang !== 'ja'; });
+      if (non.length){
+        t += '<br>⚠ VOICEVOXは日本語専用のため、' + non.map(function(r){ return L(r.lang).name; }).join('・')
+           + ' はブラウザ内蔵音声になります。';
+        warn = true;
+      }
+    }
+  }
+  return { html:t, warn:warn };
+}
 function refreshVvUI(){
   var f = $('vvField'); if (!f) return;
   f.style.display = (CFG.ttsMode === 'voicevox') ? '' : 'none';
-  var k = $('vvKey'); if (k) k.value = KEYS['voicevox'] || '';
+  var k = $('vvKey'); if (k && k !== document.activeElement) k.value = KEYS['voicevox'] || '';
   var sel = $('vvSpeaker');
   if (sel && !sel.options.length){
     for (var i=0;i<VV_SPEAKERS.length;i++){
@@ -1895,6 +1927,12 @@ function refreshVvUI(){
   var c = $('vvCredit');
   if (c) c.innerHTML = '規約により、この音声を含む録音・書き起こしを公開・配布する場合は'
                      + 'クレジット表記が必要です　→　<b>VOICEVOX:' + vvSpeakerInfo().name + '</b>';
+  var p = $('ttsPlan');
+  if (p){
+    var plan = ttsPlanText();
+    p.innerHTML = plan.html;
+    p.classList.toggle('warnbox', plan.warn);
+  }
 }
 
 /* 読み上げ対象の設定で弾かれ続けると「壊れている」ように見えるので、
@@ -2869,7 +2907,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.13</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.14</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -3403,7 +3441,7 @@ $('ttsToggle').onclick = function(){
 
 /* 座席セレクタ */
 function seatChanged(restart){
-  layout(); updateStatus();
+  layout(); updateStatus(); refreshVvUI();
   if (restart && S.running){ stopAll(); setTimeout(startAll, 400); }
 }
 $('langA').onchange = function(){ CFG.langA=this.value; store.set('di.la',this.value); seatChanged(false); };
@@ -3476,7 +3514,7 @@ function simple(id, key, prop, isCheck){
     if (prop==='flipTop'||prop==='swap'||prop==='nameA'||prop==='nameB') layout();
     if (prop==='showSrc') S.entries.forEach(render);
     if (prop==='ttsMode'){ refreshTtsBtn(); refreshVvUI(); ttsLastMode = (v==='off') ? ttsLastMode : v; }
-    if (prop==='vvSpeaker') refreshVvUI();
+    if (prop==='vvSpeaker' || prop==='ttsWho' || prop==='ttsSrc') refreshVvUI();
     if (prop==='ttsSrc'){
       dlog('tts','src-mode',{ on:!!v, mode:CFG.ttsMode, who:CFG.ttsWho });
       if (v) toast('原文をそのまま読み上げます（' + whoLabel() + ' / ' + ttsModeLabel(CFG.ttsMode) + '）。'
@@ -3500,7 +3538,11 @@ simple('interimOn','di.itm','interimOn',true);
 simple('syncScroll','di.sync','syncScroll',true);
 simple('vvSpeaker','di.vvsp','vvSpeaker');
 simple('ttsSrc','di.ttssrc','ttsSrc',true);
-$('vvKey').oninput = function(){ KEYS['voicevox'] = this.value.trim(); saveKeys(); };
+$('vvKey').oninput = function(){
+  KEYS['voicevox'] = this.value.trim(); saveKeys();
+  vvWarned = false;          // キーを入れ直したら、失敗時の案内をもう一度出せるようにする
+  refreshVvUI();
+};
 simple('nameA','di.na','nameA');
 simple('nameB','di.nb','nameB');
 $('vad').oninput = function(){ CFG.vad = parseInt(this.value,10); store.set('di.vad', this.value); };
@@ -3562,7 +3604,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.13');
+  out.push('- バージョン: Duo Interpreter v1.14');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
