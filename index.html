@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.29 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.30 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -304,6 +304,24 @@
   .sublabel{font-size:11.5px;color:var(--txt);opacity:.85;margin:6px 0 -2px;font-weight:600}
   .seatpick>select,.seatpick>input{width:100%;min-width:0}
   /* キー確認の結果表示。成功・失敗が一目で分かる色だけ付ける */
+  /* 話し方の調整。既定のままなら送らないので、触らなければ今までと同じ音になる */
+  details.adv{border:1px solid var(--line);border-radius:9px;padding:0 12px;margin:2px 0}
+  details.adv[open]{padding-bottom:12px}
+  details.adv > summary{
+    cursor:pointer;font-size:12.5px;color:var(--txt);padding:9px 0;list-style:none;
+    display:flex;align-items:center;gap:6px;user-select:none;
+  }
+  details.adv > summary::-webkit-details-marker{display:none}
+  details.adv > summary::before{content:'▶';font-size:9px;color:var(--dim);transition:transform .15s}
+  details.adv[open] > summary::before{transform:rotate(90deg)}
+  .sl{display:grid;grid-template-columns:7.5em 1fr 3.6em;gap:10px;align-items:center;margin:9px 0}
+  .sl > span{font-size:12px;color:var(--dim)}
+  .sl > input[type=range]{width:100%;accent-color:var(--a);min-width:0}
+  .sl > b{
+    font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums;
+    color:var(--a);font-weight:600;
+  }
+  .sl.off > b{color:var(--dim);font-weight:400}
   .keychk{font-size:11.5px;line-height:1.5;margin-top:2px;color:var(--dim);word-break:break-word}
   .keychk.ok{color:#6ee7a8}
   .keychk.ng{color:#ffb4a2}
@@ -441,7 +459,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.29</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.30</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -451,7 +469,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.29</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.30</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -781,16 +799,25 @@
         <button class="btn ghost" id="aivisFetch" title="モデル UUID からスタイル一覧を取得" style="align-self:flex-end">🔄 スタイル取得</button>
       </div>
       <small class="keychk" id="aivisStyleMsg"></small>
-      <div class="row">
-        <span style="font-size:11.5px;color:var(--dim);width:104px;flex:0 0 auto">話す速さ</span>
-        <select id="aivisRate" style="flex:1">
-          <option value="0.9">0.9倍（ゆっくり）</option>
-          <option value="1">1.0倍（標準）</option>
-          <option value="1.1">1.1倍</option>
-          <option value="1.2">1.2倍（速め・遅れを詰める）</option>
-          <option value="1.3">1.3倍</option>
-        </select>
-      </div>
+      <details class="adv" id="aivisAdv">
+        <summary>話し方の調整</summary>
+        <label class="sl"><span>話速</span>
+          <input type="range" id="aivisRate" min="0.5" max="2" step="0.05"><b id="aivisRateV"></b></label>
+        <label class="sl"><span>感情表現</span>
+          <input type="range" id="aivisEmo" min="0" max="2" step="0.05"><b id="aivisEmoV"></b></label>
+        <label class="sl"><span>テンポの緩急</span>
+          <input type="range" id="aivisTempo" min="0" max="2" step="0.05"><b id="aivisTempoV"></b></label>
+        <label class="sl"><span>音量</span>
+          <input type="range" id="aivisVol" min="0" max="2" step="0.05"><b id="aivisVolV"></b></label>
+        <label class="sl"><span>改行時の無音</span>
+          <input type="range" id="aivisBreak" min="0" max="2" step="0.05"><b id="aivisBreakV"></b></label>
+        <label class="switch"><input type="checkbox" id="aivisNorm"> 音量を自動でならす</label>
+        <input type="text" id="aivisDict" placeholder="ユーザー辞書UUID（任意・読み方を直したいとき）" autocomplete="off">
+        <div class="keyrow">
+          <button class="btn ghost" id="aivisAdvReset">↩ 既定に戻す</button>
+          <span class="keychk" id="aivisAdvMsg"></span>
+        </div>
+      </details>
       <label class="switch"><input type="checkbox" id="aivisStream"> ストリーミング再生（生成を待たずに鳴らし始める）</label>
       <div class="keyrow">
         <button class="btn ghost" id="chkAivis" title="いまの設定で短い音声を1回生成して、そのまま鳴らします">🔍 確認して試聴</button>
@@ -810,7 +837,13 @@
       AivisHub 側の都合でスタイル<b>名</b>が読めない場合は、そのまま<b>使える番号</b>を自動で割り出します（並び順は AivisHub のスタイル欄と同じです）。
       <b>A席とB席で違うスタイルにすると、1つのモデルのままでも話者を聞き分けられます。</b>
       通訳用途では落ち着いた系（ノーマル／Calm）が聞きやすく、Shout や Surprise は向きません。<br>
-      <b>話す速さ</b>：読み上げが会話に遅れがちなときは1.1〜1.2倍にすると詰められます。上げすぎると聞き取りにくくなります。<br>
+      <b>話し方の調整</b>：既定のままなら Aivis 側に何も送らないので、触らなければ音は変わりません。<br>
+      ・<b>話速</b> … 読み上げが会話に遅れがちなときは1.1〜1.2倍で詰められます。上げすぎると聞き取りにくくなります<br>
+      ・<b>感情表現</b> … 選んだスタイルの効き具合。0に近いと平坦に、2に近いと大げさになります。通訳では1.0前後が無難です<br>
+      ・<b>テンポの緩急</b> … 話す速さの揺れ。上げると抑揚がつき、下げると一定のペースになります<br>
+      ・<b>音量</b> … 仮想オーディオケーブル経由で相手に小さく聞こえるときに上げます<br>
+      ・<b>改行時の無音</b> … 文の区切りで空ける間。通訳は1文ずつ読むので、短くしても影響はほとんどありません<br>
+      ・<b>ユーザー辞書UUID</b> … 社名や製品名の読み方を直したいときに使います。辞書は Aivis 側で先に作っておく必要があります<br>
       <b>ストリーミング再生</b>：音声が全部でき上がるのを待たず、届いた先頭から鳴らし始めます。長い文ほど鳴り出しが早くなります（公称0.3秒）。
       ただし回線が細いと途中で音が途切れることがあります。<b>途切れるようなら切ってください</b>（切ると従来どおり、全部揃ってから鳴らします）。
       前の読み上げがまだ鳴っているときは、重ならないよう自動的に従来方式に切り替わります。</small>
@@ -1144,6 +1177,13 @@ function loadCfg(){
     aivisStyle: pref('di.aist','aivisStyle',''),           /* 空なら既定スタイル */
     aivisStyleA:pref('di.aista','aivisStyleA',''),
     aivisRate:  pref('di.airt','aivisRate','1'),
+    /* 以下は Aivis 側の既定値と同じ。既定のままなら送らないので音は変わらない */
+    aivisEmo:   pref('di.aiem','aivisEmo','1'),
+    aivisTempo: pref('di.aitp','aivisTempo','1'),
+    aivisVol:   pref('di.aivo','aivisVol','1'),
+    aivisBreak: pref('di.aibr','aivisBreak','0.4'),
+    aivisNorm:  pref('di.ainm','aivisNorm','1')+'' === '1',
+    aivisDict:  pref('di.aidc','aivisDict',''),
     aivisStream:pref('di.aistr','aivisStream','0')+'' === '1',   /* 既定OFF。様子を見てから使う */
     aivisSpk:   pref('di.aisp','aivisSpk',''),                   /* 複数話者モデル向け */
     aivisSpkA:  pref('di.aispa','aivisSpkA',''),
@@ -2798,14 +2838,37 @@ function aivisSpeakerFor(seat){
   if ((CFG.aivisModelA || '').trim()) return String(CFG.aivisSpkA || '');
   return String(CFG.aivisSpkA || CFG.aivisSpk || '');
 }
+/* Aivis 側の既定値。ここと同じ値なら送らない。
+   既定を送り返しても結果は同じだが、送らなければ
+   「利用者が何を変えたのか」がリクエストとログの両方から一目で分かる。 */
+var AIVIS_DEFAULTS = { speaking_rate:1, emotional_intensity:1, tempo_dynamics:1,
+                       volume:1, line_break_silence_seconds:0.4 };
+
 /* 送信するリクエスト本文を1か所で組み立てる（通常再生とストリーミングで食い違わせない） */
 function aivisBody(text, seat, fmt){
   var body = { model_uuid: aivisModelFor(seat), text: text, output_format: fmt || 'mp3' };
   var spk = aivisSpeakerFor(seat); if (spk) body.speaker_uuid = spk;
   var st = aivisStyleFor(seat);    if (st !== '') body.style_id = parseInt(st, 10);
-  var rate = parseFloat(CFG.aivisRate);
-  if (rate && rate !== 1) body.speaking_rate = rate;
+  [['speaking_rate', CFG.aivisRate], ['emotional_intensity', CFG.aivisEmo],
+   ['tempo_dynamics', CFG.aivisTempo], ['volume', CFG.aivisVol],
+   ['line_break_silence_seconds', CFG.aivisBreak]].forEach(function(p){
+    var v = parseFloat(p[1]);
+    if (!isNaN(v) && v !== AIVIS_DEFAULTS[p[0]]) body[p[0]] = v;
+  });
+  if (!CFG.aivisNorm) body.use_volume_normalizer = false;    /* 既定が true なので切るときだけ送る */
+  var dict = (CFG.aivisDict || '').trim();
+  if (dict) body.user_dictionary_uuid = dict;
   return body;
+}
+/* 既定から動かした項目だけを short に並べる。診断ログと画面の両方で使う */
+function aivisTweaks(){
+  var b = aivisBody('', 'B', 'mp3'), out = [];
+  var name = { speaking_rate:'話速', emotional_intensity:'感情', tempo_dynamics:'緩急',
+               volume:'音量', line_break_silence_seconds:'改行の無音' };
+  Object.keys(name).forEach(function(k){ if (b[k] != null) out.push(name[k] + ' ' + b[k]); });
+  if (b.use_volume_normalizer === false) out.push('ならし OFF');
+  if (b.user_dictionary_uuid) out.push('辞書あり');
+  return out.length ? out.join(' / ') : '既定のまま';
 }
 function aivisSpeak(text, lang, seat){
   if (lang !== 'ja') return ttsFallback(text, lang, '日本語以外');
@@ -2841,7 +2904,7 @@ function aivisSpeakBlob(text, lang, seat){
     if (!r.ok) return r.text().then(function(x){ throw new Error(r.status + ' ' + String(x).slice(0,120)); });
     return r.blob();
   }).then(function(b){
-    dlog('tts','aivis-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size, seat:seat||'A', model:uuid.slice(0,8), style:(st===''?'既定':st), rate:rate });
+    dlog('tts','aivis-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size, seat:seat||'A', model:uuid.slice(0,8), style:(st===''?'既定':st), tweaks:aivisTweaks() });
     playBlob(b, finish, 'aivis');
   }).catch(function(err){
     var m = String((err && err.message) || err);
@@ -2899,6 +2962,7 @@ function aivisSpeakStream(text, lang, seat){
   /* 何を送ったかをログに残す。「スタイルが効いているのか」を後から確かめられるようにする */
   var body = aivisBody(text, seat, 'wav');
   var stLog = (body.style_id == null) ? '既定' : String(body.style_id);
+  var twLog = aivisTweaks();
   var finish = ttsGuard(text, Math.min(120000, 12000 + text.length * 200));
   var myGen = finish.gen;
   var ctrl = null; try { ctrl = new AbortController(); } catch(e){}
@@ -2948,7 +3012,7 @@ function aivisSpeakStream(text, lang, seat){
           drain(true);
           dlog('tts','aivis-stream-ok',{ chars:text.length, firstMs:firstMs, totalMs:Date.now()-t0,
                                          seat:seat, style:stLog, spk:(body.speaker_uuid?'あり':'なし'),
-                                         rate:(body.speaking_rate||1), underruns:underruns });
+                                         tweaks:twLog, underruns:underruns });
           /* 並べた音が鳴り終わるまでは「読み上げ中」のままにしておく */
           setTimeout(finish, Math.max(0, (next - ctx.currentTime)) * 1000 + 150);
           return;
@@ -3072,6 +3136,36 @@ function aivisResetStyles(){
 /* 取得できなかったときに、実在するか分からない番号を並べるのは害しかない。
    （このモデルには無いスタイルを選べてしまい、しかも失敗に気づけない）
    候補は作らず、理由をその場に短く出すだけにする。 */
+/* スライダーと数値表示、設定値を1か所で同期させる。
+   3か所に散ると必ずどこかがずれるので、更新はここだけを通す。 */
+var AIVIS_SLIDERS = [
+  { id:'aivisRate',  key:'aivisRate',  store:'di.airt', def:1,   fmt:function(v){ return v.toFixed(2) + '×'; } },
+  { id:'aivisEmo',   key:'aivisEmo',   store:'di.aiem', def:1,   fmt:function(v){ return v.toFixed(2); } },
+  { id:'aivisTempo', key:'aivisTempo', store:'di.aitp', def:1,   fmt:function(v){ return v.toFixed(2); } },
+  { id:'aivisVol',   key:'aivisVol',   store:'di.aivo', def:1,   fmt:function(v){ return v.toFixed(2); } },
+  { id:'aivisBreak', key:'aivisBreak', store:'di.aibr', def:0.4, fmt:function(v){ return v.toFixed(2) + '秒'; } }
+];
+function aivisAdvSync(){
+  AIVIS_SLIDERS.forEach(function(s){
+    var el = $(s.id), out = $(s.id + 'V'); if (!el) return;
+    var v = parseFloat(CFG[s.key]); if (isNaN(v)) v = s.def;
+    if (el !== document.activeElement) el.value = String(v);
+    if (out) out.textContent = s.fmt(v);
+    /* 既定のままの項目は色を落とす。どこを触ったかが一目で分かる */
+    var row = el.parentNode; if (row) row.className = 'sl' + (v === s.def ? ' off' : '');
+  });
+  var nm = $('aivisNorm'); if (nm) nm.checked = !!CFG.aivisNorm;
+  var dc = $('aivisDict'); if (dc && dc !== document.activeElement) dc.value = CFG.aivisDict || '';
+  var msg = $('aivisAdvMsg');
+  if (msg){ msg.className = 'keychk'; msg.textContent = aivisTweaks(); }
+}
+function aivisAdvReset(){
+  AIVIS_SLIDERS.forEach(function(s){ CFG[s.key] = String(s.def); store.set(s.store, String(s.def)); });
+  CFG.aivisNorm = true;  store.set('di.ainm', '1');
+  CFG.aivisDict = '';    store.set('di.aidc', '');
+  aivisAdvSync(); refreshVvUI();
+}
+
 function aivisStyleFail(msg, mild){
   /* 環境側の制約で取れないだけのときは、赤字の警告にしない（直しようがないため） */
   var el = $('aivisStyleMsg');
@@ -3605,7 +3699,7 @@ function refreshVvUI(){
     var ak = $('aivisKey');   if (ak && ak !== document.activeElement) ak.value = KEYS['aivis'] || '';
     var am = $('aivisModel'); if (am && am !== document.activeElement) am.value = CFG.aivisModel || '';
     var ama = $('aivisModelA'); if (ama && ama !== document.activeElement) ama.value = CFG.aivisModelA || '';
-    var ar = $('aivisRate'); if (ar) ar.value = String(CFG.aivisRate || '1');
+    aivisAdvSync();
     var asx = $('aivisStream'); if (asx) asx.checked = !!CFG.aivisStream;
     [['aivisStyle', CFG.aivisStyle], ['aivisStyleA', CFG.aivisStyleA]].forEach(function(pair){
       var sl = $(pair[0]); if (!sl || sl.options.length) return;   /* 取得前でも選択済みの値は残す */
@@ -4712,6 +4806,8 @@ function exportHtml(){
     ttsPad: CFG.ttsPad, aivisModel: CFG.aivisModel, aivisModelA: CFG.aivisModelA, lvvBase: CFG.lvvBase,
     aivisStyle: CFG.aivisStyle, aivisStyleA: CFG.aivisStyleA, aivisRate: CFG.aivisRate,
     aivisStream: CFG.aivisStream?'1':'0', aivisSpk: CFG.aivisSpk, aivisSpkA: CFG.aivisSpkA,
+    aivisEmo: CFG.aivisEmo, aivisTempo: CFG.aivisTempo, aivisVol: CFG.aivisVol,
+    aivisBreak: CFG.aivisBreak, aivisNorm: CFG.aivisNorm?'1':'0', aivisDict: CFG.aivisDict,
     lvvSpeaker: CFG.lvvSpeaker, lvvSpeakerLbl: CFG.lvvSpeakerLbl,
     lvvSpeakerA: CFG.lvvSpeakerA, lvvSpeakerALbl: CFG.lvvSpeakerALbl,
     elModel: CFG.elModel, elVoice: CFG.elVoice, elVoiceLbl: CFG.elVoiceLbl,
@@ -4725,7 +4821,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.29</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.30</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -5439,9 +5535,23 @@ $('aivisStyleA').onchange = function(){
   aivisSyncSpeaker(this); refreshVvUI();
 };
 simple('aivisStream','di.aistr','aivisStream',true);
-$('aivisRate').onchange = function(){
-  CFG.aivisRate = this.value; store.set('di.airt', CFG.aivisRate); refreshVvUI();
+AIVIS_SLIDERS.forEach(function(s){
+  var el = $(s.id); if (!el) return;
+  el.oninput = function(){
+    CFG[s.key] = this.value; store.set(s.store, this.value);
+    aivisAdvSync();                       /* 動かしている間も数値をついてこさせる */
+  };
+  el.onchange = function(){ refreshVvUI(); };
+});
+$('aivisNorm').onchange = function(){
+  CFG.aivisNorm = this.checked; store.set('di.ainm', this.checked ? '1' : '0');
+  aivisAdvSync(); refreshVvUI();
 };
+$('aivisDict').oninput = function(){
+  CFG.aivisDict = this.value.trim(); store.set('di.aidc', CFG.aivisDict);
+  aivisAdvSync();
+};
+$('aivisAdvReset').onclick = function(){ aivisAdvReset(); };
 $('elKey').oninput = function(){
   KEYS['eleven'] = this.value.trim(); saveKeys();
   elWarned = false; keyChkShow('chkElMsg','',''); refreshVvUI();
@@ -5544,7 +5654,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.29');
+  out.push('- バージョン: Duo Interpreter v1.30');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
@@ -5572,7 +5682,7 @@ function diagText(devices){
       ? ((CFG.aivisStyleA === '' ? '既定' : CFG.aivisStyleA) + ' / ' + (CFG.aivisStyle === '' ? '既定' : CFG.aivisStyle)
          + (CFG.aivisSpk || CFG.aivisSpkA ? '（話者指定あり）' : ''))
       : '(未使用)'],
-   ['Aivis 話す速さ', CFG.ttsMode === 'aivis' ? (CFG.aivisRate + ' 倍') : '(未使用)'],
+   ['Aivis 話し方の調整', CFG.ttsMode === 'aivis' ? aivisTweaks() : '(未使用)'],
    ['原文読み上げ', CFG.ttsSrc ? 'ON' : 'OFF'],
    ['鳴り始めの無音', CFG.ttsPad + ' ms'],
    ['再生経路', waMode ? 'Web Audio（開きっぱなし）' : '<audio>'],
