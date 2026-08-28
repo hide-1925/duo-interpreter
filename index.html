@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.24 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.25 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -94,6 +94,20 @@
   }
   .saybtn:hover{background:#26303f;color:var(--txt)}
   .saybtn.on{border-color:var(--a);color:var(--a)}
+  /* 読み上げ中の目印。暗い画面で目が疲れないよう、明るさを足すのではなく
+     輪郭と文字の濃さをゆっくり上下させるだけにしている。 */
+  .saybtn.playing{
+    border-color:var(--a);color:var(--a);background:rgba(61,220,151,.10);
+    animation:sayblink 1.6s ease-in-out infinite;
+  }
+  .bubble.from-B .saybtn.playing{
+    border-color:var(--b);color:var(--b);background:rgba(221,136,164,.10);
+  }
+  @keyframes sayblink{ 0%,100%{opacity:1} 50%{opacity:.6} }
+  /* 動きを抑える設定の人には点滅させない（酔い・光過敏への配慮） */
+  @media (prefers-reduced-motion: reduce){
+    .saybtn.playing{animation:none;opacity:.92}
+  }
   .bubble.from-A .who{color:var(--a)}
   .bubble.from-B .who{color:var(--b)}
   .bubble .main{font-size:var(--fs);line-height:1.35;font-weight:600;word-break:break-word}
@@ -425,7 +439,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.24</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.25</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -435,7 +449,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.24</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.25</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -749,6 +763,23 @@
         <label class="seatpick seatB"><span>相手(B)の発言</span>
         <input type="text" id="aivisModel" placeholder="モデルUUID" autocomplete="off"></label>
       </div>
+      <div class="row">
+        <label class="seatpick seatA"><span>自分(A)のスタイル</span>
+        <select id="aivisStyleA"></select></label>
+        <label class="seatpick seatB"><span>相手(B)のスタイル</span>
+        <select id="aivisStyle"></select></label>
+        <button class="btn ghost" id="aivisFetch" title="モデルUUIDからスタイル一覧を取得" style="align-self:flex-end">🔄 スタイル取得</button>
+      </div>
+      <div class="row">
+        <span style="font-size:11.5px;color:var(--dim);width:104px;flex:0 0 auto">話す速さ</span>
+        <select id="aivisRate" style="flex:1">
+          <option value="0.9">0.9倍（ゆっくり）</option>
+          <option value="1">1.0倍（標準）</option>
+          <option value="1.1">1.1倍</option>
+          <option value="1.2">1.2倍（速め・遅れを詰める）</option>
+          <option value="1.3">1.3倍</option>
+        </select>
+      </div>
       <div class="keyrow">
         <button class="btn ghost" id="chkAivis" title="キーとモデルUUIDを確かめます（ごく短い音声を1回だけ生成します）">🔍 キーとモデルを確認</button>
         <span class="keychk" id="chkAivisMsg"></span>
@@ -762,7 +793,11 @@
       Aivis Cloud のダッシュボードにアップロードすると、そのモデルUUIDをここに貼るだけで使えます（<b>既定は非公開</b>なので社内利用でも安心です）。
       推論の重さは声によって変わらないので、自分の声にしても速度は落ちません。<br>
       <b>⚠ ただし Aivis は日本語専用です。</b>カスタムモデルを作っても<b>英語は出せません</b>（エンジン側の仕様）。
-      自分の声で英語を話したい場合は、上の <b>ElevenLabs</b> をお使いください。</small>
+      自分の声で英語を話したい場合は、上の <b>ElevenLabs</b> をお使いください。<br>
+      <b>スタイル</b>：モデルによっては「ノーマル／Calm／Shout」等の演じ分けを持っています。モデルUUIDを入れて「🔄 スタイル取得」を押すと一覧に出ます。
+      <b>A席とB席で違うスタイルにすると、1つのモデルのままでも話者を聞き分けられます。</b>
+      通訳用途では落ち着いた系（ノーマル／Calm）が聞きやすく、Shout や Surprise は向きません。<br>
+      <b>話す速さ</b>：読み上げが会話に遅れがちなときは1.1〜1.2倍にすると詰められます。上げすぎると聞き取りにくくなります。</small>
     </div>
 
     <div class="field" id="lvvField" style="display:none">
@@ -1090,6 +1125,9 @@ function loadCfg(){
     vvSpeakerA:pref('di.vvspa','vvSpeakerA','2'),
     aivisModel:pref('di.aim','aivisModel','a59cb814-0083-4369-8542-f51a29e72af7'),  /* 既定はAnneli */
     aivisModelA:pref('di.aima','aivisModelA',''),          /* 空なら相手(B)と同じ声 */
+    aivisStyle: pref('di.aist','aivisStyle',''),           /* 空なら既定スタイル */
+    aivisStyleA:pref('di.aista','aivisStyleA',''),
+    aivisRate:  pref('di.airt','aivisRate','1'),
     elModel:   pref('di.elm','elModel','eleven_flash_v2_5'),
     elVoice:   pref('di.elv','elVoice',''),                /* 相手(B) */
     elVoiceLbl:pref('di.elvl','elVoiceLbl',''),
@@ -2122,6 +2160,7 @@ function ttsEnd(){
   ttsActive = Math.max(0, ttsActive - 1);
   if (ttsActive > 0) return;            // まだ読み上げ中のものが残っている
   S.speaking = false;
+  if (typeof setSayBtn === 'function') setSayBtn(null);   // 鳴り終わったら点滅を止める
 }
 /* 読み上げボタンの見た目を更新する。4か所で個別に書いていたのを1つにまとめ、
    状態と表示がずれないようにする。 */
@@ -2223,6 +2262,7 @@ function apiSpeak(text, seat){
   if (!key){ toast('OpenAI音声にはOpenAIのAPIキーが必要です'); return; }
   var done = false, tEnd = null;
   var finish = function(){ if (done) return; done = true; clearTimeout(tEnd); ttsEnd(); };
+  finish.gen = ttsGen;             /* 停止後に返ってきた音声を鳴らさないための札 */
   rememberSpoken(text);
   ttsBegin();
   // 応答が返らない・再生が終わらない場合の保険（状態を必ず戻す）
@@ -2479,6 +2519,11 @@ function primeOutput(){
    <audio> は1つしかないので、前の再生中に次のsrcを入れると前が途中で切れる。
    順番待ちの列にして、必ず最後まで鳴らしてから次に進む。 */
 var ttsQueue = [], ttsPlayingNow = false, ttsLastUrl = '';
+/* 停止のために覚えておくもの。
+   ttsCurEnd … 再生中の後始末。<audio> は止めても終了イベントが来ないので手で呼ぶ
+   waSrc     … Web Audio で鳴らしている音源。stop() で即座に黙らせる
+   ttsGen    … 停止した時点で世代を進める。停止後に届いた音声を鳴らさないための札 */
+var ttsCurEnd = null, waSrc = null, ttsGen = 0;
 /* 鳴り始めの欠けを確実に潰す ------------------------------------------
    Bluetooth機器やOSのオーディオ経路は、鳴らし始めの数百msを取りこぼすことがある。
    呼び水（無音の先出し）だけでは環境によって効かないので、音声データそのものの
@@ -2575,7 +2620,10 @@ function ensureCtxSink(ctx){
 }
 
 function playBlob(blob, finish, tag){
-  ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:Date.now() });
+  /* 世代は finish に刻んである（＝読み上げを始めた時点のもの）。
+     通信の往復中に停止を押された場合、ここで世代が古くなり捨てられる。 */
+  var g = (finish && finish.gen != null) ? finish.gen : ttsGen;
+  ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:Date.now(), gen:g });
   pumpTtsQueue();
 }
 function clearTtsQueue(){
@@ -2583,14 +2631,25 @@ function clearTtsQueue(){
 }
 function pumpTtsQueue(){
   if (ttsPlayingNow || !ttsQueue.length) return;
-  var job = ttsQueue.shift(), done = false;
+  var job = ttsQueue.shift();
+  /* 停止を押したあとに返ってきた音声。もう鳴らす意味がないので捨てる */
+  if (job.gen !== ttsGen){
+    dlog('tts','drop',{ src: job.tag, why:'停止後に届いた' });
+    try{ job.finish(); }catch(e){}
+    pumpTtsQueue();
+    return;
+  }
+  var done = false;
   ttsPlayingNow = true;
   var end = function(){
     if (done) return; done = true;
     ttsPlayingNow = false;
+    if (ttsCurEnd === end) ttsCurEnd = null;
+    waSrc = null;
     try{ job.finish(); }catch(e){}
     pumpTtsQueue();
   };
+  ttsCurEnd = end;
   playJob(job, end);
 }
 /* まず開きっぱなしの経路で試し、使えないときだけ従来の <audio> に落とす */
@@ -2618,6 +2677,7 @@ function playJob(job, end){
       var lead = Math.max(0.06, ttsPadMs() / 1000);
       srcNode.onended = function(){ end(); };
       srcNode.start(ctx.currentTime + lead);
+      waSrc = srcNode;                 /* 停止できるように掴んでおく */
       waMode = true;
       dlog('tts','wa-play',{ src: job.tag, leadMs: Math.round(lead*1000), queuedMs: t0 - job.at,
         decodeMs: Date.now()-t0, dur: Math.round(ab.duration*1000), state: ctx.state, rate: ab.sampleRate });
@@ -2650,6 +2710,7 @@ function playViaAudioEl(job, end){
 function ttsGuard(text, ms){
   var done = false, tEnd = null;
   var finish = function(){ if (done) return; done = true; clearTimeout(tEnd); ttsEnd(); };
+  finish.gen = ttsGen;             /* この読み上げを始めた時点の世代を刻む */
   rememberSpoken(text);
   ttsBegin();
   tEnd = setTimeout(finish, ms);
@@ -2684,6 +2745,14 @@ var AIVIS_URL = 'https://api.aivis-project.com/v1/tts/synthesize';
 var aivisWarned = false;
 function aivisKey(){ return (KEYS['aivis'] || '').trim(); }
 function aivisModelFor(seat){ return seatPick(seat, CFG.aivisModelA, CFG.aivisModel); }
+/* スタイルIDはモデルごとに意味が変わる（同じ「1」でも別モデルでは別の演技）。
+   そのため A席が自前のモデルを持つときは、A席のスタイルだけを見る。
+   A席が「Bと同じモデル」に落ちているときに限り、スタイルもBに合わせる。 */
+function aivisStyleFor(seat){
+  if (seat !== 'A') return String(CFG.aivisStyle || '');
+  if ((CFG.aivisModelA || '').trim()) return String(CFG.aivisStyleA || '');
+  return String(CFG.aivisStyleA !== '' ? CFG.aivisStyleA : (CFG.aivisStyle || ''));
+}
 function aivisSpeak(text, lang, seat){
   if (lang !== 'ja') return ttsFallback(text, lang, '日本語以外');
   var uuid = aivisModelFor(seat || 'A');
@@ -2691,15 +2760,20 @@ function aivisSpeak(text, lang, seat){
     return ttsFallback(text, lang, '未設定',
       'Aivis Cloud API のキーまたはモデルUUIDが未設定です。⚙→音声 でご確認ください。', 'aivisWarned');
   var t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150));
+  var body = { model_uuid:uuid, text:text, output_format:'mp3' };
+  var st = aivisStyleFor(seat || 'A');
+  if (st !== '') body.style_id = parseInt(st, 10);      /* 未指定なら相手側の既定スタイル */
+  var rate = parseFloat(CFG.aivisRate);
+  if (rate && rate !== 1) body.speaking_rate = rate;
   fetch(AIVIS_URL, {
     method:'POST',
     headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + aivisKey() },
-    body: JSON.stringify({ model_uuid:uuid, text:text, output_format:'mp3' })
+    body: JSON.stringify(body)
   }).then(function(r){
     if (!r.ok) return r.text().then(function(x){ throw new Error(r.status + ' ' + String(x).slice(0,120)); });
     return r.blob();
   }).then(function(b){
-    dlog('tts','aivis-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size, seat:seat||'A', model:uuid.slice(0,8) });
+    dlog('tts','aivis-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size, seat:seat||'A', model:uuid.slice(0,8), style:(st===''?'既定':st), rate:rate });
     playBlob(b, finish, 'aivis');
   }).catch(function(err){
     var m = String((err && err.message) || err);
@@ -2709,6 +2783,89 @@ function aivisSpeak(text, lang, seat){
       ? 'Aivis Cloud API に接続できませんでした（ブラウザから直接呼べない可能性があります）。'
       : 'Aivis Cloud API でエラーが返りました（' + m.slice(0,70) + '）。';
     ttsFallback(text, lang, 'API失敗', hint, 'aivisWarned');
+  });
+}
+
+/* AivisHub からモデルの情報を引いて、スタイルに名前を付けて選べるようにする。
+   ブラウザから直接読めない場合もあるので、そのときは番号だけの一覧に落とす。 */
+var AIVIS_INFO = 'https://api.aivis-project.com/v1/aivm-models/';
+function aivisStyleList(uuid){
+  return fetch(AIVIS_INFO + encodeURIComponent(uuid)).then(function(r){
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(function(j){
+    var out = [];
+    ((j && j.speakers) || []).forEach(function(sp){
+      (sp.styles || []).forEach(function(st){
+        var id = (st.local_id != null) ? st.local_id : st.id;
+        if (id == null) return;
+        if (out.some(function(o){ return String(o.id) === String(id); })) return;
+        out.push({ id:String(id), name: st.name || ('スタイル ' + id) });
+      });
+    });
+    return out;
+  });
+}
+function aivisFillStyle(sel, list, keep){
+  sel.innerHTML = '';
+  var z = document.createElement('option');
+  z.value = ''; z.textContent = '既定（ノーマル）';
+  sel.appendChild(z);
+  (list || []).forEach(function(s){
+    var o = document.createElement('option');
+    o.value = String(s.id); o.textContent = s.name + '（' + s.id + '）';
+    sel.appendChild(o);
+  });
+  var k = String(keep || ''), found = false;
+  for (var i=0;i<sel.options.length;i++) if (sel.options[i].value === k) found = true;
+  sel.value = found ? k : '';
+  return (list || []).length;
+}
+/* 一覧が取れないときの逃げ道。AivisHubの画面で見たStyle IDを番号で選べるようにする */
+function aivisNumberedStyles(n){
+  var out = [];
+  for (var i=0;i<(n||8);i++) out.push({ id:String(i), name:'スタイル ' + i });
+  return out;
+}
+/* モデルが変わったら、選択済みのスタイルも一覧もいったん白紙に戻す。
+   別モデルの番号をそのまま使うと、意図しない演技で鳴ってしまう。 */
+function aivisResetStyles(){
+  CFG.aivisStyle = ''; CFG.aivisStyleA = '';
+  store.set('di.aist', ''); store.set('di.aista', '');
+  ['aivisStyle','aivisStyleA'].forEach(function(id){
+    var sl = $(id); if (sl) sl.innerHTML = '';
+  });
+}
+function aivisFetchStyles(){
+  var mB = (CFG.aivisModel || '').trim(), mA = (CFG.aivisModelA || '').trim();
+  if (!mB && !mA){ toast('先にモデルUUIDを入力してください'); return Promise.resolve(); }
+  var jobs = [];
+  if (mB) jobs.push(aivisStyleList(mB).then(function(l){ return { sel:'aivisStyle', keep:CFG.aivisStyle, list:l }; }));
+  if (mA) jobs.push(aivisStyleList(mA).then(function(l){ return { sel:'aivisStyleA', keep:CFG.aivisStyleA, list:l }; }));
+  return Promise.all(jobs).then(function(res){
+    var total = 0;
+    res.forEach(function(r){
+      var sel = $(r.sel); if (!sel) return;
+      total += aivisFillStyle(sel, r.list, r.keep);
+    });
+    /* A席が自前のモデルを持たないときは、B席と同じ一覧を出しておく */
+    if (!mA && mB && res.length){
+      var selA = $('aivisStyleA');
+      if (selA) aivisFillStyle(selA, res[0].list, CFG.aivisStyleA);
+    }
+    dlog('tts','aivis-styles',{ n: total });
+    toast('スタイルを ' + total + ' 件取得しました。', true);
+    refreshVvUI();
+  }).catch(function(err){
+    var m = String((err && err.message) || err);
+    dlog('tts','aivis-styles-FAIL',{ err:m.slice(0,140) });
+    /* 取得できなくても手で選べるようにしておく（AivisHubの画面に番号が出ている） */
+    var fb = aivisNumberedStyles(8);
+    if ($('aivisStyle'))  aivisFillStyle($('aivisStyle'),  fb, CFG.aivisStyle);
+    if ($('aivisStyleA')) aivisFillStyle($('aivisStyleA'), fb, CFG.aivisStyleA);
+    toast('スタイル名を取得できませんでした（' + m.slice(0,50) + '）。<br>'
+        + 'AivisHub のモデルページに出ている <b>Style ID</b> を見て、番号で選んでください。');
+    refreshVvUI();
   });
 }
 
@@ -3062,7 +3219,10 @@ function ttsSeatVoices(){
     if (!seatUsed(seat)) return '(対象外)';
     if (CFG.ttsMode === 'openai')   return seat === 'A' ? CFG.voiceA : CFG.voiceB;
     if (CFG.ttsMode === 'voicevox'){ var v = vvSpeakerInfo(vvSpeakerId(seat)); return v.name + '/' + v.style; }
-    if (CFG.ttsMode === 'aivis')    return (aivisModelFor(seat) || '(未設定)').slice(0, 8);
+    if (CFG.ttsMode === 'aivis'){
+      var st = aivisStyleFor(seat);
+      return (aivisModelFor(seat) || '(未設定)').slice(0, 8) + (st !== '' ? ('/style' + st) : '');
+    }
     if (CFG.ttsMode === 'eleven'){
       /* A席が「Bと同じ」のときは、その選択肢の文言ではなく実際に鳴る声の名前を出す */
       var vid = elVoiceId(seat);
@@ -3082,6 +3242,18 @@ function refreshVvUI(){
     var ak = $('aivisKey');   if (ak && ak !== document.activeElement) ak.value = KEYS['aivis'] || '';
     var am = $('aivisModel'); if (am && am !== document.activeElement) am.value = CFG.aivisModel || '';
     var ama = $('aivisModelA'); if (ama && ama !== document.activeElement) ama.value = CFG.aivisModelA || '';
+    var ar = $('aivisRate'); if (ar) ar.value = String(CFG.aivisRate || '1');
+    [['aivisStyle', CFG.aivisStyle], ['aivisStyleA', CFG.aivisStyleA]].forEach(function(pair){
+      var sl = $(pair[0]); if (!sl || sl.options.length) return;   /* 取得前でも選択済みの値は残す */
+      var z = document.createElement('option'); z.value = ''; z.textContent = '既定（ノーマル）';
+      sl.appendChild(z);
+      if (pair[1]){
+        var o = document.createElement('option');
+        o.value = pair[1]; o.textContent = 'スタイル ' + pair[1];
+        sl.appendChild(o);
+      }
+      sl.value = pair[1] || '';
+    });
   }
   var ef = $('elField');
   if (ef){
@@ -3156,6 +3328,40 @@ function refreshVvUI(){
   markNoteToggles();
 }
 
+/* ---------------- 手動読み上げの停止と、鳴っている間の目印 ----------------
+   押したのに何も起きないように見える・止め方が無い、という不満をまとめて解消する。
+   どのエンジンでも必ず ttsBegin/ttsEnd を通るので、点滅の解除はそこに寄せている。 */
+var sayBtnNow = null;
+function setSayBtn(btn){
+  if (sayBtnNow && sayBtnNow !== btn){
+    sayBtnNow.classList.remove('on','playing');
+    sayBtnNow.title = 'この文を読み上げる';
+  }
+  sayBtnNow = btn || null;
+  if (sayBtnNow){
+    sayBtnNow.classList.add('on','playing');
+    sayBtnNow.title = 'もう一度押すと読み上げを止めます';
+  }
+}
+function ttsIsBusy(){ return ttsActive > 0 || ttsPlayingNow || ttsQueue.length > 0; }
+function stopSpeaking(why){
+  var had = ttsIsBusy();
+  ttsGen++;                                  /* 以後に届く音声は鳴らさない */
+  clearTtsQueue();                           /* 待ち行列を先に空にする */
+  try{ if (window.speechSynthesis) speechSynthesis.cancel(); }catch(e){}
+  try{ audioEl.pause(); }catch(e){}
+  if (waSrc){ try{ waSrc.stop(0); }catch(e){} waSrc = null; }
+  /* <audio> は pause() しても onended が来ないため、後始末を自分で呼ぶ。
+     Web Audio 側は stop() で onended が走るが、二重に呼ばれても中で弾かれる。 */
+  var end = ttsCurEnd; ttsCurEnd = null;
+  if (end){ try{ end(); }catch(e){} }
+  ttsPlayingNow = false;
+  ttsActive = 0; S.speaking = false;
+  setSayBtn(null);
+  if (had) dlog('tts','stop',{ why: why || '手動', gen: ttsGen });
+  return had;
+}
+
 /* 読み上げ対象の設定で弾かれ続けると「壊れている」ように見えるので、
    スキップした理由を必ず記録し、続くようなら一度だけ画面でも知らせる。 */
 var ttsSkipStreak = 0, ttsSkipHinted = false;
@@ -3166,18 +3372,18 @@ function whoLabel(){
 /* ボタンから明示的に読み上げる。自動読み上げの設定（OFF・読み上げ対象）に
    関係なく鳴らす ―― 押したのだから鳴らす、が期待される動作のため。 */
 function speakManual(text, lang, btn, seat){
+  /* 鳴っている最中に同じボタンを押したら「止める」。トグルとして使えるようにする */
+  if (btn && btn === sayBtnNow){
+    stopSpeaking('同じボタンを再度押した');
+    return;
+  }
   if (!text){ toast('読み上げる文がありません'); return; }
   seat = (seat === 'B') ? 'B' : 'A';
   dlog('tts','manual',{ lang: lang, chars: text.length, mode: CFG.ttsMode, seat: seat });
   // 押した直後に鳴ってほしいので、再生中のものは止めてこちらを優先する
-  try{ if (window.speechSynthesis) speechSynthesis.cancel(); }catch(_){}
-  try{ audioEl.pause(); }catch(_){}
-  clearTtsQueue(); ttsPlayingNow = false;   // 押した文をすぐ鳴らすため、順番待ちは流す
+  stopSpeaking('別の文を読み上げ');
   primeOutput();
-  if (btn){
-    btn.classList.add('on');
-    setTimeout(function(){ btn.classList.remove('on'); }, 1200);
-  }
+  setSayBtn(btn);
   if (CFG.ttsMode === 'openai') apiSpeak(text, seat);
   else if (CFG.ttsMode === 'voicevox') vvSpeak(text, lang, seat);
   else if (CFG.ttsMode === 'aivis')    aivisSpeak(text, lang, seat);
@@ -4132,6 +4338,7 @@ function exportHtml(){
     syncScroll: CFG.syncScroll?'1':'0', vvSpeaker: CFG.vvSpeaker, vvSpeakerA: CFG.vvSpeakerA, ttsSrc: CFG.ttsSrc?'1':'0',
     ovlOn: CFG.ovlOn?'1':'0', ovlA: CFG.ovlA, ovlLines: CFG.ovlLines, ovlKey: CFG.ovlKey,
     ttsPad: CFG.ttsPad, aivisModel: CFG.aivisModel, aivisModelA: CFG.aivisModelA, lvvBase: CFG.lvvBase,
+    aivisStyle: CFG.aivisStyle, aivisStyleA: CFG.aivisStyleA, aivisRate: CFG.aivisRate,
     lvvSpeaker: CFG.lvvSpeaker, lvvSpeakerLbl: CFG.lvvSpeakerLbl,
     lvvSpeakerA: CFG.lvvSpeakerA, lvvSpeakerALbl: CFG.lvvSpeakerALbl,
     elModel: CFG.elModel, elVoice: CFG.elVoice, elVoiceLbl: CFG.elVoiceLbl,
@@ -4145,7 +4352,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.24</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.25</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -4663,6 +4870,8 @@ $('feedB').addEventListener('scroll', function(){ onFeedScroll('feedB','feedA');
 
 $('clearBtn').onclick = function(){
   if (S.entries.length && !confirm('会話ログを消去しますか？')) return;
+  /* 消したログのボタンを掴んだままにしないよう、読み上げも一緒に止める */
+  stopSpeaking('会話ログを消去');
   S.entries=[]; S.seq=0; $('feedA').innerHTML=''; $('feedB').innerHTML='';
 };
 
@@ -4815,11 +5024,15 @@ $('aivisKey').oninput = function(){
 };
 $('aivisModel').oninput = function(){
   CFG.aivisModel = this.value.trim(); store.set('di.aim', CFG.aivisModel);
-  aivisWarned = false; keyChkShow('chkAivisMsg','',''); refreshVvUI();
+  aivisWarned = false; keyChkShow('chkAivisMsg','','');
+  aivisResetStyles();                    /* 別モデルのスタイル一覧は当てにならない */
+  refreshVvUI();
 };
 $('aivisModelA').oninput = function(){
   CFG.aivisModelA = this.value.trim(); store.set('di.aima', CFG.aivisModelA);
-  aivisWarned = false; keyChkShow('chkAivisMsg','',''); refreshVvUI();
+  aivisWarned = false; keyChkShow('chkAivisMsg','','');
+  aivisResetStyles();
+  refreshVvUI();
 };
 $('lvvBase').oninput = function(){
   CFG.lvvBase = this.value.trim(); store.set('di.lvb', CFG.lvvBase);
@@ -4843,6 +5056,16 @@ $('chkVv').onclick    = function(){ verifyVvKey(); };
 $('chkLvv').onclick   = function(){ verifyLvv(); };
 $('chkEl').onclick    = function(){ verifyElKey(); };
 $('elFetch').onclick  = function(){ elFetchVoices(); };
+$('aivisFetch').onclick = function(){ aivisFetchStyles(); };
+$('aivisStyle').onchange = function(){
+  CFG.aivisStyle = this.value; store.set('di.aist', CFG.aivisStyle); refreshVvUI();
+};
+$('aivisStyleA').onchange = function(){
+  CFG.aivisStyleA = this.value; store.set('di.aista', CFG.aivisStyleA); refreshVvUI();
+};
+$('aivisRate').onchange = function(){
+  CFG.aivisRate = this.value; store.set('di.airt', CFG.aivisRate); refreshVvUI();
+};
 $('elKey').oninput = function(){
   KEYS['eleven'] = this.value.trim(); saveKeys();
   elWarned = false; keyChkShow('chkElMsg','',''); refreshVvUI();
@@ -4945,7 +5168,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.24');
+  out.push('- バージョン: Duo Interpreter v1.25');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
