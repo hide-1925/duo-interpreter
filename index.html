@@ -5559,6 +5559,7 @@ function diagText(devices){
       ? ((CFG.aivisStyleA === '' ? '既定' : CFG.aivisStyleA) + ' / ' + (CFG.aivisStyle === '' ? '既定' : CFG.aivisStyle)
          + (CFG.aivisSpk || CFG.aivisSpkA ? '（話者指定あり）' : ''))
       : '(未使用)'],
+   ['Aivis 話す速さ', CFG.ttsMode === 'aivis' ? (CFG.aivisRate + ' 倍') : '(未使用)'],
    ['原文読み上げ', CFG.ttsSrc ? 'ON' : 'OFF'],
    ['鳴り始めの無音', CFG.ttsPad + ' ms'],
    ['再生経路', waMode ? 'Web Audio（開きっぱなし）' : '<audio>'],
