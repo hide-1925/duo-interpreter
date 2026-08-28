@@ -691,14 +691,18 @@
         <option value="B2A">相手(B)の発言だけ読み上げる（推奨）</option>
         <option value="A2B">自分(A)の発言だけ読み上げる</option>
       </select>
-      <div class="row" id="oaiVoices">
-        <label class="seatpick seatA"><span>自分(A)の発言</span>
-        <select id="voiceA"><option value="alloy">alloy</option><option value="nova">nova</option><option value="shimmer">shimmer</option><option value="ash">ash</option><option value="onyx">onyx</option><option value="fable">fable</option><option value="sage">sage</option></select></label>
-        <label class="seatpick seatB"><span>相手(B)の発言</span>
-        <select id="voiceB"><option value="ash">ash</option><option value="onyx">onyx</option><option value="fable">fable</option><option value="alloy">alloy</option><option value="nova">nova</option><option value="shimmer">shimmer</option><option value="sage">sage</option></select></label>
+      <!-- 声とモデルの指定は OpenAI 音声だけが使う。他のエンジンでは一切参照しないので、
+           選んでいないときは丸ごと隠す（設定に見えて効かない項目を残さない）。 -->
+      <div id="oaiOnly">
+        <div class="row" id="oaiVoices">
+          <label class="seatpick seatA"><span>自分(A)の発言</span>
+          <select id="voiceA"><option value="alloy">alloy</option><option value="nova">nova</option><option value="shimmer">shimmer</option><option value="ash">ash</option><option value="onyx">onyx</option><option value="fable">fable</option><option value="sage">sage</option></select></label>
+          <label class="seatpick seatB"><span>相手(B)の発言</span>
+          <select id="voiceB"><option value="ash">ash</option><option value="onyx">onyx</option><option value="fable">fable</option><option value="alloy">alloy</option><option value="nova">nova</option><option value="shimmer">shimmer</option><option value="sage">sage</option></select></label>
+        </div>
+        <select id="ttsModel"></select>
+        <input type="text" id="ttsModelCustom" placeholder="モデル名を直接入力" style="display:none">
       </div>
-      <select id="ttsModel"></select>
-      <input type="text" id="ttsModelCustom" placeholder="モデル名を直接入力" style="display:none">
       <label class="switch"><input type="checkbox" id="ttsSrc"> 訳文ではなく<b>原文</b>をそのまま読み上げる</label>
       <div class="row">
         <span style="font-size:11.5px;color:var(--dim);width:104px;flex:0 0 auto">鳴り始めの無音</span>
@@ -795,7 +799,7 @@
       </div>
       <label class="switch"><input type="checkbox" id="aivisStream"> ストリーミング再生（生成を待たずに鳴らし始める）</label>
       <div class="keyrow">
-        <button class="btn ghost" id="chkAivis" title="キーとモデル UUID を確かめます（ごく短い音声を1回だけ生成します）">🔍 キーとモデルを確認</button>
+        <button class="btn ghost" id="chkAivis" title="いまの設定で短い音声を1回生成して、そのまま鳴らします">🔍 確認して試聴</button>
         <span class="keychk" id="chkAivisMsg"></span>
       </div>
       <small>キーは <a href="https://hub.aivis-project.com/cloud-api/dashboard" target="_blank" rel="noopener noreferrer">Aivis Cloud API ダッシュボード</a> で取得できます（登録時に無料クレジット付き・その後は従量課金または月額）。
@@ -2047,23 +2051,36 @@ function verifySttKey(){
 }
 /* Aivis は一覧系の入口が無いので、ごく短い文を1回だけ合成して確かめる。
    ついでにモデルUUIDとCORSも同時に検証できるので、むしろこの方が確実。 */
+/* 確認ついでに実際に鳴らす。スタイル名の一覧が取れない環境では、
+   番号が合っているかどうかを耳で確かめるのが一番確実なため。 */
+var AIVIS_TEST_LINE = 'こんにちは。読み上げのテストです。';
 function verifyAivisKey(){
   return keyChkRun('chkAivis', 'chkAivisMsg', 'Aivis Cloud API', function(){
     var key = aivisKey();
     if (!key) return Promise.reject(new Error('APIキーが未入力です'));
-    var uuid = aivisModelFor(seatUsed('B') ? 'B' : 'A');
-    if (!uuid) return Promise.reject(new Error('モデルUUIDが未入力です'));
+    var seat = seatUsed('B') ? 'B' : 'A';
+    if (!aivisModelFor(seat)) return Promise.reject(new Error('モデル UUID が未入力です'));
+    var body = aivisBody(AIVIS_TEST_LINE, seat, 'mp3');
     return fetch(AIVIS_URL, {
       method:'POST',
       headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + key },
-      body: JSON.stringify({ model_uuid:uuid, text:'テスト', output_format:'mp3' })
+      body: JSON.stringify(body)
     }).then(function(r){
-      if (r.ok) return r.blob().then(function(b){
-        return 'キーとモデルの両方が有効です（テスト音声 ' + Math.round(b.size/1024) + ' KB を生成しました）。';
-      });
-      return r.text().then(function(t){ throw new Error('HTTP ' + r.status + ' ' + t.slice(0,160)); });
+      if (!r.ok) return r.text().then(function(t){ throw new Error('HTTP ' + r.status + ' ' + t.slice(0,160)); });
+      return r.blob();
+    }).then(function(b){
+      stopSpeaking('試聴の前に止める');
+      ttsAudioCtx(); primeOutput();
+      playBlob(b, ttsGuard(AIVIS_TEST_LINE, 30000), 'aivis-test');
+      var st = aivisStyleFor(seat);
+      return (seat === 'A' ? '自分(A)' : '相手(B)') + 'の設定で鳴らします（'
+           + (st === '' ? '既定スタイル' : 'Style ID: ' + st)
+           + (body.speaker_uuid ? ' / 話者指定あり' : '')
+           + (body.speaking_rate ? ' / ' + body.speaking_rate + '倍' : '')
+           + ' / ' + Math.round(b.size/1024) + 'KB）。'
+           + '<br>思った声と違うときは Style ID を変えて、もう一度押してください。';
     });
-  }, 'モデルUUIDが見つかりません。AivisHub の該当モデルのページからコピーし直してください。');
+  }, 'モデル UUID が見つかりません。AivisHub のモデルページからコピーし直してください。');
 }
 /* VOICEVOX WEB版はポイント残量の入口があるので、残りも一緒に出す */
 function verifyVvKey(){
@@ -3034,9 +3051,10 @@ function aivisResetStyles(){
 /* 取得できなかったときに、実在するか分からない番号を並べるのは害しかない。
    （このモデルには無いスタイルを選べてしまい、しかも失敗に気づけない）
    一覧は出さず、理由をその場に表示して、番号の直接入力に切り替える。 */
-function aivisStyleFail(msg){
+function aivisStyleFail(msg, mild){
+  /* 環境側の制約で取れないだけのときは、赤字の警告にしない（直しようがないため） */
   var el = $('aivisStyleMsg');
-  if (el){ el.className = 'keychk ng'; el.innerHTML = '⚠ ' + msg; }
+  if (el){ el.className = 'keychk' + (mild ? '' : ' ng'); el.innerHTML = (mild ? 'ℹ ' : '⚠ ') + msg; }
   var row = $('aivisStyleNumRow'); if (row) row.style.display = '';
   ['aivisStyle','aivisStyleA'].forEach(function(id){
     var sl = $(id); if (sl) aivisFillStyle(sl, [], '');    /* 既定だけに戻す */
@@ -3078,10 +3096,25 @@ function aivisFetchStyles(){
     if (!mA && rB && rB.ok) aivisFillStyle($('aivisStyleA'), rB.list, CFG.aivisStyleA);
 
     if (errs.length && !total){
-      dlog('tts','aivis-styles-FAIL',{ err: errs.join(' / ').slice(0,180) });
-      aivisStyleFail('スタイル一覧を取得できませんでした（' + errs.join(' / ').slice(0,90) + '）。<br>'
-        + 'AivisHub のモデルページで <b>Style ID</b> を確認し、下の欄に番号を入力してください。'
-        + '<br>存在しない番号を選ばせないよう、こちらでは候補を作りません。');
+      var joined = errs.join(' / ');
+      dlog('tts','aivis-styles-FAIL',{ err: joined.slice(0,180) });
+      /* 「Failed to fetch」はブラウザが通信そのものを拒まれた合図。
+         読み上げ本体（合成API）は同じホストで動いているので、キーやUUIDの問題ではなく
+         この一覧用の入口だけがブラウザからの直接読み取りを許していない、という意味になる。
+         利用者に落ち度がある書き方をしないよう、原因の切り分けを分けて出す。 */
+      var cors = /failed to fetch|networkerror|load failed/i.test(joined);
+      if (cors){
+        aivisStyleFail(
+          'スタイル名の一覧は、ブラウザからは読み取れませんでした。'
+          + '<b>設定の誤りではありません</b>（AivisHub 側がブラウザからの直接読み取りを許可していないためです）。<br>'
+          + 'AivisHub のモデルページに出ている <b>Style ID</b> の番号を、下の欄に入力してください。'
+          + '読み上げそのものは番号だけで問題なく動きます。'
+          + '<br>入力したら「🔍 確認して試聴」でその声を実際に聞いて確かめられます。', true);
+      } else {
+        aivisStyleFail('スタイル一覧を取得できませんでした（' + joined.slice(0,90) + '）。<br>'
+          + 'モデル UUID が正しいかご確認のうえ、AivisHub のモデルページの <b>Style ID</b> を下の欄に入力してください。'
+          + '<br>存在しない番号を選ばせないよう、こちらでは候補を作りません。');
+      }
       refreshVvUI();
       return;
     }
@@ -3486,6 +3519,11 @@ function refreshVvUI(){
       sl.value = pair[1] || '';
     });
   }
+  /* OpenAI 音声を選んでいないときは、声とモデルの欄を隠す。
+     フォールバック時もこれらは使われない（鳴らない場合はブラウザ内蔵音声に回る）ので、
+     残しておくと「設定したのに効かない」誤解のもとになる。 */
+  var oo = $('oaiOnly');
+  if (oo) oo.style.display = (CFG.ttsMode === 'openai') ? '' : 'none';
   var ef = $('elField');
   if (ef){
     ef.style.display = (CFG.ttsMode === 'eleven') ? '' : 'none';
@@ -5309,8 +5347,8 @@ function aivisStyleNum(el, isA){
   else    { CFG.aivisStyle  = v; store.set('di.aist',  v); CFG.aivisSpk  = ''; store.set('di.aisp', ''); }
   refreshVvUI();
 }
-$('aivisStyleNumA').oninput = function(){ aivisStyleNum(this, true); };
-$('aivisStyleNumB').oninput = function(){ aivisStyleNum(this, false); };
+$('aivisStyleNumA').oninput = function(){ aivisStyleNum(this, true); keyChkShow('chkAivisMsg','',''); };
+$('aivisStyleNumB').oninput = function(){ aivisStyleNum(this, false); keyChkShow('chkAivisMsg','',''); };
 $('aivisRate').onchange = function(){
   CFG.aivisRate = this.value; store.set('di.airt', CFG.aivisRate); refreshVvUI();
 };
