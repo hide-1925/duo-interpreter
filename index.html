@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.30 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.31 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -310,6 +310,12 @@
   /* 設定欄の中の小見出し。どの値を入れる欄なのかを一段上で示す */
   .sublabel{font-size:11.5px;color:var(--txt);opacity:.85;margin:6px 0 -2px;font-weight:600}
   .seatpick>select,.seatpick>input{width:100%;min-width:0}
+  /* UUID とキャラ名を横に並べる。UUID の方が長いので幅を多めに取る */
+  .uuidrow{display:flex;gap:6px;min-width:0}
+  .uuidrow>input:first-child{flex:1.7 1 0;min-width:0}
+  .uuidrow>input.mname{flex:1 1 0;min-width:0}
+  .uuidrow>a{flex:0 0 auto;align-self:center;color:var(--dim);text-decoration:none;font-size:13px;padding:0 2px}
+  .uuidrow>a:hover{color:var(--txt)}
   /* キー確認の結果表示。成功・失敗が一目で分かる色だけ付ける */
   /* 話し方の調整。既定のままなら送らないので、触らなければ今までと同じ音になる */
   details.adv{border:1px solid var(--line);border-radius:9px;padding:0 12px;margin:2px 0}
@@ -466,7 +472,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.30</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.31</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -476,7 +482,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.30</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.31</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -637,6 +643,7 @@
         <option value="realtime">⚡ リアルタイム同時通訳（gpt-realtime-translate / OpenAI）</option>
         <option value="openai">OpenAI（gpt-4o-transcribe / whisper-1）</option>
         <option value="groq">Groq Whisper（高速・安価）</option>
+        <option value="xai">xAI Grok（多言語・キーは翻訳側と共通）</option>
         <option value="gemini">Google Gemini（音声理解）</option>
       </select>
       <div class="row" style="margin-top:4px">
@@ -645,6 +652,11 @@
       </div>
       <input type="text" id="sttModelCustom" placeholder="モデル名を直接入力" style="display:none">
       <small id="sttModelNote">APIキーを入力すると、実際に使えるモデル一覧を自動で取得します。</small>
+      <small id="xaiSttNote" style="display:none" data-fold="off">xAI の音声認識はモデルを選ぶ必要がありません。
+      キーは翻訳プロバイダの xAI と共通で、上の欄が空ならそちらのキーを使います。<br>
+      日本語・英語を含む25言語に対応しています。<b>中国語は対応一覧にありません</b>ので、
+      言語指定を送らず自動判定にまかせます（うまく取れないときは Gemini か OpenAI をお試しください）。<br>
+      用語集の語は聞き取りのヒントとして一緒に送ります。</small>
       <small>タブ／システム音声を入力にする場合は、ブラウザ内蔵ではなく API 側の音声認識が必要です。</small>
       <div class="note" id="realtimeNote" style="display:none">
         <b>⚡ リアルタイム同時通訳モード</b><br>
@@ -708,6 +720,7 @@
         <option value="openai">OpenAI 音声（自然）</option>
         <option value="voicevox">🫛 VOICEVOX WEB版（ずんだもん等・日本語のみ／お遊び）</option>
         <option value="eleven">🗣 ElevenLabs（自分の声をクローン・多言語・低遅延）</option>
+        <option value="xai">🤖 xAI Grok Voice（多言語・低遅延）</option>
         <option value="aivis">🎙 Aivis Cloud API（高品質・低遅延・日本語のみ）</option>
         <option value="localvv">🖥 ローカルエンジン（AivisSpeech / VOICEVOX・日本語のみ）</option>
       </select>
@@ -785,18 +798,59 @@
       本人の同意なく他人の声を複製することは規約でも法令でも認められません。自分の声、または許諾を得た声だけをお使いください。</small>
     </div>
 
+    <div class="field" id="xaiField" style="display:none">
+      <label>🤖 xAI Grok Voice</label>
+      <input type="password" id="xaiTtsKey" placeholder="xAI APIキー（翻訳で入力済みなら共通）" autocomplete="off">
+      <div class="keyrow">
+        <button class="btn ghost" id="chkXaiTts" title="キーが有効かどうかを確かめます">🔍 キーを確認</button>
+        <span class="keychk" id="chkXaiTtsMsg"></span>
+      </div>
+      <div class="row">
+        <label class="seatpick seatA"><span>自分(A)の発言</span>
+        <select id="xaiVoiceA"></select></label>
+        <label class="seatpick seatB"><span>相手(B)の発言</span>
+        <select id="xaiVoice"></select></label>
+      </div>
+      <small data-fold="off">キーは <a href="https://console.x.ai/" target="_blank" rel="noopener noreferrer">xAI コンソール</a> で取得できます。
+      翻訳プロバイダで xAI を使っている場合は同じキーが共通で使われるので、ここは空欄のままで動きます。<br>
+      日本語・英語を含む20言語に対応しています（読み上げる言語は席ごとの設定から自動で渡します）。
+      対応外の言語のときは xAI 側の自動判定にまかせます。<br>
+      声は全28種類で、どの声でもすべての対応言語を読めます。A席とB席で別の声にすると、どちらの発言か耳で分かります。</small>
+    </div>
+
     <div class="field" id="aivisField" style="display:none">
       <label>🎙 Aivis Cloud API</label>
       <input type="password" id="aivisKey" placeholder="Aivis Cloud API キー" autocomplete="off">
-      <div class="sublabel">モデル UUID</div>
+      <div class="sublabel">キャラ（モデル）</div>
       <div class="row">
         <label class="seatpick seatA"><span>自分(A)の発言</span>
-        <input type="text" id="aivisModelA" placeholder="空なら相手(B)と同じ" autocomplete="off"></label>
-        <label class="seatpick seatB"><span>相手(B)の発言</span>
-        <input type="text" id="aivisModel" placeholder="モデル UUID" autocomplete="off"></label>
+        <div class="uuidrow">
+          <select id="aivisModelA"></select>
+          <a id="aivisHubA" href="#" target="_blank" rel="noopener noreferrer" title="このモデルのページをAivisHubで開く">↗</a>
+        </div>
+        <div class="uuidrow" id="aivisOtherA" style="display:none">
+          <input type="text" id="aivisModelACustom" placeholder="モデル UUID" autocomplete="off">
+          <input type="text" id="aivisNameA" class="mname" placeholder="キャラ名" autocomplete="off">
+        </div></label>
       </div>
-      <small id="uuidHelp" data-fold="off">AivisHub のモデルページ →「<b>詳細情報</b>」→「<b>モデル UUID</b>」を貼り付けます。
-      同じ画面の「<b>話者 UUID</b>」ではありません（モデルページのURL末尾と同じ値です）。</small>
+      <div class="row">
+        <label class="seatpick seatB"><span>相手(B)の発言</span>
+        <div class="uuidrow">
+          <select id="aivisModel"></select>
+          <a id="aivisHub" href="#" target="_blank" rel="noopener noreferrer" title="このモデルのページをAivisHubで開く">↗</a>
+        </div>
+        <div class="uuidrow" id="aivisOtherB" style="display:none">
+          <input type="text" id="aivisModelCustom" placeholder="モデル UUID" autocomplete="off">
+          <input type="text" id="aivisName" class="mname" placeholder="キャラ名" autocomplete="off">
+        </div></label>
+      </div>
+      <small id="uuidHelp" data-fold="off">よく使うキャラは名前で選べます。「↗」でそのモデルの AivisHub ページを開けます。<br>
+      一覧に無いモデル（自分で作ったモデルを含む）は「<b>── その他（モデル UUID を貼り付け）──</b>」を選ぶと入力欄が出ます。
+      貼り付けるのは AivisHub のモデルページ →「<b>詳細情報</b>」→「<b>モデル UUID</b>」の値です。
+      同じ画面の「<b>話者 UUID</b>」ではありません（モデルページのURL末尾と同じ値です）。<br>
+      <b>キャラ名</b>の欄は覚えておくための目印で、読み上げの動作には影響しません。
+      AivisHub から自動で取りにいきますが、AivisHub はブラウザからの読み取りを自分のサイト以外に許していないため、多くの場合は自動で入りません。
+      その場合はご自分で書いてください。UUID ごとに覚えるので、貼り替えて戻せば名前も戻ります。</small>
       <div class="sublabel">スタイル (Style ID)</div>
       <div class="row">
         <label class="seatpick seatA"><span>自分(A)の発言</span>
@@ -831,7 +885,7 @@
         <span class="keychk" id="chkAivisMsg"></span>
       </div>
       <small>キーは <a href="https://hub.aivis-project.com/cloud-api/dashboard" target="_blank" rel="noopener noreferrer">Aivis Cloud API ダッシュボード</a> で取得できます（登録時に無料クレジット付き・その後は従量課金または月額）。
-      モデルUUIDは <a href="https://hub.aivis-project.com/" target="_blank" rel="noopener noreferrer">AivisHub</a> の各モデルのページからコピーして貼り付けてください。初期値は「Anneli」です。
+      モデルUUIDは <a href="https://hub.aivis-project.com/" target="_blank" rel="noopener noreferrer">AivisHub</a> の各モデルのページからコピーして貼り付けてください。初期値は「まお」です。
       日本語の読み上げだけがこの声になり、それ以外の言語はブラウザ内蔵音声で読み上げます。
       失敗した場合もブラウザ内蔵音声に自動で切り替わります。<br>
       <b>自分の声を使う</b>：Style-Bert-VITS2 で作ったモデルを
@@ -1110,7 +1164,13 @@ var TTS_MODELS = [
   {id:'tts-1',           note:'低遅延'},
   {id:'tts-1-hd',        note:'高音質'}
 ];
-var STT_BASE = { openai:'https://api.openai.com/v1', groq:'https://api.groq.com/openai/v1' };
+var STT_BASE = { openai:'https://api.openai.com/v1', groq:'https://api.groq.com/openai/v1',
+                 xai:'https://api.x.ai/v1' };
+/* xAI の音声認識が対応している言語（このアプリの言語コードで表す）。
+   中国語は一覧に無いので、指定を送らず向こうの自動判定にまかせる。 */
+var XAI_STT_LANGS = { ja:'ja', en:'en', de:'de', it:'it', fr:'fr', es:'es', pt:'pt',
+                      ko:'ko', ru:'ru', vi:'vi', th:'th', id:'id', hi:'hi', ar:'ar',
+                      nl:'nl', pl:'pl', tr:'tr' };
 
 /* APIから取得したモデル一覧のキャッシュ（provider -> {chat:[],stt:[],tts:[]}） */
 var MODEL_CACHE = {};
@@ -1199,6 +1259,8 @@ function loadCfg(){
     elVoiceLbl:pref('di.elvl','elVoiceLbl',''),
     elVoiceA:  pref('di.elva','elVoiceA',''),              /* 空なら相手(B)と同じ声 */
     elVoiceALbl:pref('di.elval','elVoiceALbl',''),
+    xaiVoice:  pref('di.xav','xaiVoice','eve'),            /* 相手(B) */
+    xaiVoiceA: pref('di.xava','xaiVoiceA',''),             /* 空なら相手(B)と同じ声 */
     lvvBase:   pref('di.lvb','lvvBase','http://127.0.0.1:10101'),
     lvvSpeaker:pref('di.lvs','lvvSpeaker',''),
     lvvSpeakerLbl:pref('di.lvsl','lvvSpeakerLbl',''),
@@ -2155,6 +2217,14 @@ function verifyElKey(){
     });
   });
 }
+/* xAI は読み上げ専用の軽い確認口がないので、モデル一覧でキーの有効性だけを見る */
+function verifyXaiTtsKey(){
+  return keyChkRun('chkXaiTts', 'chkXaiTtsMsg', 'xAI', function(){
+    var key = xaiKey();
+    if (!key) return Promise.reject(new Error('APIキーが未入力です（翻訳側にも入っていません）'));
+    return probeLLM('oai', PROVIDERS.xai.base, key, 'xAI');
+  });
+}
 /* ローカルエンジンは「起動しているか」と「CORSを開けているか」が全て */
 function verifyLvv(){
   return keyChkRun('chkLvv', 'chkLvvMsg', 'ローカルエンジン', function(){
@@ -3051,6 +3121,94 @@ function aivisSpeakStream(text, lang, seat){
   });
 }
 
+/* モデルUUID → キャラ名。取れたものも手で書いたものもここに貯める */
+var AIVIS_NAMES = (function(){
+  try { return JSON.parse(store.get('di.ainm2', '{}')) || {}; } catch(e){ return {}; }
+})();
+/* 名前で選べるようにしてあるモデル。
+   AivisHub には日々モデルが増えるので、ここは「よく使う分の近道」であって
+   全部ではない。一覧に無いものは「その他」でUUIDを直接貼れば同じように使える。 */
+var AIVIS_MODELS = [
+  { n:'まお', u:'a59cb814-0083-4369-8542-f51a29e72af7' },
+  { n:'コハク', u:'22e8ed77-94fe-4ef2-871f-a86f94e9a579' },
+  { n:'にせ', u:'6d11c6c2-f4a4-4435-887e-23dd60f8b8dd' },
+  { n:'阿井田 茂', u:'47e53151-a378-46f3-abee-ce13aa07feb1' },
+  { n:'まい', u:'e9339137-2ae3-4d41-9394-fb757a7e61e6' },
+  { n:'fumifumi', u:'71e72188-2726-4739-9aa9-39567396fb2a' },
+  { n:'morioki', u:'baaae3c0-7b22-4605-8ba5-80c959b41a48' },
+  { n:'凛音エル', u:'f5017410-fbb5-49e1-97cb-e785f42e15f5' },
+  { n:'花音', u:'a670e6b8-0852-45b2-8704-1bc9862f2fe6' },
+  { n:'ろてじん（長老ボイス）', u:'696c98a2-c0b7-4fe7-8cf2-c7e9b8a9bd82' },
+  { n:'るな', u:'4f281e78-eba6-495a-8e50-5c322d02b5b1' },
+  { n:'中2', u:'9107b8b6-1ed1-43f5-bebe-0de4df4d229d' },
+  { n:'桜音', u:'3328da9a-8124-4619-a853-f7fc2f37889f' },
+  { n:'ほのか(~現実20代女子AIボイチェン~リアボVC公式モデル)', u:'59f96896-64d2-4378-830a-4d5feb3d81aa' },
+  { n:'観測症', u:'ed47c952-c253-405e-adba-1172399816a1' },
+  { n:'猩々博士 (雑談ボイス)', u:'70a875a9-feae-41e6-a586-8cf9e47c6c0b' },
+  { n:'らせつん', u:'9f36ec0d-8dac-42dc-aff4-149c5f99faad' },
+  { n:'みちのくあいり', u:'1b2830f4-8cf1-4184-a0d9-3a1bace3a844' },
+  { n:'澤原 玄二郎', u:'2e1fdde8-d089-42d7-b64f-cf89952b1bdc' },
+  { n:'Shinjou Tomoharu', u:'098d4e66-2faf-4a00-889c-a1d2f05bde78' },
+  { n:'M2', u:'d1a7446f-230d-4077-afdf-923eddabe53c' },
+  { n:'天深シノ', u:'0f6821f4-9f86-4da1-a41a-fbe6fff9ca88' },
+  { n:'zonoko', u:'7fc08a41-b64d-456d-8b22-8e1284674775' },
+  { n:'かりん(現実20代女子AIボイチェン@リアボVC公式モデル)', u:'18972473-ca36-4e06-a33a-5cc14adba0c4' }
+];
+var AIVIS_CUSTOM = '\u0000other';       /* 「その他」を表す、UUIDと衝突しない値 */
+/* 一覧にあるモデルは名前を最初から知っている状態にしておく。保存はしないので、
+   取得や手入力があればそちらが必ず勝つ。 */
+var AIVIS_KNOWN = (function(){
+  var m = {}; AIVIS_MODELS.forEach(function(x){ m[x.u] = x.n; }); return m;
+})();
+/* 席ごとのモデル選択を組み立てる。A席は空欄＝相手(B)と同じ、を先頭に置く */
+function aivisFillModels(sel, isA){
+  if (!sel || sel.options.length) return;
+  var add = function(v, t){
+    var o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o);
+  };
+  if (isA) add('', '相手(B)と同じ');
+  AIVIS_MODELS.forEach(function(x){ add(x.u, x.n); });
+  add(AIVIS_CUSTOM, '── その他（モデル UUID を貼り付け）──');
+}
+/* 「その他」を選んでいる席。UUIDが空でも入力欄を開いたままにするために要る */
+var AIVIS_OTHER = { A:false, B:false };
+/* いまの設定値に合わせて、選択・UUID欄・キャラ名欄・リンクを出し直す */
+function aivisSyncModel(seat){
+  var isA = (seat === 'A');
+  var sel  = $(isA ? 'aivisModelA' : 'aivisModel');
+  var row  = $(isA ? 'aivisOtherA' : 'aivisOtherB');
+  var cst  = $(isA ? 'aivisModelACustom' : 'aivisModelCustom');
+  var name = $(isA ? 'aivisNameA' : 'aivisName');
+  var link = $(isA ? 'aivisHubA' : 'aivisHub');
+  if (!sel) return;
+  aivisFillModels(sel, isA);
+  var uuid = String((isA ? CFG.aivisModelA : CFG.aivisModel) || '').trim();
+  /* 一覧に無いUUIDが入っているなら当然「その他」。
+     空でも、利用者が「その他」を選んだ直後なら入力欄を閉じない。 */
+  var known = !AIVIS_OTHER[seat] && ((uuid === '') || !!AIVIS_KNOWN[uuid]);
+  if (uuid && AIVIS_KNOWN[uuid]) AIVIS_OTHER[seat] = false;
+  sel.value = known ? uuid : AIVIS_CUSTOM;
+  if (row) row.style.display = known ? 'none' : '';
+  if (cst && cst !== document.activeElement) cst.value = known ? '' : uuid;
+  if (name && name !== document.activeElement) name.value = aivisNameOf(uuid);
+  if (link){
+    link.href = uuid ? (AIVIS_HUB + encodeURIComponent(uuid)) : AIVIS_HUB;
+    link.style.visibility = uuid ? '' : 'hidden';
+  }
+}
+function aivisNameOf(uuid){
+  uuid = String(uuid || '').trim();
+  return AIVIS_NAMES[uuid] || AIVIS_KNOWN[uuid] || '';
+}
+function aivisNameSet(uuid, name){
+  uuid = String(uuid || '').trim();
+  if (!uuid) return;
+  name = String(name || '').trim();
+  if (name) AIVIS_NAMES[uuid] = name; else delete AIVIS_NAMES[uuid];
+  store.set('di.ainm2', JSON.stringify(AIVIS_NAMES));
+}
+var AIVIS_HUB = 'https://hub.aivis-project.com/aivm-models/';
+
 /* AivisHub からモデルの情報を引いて、スタイルに名前を付けて選べるようにする。
    ブラウザから直接読めない場合もあるので、そのときは番号だけの一覧に落とす。 */
 var AIVIS_INFO = 'https://api.aivis-project.com/v1/aivm-models/';
@@ -3063,11 +3221,47 @@ function aivisWhyFail(uuid){
     .then(function(){ return 'cors'; })
     .catch(function(){ return 'network'; });
 }
+/* 同じモデルの情報を、スタイル一覧と名前で二度取りに行かないようにまとめる。
+   失敗も覚えておく（取れない相手に毎回投げても結果は変わらないため）。
+   「🔄 スタイル取得」を押したときだけ aivisInfoForget() で忘れて取り直す。 */
+var AIVIS_INFO_CACHE = {};
+function aivisModelInfo(uuid){
+  uuid = String(uuid || '').trim();
+  if (!AIVIS_INFO_CACHE[uuid]){
+    AIVIS_INFO_CACHE[uuid] = fetch(AIVIS_INFO + encodeURIComponent(uuid)).then(function(r){
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    });
+  }
+  return AIVIS_INFO_CACHE[uuid];
+}
+function aivisInfoForget(uuid){ delete AIVIS_INFO_CACHE[String(uuid || '').trim()]; }
+
+/* UUID を入れたときにキャラ名を取りにいく。
+   取れなければ何も書かない（それらしい名前をこちらで作らない）。 */
+function aivisFetchName(uuid, inputId){
+  uuid = String(uuid || '').trim();
+  if (!uuid || aivisNameOf(uuid)) return Promise.resolve('');
+  return aivisModelInfo(uuid).then(function(j){
+    var n = String((j && j.name) || '').trim();
+    if (!n) return '';
+    aivisNameSet(uuid, n);
+    dlog('tts','aivis-name',{ uuid: uuid.slice(0,8), name: n });
+    var el = $(inputId);
+    /* 入れている最中の欄を書き換えると打鍵を奪ってしまう */
+    if (el && el !== document.activeElement && !el.value) el.value = n;
+    refreshVvUI();
+    return n;
+  }, function(e){
+    dlog('tts','aivis-name-NG',{ uuid: uuid.slice(0,8), err: String((e && e.message) || e).slice(0,80) });
+    return '';
+  });
+}
+
 function aivisStyleList(uuid){
-  return fetch(AIVIS_INFO + encodeURIComponent(uuid)).then(function(r){
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return r.json();
-  }).then(function(j){
+  return aivisModelInfo(uuid).then(function(j){
+    /* モデル情報が取れたなら、キャラ名も同じ応答から拾える */
+    if (j && j.name) aivisNameSet(uuid, String(j.name).trim());
     var speakers = (j && j.speakers) || [], out = [], multi = speakers.length > 1;
     speakers.forEach(function(sp){
       /* 話者UUIDの項目名は aivm_speaker_uuid。別名も一応見る */
@@ -3268,6 +3462,8 @@ function aivisFetchStyles(){
   /* 番号の割り出しまで進むと十数秒かかることがある。二度押しで二重に走らせない */
   var fb = $('aivisFetch'); if (fb) fb.disabled = true;
   var done = function(){ if (fb) fb.disabled = false; };
+  /* 明示的に押されたときは、前に失敗した記憶を捨ててもう一度あたる */
+  aivisInfoForget(mB); aivisInfoForget(mA);
   /* 片方が失敗しても、もう片方は使えるようにそれぞれ独立して扱う */
   var wrap = function(uuid){
     return uuid ? aivisStyleList(uuid).then(
@@ -3338,6 +3534,7 @@ function aivisFetchStyles(){
    Instant Voice Cloning で作った「自分の声」を、日本語でも英語でも同じ声で使えるのが要点。 */
 var EL_BASE = 'https://api.elevenlabs.io/v1';
 var elWarned = false;
+var xaiWarned = false;
 function elKey(){ return (KEYS['eleven'] || '').trim(); }
 function elVoiceId(seat){ return seatPick(seat || 'A', CFG.elVoiceA, CFG.elVoice); }
 /* language_code を受け付けるのは v2.5 系だけ。他に渡すとエラーになるので出し分ける */
@@ -3345,6 +3542,57 @@ function elLangCode(lang){
   var c = String(lang || '').split('-')[0];
   return /v2_5$/.test(CFG.elModel || '') ? c : '';
 }
+/* =========================================================================
+   xAI Grok Voice（読み上げ）
+   ------------------------------------------------------------------
+   POST /v1/tts に text・voice_id・language を渡すと音声そのものが返る。
+   language は必須で、指定できるのは xAI 側が対応している20言語だけ。
+   対応外を渡すと弾かれてしまうので、その場合は 'auto' にして向こうに任せる。
+   ========================================================================= */
+var XAI_TTS_URL = 'https://api.x.ai/v1/tts';
+/* 公式ドキュメントに載っている声（28種）。どの声でも対応言語すべてを読める */
+var XAI_VOICES = ['eve','ara','leo','rex','sal','carina','zagan','helix','orion','luna',
+                  'iris','altair','zenith','perseus','helios','lux','kepler','rigel',
+                  'cosmo','celeste','ursa','sirius','lumen','castor','naksh','atlas',
+                  'aurora','liora'];
+/* このアプリの言語コード → xAI が受け付けるコード。載っていないものは自動判定に回す */
+var XAI_TTS_LANGS = { ja:'ja', en:'en', de:'de', it:'it', fr:'fr', es:'es-ES', pt:'pt-BR',
+                      zh:'zh', 'zh-TW':'zh', ko:'ko', ru:'ru', vi:'vi', id:'id',
+                      hi:'hi', ar:'ar-SA', tr:'tr' };
+function xaiKey(){ return (KEYS['tts:xai'] || KEYS['xai'] || '').trim(); }
+function xaiVoiceId(seat){ return seatPick(seat || 'A', CFG.xaiVoiceA, CFG.xaiVoice) || 'eve'; }
+function xaiTtsLang(lang){ return XAI_TTS_LANGS[lang] || 'auto'; }
+function xaiSpeak(text, lang, seat){
+  var key = xaiKey();
+  if (!key)
+    return ttsFallback(text, lang, '未設定',
+      'xAI のAPIキーが未設定です。⚙→音声 でご確認ください。', 'xaiWarned');
+  var t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150));
+  var lc = xaiTtsLang(lang);
+  fetch(XAI_TTS_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + key },
+    body: JSON.stringify({ text:text, voice_id:xaiVoiceId(seat), language:lc })
+  }).then(function(r){
+    if (!r.ok) return r.text().then(function(x){ throw new Error(r.status + ' ' + String(x).slice(0,140)); });
+    return r.blob();
+  }).then(function(b){
+    dlog('tts','xai-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size,
+                          seat:seat||'A', lang:lang, sent:lc, voice:xaiVoiceId(seat) });
+    playBlob(b, finish, 'xai');
+  }).catch(function(err){
+    var m = String((err && err.message) || err);
+    dlog('tts','xai-FAIL',{ err:m.slice(0,140), ms:Date.now()-t0, seat:seat||'A', sent:lc });
+    finish();
+    var hint = /^401|^403/.test(m) ? 'xAI のキーが無効か、権限がありません。'
+             : /^400|^422/.test(m) ? 'xAI がこの指定を受け付けませんでした（声または言語の組み合わせをご確認ください）。'
+             : /^429/.test(m)      ? 'xAI の利用上限に達したか、残高切れの可能性があります。'
+             : /failed to fetch|networkerror|load failed/i.test(m) ? 'xAI に接続できませんでした。'
+             : 'xAI でエラーが返りました（' + m.slice(0,70) + '）。';
+    ttsFallback(text, lang, 'API失敗', hint, 'xaiWarned');
+  });
+}
+
 function elSpeak(text, lang, seat){
   var key = elKey(), vid = elVoiceId(seat);
   if (!key || !vid)
@@ -3635,6 +3883,7 @@ function ttsSetupMissing(){
     if (!(CFG.elVoice||'').trim())      return 'ElevenLabs の声が未選択です（「🔄 声を取得」を押してください）。';
     if (seatUsed('A') && !elVoiceId('A')) return 'ElevenLabs の「自分(A)の発言」の声が未選択です。';
   }
+  if (CFG.ttsMode === 'xai' && !xaiKey()) return 'xAI のAPIキーが未設定です。';
   return '';
 }
 function ttsPlanText(){
@@ -3659,6 +3908,24 @@ function ttsPlanText(){
       t += '<br>' + (CFG.elVoiceLbl ? ('相手(B)は <b>' + CFG.elVoiceLbl + '</b>') : '')
          + (seatUsed('A') && CFG.elVoiceA && CFG.elVoiceALbl ? ('／自分(A)は <b>' + CFG.elVoiceALbl + '</b>') : '')
          + ' の声です。ElevenLabs は多言語なので、どの言語もこの声で読み上げます。';
+    }
+  }
+  if (CFG.ttsMode === 'xai'){
+    var missX = ttsSetupMissing();
+    if (missX){
+      t += '<br><b>⚠ ' + missX + '</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';
+      warn = true;
+    } else {
+      t += '<br>相手(B)は <b>' + xaiVoiceId('B') + '</b>'
+         + (seatUsed('A') ? ('／自分(A)は <b>' + xaiVoiceId('A') + '</b>') : '') + ' の声です。';
+      /* 対応外の言語は xAI 側の自動判定にゆだねる。黙って任せると
+         「指定したのに違う言語で読まれた」ときに理由が分からないので先に書いておく。 */
+      var auto = rows.filter(function(r){ return !XAI_TTS_LANGS[r.lang]; });
+      if (auto.length){
+        t += '<br>⚠ ' + auto.map(function(r){ return L(r.lang).name; }).join('・')
+           + ' は xAI の対応言語一覧にないため、言語指定を送らず自動判定にまかせます。';
+        warn = true;
+      }
     }
   }
   if (jaOnlyMode(CFG.ttsMode)){
@@ -3693,6 +3960,7 @@ function ttsSeatVoices(){
       var lbl = (vid && vid === CFG.elVoice) ? CFG.elVoiceLbl : CFG.elVoiceALbl;
       return lbl || vid || '(未設定)';
     }
+    if (CFG.ttsMode === 'xai')      return xaiVoiceId(seat);
     if (CFG.ttsMode === 'localvv')  return String(lvvSpeakerId(seat));
     if (CFG.ttsMode === 'browser')  return '(言語で自動選択)';
     return '(なし)';
@@ -3704,8 +3972,7 @@ function refreshVvUI(){
   if (af){
     af.style.display = (CFG.ttsMode === 'aivis') ? '' : 'none';
     var ak = $('aivisKey');   if (ak && ak !== document.activeElement) ak.value = KEYS['aivis'] || '';
-    var am = $('aivisModel'); if (am && am !== document.activeElement) am.value = CFG.aivisModel || '';
-    var ama = $('aivisModelA'); if (ama && ama !== document.activeElement) ama.value = CFG.aivisModelA || '';
+    aivisSyncModel('B'); aivisSyncModel('A');
     aivisAdvSync();
     var asx = $('aivisStream'); if (asx) asx.checked = !!CFG.aivisStream;
     [['aivisStyle', CFG.aivisStyle], ['aivisStyleA', CFG.aivisStyleA]].forEach(function(pair){
@@ -3747,6 +4014,26 @@ function refreshVvUI(){
       }
       eva.value = CFG.elVoiceA || '';
     }
+  }
+  var xf = $('xaiField');
+  if (xf){
+    xf.style.display = (CFG.ttsMode === 'xai') ? '' : 'none';
+    var xk = $('xaiTtsKey'); if (xk && xk !== document.activeElement) xk.value = KEYS['tts:xai'] || '';
+    var xv = $('xaiVoice'), xva = $('xaiVoiceA');
+    if (xv && !xv.options.length){
+      XAI_VOICES.forEach(function(v){
+        var o = document.createElement('option'); o.value = v; o.textContent = v; xv.appendChild(o);
+      });
+    }
+    if (xva && !xva.options.length){
+      var xz = document.createElement('option'); xz.value = ''; xz.textContent = '相手(B)と同じ';
+      xva.appendChild(xz);
+      XAI_VOICES.forEach(function(v){
+        var o = document.createElement('option'); o.value = v; o.textContent = v; xva.appendChild(o);
+      });
+    }
+    if (xv)  xv.value  = CFG.xaiVoice || 'eve';
+    if (xva) xva.value = CFG.xaiVoiceA || '';
   }
   var lf = $('lvvField');
   if (lf){
@@ -3861,6 +4148,7 @@ function speakManual(text, lang, btn, seat){
   else if (CFG.ttsMode === 'voicevox') vvSpeak(text, lang, seat);
   else if (CFG.ttsMode === 'aivis')    aivisSpeak(text, lang, seat);
   else if (CFG.ttsMode === 'eleven')   elSpeak(text, lang, seat);
+  else if (CFG.ttsMode === 'xai')      xaiSpeak(text, lang, seat);
   else if (CFG.ttsMode === 'localvv')  lvvSpeak(text, lang, seat);
   else browserSpeak(text, L(lang).tts);
 }
@@ -3897,6 +4185,7 @@ function speak(e){
   else if (CFG.ttsMode === 'voicevox') vvSpeak(sayText, sayLang, e.seat);
   else if (CFG.ttsMode === 'aivis')    aivisSpeak(sayText, sayLang, e.seat);
   else if (CFG.ttsMode === 'eleven')   elSpeak(sayText, sayLang, e.seat);
+  else if (CFG.ttsMode === 'xai')      xaiSpeak(sayText, sayLang, e.seat);
   else if (CFG.ttsMode === 'localvv')  lvvSpeak(sayText, sayLang, e.seat);
   else apiSpeak(sayText, e.seat);
 }
@@ -4331,9 +4620,33 @@ function guessSeatFromText(text){
   return S.listenSeat || 'A';
 }
 
+/* xAI の音声認識。/v1/stt はモデル名を取らず、file は最後に付ける決まりがある。
+   language を送ると数字や単位の書き起こしが整うが、対応外の言語で送ると弾かれるため
+   一覧にあるときだけ添える。 */
+function xaiSTT(blob, lang){
+  var key = sttKey();
+  if (!key) return Promise.reject(new Error('xAI のAPIキーが未設定です'));
+  var ext = blob.type.indexOf('mp4')>=0 ? 'mp4' : (blob.type.indexOf('ogg')>=0 ? 'ogg' : 'webm');
+  var fd = new FormData();
+  /* AUTO かつマイクを2人で共有している場合は言語を固定しない */
+  var autoDetect = S.autoMode && micSeats().length > 1;
+  var lc = autoDetect ? '' : (XAI_STT_LANGS[lang] || '');
+  if (lc){ fd.append('language', lc); fd.append('format', 'true'); }
+  /* 用語集は聞き取りのヒントとして渡せる（1語50字まで・最大100語） */
+  CFG.glossary.slice(0, 100).forEach(function(r){
+    var t = String(r.s || '').trim();
+    if (t && t.length <= 50) fd.append('keyterm', t);
+  });
+  fd.append('file', blob, 'seg.' + ext);       /* 仕様上いちばん最後 */
+  return fetch(STT_BASE.xai + '/stt', {
+    method:'POST', headers:{ 'Authorization':'Bearer ' + key }, body: fd
+  }).then(chk).then(function(j){ return (j && j.text) || ''; });
+}
+
 function sttCall(blob, lang){
   var p = CFG.sttProvider;
   if (p === 'gemini') return geminiSTT(blob, lang);
+  if (p === 'xai')    return xaiSTT(blob, lang);
   var key = sttKey();
   if (!key) return Promise.reject(new Error('音声認識用のAPIキーが未設定です'));
   // モデル名が空だと OpenAI が 400「you must provide a model parameter」を返すため必ず補う
@@ -4817,6 +5130,7 @@ function exportHtml(){
     aivisBreak: CFG.aivisBreak, aivisNorm: CFG.aivisNorm?'1':'0', aivisDict: CFG.aivisDict,
     lvvSpeaker: CFG.lvvSpeaker, lvvSpeakerLbl: CFG.lvvSpeakerLbl,
     lvvSpeakerA: CFG.lvvSpeakerA, lvvSpeakerALbl: CFG.lvvSpeakerALbl,
+    xaiVoice: CFG.xaiVoice, xaiVoiceA: CFG.xaiVoiceA,
     elModel: CFG.elModel, elVoice: CFG.elVoice, elVoiceLbl: CFG.elVoiceLbl,
     elVoiceA: CFG.elVoiceA, elVoiceALbl: CFG.elVoiceALbl,
     focus: CFG.focus, rtDir: CFG.rtDir, rtBoth: CFG.rtBoth,
@@ -4828,7 +5142,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.30</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.31</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -5160,7 +5474,8 @@ function refreshProviderUI(){
   renderCombo('sttModel','sttModelCustom', withKnownNotes(sttModelsFor(CFG.sttProvider), STT_MODELS[CFG.sttProvider]), CFG.sttModel, function(v){
     CFG.sttModel = v; store.set('di.sttm', v);
   });
-  var sttFetchable = (CFG.sttProvider !== 'webspeech' && CFG.sttProvider !== 'realtime');
+  var sttFetchable = (CFG.sttProvider !== 'webspeech' && CFG.sttProvider !== 'realtime'
+                      && CFG.sttProvider !== 'xai');
   $('fetchSttModels').style.display = sttFetchable ? '' : 'none';
 
   renderCombo('ttsModel','ttsModelCustom', ttsModelsFor(), CFG.ttsModel, function(v){
@@ -5172,9 +5487,13 @@ function refreshProviderUI(){
   refreshTtsBtn();
 
   var isRT = (CFG.sttProvider === 'realtime');
+  /* xAI の音声認識はモデルを取らないので、モデル欄そのものを出さない */
+  var noModel = isRT || (CFG.sttProvider === 'xai');
   $('realtimeNote').style.display = isRT ? '' : 'none';
   $('rtDirField').style.display   = isRT ? '' : 'none';
-  $('sttModel').style.display     = isRT ? 'none' : '';
+  $('sttModel').style.display     = noModel ? 'none' : '';
+  $('sttModelNote').style.display = noModel ? 'none' : '';
+  $('xaiSttNote').style.display   = (CFG.sttProvider === 'xai') ? '' : 'none';
   $('rtDir').value  = CFG.rtDir;
   $('rtBoth').value = CFG.rtBoth;
   refreshVvUI();
@@ -5369,6 +5688,7 @@ function ttsModeLabel(m){
        : m === 'voicevox' ? 'VOICEVOX WEB版'
        : m === 'aivis'    ? 'Aivis Cloud API'
        : m === 'eleven'   ? 'ElevenLabs'
+       : m === 'xai'      ? 'xAI Grok Voice'
        : m === 'localvv'  ? 'ローカルエンジン'
        : 'ブラウザ内蔵音声';
 }
@@ -5429,6 +5749,8 @@ var sttKeyTimer = null;
 function autoFetchSttModels(){
   var prov = CFG.sttProvider;
   if (prov === 'webspeech' || prov === 'realtime') return;
+  if (prov === 'xai') return;                           // モデルを選ばないので一覧は不要
+
   if ((sttKey()||'').length < 15) return;               // キーが入りきっていない
   if (MODEL_CACHE[prov] && MODEL_CACHE[prov].stt && MODEL_CACHE[prov].stt.length) return; // 取得済み
   fetchSttModels(true);
@@ -5460,7 +5782,11 @@ function simple(id, key, prop, isCheck){
     store.set(key, isCheck ? (v?'1':'0') : v);
     if (prop==='flipTop'||prop==='swap'||prop==='nameA'||prop==='nameB') layout();
     if (prop==='showSrc') S.entries.forEach(render);
-    if (prop==='ttsMode'){ refreshTtsBtn(); refreshVvUI(); ttsLastMode = (v==='off') ? ttsLastMode : v; }
+    if (prop==='ttsMode'){
+      refreshTtsBtn(); refreshVvUI(); ttsLastMode = (v==='off') ? ttsLastMode : v;
+      /* Aivis に切り替えた時点で、まだ名前を知らないモデルなら取りにいく */
+      if (v === 'aivis') aivisNameLater();
+    }
     if (prop==='vvSpeaker' || prop==='vvSpeakerA' || prop==='ttsWho' || prop==='ttsSrc') refreshVvUI();
     if (prop==='ttsSrc'){
       dlog('tts','src-mode',{ on:!!v, mode:CFG.ttsMode, who:CFG.ttsWho });
@@ -5498,17 +5824,40 @@ $('aivisKey').oninput = function(){
   keyChkShow('chkAivisMsg','','');
   aivisWarned = false; refreshVvUI();
 };
-$('aivisModel').oninput = function(){
-  CFG.aivisModel = this.value.trim(); store.set('di.aim', CFG.aivisModel);
+/* 貼り付けの途中で毎文字問い合わせないよう、少し待ってから名前を取りにいく */
+var aivisNameTimer = null;
+function aivisNameLater(){
+  clearTimeout(aivisNameTimer);
+  aivisNameTimer = setTimeout(function(){
+    aivisFetchName(CFG.aivisModel,  'aivisName');
+    aivisFetchName(CFG.aivisModelA, 'aivisNameA');
+  }, 700);
+}
+/* モデルが変わったときの後始末は、選択でも直接入力でも同じ */
+function aivisSetModel(seat, uuid){
+  uuid = String(uuid || '').trim();
+  if (seat === 'A'){ CFG.aivisModelA = uuid; store.set('di.aima', uuid); }
+  else             { CFG.aivisModel  = uuid; store.set('di.aim',  uuid); }
   aivisWarned = false; keyChkShow('chkAivisMsg','','');
   aivisResetStyles();                    /* 別モデルのスタイル一覧は当てにならない */
-  refreshVvUI();
+  refreshVvUI(); aivisNameLater();
+}
+$('aivisModel').onchange = function(){
+  /* 「その他」を選んだ直後は、まだUUIDが無い状態を正とする（入力欄はこのあと開く） */
+  AIVIS_OTHER.B = (this.value === AIVIS_CUSTOM);
+  aivisSetModel('B', AIVIS_OTHER.B ? ($('aivisModelCustom').value || '') : this.value);
 };
-$('aivisModelA').oninput = function(){
-  CFG.aivisModelA = this.value.trim(); store.set('di.aima', CFG.aivisModelA);
-  aivisWarned = false; keyChkShow('chkAivisMsg','','');
-  aivisResetStyles();
-  refreshVvUI();
+$('aivisModelA').onchange = function(){
+  AIVIS_OTHER.A = (this.value === AIVIS_CUSTOM);
+  aivisSetModel('A', AIVIS_OTHER.A ? ($('aivisModelACustom').value || '') : this.value);
+};
+$('aivisModelCustom').oninput  = function(){ aivisSetModel('B', this.value); };
+$('aivisModelACustom').oninput = function(){ aivisSetModel('A', this.value); };
+$('aivisName').oninput = function(){
+  aivisNameSet(CFG.aivisModel, this.value); refreshVvUI();
+};
+$('aivisNameA').oninput = function(){
+  aivisNameSet(CFG.aivisModelA, this.value); refreshVvUI();
 };
 $('lvvBase').oninput = function(){
   CFG.lvvBase = this.value.trim(); store.set('di.lvb', CFG.lvvBase);
@@ -5559,6 +5908,17 @@ $('aivisDict').oninput = function(){
   aivisAdvSync();
 };
 $('aivisAdvReset').onclick = function(){ aivisAdvReset(); };
+$('xaiTtsKey').oninput = function(){
+  KEYS['tts:xai'] = this.value.trim(); saveKeys();
+  xaiWarned = false; keyChkShow('chkXaiTtsMsg','',''); refreshVvUI();
+};
+$('xaiVoice').onchange = function(){
+  CFG.xaiVoice = this.value; store.set('di.xav', CFG.xaiVoice); refreshVvUI();
+};
+$('xaiVoiceA').onchange = function(){
+  CFG.xaiVoiceA = this.value; store.set('di.xava', CFG.xaiVoiceA); refreshVvUI();
+};
+$('chkXaiTts').onclick = function(){ verifyXaiTtsKey(); };
 $('elKey').oninput = function(){
   KEYS['eleven'] = this.value.trim(); saveKeys();
   elWarned = false; keyChkShow('chkElMsg','',''); refreshVvUI();
@@ -5661,7 +6021,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.30');
+  out.push('- バージョン: Duo Interpreter v1.31');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
@@ -5684,10 +6044,14 @@ function diagText(devices){
    ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel],
    ['読み上げ', CFG.ttsMode], ['読み上げモデル', CFG.ttsModel], ['読み上げ対象', CFG.ttsWho],
    ['声 A / B', ttsSeatVoices()],
+   ['xAIの声 A / B', CFG.ttsMode === 'xai' ? (xaiVoiceId('A') + ' / ' + xaiVoiceId('B')) : '(未使用)'],
    ['Aivisストリーミング', CFG.ttsMode === 'aivis' ? (CFG.aivisStream ? 'ON' : 'OFF') : '(未使用)'],
    ['Aivisスタイル A / B', CFG.ttsMode === 'aivis'
       ? ((CFG.aivisStyleA === '' ? '既定' : CFG.aivisStyleA) + ' / ' + (CFG.aivisStyle === '' ? '既定' : CFG.aivisStyle)
          + (CFG.aivisSpk || CFG.aivisSpkA ? '（話者指定あり）' : ''))
+      : '(未使用)'],
+   ['Aivisのキャラ名 A / B', CFG.ttsMode === 'aivis'
+      ? ((aivisNameOf(aivisModelFor('A')) || '(未設定)') + ' / ' + (aivisNameOf(CFG.aivisModel) || '(未設定)'))
       : '(未使用)'],
    ['Aivis 話し方の調整', CFG.ttsMode === 'aivis' ? aivisTweaks() : '(未使用)'],
    ['原文読み上げ', CFG.ttsSrc ? 'ON' : 'OFF'],
