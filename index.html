@@ -811,7 +811,7 @@
           <input type="range" id="aivisVol" min="0" max="2" step="0.05"><b id="aivisVolV"></b></label>
         <label class="sl"><span>改行時の無音</span>
           <input type="range" id="aivisBreak" min="0" max="2" step="0.05"><b id="aivisBreakV"></b></label>
-        <label class="switch"><input type="checkbox" id="aivisNorm"> 音量を自動でならす</label>
+        <label class="switch"><input type="checkbox" id="aivisNorm"> 音量のノーマライズ</label>
         <input type="text" id="aivisDict" placeholder="ユーザー辞書UUID（任意・読み方を直したいとき）" autocomplete="off">
         <div class="keyrow">
           <button class="btn ghost" id="aivisAdvReset">↩ 既定に戻す</button>
@@ -2866,7 +2866,7 @@ function aivisTweaks(){
   var name = { speaking_rate:'話速', emotional_intensity:'感情', tempo_dynamics:'緩急',
                volume:'音量', line_break_silence_seconds:'改行の無音' };
   Object.keys(name).forEach(function(k){ if (b[k] != null) out.push(name[k] + ' ' + b[k]); });
-  if (b.use_volume_normalizer === false) out.push('ならし OFF');
+  if (b.use_volume_normalizer === false) out.push('ノーマライズ OFF');
   if (b.user_dictionary_uuid) out.push('辞書あり');
   return out.length ? out.join(' / ') : '既定のまま';
 }
