@@ -564,6 +564,7 @@
       <select id="provider">
         <option value="free">🆓 無料モード（APIキー不要 / Google翻訳ウェブ版）</option>
         <option value="openai">OpenAI</option>
+        <option value="xai">xAI (Grok)</option>
         <option value="anthropic">Anthropic (Claude)</option>
         <option value="gemini">Google Gemini</option>
         <option value="groq">Groq（高速・無料枠あり）</option>
@@ -571,7 +572,6 @@
         <option value="openrouter">OpenRouter（各社モデル横断 / :free あり）</option>
         <option value="mistral">Mistral</option>
         <option value="together">Together AI</option>
-        <option value="xai">xAI (Grok)</option>
         <option value="custom">カスタム / ローカル（Ollama・LM Studio・vLLM）</option>
       </select>
       <small id="provNote"></small>
@@ -642,8 +642,8 @@
         <option value="webspeech">🆓 ブラウザ内蔵 Web Speech API（無料・低遅延 / Chrome・Edge / マイクのみ）</option>
         <option value="realtime">⚡ リアルタイム同時通訳（gpt-realtime-translate / OpenAI）</option>
         <option value="openai">OpenAI（gpt-4o-transcribe / whisper-1）</option>
-        <option value="groq">Groq Whisper（高速・安価）</option>
         <option value="xai">xAI Grok（多言語・キーは翻訳側と共通）</option>
+        <option value="groq">Groq Whisper（高速・安価）</option>
         <option value="gemini">Google Gemini（音声理解）</option>
       </select>
       <div class="row" style="margin-top:4px">
@@ -718,10 +718,10 @@
         <option value="off">なし</option>
         <option value="browser">🆓 ブラウザ内蔵音声（無料・即時）</option>
         <option value="openai">OpenAI 音声（自然）</option>
+        <option value="xai">xAI Grok Voice（多言語・低遅延）</option>
         <option value="voicevox">🫛 VOICEVOX WEB版（ずんだもん等・日本語のみ／お遊び）</option>
-        <option value="eleven">🗣 ElevenLabs（自分の声をクローン・多言語・低遅延）</option>
-        <option value="xai">🤖 xAI Grok Voice（多言語・低遅延）</option>
-        <option value="aivis">🎙 Aivis Cloud API（高品質・低遅延・日本語のみ）</option>
+        <option value="eleven">ElevenLabs（自分の声をクローン・多言語・低遅延）</option>
+        <option value="aivis">Aivis Cloud API（高品質・低遅延・日本語のみ）</option>
         <option value="localvv">🖥 ローカルエンジン（AivisSpeech / VOICEVOX・日本語のみ）</option>
       </select>
       <select id="ttsWho">
@@ -1105,6 +1105,7 @@ function L(code){ for (var i=0;i<LANGS.length;i++) if (LANGS[i].c === code) retu
 var PROVIDERS = {
   free:      { label:'無料モード', kind:'free', key:false,
                note:'Google翻訳のウェブ版エンドポイントを利用します。APIキー・課金は不要ですが、非公式のため混雑時に失敗することがあります（自動でMyMemoryに切替）。用語集とコンテキストは反映されません。' },
+  /* 並びは設定画面の選択肢と揃える（xAI は OpenAI の次） */
   openai:    { label:'OpenAI', kind:'oai', base:'https://api.openai.com/v1', key:true,
                models:[
                  {id:'gpt-5.6-luna', note:'軽量・低コスト（同時通訳におすすめ）', primary:true},
@@ -1121,6 +1122,8 @@ var PROVIDERS = {
                  {id:'gpt-4o'}, {id:'gpt-4o-mini', note:'旧世代・安価で安定'}
                ],
                note:'同時通訳では応答の速さが効くため、まずは gpt-5.6-luna をおすすめします。' },
+  xai:       { label:'xAI', kind:'oai', base:'https://api.x.ai/v1', key:true,
+               models:['grok-4-fast','grok-3-mini','grok-4'], note:'' },
   anthropic: { label:'Anthropic', kind:'anthropic', base:'https://api.anthropic.com/v1', key:true,
                models:[{id:'claude-haiku-4-5', note:'高速・低コスト'},{id:'claude-sonnet-4-5'},{id:'claude-opus-4-1'},{id:'claude-3-5-haiku-latest'},{id:'claude-3-7-sonnet-latest'}],
                note:'ニュアンスや敬語の再現に強い。ブラウザから直接呼ぶため anthropic-dangerous-direct-browser-access ヘッダを付与します。' },
@@ -1139,8 +1142,6 @@ var PROVIDERS = {
                models:['mistral-small-latest','mistral-large-latest','open-mistral-nemo'], note:'欧州言語に強い。' },
   together:  { label:'Together', kind:'oai', base:'https://api.together.xyz/v1', key:true,
                models:['meta-llama/Llama-3.3-70B-Instruct-Turbo','Qwen/Qwen2.5-72B-Instruct-Turbo'], note:'オープンモデル中心。' },
-  xai:       { label:'xAI', kind:'oai', base:'https://api.x.ai/v1', key:true,
-               models:['grok-4-fast','grok-3-mini','grok-4'], note:'' },
   custom:    { label:'カスタム/ローカル', kind:'oai', base:'', key:false, baseEditable:true,
                models:['qwen2.5:7b','gemma3:12b','llama3.1:8b','qwen3:8b'],
                note:'OpenAI互換APIならどれでも。ローカルLLMを使えば通信費ゼロ・情報を外に出さずに運用できます。' }
@@ -3130,9 +3131,11 @@ var AIVIS_NAMES = (function(){
    全部ではない。一覧に無いものは「その他」でUUIDを直接貼れば同じように使える。 */
 var AIVIS_MODELS = [
   { n:'まお', u:'a59cb814-0083-4369-8542-f51a29e72af7' },
-  { n:'コハク', u:'22e8ed77-94fe-4ef2-871f-a86f94e9a579' },
-  { n:'にせ', u:'6d11c6c2-f4a4-4435-887e-23dd60f8b8dd' },
+  { n:'こはく', u:'22e8ed77-94fe-4ef2-871f-a86f94e9a579' },
+  { n:'れな(現実20代女子AIボイチェン@リアボVC公式モデル)', u:'b1b8072f-809f-4c6d-9ba1-2ca94d9c3663' },
   { n:'阿井田 茂', u:'47e53151-a378-46f3-abee-ce13aa07feb1' },
+  { n:'桜音', u:'3328da9a-8124-4619-a853-f7fc2f37889f' },
+  { n:'にせ', u:'6d11c6c2-f4a4-4435-887e-23dd60f8b8dd' },
   { n:'まい', u:'e9339137-2ae3-4d41-9394-fb757a7e61e6' },
   { n:'fumifumi', u:'71e72188-2726-4739-9aa9-39567396fb2a' },
   { n:'morioki', u:'baaae3c0-7b22-4605-8ba5-80c959b41a48' },
@@ -3141,7 +3144,6 @@ var AIVIS_MODELS = [
   { n:'ろてじん（長老ボイス）', u:'696c98a2-c0b7-4fe7-8cf2-c7e9b8a9bd82' },
   { n:'るな', u:'4f281e78-eba6-495a-8e50-5c322d02b5b1' },
   { n:'中2', u:'9107b8b6-1ed1-43f5-bebe-0de4df4d229d' },
-  { n:'桜音', u:'3328da9a-8124-4619-a853-f7fc2f37889f' },
   { n:'ほのか(~現実20代女子AIボイチェン~リアボVC公式モデル)', u:'59f96896-64d2-4378-830a-4d5feb3d81aa' },
   { n:'観測症', u:'ed47c952-c253-405e-adba-1172399816a1' },
   { n:'猩々博士 (雑談ボイス)', u:'70a875a9-feae-41e6-a586-8cf9e47c6c0b' },
