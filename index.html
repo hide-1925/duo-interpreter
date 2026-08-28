@@ -2883,6 +2883,9 @@ function parseWavHeader(u8){
 function aivisSpeakStream(text, lang, seat){
   var ctx = ttsAudioCtx();
   var t0 = Date.now(), firstMs = 0, started = false, underruns = 0;
+  /* 何を送ったかをログに残す。「スタイルが効いているのか」を後から確かめられるようにする */
+  var body = aivisBody(text, seat, 'wav');
+  var stLog = (body.style_id == null) ? '既定' : String(body.style_id);
   var finish = ttsGuard(text, Math.min(120000, 12000 + text.length * 200));
   var myGen = finish.gen;
   var ctrl = null; try { ctrl = new AbortController(); } catch(e){}
@@ -2913,14 +2916,14 @@ function aivisSpeakStream(text, lang, seat){
     waStream.push(src);
     if (!started){
       started = true; waMode = true; firstMs = Date.now() - t0;
-      dlog('tts','aivis-first',{ ms: firstMs, leadMs: Math.round(LEAD*1000), rate: head.rate, ch: head.ch });
+      dlog('tts','aivis-first',{ ms: firstMs, leadMs: Math.round(LEAD*1000), rate: head.rate, ch: head.ch, style: stLog });
     }
   };
 
   fetch(AIVIS_URL, {
     method:'POST', signal: ctrl && ctrl.signal,
     headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + aivisKey() },
-    body: JSON.stringify(aivisBody(text, seat, 'wav'))
+    body: JSON.stringify(body)
   }).then(function(r){
     if (!r.ok) return r.text().then(function(x){ throw new Error(r.status + ' ' + String(x).slice(0,140)); });
     if (!r.body || !r.body.getReader) throw new Error('ストリーミング非対応');
@@ -2931,7 +2934,8 @@ function aivisSpeakStream(text, lang, seat){
         if (res.done){
           drain(true);
           dlog('tts','aivis-stream-ok',{ chars:text.length, firstMs:firstMs, totalMs:Date.now()-t0,
-                                         seat:seat, underruns:underruns });
+                                         seat:seat, style:stLog, spk:(body.speaker_uuid?'あり':'なし'),
+                                         rate:(body.speaking_rate||1), underruns:underruns });
           /* 並べた音が鳴り終わるまでは「読み上げ中」のままにしておく */
           setTimeout(finish, Math.max(0, (next - ctx.currentTime)) * 1000 + 150);
           return;
@@ -2955,7 +2959,7 @@ function aivisSpeakStream(text, lang, seat){
   }).catch(function(err){
     var m = String((err && err.message) || err);
     if (myGen !== ttsGen || /abort/i.test(m)){ finish(); return; }
-    dlog('tts','aivis-stream-FAIL',{ err:m.slice(0,140), ms:Date.now()-t0, started:started });
+    dlog('tts','aivis-stream-FAIL',{ err:m.slice(0,140), ms:Date.now()-t0, started:started, style:stLog });
     finish();
     /* まだ音が出ていなければ、確実な従来方式でやり直す。
        途中まで鳴っている場合にやり直すと二重に聞こえるので、そこでは諦める。 */
