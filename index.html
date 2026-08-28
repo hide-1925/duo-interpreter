@@ -273,6 +273,13 @@
     border:1px solid var(--line);border-radius:999px;padding:4px 10px;
   }
   #drawer > header .headlink:hover{color:var(--txt);background:#26303f}
+  /* 支援リンク。文字の濃さは README と同じにし、枠を外して小さくすることで控えめにする */
+  #drawer > header .headlink.quiet{
+    border-color:transparent;padding:4px 6px;font-size:13px;
+  }
+  #drawer > header .headlink.quiet:hover{background:transparent}
+  /* 「Donate」の文字。アイコンよりさらに小さく、主張しない大きさにする */
+  #drawer > header .headlink.quiet span{font-size:11px;font-weight:700;margin-left:3px}
   .tabs{display:flex;border-bottom:1px solid var(--line);background:var(--bg)}
   .tabs button{flex:1;border:0;background:transparent;color:var(--dim);padding:11px 4px;font-size:12.5px;font-weight:700;cursor:pointer;border-bottom:2px solid transparent}
   .tabs button.on{color:var(--txt);border-bottom-color:var(--a)}
@@ -536,7 +543,7 @@
 <div id="scrim"></div>
 
 <aside id="drawer">
-  <header><h2>設定 / Settings</h2><a class="headlink" id="readmeLink" href="https://github.com/hide-1925/duo-interpreter#readme" target="_blank" rel="noopener noreferrer" title="使い方・設定の説明（GitHub）">📖 README</a><button class="cbtn icon" id="closeDrawer">✕</button></header>
+  <header><h2>設定 / Settings</h2><a class="headlink" id="readmeLink" href="https://github.com/hide-1925/duo-interpreter#readme" target="_blank" rel="noopener noreferrer" title="使い方・設定の説明（GitHub）">📖 README</a><a class="headlink quiet" id="donateLink" href="https://note.com/hide_1925/n/n45b6a8cdf861" target="_blank" rel="noopener noreferrer" title="開発を応援する（note）">☕<span>Donate</span></a><button class="cbtn icon" id="closeDrawer">✕</button></header>
   <div class="tabs">
     <button data-tab="p1" class="on">翻訳・API</button>
     <button data-tab="p2">音声</button>
