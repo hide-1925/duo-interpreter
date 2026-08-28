@@ -338,6 +338,10 @@
   .keychk{font-size:11.5px;line-height:1.5;margin-top:2px;color:var(--dim);word-break:break-word}
   .keychk.ok{color:#6ee7a8}
   .keychk.ng{color:#ffb4a2}
+  /* キーは伏字なので、入力欄が1行を占有する意味がない。確認ボタンと同じ行に並べる */
+  .keyline{display:flex;gap:8px;align-items:center}
+  .keyline>input{flex:1;min-width:0}
+  .keyline>.btn{flex:0 0 auto}
   .keyrow{display:flex;gap:8px;align-items:center;margin-top:4px}
   .keyrow .btn{flex:0 0 auto}
   .row.wrap{flex-wrap:wrap}
@@ -579,9 +583,11 @@
 
     <div class="field" id="keyField">
       <label>API Key</label>
-      <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
+      <div class="keyline">
+        <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
+        <button class="btn ghost" id="chkTrans" title="実際に使う前に、このキーで通るかどうかを確かめます">🔍 確認</button>
+      </div>
       <div class="keyrow">
-        <button class="btn ghost" id="chkTrans" title="実際に使う前に、このキーで通るかどうかを確かめます">🔍 キーを確認</button>
         <span class="keychk" id="chkTransMsg"></span>
       </div>
       <label class="switch"><input type="checkbox" id="remember" checked> このブラウザに保存する</label>
@@ -651,14 +657,18 @@
         <button class="btn ghost" id="fetchSttModels" title="このアカウントで使える音声認識モデル一覧を取得">🔄 更新</button>
       </div>
       <input type="text" id="sttModelCustom" placeholder="モデル名を直接入力" style="display:none">
-      <small id="sttModelNote">APIキーを入力すると、実際に使えるモデル一覧を自動で取得します。</small>
+      <small id="sttModelNote"></small>
       <small id="xaiSttNote" style="display:none">xAI の音声認識はモデルを選ぶ必要がありません。
       キーは翻訳プロバイダの xAI と共通で、上の欄が空ならそちらのキーを使います。<br>
       日本語・英語を含む25言語に対応しています。<b>中国語は対応一覧にありません</b>ので、
       言語指定を送らず自動判定にまかせます（うまく取れないときは Gemini か OpenAI をお試しください）。<br>
       用語集の語は聞き取りのヒントとして一緒に送ります。</small>
-      <small>タブ／システム音声を入力にする場合は、ブラウザ内蔵ではなく API 側の音声認識が必要です。</small>
-      <div class="note" id="realtimeNote" style="display:none">
+      <div class="note" id="sttHowto">
+        <b>モデルの選び方</b><br>
+        APIキーを入力すると、そのアカウントで実際に使えるモデル一覧を自動で取得します。「🔄 更新」でいつでも取り直せます。<br>
+        一覧に出ないモデルを使いたいときは「── その他（モデル名を直接入力）──」を選ぶと入力欄が出ます。
+      </div>
+      <div class="note" id="realtimeNote" style="display:none" data-fold="off">
         <b>⚡ リアルタイム同時通訳モード</b><br>
         音声を送りながら訳した<b>音声と字幕が同時に返ってくる</b>方式です（WebRTC接続）。
         「録音→文字起こし→翻訳」の順番待ちが無くなるため、遅延が大幅に減り、話し終わるのを待たずに訳が出ます。<br><br>
@@ -684,11 +694,11 @@
 
     <div class="field">
       <label>APIキー（音声認識用・翻訳と別プロバイダの場合）</label>
-      <input type="password" id="sttKey" placeholder="空欄なら翻訳プロバイダのキーを使用" autocomplete="off">
-      <div class="keyrow">
-        <button class="btn ghost" id="chkStt" title="実際に使う前に、このキーで通るかどうかを確かめます">🔍 キーを確認</button>
-        <span class="keychk" id="chkSttMsg"></span>
+      <div class="keyline">
+        <input type="password" id="sttKey" placeholder="空欄なら翻訳プロバイダのキーを使用" autocomplete="off">
+        <button class="btn ghost" id="chkStt" title="実際に使う前に、このキーで通るかどうかを確かめます">🔍 確認</button>
       </div>
+      <div class="keyrow"><span class="keychk" id="chkSttMsg"></span></div>
     </div>
 
     <div class="hr"></div>
@@ -697,7 +707,8 @@
       <label>音声入力元の設定</label>
       <div class="note">
         <b>対面で使う</b>：A・B とも「マイク」。1本のマイクで両言語を交互に待ち受けます。<br><br>
-        <b>Zoom / Teams で使う</b>：A =「マイク」（自分）、B =「タブ／システム音声」（相手）。開始時に画面共有ダイアログが出るので、<b>会議のタブ（またはウィンドウ／画面全体）を選び「タブの音声も共有」を必ずON</b>にしてください。映像は使わず音声だけを利用します。
+        <b>Zoom / Teams で使う</b>：A =「マイク」（自分）、B =「タブ／システム音声」（相手）。開始時に画面共有ダイアログが出るので、<b>会議のタブ（またはウィンドウ／画面全体）を選び「タブの音声も共有」を必ずON</b>にしてください。映像は使わず音声だけを利用します。<br>
+        このとき、<b>音声認識はブラウザ内蔵ではなく API 側</b>（OpenAI・xAI など）を選んでください。ブラウザ内蔵の音声認識はマイクしか扱えず、タブ／システム音声を聞き取れません。
       </div>
       <div class="note">
         <b>対面で2人が1本のマイクを使うときのコツ</b><br>
@@ -770,11 +781,11 @@
 
     <div class="field" id="elField" style="display:none">
       <label>🗣 ElevenLabs</label>
-      <input type="password" id="elKey" placeholder="ElevenLabs APIキー" autocomplete="off">
-      <div class="keyrow">
-        <button class="btn ghost" id="chkEl" title="キーの有効性と残り文字数を確かめます">🔍 キーと残量を確認</button>
-        <span class="keychk" id="chkElMsg"></span>
+      <div class="keyline">
+        <input type="password" id="elKey" placeholder="ElevenLabs APIキー" autocomplete="off">
+        <button class="btn ghost" id="chkEl" title="キーの有効性と残り文字数を確かめます">🔍 確認</button>
       </div>
+      <div class="keyrow"><span class="keychk" id="chkElMsg"></span></div>
       <select id="elModel">
         <option value="eleven_flash_v2_5">Flash v2.5（最速・32言語・おすすめ）</option>
         <option value="eleven_multilingual_v2">Multilingual v2（高品質・29言語・やや遅い）</option>
@@ -782,10 +793,10 @@
         <option value="eleven_flash_v2">Flash v2（最速・英語のみ）</option>
       </select>
       <div class="row">
-        <label class="seatpick seatA"><span>自分(A)の発言</span>
-        <select id="elVoiceA"></select></label>
-        <label class="seatpick seatB"><span>相手(B)の発言</span>
+        <label class="seatpick seatA main"><span>自分(A)の発言</span>
         <select id="elVoice"></select></label>
+        <label class="seatpick seatB"><span>相手(B)の発言</span>
+        <select id="elVoiceB"></select></label>
         <button class="btn ghost" id="elFetch" title="アカウントの声一覧を取得" style="align-self:flex-end">🔄 声を取得</button>
       </div>
       <small><b>自分の声で読み上げたい場合はこれです。</b>
@@ -800,16 +811,16 @@
 
     <div class="field" id="xaiField" style="display:none">
       <label>🤖 xAI Grok Voice</label>
-      <input type="password" id="xaiTtsKey" placeholder="xAI APIキー（翻訳で入力済みなら共通）" autocomplete="off">
-      <div class="keyrow">
-        <button class="btn ghost" id="chkXaiTts" title="キーが有効かどうかを確かめます">🔍 キーを確認</button>
-        <span class="keychk" id="chkXaiTtsMsg"></span>
+      <div class="keyline">
+        <input type="password" id="xaiTtsKey" placeholder="xAI APIキー（翻訳で入力済みなら共通）" autocomplete="off">
+        <button class="btn ghost" id="chkXaiTts" title="キーが有効かどうかを確かめます">🔍 確認</button>
       </div>
+      <div class="keyrow"><span class="keychk" id="chkXaiTtsMsg"></span></div>
       <div class="row">
-        <label class="seatpick seatA"><span>自分(A)の発言</span>
-        <select id="xaiVoiceA"></select></label>
-        <label class="seatpick seatB"><span>相手(B)の発言</span>
+        <label class="seatpick seatA main"><span>自分(A)の発言</span>
         <select id="xaiVoice"></select></label>
+        <label class="seatpick seatB"><span>相手(B)の発言</span>
+        <select id="xaiVoiceB"></select></label>
       </div>
       <small>キーは <a href="https://console.x.ai/" target="_blank" rel="noopener noreferrer">xAI コンソール</a> で取得できます。
       翻訳プロバイダで xAI を使っている場合は同じキーが共通で使われるので、ここは空欄のままで動きます。<br>
@@ -823,25 +834,25 @@
       <input type="password" id="aivisKey" placeholder="Aivis Cloud API キー" autocomplete="off">
       <div class="sublabel">キャラ（モデル）</div>
       <div class="row">
-        <label class="seatpick seatA"><span>自分(A)の発言</span>
+        <label class="seatpick seatA main"><span>自分(A)の発言</span>
         <div class="uuidrow">
-          <select id="aivisModelA"></select>
-          <a id="aivisHubA" href="#" target="_blank" rel="noopener noreferrer" title="このモデルのページをAivisHubで開く">↗</a>
+          <select id="aivisModel"></select>
+          <a id="aivisHub" href="#" target="_blank" rel="noopener noreferrer" title="このモデルのページをAivisHubで開く">↗</a>
         </div>
         <div class="uuidrow" id="aivisOtherA" style="display:none">
-          <input type="text" id="aivisModelACustom" placeholder="モデル UUID" autocomplete="off">
-          <input type="text" id="aivisNameA" class="mname" placeholder="キャラ名" autocomplete="off">
+          <input type="text" id="aivisModelCustom" placeholder="モデル UUID" autocomplete="off">
+          <input type="text" id="aivisName" class="mname" placeholder="キャラ名" autocomplete="off">
         </div></label>
       </div>
       <div class="row">
         <label class="seatpick seatB"><span>相手(B)の発言</span>
         <div class="uuidrow">
-          <select id="aivisModel"></select>
-          <a id="aivisHub" href="#" target="_blank" rel="noopener noreferrer" title="このモデルのページをAivisHubで開く">↗</a>
+          <select id="aivisModelB"></select>
+          <a id="aivisHubB" href="#" target="_blank" rel="noopener noreferrer" title="このモデルのページをAivisHubで開く">↗</a>
         </div>
         <div class="uuidrow" id="aivisOtherB" style="display:none">
-          <input type="text" id="aivisModelCustom" placeholder="モデル UUID" autocomplete="off">
-          <input type="text" id="aivisName" class="mname" placeholder="キャラ名" autocomplete="off">
+          <input type="text" id="aivisModelBCustom" placeholder="モデル UUID" autocomplete="off">
+          <input type="text" id="aivisNameB" class="mname" placeholder="キャラ名" autocomplete="off">
         </div></label>
       </div>
       <small id="uuidHelp">よく使うキャラは名前で選べます。「↗」でそのモデルの AivisHub ページを開けます。<br>
@@ -853,10 +864,10 @@
       その場合はご自分で書いてください。UUID ごとに覚えるので、貼り替えて戻せば名前も戻ります。</small>
       <div class="sublabel">スタイル (Style ID)</div>
       <div class="row">
-        <label class="seatpick seatA"><span>自分(A)の発言</span>
-        <select id="aivisStyleA"></select></label>
-        <label class="seatpick seatB"><span>相手(B)の発言</span>
+        <label class="seatpick seatA main"><span>自分(A)の発言</span>
         <select id="aivisStyle"></select></label>
+        <label class="seatpick seatB"><span>相手(B)の発言</span>
+        <select id="aivisStyleB"></select></label>
         <button class="btn ghost" id="aivisFetch" title="モデル UUID からスタイル一覧を取得" style="align-self:flex-end">🔄 スタイル取得</button>
       </div>
       <small class="keychk" id="aivisStyleMsg"></small>
@@ -912,16 +923,16 @@
 
     <div class="field" id="lvvField" style="display:none">
       <label>🖥 ローカルの音声合成エンジン</label>
-      <input type="text" id="lvvBase" placeholder="http://127.0.0.1:10101" autocomplete="off">
-      <div class="keyrow">
-        <button class="btn ghost" id="chkLvv" title="エンジンに接続できるかを確かめます">🔍 接続を確認</button>
-        <span class="keychk" id="chkLvvMsg"></span>
+      <div class="keyline">
+        <input type="text" id="lvvBase" placeholder="http://127.0.0.1:10101" autocomplete="off">
+        <button class="btn ghost" id="chkLvv" title="エンジンに接続できるかを確かめます">🔍 確認</button>
       </div>
+      <div class="keyrow"><span class="keychk" id="chkLvvMsg"></span></div>
       <div class="row">
-        <label class="seatpick seatA"><span>自分(A)の発言</span>
-        <select id="lvvSpeakerA"></select></label>
-        <label class="seatpick seatB"><span>相手(B)の発言</span>
+        <label class="seatpick seatA main"><span>自分(A)の発言</span>
         <select id="lvvSpeaker"></select></label>
+        <label class="seatpick seatB"><span>相手(B)の発言</span>
+        <select id="lvvSpeakerB"></select></label>
         <button class="btn ghost" id="lvvFetch" title="エンジンから話者一覧を取得" style="align-self:flex-end">🔄 話者取得</button>
       </div>
       <small>PCで動かしている <a href="https://aivis-project.com/" target="_blank" rel="noopener noreferrer">AivisSpeech</a>（既定 <code>http://127.0.0.1:10101</code>）や
@@ -939,11 +950,11 @@
         <label class="seatpick seatB"><span>相手(B)の発言</span>
         <select id="vvSpeaker"></select></label>
       </div>
-      <input type="password" id="vvKey" placeholder="WEB版VOICEVOX APIキー" autocomplete="off">
-      <div class="keyrow">
-        <button class="btn ghost" id="chkVv" title="キーの有効性とポイント残量を確かめます">🔍 キーと残量を確認</button>
-        <span class="keychk" id="chkVvMsg"></span>
+      <div class="keyline">
+        <input type="password" id="vvKey" placeholder="WEB版VOICEVOX APIキー" autocomplete="off">
+        <button class="btn ghost" id="chkVv" title="キーの有効性とポイント残量を確かめます">🔍 確認</button>
       </div>
+      <div class="keyrow"><span class="keychk" id="chkVvMsg"></span></div>
       <small>キーは <a href="https://su-shiki.com/api/" target="_blank" rel="noopener noreferrer">su-shiki.com/api/</a> で無料取得できます（有志が運営する非公式APIです）。
       日本語の読み上げだけがこの声になり、<b>それ以外の言語はブラウザ内蔵音声</b>で読み上げます。
       ポイント制の1日上限があり、混雑時は失敗することがあります（失敗時はブラウザ内蔵音声に自動で切り替わります）。
@@ -1241,9 +1252,9 @@ function loadCfg(){
        バージョンアップで急に別の声になることがない。A席は新しい枠に持つ。 */
     vvSpeakerA:pref('di.vvspa','vvSpeakerA','2'),
     aivisModel:pref('di.aim','aivisModel','a59cb814-0083-4369-8542-f51a29e72af7'),  /* 既定はAnneli */
-    aivisModelA:pref('di.aima','aivisModelA',''),          /* 空なら相手(B)と同じ声 */
+    aivisModelB:pref('di.aima','aivisModelB',''),          /* 空なら自分(A)と同じ声 */
     aivisStyle: pref('di.aist','aivisStyle',''),           /* 空なら既定スタイル */
-    aivisStyleA:pref('di.aista','aivisStyleA',''),
+    aivisStyleB:pref('di.aista','aivisStyleB',''),
     aivisRate:  pref('di.airt','aivisRate','1'),
     /* 以下は Aivis 側の既定値と同じ。既定のままなら送らないので音は変わらない */
     aivisEmo:   pref('di.aiem','aivisEmo','1'),
@@ -1254,19 +1265,19 @@ function loadCfg(){
     aivisDict:  pref('di.aidc','aivisDict',''),
     aivisStream:pref('di.aistr','aivisStream','0')+'' === '1',   /* 既定OFF。様子を見てから使う */
     aivisSpk:   pref('di.aisp','aivisSpk',''),                   /* 複数話者モデル向け */
-    aivisSpkA:  pref('di.aispa','aivisSpkA',''),
+    aivisSpkB:  pref('di.aispa','aivisSpkB',''),
     elModel:   pref('di.elm','elModel','eleven_flash_v2_5'),
     elVoice:   pref('di.elv','elVoice',''),                /* 相手(B) */
     elVoiceLbl:pref('di.elvl','elVoiceLbl',''),
-    elVoiceA:  pref('di.elva','elVoiceA',''),              /* 空なら相手(B)と同じ声 */
-    elVoiceALbl:pref('di.elval','elVoiceALbl',''),
+    elVoiceB:  pref('di.elva','elVoiceB',''),              /* 空なら自分(A)と同じ声 */
+    elVoiceBLbl:pref('di.elval','elVoiceBLbl',''),
     xaiVoice:  pref('di.xav','xaiVoice','eve'),            /* 相手(B) */
-    xaiVoiceA: pref('di.xava','xaiVoiceA',''),             /* 空なら相手(B)と同じ声 */
+    xaiVoiceB: pref('di.xava','xaiVoiceB',''),             /* 空なら自分(A)と同じ声 */
     lvvBase:   pref('di.lvb','lvvBase','http://127.0.0.1:10101'),
     lvvSpeaker:pref('di.lvs','lvvSpeaker',''),
     lvvSpeakerLbl:pref('di.lvsl','lvvSpeakerLbl',''),
-    lvvSpeakerA:pref('di.lvsa','lvvSpeakerA',''),          /* 空なら相手(B)と同じ声 */
-    lvvSpeakerALbl:pref('di.lvsal','lvvSpeakerALbl',''),
+    lvvSpeakerB:pref('di.lvsa','lvvSpeakerB',''),          /* 空なら自分(A)と同じ声 */
+    lvvSpeakerBLbl:pref('di.lvsal','lvvSpeakerBLbl',''),
     ttsSrc:    pref('di.ttssrc','ttsSrc','0')+'' === '1',
     ttsPad:    pref('di.ttspad','ttsPad','300'),
     outDev:    store.get('di.outdev',''),      /* 端末ごとの値なのでHTMLには焼き込まない */
@@ -2884,23 +2895,30 @@ function ttsGuard(text, ms){
 /* ---------------- 席ごとの声 ----------------
    読み上げエンジンは1つでも、A席とB席で別の声にしないと
    どちらの発言を聞いているのか分からなくなる。
-   保存済みの設定は「相手(B)」側に対応させ、A席は空なら同じ声に落とす。 */
+   本命は自分(A)側で、相手(B)は空欄なら自分(A)と同じ声に落とす。
+   （保存キーの名前は据え置きなので、di.aima 等は「相手(B)側」を指す） */
 function seatUsed(seat){
   if (CFG.ttsWho === 'B2A') return seat === 'B';
   if (CFG.ttsWho === 'A2B') return seat === 'A';
   return true;
 }
-function seatPick(seat, aVal, bVal){
-  var a = String(aVal || '').trim(), b = String(bVal || '').trim();
-  return (seat === 'A') ? (a || b) : b;
+function seatPick(seat, subVal, mainVal){
+  var sub = String(subVal || '').trim(), main = String(mainVal || '').trim();
+  return (seat === 'B') ? (sub || main) : main;
 }
-/* 使われない側の列は出しても迷うだけなので隠す */
+/* 使われない側の列は出しても迷うだけなので隠す。
+   ただし継承のもと（main）になっている列は、その席を読み上げないときも隠さない。
+   相手(B)が「自分(A)と同じ」を指しているとき、隠すと“同じ”を決める欄が消えてしまい、
+   声を1つも選べない画面になるため。 */
 function applySeatCols(){
   var showA = seatUsed('A'), showB = seatUsed('B');
   ['seatA','seatB'].forEach(function(cls){
-    var on = (cls === 'seatA') ? showA : showB;
+    var base = (cls === 'seatA') ? showA : showB;
     var els = document.querySelectorAll('.' + cls);
-    for (var i=0;i<els.length;i++) els[i].style.display = on ? '' : 'none';
+    for (var i=0;i<els.length;i++){
+      var on = base || (cls === 'seatA' && hasClass(els[i], 'main'));
+      els[i].style.display = on ? '' : 'none';
+    }
   });
 }
 
@@ -2908,21 +2926,21 @@ function applySeatCols(){
 var AIVIS_URL = 'https://api.aivis-project.com/v1/tts/synthesize';
 var aivisWarned = false;
 function aivisKey(){ return (KEYS['aivis'] || '').trim(); }
-function aivisModelFor(seat){ return seatPick(seat, CFG.aivisModelA, CFG.aivisModel); }
+function aivisModelFor(seat){ return seatPick(seat, CFG.aivisModelB, CFG.aivisModel); }
 /* スタイルIDはモデルごとに意味が変わる（同じ「1」でも別モデルでは別の演技）。
-   そのため A席が自前のモデルを持つときは、A席のスタイルだけを見る。
-   A席が「Bと同じモデル」に落ちているときに限り、スタイルもBに合わせる。 */
+   そのため B席が自前のモデルを持つときは、B席のスタイルだけを見る。
+   B席が「Aと同じモデル」に落ちているときに限り、スタイルもAに合わせる。 */
 function aivisStyleFor(seat){
-  if (seat !== 'A') return String(CFG.aivisStyle || '');
-  if ((CFG.aivisModelA || '').trim()) return String(CFG.aivisStyleA || '');
-  return String(CFG.aivisStyleA !== '' ? CFG.aivisStyleA : (CFG.aivisStyle || ''));
+  if (seat !== 'B') return String(CFG.aivisStyle || '');
+  if ((CFG.aivisModelB || '').trim()) return String(CFG.aivisStyleB || '');
+  return String(CFG.aivisStyleB !== '' ? CFG.aivisStyleB : (CFG.aivisStyle || ''));
 }
 /* 話者UUIDはスタイルと対で決まる。1人だけのモデルでは省略しても動くが、
    複数話者のモデルでは style_id だけだと指す先が曖昧になるので添えて送る。 */
 function aivisSpeakerFor(seat){
-  if (seat !== 'A') return String(CFG.aivisSpk || '');
-  if ((CFG.aivisModelA || '').trim()) return String(CFG.aivisSpkA || '');
-  return String(CFG.aivisSpkA || CFG.aivisSpk || '');
+  if (seat !== 'B') return String(CFG.aivisSpk || '');
+  if ((CFG.aivisModelB || '').trim()) return String(CFG.aivisSpkB || '');
+  return String(CFG.aivisSpkB || CFG.aivisSpk || '');
 }
 /* Aivis 側の既定値。ここと同じ値なら送らない。
    既定を送り返しても結果は同じだが、送らなければ
@@ -3170,13 +3188,13 @@ var AIVIS_CUSTOM = '\u0000other';       /* 「その他」を表す、UUIDと衝
 var AIVIS_KNOWN = (function(){
   var m = {}; AIVIS_MODELS.forEach(function(x){ m[x.u] = x.n; }); return m;
 })();
-/* 席ごとのモデル選択を組み立てる。A席は空欄＝相手(B)と同じ、を先頭に置く */
+/* 席ごとのモデル選択を組み立てる。B席は空欄＝自分(A)と同じ、を先頭に置く */
 function aivisFillModels(sel, isA){
   if (!sel || sel.options.length) return;
   var add = function(v, t){
     var o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o);
   };
-  if (isA) add('', '相手(B)と同じ');
+  if (!isA) add('', '自分(A)と同じ');
   AIVIS_MODELS.forEach(function(x){ add(x.u, x.n); });
   add(AIVIS_CUSTOM, '── その他（モデル UUID を貼り付け）──');
 }
@@ -3185,14 +3203,14 @@ var AIVIS_OTHER = { A:false, B:false };
 /* いまの設定値に合わせて、選択・UUID欄・キャラ名欄・リンクを出し直す */
 function aivisSyncModel(seat){
   var isA = (seat === 'A');
-  var sel  = $(isA ? 'aivisModelA' : 'aivisModel');
+  var sel  = $(isA ? 'aivisModel' : 'aivisModelB');
   var row  = $(isA ? 'aivisOtherA' : 'aivisOtherB');
-  var cst  = $(isA ? 'aivisModelACustom' : 'aivisModelCustom');
-  var name = $(isA ? 'aivisNameA' : 'aivisName');
-  var link = $(isA ? 'aivisHubA' : 'aivisHub');
+  var cst  = $(isA ? 'aivisModelCustom' : 'aivisModelBCustom');
+  var name = $(isA ? 'aivisName' : 'aivisNameB');
+  var link = $(isA ? 'aivisHub' : 'aivisHubB');
   if (!sel) return;
   aivisFillModels(sel, isA);
-  var uuid = String((isA ? CFG.aivisModelA : CFG.aivisModel) || '').trim();
+  var uuid = String((isA ? CFG.aivisModel : CFG.aivisModelB) || '').trim();
   /* 一覧に無いUUIDが入っているなら当然「その他」。
      空でも、利用者が「その他」を選んだ直後なら入力欄を閉じない。 */
   var known = !AIVIS_OTHER[seat] && ((uuid === '') || !!AIVIS_KNOWN[uuid]);
@@ -3294,7 +3312,7 @@ function aivisStyleList(uuid){
   });
 }
 /* 取得したスタイルを覚えておき、選ばれたときに話者UUIDを引けるようにする */
-var AIVIS_STYLES = { aivisStyle: [], aivisStyleA: [] };
+var AIVIS_STYLES = { aivisStyle: [], aivisStyleB: [] };
 function aivisFillStyle(sel, list, keep){
   sel.innerHTML = '';
   AIVIS_STYLES[sel.id] = list || [];
@@ -3328,17 +3346,17 @@ function aivisSyncSpeaker(sel){
   if (key){
     for (var i=0;i<list.length;i++) if (list[i].key === key) spk = list[i].spk || '';
   }
-  if (sel.id === 'aivisStyleA'){ CFG.aivisSpkA = spk; store.set('di.aispa', spk); }
+  if (sel.id === 'aivisStyleB'){ CFG.aivisSpkB = spk; store.set('di.aispa', spk); }   /* 相手(B)側 */
   else                         { CFG.aivisSpk  = spk; store.set('di.aisp',  spk); }
 }
 /* モデルが変わったら、選択済みのスタイルも一覧もいったん白紙に戻す。
    別モデルの番号をそのまま使うと、意図しない演技で鳴ってしまう。 */
 function aivisResetStyles(){
-  CFG.aivisStyle = ''; CFG.aivisStyleA = '';
-  CFG.aivisSpk = ''; CFG.aivisSpkA = '';
+  CFG.aivisStyle = ''; CFG.aivisStyleB = '';
+  CFG.aivisSpk = ''; CFG.aivisSpkB = '';
   store.set('di.aist', ''); store.set('di.aista', '');
   store.set('di.aisp', ''); store.set('di.aispa', '');
-  ['aivisStyle','aivisStyleA'].forEach(function(id){
+  ['aivisStyle','aivisStyleB'].forEach(function(id){
     var sl = $(id); if (sl) sl.innerHTML = '';
     AIVIS_STYLES[id] = [];
   });
@@ -3381,7 +3399,7 @@ function aivisStyleFail(msg, mild){
   /* 環境側の制約で取れないだけのときは、赤字の警告にしない（直しようがないため） */
   var el = $('aivisStyleMsg');
   if (el){ el.className = 'keychk' + (mild ? '' : ' ng'); el.innerHTML = (mild ? 'ℹ ' : '⚠ ') + msg; }
-  ['aivisStyle','aivisStyleA'].forEach(function(id){
+  ['aivisStyle','aivisStyleB'].forEach(function(id){
     var sl = $(id); if (sl) aivisFillStyle(sl, [], '');    /* 既定だけに戻す */
   });
 }
@@ -3442,7 +3460,7 @@ function aivisProbeStyles(head){
     var sure = okIds.length < AIVIS_PROBE_MAX;
     var list = okIds.map(function(n){ return { key:'#'+n, id:String(n), spk:'', name:'', who:'' }; });
     aivisFillStyle($('aivisStyle'),  list, CFG.aivisStyle);
-    aivisFillStyle($('aivisStyleA'), list, CFG.aivisStyleA);
+    aivisFillStyle($('aivisStyleB'), list, CFG.aivisStyleB);
     if (msg){
       msg.className = 'keychk ok';
       msg.innerHTML = lead + '✅ 使えるスタイルは <b>' + okIds.length + '件</b>（Style ID ' + okIds.join(', ') + '）。'
@@ -3463,9 +3481,9 @@ function aivisFetchStyles(){
   /* 読み上げ対象から外れている席は、そもそも使われない。
      問い合わせて失敗すると「相手(B): Failed to fetch」のような無関係な文言が出て
      原因を見誤らせるので、最初から対象外にする。 */
-  var mB = seatUsed('B') ? (CFG.aivisModel || '').trim() : '';
-  var mA = seatUsed('A') ? (CFG.aivisModelA || '').trim() : '';
-  if (!mB && !mA && seatUsed('A')) mA = (CFG.aivisModel || '').trim();   /* A席がB席の設定を借りている場合 */
+  var mA = seatUsed('A') ? (CFG.aivisModel  || '').trim() : '';
+  var mB = seatUsed('B') ? (CFG.aivisModelB || '').trim() : '';
+  if (!mA && !mB && seatUsed('B')) mB = (CFG.aivisModel || '').trim();   /* B席がA席の設定を借りている場合 */
   if (!mB && !mA){ toast('先にモデル UUID を入力してください'); return Promise.resolve(); }
   var el = $('aivisStyleMsg');
   if (el){ el.className = 'keychk'; el.textContent = '取得しています…'; }
@@ -3473,7 +3491,7 @@ function aivisFetchStyles(){
   var fb = $('aivisFetch'); if (fb) fb.disabled = true;
   var done = function(){ if (fb) fb.disabled = false; };
   /* 明示的に押されたときは、前に失敗した記憶を捨ててもう一度あたる */
-  aivisInfoForget(mB); aivisInfoForget(mA);
+  aivisInfoForget(mA); aivisInfoForget(mB);
   /* 片方が失敗しても、もう片方は使えるようにそれぞれ独立して扱う */
   var wrap = function(uuid){
     return uuid ? aivisStyleList(uuid).then(
@@ -3481,20 +3499,20 @@ function aivisFetchStyles(){
       function(e){ return { ok:false, err:String((e && e.message) || e) }; }
     ) : Promise.resolve(null);
   };
-  return Promise.all([wrap(mB), wrap(mA)]).then(function(res){
-    var rB = res[0], rA = res[1], total = 0, errs = [];
-    if (rB && rB.ok){ total += aivisFillStyle($('aivisStyle'), rB.list, CFG.aivisStyle); }
-    else if (rB){
-      errs.push('相手(B): ' + rB.err);
-      aivisFillStyle($('aivisStyle'), [], '');       /* 前のモデルの一覧を残さない */
-    }
-    if (rA && rA.ok){ total += aivisFillStyle($('aivisStyleA'), rA.list, CFG.aivisStyleA); }
+  return Promise.all([wrap(mA), wrap(mB)]).then(function(res){
+    var rA = res[0], rB = res[1], total = 0, errs = [];
+    if (rA && rA.ok){ total += aivisFillStyle($('aivisStyle'), rA.list, CFG.aivisStyle); }
     else if (rA){
       errs.push('自分(A): ' + rA.err);
-      aivisFillStyle($('aivisStyleA'), [], '');
+      aivisFillStyle($('aivisStyle'), [], '');       /* 前のモデルの一覧を残さない */
     }
-    /* A席が自前のモデルを持たないときは、B席と同じ一覧を出しておく */
-    if (!mA && rB && rB.ok) aivisFillStyle($('aivisStyleA'), rB.list, CFG.aivisStyleA);
+    if (rB && rB.ok){ total += aivisFillStyle($('aivisStyleB'), rB.list, CFG.aivisStyleB); }
+    else if (rB){
+      errs.push('相手(B): ' + rB.err);
+      aivisFillStyle($('aivisStyleB'), [], '');
+    }
+    /* B席が自前のモデルを持たないときは、A席と同じ一覧を出しておく */
+    if (!mB && rA && rA.ok) aivisFillStyle($('aivisStyleB'), rA.list, CFG.aivisStyleB);
 
     if (errs.length && !total){
       var joined = errs.join(' / ');
@@ -3519,14 +3537,14 @@ function aivisFetchStyles(){
         var head = (why === 'cors')
           ? 'スタイル<b>名</b>は AivisHub 側の制約でブラウザから読めません（<b>設定の誤りではありません</b>）。'
           : 'AivisHub に接続できませんでした（社内ネットワーク等に遮られている可能性があります）。';
-        ['aivisStyle','aivisStyleA'].forEach(function(id){
+        ['aivisStyle','aivisStyleB'].forEach(function(id){
           var sl = $(id); if (sl) aivisFillStyle(sl, [], '');
         });
         return aivisProbeStyles(head).then(function(){ refreshVvUI(); });
       });
     }
     var spk = {};
-    ['aivisStyle','aivisStyleA'].forEach(function(id){
+    ['aivisStyle','aivisStyleB'].forEach(function(id){
       (AIVIS_STYLES[id] || []).forEach(function(s){ if (s.spk) spk[s.spk] = 1; });
     });
     var nSpk = Object.keys(spk).length;
@@ -3546,7 +3564,7 @@ var EL_BASE = 'https://api.elevenlabs.io/v1';
 var elWarned = false;
 var xaiWarned = false;
 function elKey(){ return (KEYS['eleven'] || '').trim(); }
-function elVoiceId(seat){ return seatPick(seat || 'A', CFG.elVoiceA, CFG.elVoice); }
+function elVoiceId(seat){ return seatPick(seat || 'A', CFG.elVoiceB, CFG.elVoice); }
 /* language_code を受け付けるのは v2.5 系だけ。他に渡すとエラーになるので出し分ける */
 function elLangCode(lang){
   var c = String(lang || '').split('-')[0];
@@ -3570,7 +3588,7 @@ var XAI_TTS_LANGS = { ja:'ja', en:'en', de:'de', it:'it', fr:'fr', es:'es-ES', p
                       zh:'zh', 'zh-TW':'zh', ko:'ko', ru:'ru', vi:'vi', id:'id',
                       hi:'hi', ar:'ar-SA', tr:'tr' };
 function xaiKey(){ return (KEYS['tts:xai'] || KEYS['xai'] || '').trim(); }
-function xaiVoiceId(seat){ return seatPick(seat || 'A', CFG.xaiVoiceA, CFG.xaiVoice) || 'eve'; }
+function xaiVoiceId(seat){ return seatPick(seat || 'A', CFG.xaiVoiceB, CFG.xaiVoice) || 'eve'; }
 function xaiTtsLang(lang){ return XAI_TTS_LANGS[lang] || 'auto'; }
 function xaiSpeak(text, lang, seat){
   var key = xaiKey();
@@ -3638,7 +3656,7 @@ function elFillVoiceSelect(sel, list, keep, withSame){
   sel.innerHTML = '';
   if (withSame){
     var z = document.createElement('option');
-    z.value = ''; z.textContent = '相手(B)と同じ';
+    z.value = ''; z.textContent = '自分(A)と同じ';
     sel.appendChild(z);
   }
   (list || []).forEach(function(v){
@@ -3669,7 +3687,7 @@ function elFetchVoices(){
       var rank = function(v){ return v.category === 'cloned' ? 0 : v.category === 'professional' ? 1 : 2; };
       return rank(a) - rank(b);
     });
-    var sel = $('elVoice'), selA = $('elVoiceA');
+    var sel = $('elVoice'), selB = $('elVoiceB');
     if (sel){
       var n = elFillVoiceSelect(sel, list, CFG.elVoice, false);
       if (n){
@@ -3678,11 +3696,11 @@ function elFetchVoices(){
         store.set('di.elv', CFG.elVoice); store.set('di.elvl', CFG.elVoiceLbl);
       }
     }
-    if (selA){
-      elFillVoiceSelect(selA, list, CFG.elVoiceA, true);
-      CFG.elVoiceA = selA.value;
-      CFG.elVoiceALbl = selA.selectedIndex >= 0 ? selA.options[selA.selectedIndex].textContent : '';
-      store.set('di.elva', CFG.elVoiceA); store.set('di.elval', CFG.elVoiceALbl);
+    if (selB){
+      elFillVoiceSelect(selB, list, CFG.elVoiceB, true);
+      CFG.elVoiceB = selB.value;
+      CFG.elVoiceBLbl = selB.selectedIndex >= 0 ? selB.options[selB.selectedIndex].textContent : '';
+      store.set('di.elva', CFG.elVoiceB); store.set('di.elval', CFG.elVoiceBLbl);
     }
     var cloned = list.filter(function(v){ return v.category === 'cloned' || v.category === 'professional'; }).length;
     dlog('tts','eleven-voices',{ n:list.length, cloned:cloned });
@@ -3702,7 +3720,7 @@ function elFetchVoices(){
    どちらのエンジンも同じAPIなので、ベースURLとポートを変えるだけで両対応できる。 */
 var lvvWarned = false;
 function lvvBase(){ return String(CFG.lvvBase || 'http://127.0.0.1:10101').replace(/\/+$/,''); }
-function lvvSpeakerId(seat){ return seatPick(seat || 'A', CFG.lvvSpeakerA, CFG.lvvSpeaker) || '0'; }
+function lvvSpeakerId(seat){ return seatPick(seat || 'A', CFG.lvvSpeakerB, CFG.lvvSpeaker) || '0'; }
 function lvvSpeak(text, lang, seat){
   if (lang !== 'ja') return ttsFallback(text, lang, '日本語以外');
   var base = lvvBase(), sp = encodeURIComponent(lvvSpeakerId(seat)), t0 = Date.now();
@@ -3733,7 +3751,7 @@ function fillLvvSelect(sel, list, keep, withSame){
   sel.innerHTML = '';
   if (withSame){
     var z = document.createElement('option');
-    z.value = ''; z.textContent = '相手(B)と同じ';
+    z.value = ''; z.textContent = '自分(A)と同じ';
     sel.appendChild(z);
   }
   (list || []).forEach(function(sp){
@@ -3764,13 +3782,13 @@ function lvvFetchSpeakers(){
       CFG.lvvSpeakerLbl = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
       store.set('di.lvs', CFG.lvvSpeaker); store.set('di.lvsl', CFG.lvvSpeakerLbl);
     }
-    var selA = $('lvvSpeakerA');
-    if (selA){
-      /* A席は「空＝Bと同じ」を選べるようにしておく（1人分だけ設定したい場合のため） */
-      fillLvvSelect(selA, list, CFG.lvvSpeakerA, true);
-      CFG.lvvSpeakerA = selA.value;
-      CFG.lvvSpeakerALbl = selA.selectedIndex >= 0 ? selA.options[selA.selectedIndex].textContent : '';
-      store.set('di.lvsa', CFG.lvvSpeakerA); store.set('di.lvsal', CFG.lvvSpeakerALbl);
+    var selB = $('lvvSpeakerB');
+    if (selB){
+      /* B席は「空＝Aと同じ」を選べるようにしておく（1人分だけ設定したい場合のため） */
+      fillLvvSelect(selB, list, CFG.lvvSpeakerB, true);
+      CFG.lvvSpeakerB = selB.value;
+      CFG.lvvSpeakerBLbl = selB.selectedIndex >= 0 ? selB.options[selB.selectedIndex].textContent : '';
+      store.set('di.lvsa', CFG.lvvSpeakerB); store.set('di.lvsal', CFG.lvvSpeakerBLbl);
     }
     dlog('tts','local-speakers',{ n: n, base: base });
     toast('話者を ' + n + ' 件取得しました。', true);
@@ -3805,7 +3823,12 @@ var VV_SPEAKERS = [
 ];
 var vvWarned = false;
 function vvKey(){ return (KEYS['voicevox'] || '').trim(); }
-function vvSpeakerId(seat){ return seatPick(seat || 'A', CFG.vvSpeakerA, CFG.vvSpeaker) || '3'; }
+/* VOICEVOX は A席・B席とも既定値を持つ（空欄で相手に合わせる仕組みが無い）ので、
+   主従ではなく席そのままで引く。 */
+function vvSpeakerId(seat){
+  var isA = (seat || 'A') === 'A';          /* 席を省略した呼び出しは A 相当 */
+  return String((isA ? CFG.vvSpeakerA : CFG.vvSpeaker) || (isA ? '2' : '3'));
+}
 function vvSpeakerInfo(id){
   var s = String(id || CFG.vvSpeaker || '3');
   for (var i=0;i<VV_SPEAKERS.length;i++) if (VV_SPEAKERS[i].id === s) return VV_SPEAKERS[i];
@@ -3884,14 +3907,14 @@ function ttsSetupMissing(){
   if (CFG.ttsMode === 'voicevox' && !vvKey())  return 'VOICEVOXのAPIキーが未設定です。';
   if (CFG.ttsMode === 'aivis'){
     if (!aivisKey())                    return 'Aivis Cloud API のキーが未設定です。';
-    if (!(CFG.aivisModel||'').trim())   return 'Aivis Cloud API のモデルUUIDが未設定です。';
-    if (seatUsed('A') && !aivisModelFor('A')) return 'Aivis Cloud API の「自分(A)の発言」のモデルUUIDが未設定です。';
+    if (seatUsed('A') && !aivisModelFor('A')) return 'Aivis Cloud API の「自分(A)の発言」のキャラが未設定です。';
+    if (seatUsed('B') && !aivisModelFor('B')) return 'Aivis Cloud API の「相手(B)の発言」のキャラが未設定です。';
   }
   if (CFG.ttsMode === 'localvv' && !(CFG.lvvBase||'').trim()) return 'ローカルエンジンのURLが未設定です。';
   if (CFG.ttsMode === 'eleven'){
     if (!elKey())                       return 'ElevenLabs のAPIキーが未設定です。';
-    if (!(CFG.elVoice||'').trim())      return 'ElevenLabs の声が未選択です（「🔄 声を取得」を押してください）。';
-    if (seatUsed('A') && !elVoiceId('A')) return 'ElevenLabs の「自分(A)の発言」の声が未選択です。';
+    if (seatUsed('A') && !elVoiceId('A')) return 'ElevenLabs の「自分(A)の発言」の声が未選択です（「🔄 声を取得」を押してください）。';
+    if (seatUsed('B') && !elVoiceId('B')) return 'ElevenLabs の「相手(B)の発言」の声が未選択です。';
   }
   if (CFG.ttsMode === 'xai' && !xaiKey()) return 'xAI のAPIキーが未設定です。';
   return '';
@@ -3915,8 +3938,8 @@ function ttsPlanText(){
       t += '<br><b>⚠ ' + missEl + '</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';
       warn = true;
     } else {
-      t += '<br>' + (CFG.elVoiceLbl ? ('相手(B)は <b>' + CFG.elVoiceLbl + '</b>') : '')
-         + (seatUsed('A') && CFG.elVoiceA && CFG.elVoiceALbl ? ('／自分(A)は <b>' + CFG.elVoiceALbl + '</b>') : '')
+      t += '<br>' + (CFG.elVoiceLbl ? ('自分(A)は <b>' + CFG.elVoiceLbl + '</b>') : '')
+         + (seatUsed('B') && CFG.elVoiceB && CFG.elVoiceBLbl ? ('／相手(B)は <b>' + CFG.elVoiceBLbl + '</b>') : '')
          + ' の声です。ElevenLabs は多言語なので、どの言語もこの声で読み上げます。';
     }
   }
@@ -3926,8 +3949,8 @@ function ttsPlanText(){
       t += '<br><b>⚠ ' + missX + '</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';
       warn = true;
     } else {
-      t += '<br>相手(B)は <b>' + xaiVoiceId('B') + '</b>'
-         + (seatUsed('A') ? ('／自分(A)は <b>' + xaiVoiceId('A') + '</b>') : '') + ' の声です。';
+      t += '<br>自分(A)は <b>' + xaiVoiceId('A') + '</b>'
+         + (seatUsed('B') ? ('／相手(B)は <b>' + xaiVoiceId('B') + '</b>') : '') + ' の声です。';
       /* 対応外の言語は xAI 側の自動判定にゆだねる。黙って任せると
          「指定したのに違う言語で読まれた」ときに理由が分からないので先に書いておく。 */
       var auto = rows.filter(function(r){ return !XAI_TTS_LANGS[r.lang]; });
@@ -3965,9 +3988,9 @@ function ttsSeatVoices(){
       return (aivisModelFor(seat) || '(未設定)').slice(0, 8) + (st !== '' ? ('/style' + st) : '');
     }
     if (CFG.ttsMode === 'eleven'){
-      /* A席が「Bと同じ」のときは、その選択肢の文言ではなく実際に鳴る声の名前を出す */
+      /* B席が「Aと同じ」のときは、その選択肢の文言ではなく実際に鳴る声の名前を出す */
       var vid = elVoiceId(seat);
-      var lbl = (vid && vid === CFG.elVoice) ? CFG.elVoiceLbl : CFG.elVoiceALbl;
+      var lbl = (vid && vid === CFG.elVoice) ? CFG.elVoiceLbl : CFG.elVoiceBLbl;
       return lbl || vid || '(未設定)';
     }
     if (CFG.ttsMode === 'xai')      return xaiVoiceId(seat);
@@ -3985,7 +4008,7 @@ function refreshVvUI(){
     aivisSyncModel('B'); aivisSyncModel('A');
     aivisAdvSync();
     var asx = $('aivisStream'); if (asx) asx.checked = !!CFG.aivisStream;
-    [['aivisStyle', CFG.aivisStyle], ['aivisStyleA', CFG.aivisStyleA]].forEach(function(pair){
+    [['aivisStyle', CFG.aivisStyle], ['aivisStyleB', CFG.aivisStyleB]].forEach(function(pair){
       var sl = $(pair[0]); if (!sl || sl.options.length) return;   /* 取得前でも選択済みの値は残す */
       var z = document.createElement('option'); z.value = ''; z.textContent = '既定（ノーマル）';
       sl.appendChild(z);
@@ -4013,37 +4036,37 @@ function refreshVvUI(){
       eo.value = CFG.elVoice; eo.textContent = CFG.elVoiceLbl || CFG.elVoice;
       ev.appendChild(eo); ev.value = CFG.elVoice;
     }
-    var eva = $('elVoiceA');
-    if (eva && !eva.options.length){
-      var ez = document.createElement('option'); ez.value = ''; ez.textContent = '相手(B)と同じ';
-      eva.appendChild(ez);
-      if (CFG.elVoiceA){
-        var eoa = document.createElement('option');
-        eoa.value = CFG.elVoiceA; eoa.textContent = CFG.elVoiceALbl || CFG.elVoiceA;
-        eva.appendChild(eoa);
+    var evb = $('elVoiceB');
+    if (evb && !evb.options.length){
+      var ez = document.createElement('option'); ez.value = ''; ez.textContent = '自分(A)と同じ';
+      evb.appendChild(ez);
+      if (CFG.elVoiceB){
+        var eob = document.createElement('option');
+        eob.value = CFG.elVoiceB; eob.textContent = CFG.elVoiceBLbl || CFG.elVoiceB;
+        evb.appendChild(eob);
       }
-      eva.value = CFG.elVoiceA || '';
+      evb.value = CFG.elVoiceB || '';
     }
   }
   var xf = $('xaiField');
   if (xf){
     xf.style.display = (CFG.ttsMode === 'xai') ? '' : 'none';
     var xk = $('xaiTtsKey'); if (xk && xk !== document.activeElement) xk.value = KEYS['tts:xai'] || '';
-    var xv = $('xaiVoice'), xva = $('xaiVoiceA');
+    var xv = $('xaiVoice'), xvb = $('xaiVoiceB');
     if (xv && !xv.options.length){
       XAI_VOICES.forEach(function(v){
         var o = document.createElement('option'); o.value = v; o.textContent = v; xv.appendChild(o);
       });
     }
-    if (xva && !xva.options.length){
-      var xz = document.createElement('option'); xz.value = ''; xz.textContent = '相手(B)と同じ';
-      xva.appendChild(xz);
+    if (xvb && !xvb.options.length){
+      var xzb = document.createElement('option'); xzb.value = ''; xzb.textContent = '自分(A)と同じ';
+      xvb.appendChild(xzb);
       XAI_VOICES.forEach(function(v){
-        var o = document.createElement('option'); o.value = v; o.textContent = v; xva.appendChild(o);
+        var o = document.createElement('option'); o.value = v; o.textContent = v; xvb.appendChild(o);
       });
     }
     if (xv)  xv.value  = CFG.xaiVoice || 'eve';
-    if (xva) xva.value = CFG.xaiVoiceA || '';
+    if (xvb) xvb.value = CFG.xaiVoiceB || '';
   }
   var lf = $('lvvField');
   if (lf){
@@ -4055,16 +4078,16 @@ function refreshVvUI(){
       o.value = CFG.lvvSpeaker; o.textContent = CFG.lvvSpeakerLbl || ('話者 ' + CFG.lvvSpeaker);
       ls.appendChild(o); ls.value = CFG.lvvSpeaker;
     }
-    var lsa = $('lvvSpeakerA');
-    if (lsa && !lsa.options.length){
-      var z = document.createElement('option'); z.value = ''; z.textContent = '相手(B)と同じ';
-      lsa.appendChild(z);
-      if (CFG.lvvSpeakerA){
+    var lsb = $('lvvSpeakerB');
+    if (lsb && !lsb.options.length){
+      var z = document.createElement('option'); z.value = ''; z.textContent = '自分(A)と同じ';
+      lsb.appendChild(z);
+      if (CFG.lvvSpeakerB){
         var oa = document.createElement('option');
-        oa.value = CFG.lvvSpeakerA; oa.textContent = CFG.lvvSpeakerALbl || ('話者 ' + CFG.lvvSpeakerA);
-        lsa.appendChild(oa);
+        oa.value = CFG.lvvSpeakerB; oa.textContent = CFG.lvvSpeakerBLbl || ('話者 ' + CFG.lvvSpeakerB);
+        lsb.appendChild(oa);
       }
-      lsa.value = CFG.lvvSpeakerA || '';
+      lsb.value = CFG.lvvSpeakerB || '';
     }
   }
   var f = $('vvField');
@@ -5133,16 +5156,16 @@ function exportHtml(){
     flipTop: CFG.flipTop?'1':'0', showSrc: CFG.showSrc?'1':'0', swap: CFG.swap?'1':'0', interimOn: CFG.interimOn?'1':'0',
     syncScroll: CFG.syncScroll?'1':'0', vvSpeaker: CFG.vvSpeaker, vvSpeakerA: CFG.vvSpeakerA, ttsSrc: CFG.ttsSrc?'1':'0',
     ovlOn: CFG.ovlOn?'1':'0', ovlA: CFG.ovlA, ovlLines: CFG.ovlLines, ovlKey: CFG.ovlKey,
-    ttsPad: CFG.ttsPad, aivisModel: CFG.aivisModel, aivisModelA: CFG.aivisModelA, lvvBase: CFG.lvvBase,
-    aivisStyle: CFG.aivisStyle, aivisStyleA: CFG.aivisStyleA, aivisRate: CFG.aivisRate,
-    aivisStream: CFG.aivisStream?'1':'0', aivisSpk: CFG.aivisSpk, aivisSpkA: CFG.aivisSpkA,
+    ttsPad: CFG.ttsPad, aivisModel: CFG.aivisModel, aivisModelB: CFG.aivisModelB, lvvBase: CFG.lvvBase,
+    aivisStyle: CFG.aivisStyle, aivisStyleB: CFG.aivisStyleB, aivisRate: CFG.aivisRate,
+    aivisStream: CFG.aivisStream?'1':'0', aivisSpk: CFG.aivisSpk, aivisSpkB: CFG.aivisSpkB,
     aivisEmo: CFG.aivisEmo, aivisTempo: CFG.aivisTempo, aivisVol: CFG.aivisVol,
     aivisBreak: CFG.aivisBreak, aivisNorm: CFG.aivisNorm?'1':'0', aivisDict: CFG.aivisDict,
     lvvSpeaker: CFG.lvvSpeaker, lvvSpeakerLbl: CFG.lvvSpeakerLbl,
-    lvvSpeakerA: CFG.lvvSpeakerA, lvvSpeakerALbl: CFG.lvvSpeakerALbl,
-    xaiVoice: CFG.xaiVoice, xaiVoiceA: CFG.xaiVoiceA,
+    lvvSpeakerB: CFG.lvvSpeakerB, lvvSpeakerBLbl: CFG.lvvSpeakerBLbl,
+    xaiVoice: CFG.xaiVoice, xaiVoiceB: CFG.xaiVoiceB,
     elModel: CFG.elModel, elVoice: CFG.elVoice, elVoiceLbl: CFG.elVoiceLbl,
-    elVoiceA: CFG.elVoiceA, elVoiceALbl: CFG.elVoiceALbl,
+    elVoiceB: CFG.elVoiceB, elVoiceBLbl: CFG.elVoiceBLbl,
     focus: CFG.focus, rtDir: CFG.rtDir, rtBoth: CFG.rtBoth,
     savedAt: new Date().toISOString()
   };
@@ -5842,13 +5865,14 @@ function aivisNameLater(){
   clearTimeout(aivisNameTimer);
   aivisNameTimer = setTimeout(function(){
     aivisFetchName(CFG.aivisModel,  'aivisName');
-    aivisFetchName(CFG.aivisModelA, 'aivisNameA');
+    aivisFetchName(CFG.aivisModelB, 'aivisNameB');   /* 空なら何もしない */
   }, 700);
 }
 /* モデルが変わったときの後始末は、選択でも直接入力でも同じ */
 function aivisSetModel(seat, uuid){
   uuid = String(uuid || '').trim();
-  if (seat === 'A'){ CFG.aivisModelA = uuid; store.set('di.aima', uuid); }
+  /* 保存キーは据え置き（di.aima は「相手(B)側」を指す） */
+  if (seat === 'B'){ CFG.aivisModelB = uuid; store.set('di.aima', uuid); }
   else             { CFG.aivisModel  = uuid; store.set('di.aim',  uuid); }
   aivisWarned = false; keyChkShow('chkAivisMsg','','');
   aivisResetStyles();                    /* 別モデルのスタイル一覧は当てにならない */
@@ -5856,21 +5880,17 @@ function aivisSetModel(seat, uuid){
 }
 $('aivisModel').onchange = function(){
   /* 「その他」を選んだ直後は、まだUUIDが無い状態を正とする（入力欄はこのあと開く） */
-  AIVIS_OTHER.B = (this.value === AIVIS_CUSTOM);
-  aivisSetModel('B', AIVIS_OTHER.B ? ($('aivisModelCustom').value || '') : this.value);
-};
-$('aivisModelA').onchange = function(){
   AIVIS_OTHER.A = (this.value === AIVIS_CUSTOM);
-  aivisSetModel('A', AIVIS_OTHER.A ? ($('aivisModelACustom').value || '') : this.value);
+  aivisSetModel('A', AIVIS_OTHER.A ? ($('aivisModelCustom').value || '') : this.value);
 };
-$('aivisModelCustom').oninput  = function(){ aivisSetModel('B', this.value); };
-$('aivisModelACustom').oninput = function(){ aivisSetModel('A', this.value); };
-$('aivisName').oninput = function(){
-  aivisNameSet(CFG.aivisModel, this.value); refreshVvUI();
+$('aivisModelB').onchange = function(){
+  AIVIS_OTHER.B = (this.value === AIVIS_CUSTOM);
+  aivisSetModel('B', AIVIS_OTHER.B ? ($('aivisModelBCustom').value || '') : this.value);
 };
-$('aivisNameA').oninput = function(){
-  aivisNameSet(CFG.aivisModelA, this.value); refreshVvUI();
-};
+$('aivisModelCustom').oninput  = function(){ aivisSetModel('A', this.value); };
+$('aivisModelBCustom').oninput = function(){ aivisSetModel('B', this.value); };
+$('aivisName').oninput  = function(){ aivisNameSet(CFG.aivisModel,  this.value); refreshVvUI(); };
+$('aivisNameB').oninput = function(){ aivisNameSet(CFG.aivisModelB, this.value); refreshVvUI(); };
 $('lvvBase').oninput = function(){
   CFG.lvvBase = this.value.trim(); store.set('di.lvb', CFG.lvvBase);
   lvvWarned = false; keyChkShow('chkLvvMsg','',''); refreshVvUI();
@@ -5880,10 +5900,10 @@ $('lvvSpeaker').onchange = function(){
   CFG.lvvSpeakerLbl = this.options[this.selectedIndex] ? this.options[this.selectedIndex].textContent : '';
   store.set('di.lvs', CFG.lvvSpeaker); store.set('di.lvsl', CFG.lvvSpeakerLbl);
 };
-$('lvvSpeakerA').onchange = function(){
-  CFG.lvvSpeakerA = this.value;
-  CFG.lvvSpeakerALbl = this.selectedIndex >= 0 ? this.options[this.selectedIndex].textContent : '';
-  store.set('di.lvsa', CFG.lvvSpeakerA); store.set('di.lvsal', CFG.lvvSpeakerALbl);
+$('lvvSpeakerB').onchange = function(){
+  CFG.lvvSpeakerB = this.value;
+  CFG.lvvSpeakerBLbl = this.selectedIndex >= 0 ? this.options[this.selectedIndex].textContent : '';
+  store.set('di.lvsa', CFG.lvvSpeakerB); store.set('di.lvsal', CFG.lvvSpeakerBLbl);
 };
 $('lvvFetch').onclick = function(){ lvvFetchSpeakers(); };
 $('chkTrans').onclick = function(){ verifyTransKey(); };
@@ -5898,8 +5918,8 @@ $('aivisStyle').onchange = function(){
   CFG.aivisStyle = this.value; store.set('di.aist', CFG.aivisStyle);
   aivisSyncSpeaker(this); refreshVvUI();
 };
-$('aivisStyleA').onchange = function(){
-  CFG.aivisStyleA = this.value; store.set('di.aista', CFG.aivisStyleA);
+$('aivisStyleB').onchange = function(){
+  CFG.aivisStyleB = this.value; store.set('di.aista', CFG.aivisStyleB);
   aivisSyncSpeaker(this); refreshVvUI();
 };
 simple('aivisStream','di.aistr','aivisStream',true);
@@ -5927,8 +5947,8 @@ $('xaiTtsKey').oninput = function(){
 $('xaiVoice').onchange = function(){
   CFG.xaiVoice = this.value; store.set('di.xav', CFG.xaiVoice); refreshVvUI();
 };
-$('xaiVoiceA').onchange = function(){
-  CFG.xaiVoiceA = this.value; store.set('di.xava', CFG.xaiVoiceA); refreshVvUI();
+$('xaiVoiceB').onchange = function(){
+  CFG.xaiVoiceB = this.value; store.set('di.xava', CFG.xaiVoiceB); refreshVvUI();
 };
 $('chkXaiTts').onclick = function(){ verifyXaiTtsKey(); };
 $('elKey').oninput = function(){
@@ -5945,10 +5965,10 @@ $('elVoice').onchange = function(){
   store.set('di.elv', CFG.elVoice); store.set('di.elvl', CFG.elVoiceLbl);
   refreshVvUI();
 };
-$('elVoiceA').onchange = function(){
-  CFG.elVoiceA = this.value;
-  CFG.elVoiceALbl = this.selectedIndex >= 0 ? this.options[this.selectedIndex].textContent : '';
-  store.set('di.elva', CFG.elVoiceA); store.set('di.elval', CFG.elVoiceALbl);
+$('elVoiceB').onchange = function(){
+  CFG.elVoiceB = this.value;
+  CFG.elVoiceBLbl = this.selectedIndex >= 0 ? this.options[this.selectedIndex].textContent : '';
+  store.set('di.elva', CFG.elVoiceB); store.set('di.elval', CFG.elVoiceBLbl);
   refreshVvUI();
 };
 $('outDev').onchange = function(){
@@ -6059,11 +6079,11 @@ function diagText(devices){
    ['xAIの声 A / B', CFG.ttsMode === 'xai' ? (xaiVoiceId('A') + ' / ' + xaiVoiceId('B')) : '(未使用)'],
    ['Aivisストリーミング', CFG.ttsMode === 'aivis' ? (CFG.aivisStream ? 'ON' : 'OFF') : '(未使用)'],
    ['Aivisスタイル A / B', CFG.ttsMode === 'aivis'
-      ? ((CFG.aivisStyleA === '' ? '既定' : CFG.aivisStyleA) + ' / ' + (CFG.aivisStyle === '' ? '既定' : CFG.aivisStyle)
-         + (CFG.aivisSpk || CFG.aivisSpkA ? '（話者指定あり）' : ''))
+      ? ((CFG.aivisStyleB === '' ? '既定' : CFG.aivisStyleB) + ' / ' + (CFG.aivisStyle === '' ? '既定' : CFG.aivisStyle)
+         + (CFG.aivisSpk || CFG.aivisSpkB ? '（話者指定あり）' : ''))
       : '(未使用)'],
    ['Aivisのキャラ名 A / B', CFG.ttsMode === 'aivis'
-      ? ((aivisNameOf(aivisModelFor('A')) || '(未設定)') + ' / ' + (aivisNameOf(CFG.aivisModel) || '(未設定)'))
+      ? ((aivisNameOf(aivisModelFor('A')) || '(未設定)') + ' / ' + (aivisNameOf(aivisModelFor('B')) || '(未設定)'))
       : '(未使用)'],
    ['Aivis 話し方の調整', CFG.ttsMode === 'aivis' ? aivisTweaks() : '(未使用)'],
    ['原文読み上げ', CFG.ttsSrc ? 'ON' : 'OFF'],
