@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.26 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.27 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -441,7 +441,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.26</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.27</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -451,7 +451,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.26</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.27</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -775,6 +775,13 @@
         <label class="seatpick seatB"><span>相手(B)の発言</span>
         <select id="aivisStyle"></select></label>
         <button class="btn ghost" id="aivisFetch" title="モデル UUID からスタイル一覧を取得" style="align-self:flex-end">🔄 スタイル取得</button>
+      </div>
+      <small class="keychk" id="aivisStyleMsg"></small>
+      <div class="row" id="aivisStyleNumRow" style="display:none">
+        <label class="seatpick seatA"><span>自分(A)の Style ID</span>
+        <input type="number" id="aivisStyleNumA" min="0" max="31" placeholder="空なら既定"></label>
+        <label class="seatpick seatB"><span>相手(B)の Style ID</span>
+        <input type="number" id="aivisStyleNumB" min="0" max="31" placeholder="空なら既定"></label>
       </div>
       <div class="row">
         <span style="font-size:11.5px;color:var(--dim);width:104px;flex:0 0 auto">話す速さ</span>
@@ -2952,16 +2959,24 @@ function aivisStyleList(uuid){
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
   }).then(function(j){
-    var out = [];
-    ((j && j.speakers) || []).forEach(function(sp){
+    var speakers = (j && j.speakers) || [], out = [], multi = speakers.length > 1;
+    speakers.forEach(function(sp){
+      /* 話者UUIDの項目名は aivm_speaker_uuid。別名も一応見る */
+      var spk = sp.aivm_speaker_uuid || sp.speaker_uuid || sp.uuid || '';
       (sp.styles || []).forEach(function(st){
         var id = (st.local_id != null) ? st.local_id : st.id;
         if (id == null) return;
-        if (out.some(function(o){ return String(o.id) === String(id); })) return;
-        /* 話者UUIDも一緒に覚えておく。複数話者モデルで指定に使う */
-        out.push({ id:String(id), name: st.name || ('スタイル ' + id), spk: sp.uuid || sp.speaker_uuid || '' });
+        /* local_id は話者ごとの通し番号なので、話者をまたいで重複する。
+           ここで番号だけを見て間引くと、2人目以降のスタイルが丸ごと消える。
+           話者と番号の組で見分け、表示にも話者名を出す。 */
+        var key = spk + '#' + id;
+        if (out.some(function(o){ return o.key === key; })) return;
+        out.push({ key: key, id: String(id), spk: spk,
+                   name: st.name || ('スタイル ' + id),
+                   who: multi ? (sp.name || '') : '' });
       });
     });
+    if (!out.length) throw new Error('スタイルが1件も入っていません');
     return out;
   });
 }
@@ -2975,10 +2990,11 @@ function aivisFillStyle(sel, list, keep){
   sel.appendChild(z);
   (list || []).forEach(function(s){
     var o = document.createElement('option');
-    /* 表記は AivisHub の画面と揃える。見比べて迷わないようにするため */
-    /* 名前が取れなかったとき（一覧の取得に失敗した場合）は番号だけを出す */
+    /* 表記は AivisHub の画面と揃える。見比べて迷わないようにするため。
+       複数話者のモデルでは、同じ番号が別の人のものとして並ぶので話者名を前に出す。 */
     o.value = String(s.id);
-    o.textContent = s.name ? (s.name + ' (Style ID: ' + s.id + ')') : ('Style ID: ' + s.id);
+    o.setAttribute('data-key', s.key || ('#' + s.id));
+    o.textContent = (s.who ? s.who + ' / ' : '') + s.name + ' (Style ID: ' + s.id + ')';
     sel.appendChild(o);
   });
   var k = String(keep || ''), found = false;
@@ -2989,16 +3005,15 @@ function aivisFillStyle(sel, list, keep){
 }
 /* 選択中のスタイルに対応する話者UUIDを設定へ反映する */
 function aivisSyncSpeaker(sel){
-  var list = AIVIS_STYLES[sel.id] || [], v = sel.value, spk = '';
-  for (var i=0;i<list.length;i++) if (String(list[i].id) === v) spk = list[i].spk || '';
+  var list = AIVIS_STYLES[sel.id] || [], spk = '';
+  /* 同じ番号が複数の話者に存在しうるので、値ではなく選択中の項目そのものから引く */
+  var opt = sel.options[sel.selectedIndex];
+  var key = opt ? opt.getAttribute('data-key') : null;
+  if (key){
+    for (var i=0;i<list.length;i++) if (list[i].key === key) spk = list[i].spk || '';
+  }
   if (sel.id === 'aivisStyleA'){ CFG.aivisSpkA = spk; store.set('di.aispa', spk); }
   else                         { CFG.aivisSpk  = spk; store.set('di.aisp',  spk); }
-}
-/* 一覧が取れないときの逃げ道。AivisHubの画面で見たStyle IDを番号で選べるようにする */
-function aivisNumberedStyles(n){
-  var out = [];
-  for (var i=0;i<(n||8);i++) out.push({ id:String(i), name:'', spk:'' });
-  return out;
 }
 /* モデルが変わったら、選択済みのスタイルも一覧もいったん白紙に戻す。
    別モデルの番号をそのまま使うと、意図しない演技で鳴ってしまう。 */
@@ -3011,36 +3026,75 @@ function aivisResetStyles(){
     var sl = $(id); if (sl) sl.innerHTML = '';
     AIVIS_STYLES[id] = [];
   });
+  var msg = $('aivisStyleMsg'); if (msg){ msg.className = 'keychk'; msg.textContent = ''; }
+  var row = $('aivisStyleNumRow'); if (row) row.style.display = 'none';
+  var na = $('aivisStyleNumA'); if (na) na.value = '';
+  var nb = $('aivisStyleNumB'); if (nb) nb.value = '';
+}
+/* 取得できなかったときに、実在するか分からない番号を並べるのは害しかない。
+   （このモデルには無いスタイルを選べてしまい、しかも失敗に気づけない）
+   一覧は出さず、理由をその場に表示して、番号の直接入力に切り替える。 */
+function aivisStyleFail(msg){
+  var el = $('aivisStyleMsg');
+  if (el){ el.className = 'keychk ng'; el.innerHTML = '⚠ ' + msg; }
+  var row = $('aivisStyleNumRow'); if (row) row.style.display = '';
+  ['aivisStyle','aivisStyleA'].forEach(function(id){
+    var sl = $(id); if (sl) aivisFillStyle(sl, [], '');    /* 既定だけに戻す */
+  });
+  var na = $('aivisStyleNumA'), nb = $('aivisStyleNumB');
+  if (na) na.value = CFG.aivisStyleA || '';
+  if (nb) nb.value = CFG.aivisStyle  || '';
+}
+function aivisStyleOk(msg){
+  var el = $('aivisStyleMsg');
+  if (el){ el.className = 'keychk ok'; el.innerHTML = '✅ ' + msg; }
+  var row = $('aivisStyleNumRow'); if (row) row.style.display = 'none';
 }
 function aivisFetchStyles(){
   var mB = (CFG.aivisModel || '').trim(), mA = (CFG.aivisModelA || '').trim();
-  if (!mB && !mA){ toast('先にモデルUUIDを入力してください'); return Promise.resolve(); }
-  var jobs = [];
-  if (mB) jobs.push(aivisStyleList(mB).then(function(l){ return { sel:'aivisStyle', keep:CFG.aivisStyle, list:l }; }));
-  if (mA) jobs.push(aivisStyleList(mA).then(function(l){ return { sel:'aivisStyleA', keep:CFG.aivisStyleA, list:l }; }));
-  return Promise.all(jobs).then(function(res){
-    var total = 0;
-    res.forEach(function(r){
-      var sel = $(r.sel); if (!sel) return;
-      total += aivisFillStyle(sel, r.list, r.keep);
-    });
-    /* A席が自前のモデルを持たないときは、B席と同じ一覧を出しておく */
-    if (!mA && mB && res.length){
-      var selA = $('aivisStyleA');
-      if (selA) aivisFillStyle(selA, res[0].list, CFG.aivisStyleA);
+  if (!mB && !mA){ toast('先にモデル UUID を入力してください'); return Promise.resolve(); }
+  var el = $('aivisStyleMsg');
+  if (el){ el.className = 'keychk'; el.textContent = '取得しています…'; }
+  /* 片方が失敗しても、もう片方は使えるようにそれぞれ独立して扱う */
+  var wrap = function(uuid){
+    return uuid ? aivisStyleList(uuid).then(
+      function(l){ return { ok:true, list:l }; },
+      function(e){ return { ok:false, err:String((e && e.message) || e) }; }
+    ) : Promise.resolve(null);
+  };
+  return Promise.all([wrap(mB), wrap(mA)]).then(function(res){
+    var rB = res[0], rA = res[1], total = 0, errs = [];
+    if (rB && rB.ok){ total += aivisFillStyle($('aivisStyle'), rB.list, CFG.aivisStyle); }
+    else if (rB){
+      errs.push('相手(B): ' + rB.err);
+      aivisFillStyle($('aivisStyle'), [], '');       /* 前のモデルの一覧を残さない */
     }
-    dlog('tts','aivis-styles',{ n: total });
+    if (rA && rA.ok){ total += aivisFillStyle($('aivisStyleA'), rA.list, CFG.aivisStyleA); }
+    else if (rA){
+      errs.push('自分(A): ' + rA.err);
+      aivisFillStyle($('aivisStyleA'), [], '');
+    }
+    /* A席が自前のモデルを持たないときは、B席と同じ一覧を出しておく */
+    if (!mA && rB && rB.ok) aivisFillStyle($('aivisStyleA'), rB.list, CFG.aivisStyleA);
+
+    if (errs.length && !total){
+      dlog('tts','aivis-styles-FAIL',{ err: errs.join(' / ').slice(0,180) });
+      aivisStyleFail('スタイル一覧を取得できませんでした（' + errs.join(' / ').slice(0,90) + '）。<br>'
+        + 'AivisHub のモデルページで <b>Style ID</b> を確認し、下の欄に番号を入力してください。'
+        + '<br>存在しない番号を選ばせないよう、こちらでは候補を作りません。');
+      refreshVvUI();
+      return;
+    }
+    var spk = {};
+    ['aivisStyle','aivisStyleA'].forEach(function(id){
+      (AIVIS_STYLES[id] || []).forEach(function(s){ if (s.spk) spk[s.spk] = 1; });
+    });
+    var nSpk = Object.keys(spk).length;
+    dlog('tts','aivis-styles',{ n: total, speakers: nSpk, errs: errs.length });
+    aivisStyleOk('スタイルを ' + total + ' 件取得しました'
+      + (nSpk > 1 ? '（話者 ' + nSpk + ' 名ぶん）' : '') + '。'
+      + (errs.length ? '<br>一部は取得できませんでした：' + errs.join(' / ').slice(0,80) : ''));
     toast('スタイルを ' + total + ' 件取得しました。', true);
-    refreshVvUI();
-  }).catch(function(err){
-    var m = String((err && err.message) || err);
-    dlog('tts','aivis-styles-FAIL',{ err:m.slice(0,140) });
-    /* 取得できなくても手で選べるようにしておく（AivisHubの画面に番号が出ている） */
-    var fb = aivisNumberedStyles(8);
-    if ($('aivisStyle'))  aivisFillStyle($('aivisStyle'),  fb, CFG.aivisStyle);
-    if ($('aivisStyleA')) aivisFillStyle($('aivisStyleA'), fb, CFG.aivisStyleA);
-    toast('スタイル名を取得できませんでした（' + m.slice(0,50) + '）。<br>'
-        + 'AivisHub のモデルページに出ている <b>Style ID</b> を見て、番号で選んでください。');
     refreshVvUI();
   });
 }
@@ -4533,7 +4587,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.26</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.27</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -5247,6 +5301,16 @@ $('aivisStyleA').onchange = function(){
   aivisSyncSpeaker(this); refreshVvUI();
 };
 simple('aivisStream','di.aistr','aivisStream',true);
+/* 一覧を取れなかったモデル向け。番号だけを受け取る（話者は特定できないので空にする） */
+function aivisStyleNum(el, isA){
+  var v = String(el.value || '').trim();
+  if (v !== '' && !/^\d{1,2}$/.test(v)) v = '';
+  if (isA){ CFG.aivisStyleA = v; store.set('di.aista', v); CFG.aivisSpkA = ''; store.set('di.aispa',''); }
+  else    { CFG.aivisStyle  = v; store.set('di.aist',  v); CFG.aivisSpk  = ''; store.set('di.aisp', ''); }
+  refreshVvUI();
+}
+$('aivisStyleNumA').oninput = function(){ aivisStyleNum(this, true); };
+$('aivisStyleNumB').oninput = function(){ aivisStyleNum(this, false); };
 $('aivisRate').onchange = function(){
   CFG.aivisRate = this.value; store.set('di.airt', CFG.aivisRate); refreshVvUI();
 };
@@ -5352,7 +5416,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.26');
+  out.push('- バージョン: Duo Interpreter v1.27');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
