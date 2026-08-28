@@ -652,7 +652,7 @@
       </div>
       <input type="text" id="sttModelCustom" placeholder="モデル名を直接入力" style="display:none">
       <small id="sttModelNote">APIキーを入力すると、実際に使えるモデル一覧を自動で取得します。</small>
-      <small id="xaiSttNote" style="display:none" data-fold="off">xAI の音声認識はモデルを選ぶ必要がありません。
+      <small id="xaiSttNote" style="display:none">xAI の音声認識はモデルを選ぶ必要がありません。
       キーは翻訳プロバイダの xAI と共通で、上の欄が空ならそちらのキーを使います。<br>
       日本語・英語を含む25言語に対応しています。<b>中国語は対応一覧にありません</b>ので、
       言語指定を送らず自動判定にまかせます（うまく取れないときは Gemini か OpenAI をお試しください）。<br>
@@ -811,7 +811,7 @@
         <label class="seatpick seatB"><span>相手(B)の発言</span>
         <select id="xaiVoice"></select></label>
       </div>
-      <small data-fold="off">キーは <a href="https://console.x.ai/" target="_blank" rel="noopener noreferrer">xAI コンソール</a> で取得できます。
+      <small>キーは <a href="https://console.x.ai/" target="_blank" rel="noopener noreferrer">xAI コンソール</a> で取得できます。
       翻訳プロバイダで xAI を使っている場合は同じキーが共通で使われるので、ここは空欄のままで動きます。<br>
       日本語・英語を含む20言語に対応しています（読み上げる言語は席ごとの設定から自動で渡します）。
       対応外の言語のときは xAI 側の自動判定にまかせます。<br>
@@ -844,7 +844,7 @@
           <input type="text" id="aivisName" class="mname" placeholder="キャラ名" autocomplete="off">
         </div></label>
       </div>
-      <small id="uuidHelp" data-fold="off">よく使うキャラは名前で選べます。「↗」でそのモデルの AivisHub ページを開けます。<br>
+      <small id="uuidHelp">よく使うキャラは名前で選べます。「↗」でそのモデルの AivisHub ページを開けます。<br>
       一覧に無いモデル（自分で作ったモデルを含む）は「<b>── その他（モデル UUID を貼り付け）──</b>」を選ぶと入力欄が出ます。
       貼り付けるのは AivisHub のモデルページ →「<b>詳細情報</b>」→「<b>モデル UUID</b>」の値です。
       同じ画面の「<b>話者 UUID</b>」ではありません（モデルページのURL末尾と同じ値です）。<br>
@@ -2437,6 +2437,14 @@ function setFolded(el, on){
   el.className = (el.className || '').replace(/\s*\bfolded\b/g, '') + (on ? ' folded' : '');
 }
 function noteTargets(btn){ return btn.__targets || []; }
+/* たたみ対象の説明を、開閉ボタンごと出し入れする。
+   たたまれているかどうか（.folded）はそのまま保つ。 */
+function noteShow(id, on){
+  var el = $(id); if (!el) return;
+  el.style.display = on ? '' : 'none';
+  var btn = el.previousElementSibling;
+  if (btn && hasClass(btn, 'notetog')) btn.style.display = on ? '' : 'none';
+}
 function markNoteToggles(){
   var btns = document.querySelectorAll('#drawer .notetog');
   for (var i=0;i<btns.length;i++){
@@ -5495,7 +5503,9 @@ function refreshProviderUI(){
   $('rtDirField').style.display   = isRT ? '' : 'none';
   $('sttModel').style.display     = noModel ? 'none' : '';
   $('sttModelNote').style.display = noModel ? 'none' : '';
-  $('xaiSttNote').style.display   = (CFG.sttProvider === 'xai') ? '' : 'none';
+  /* たたまれている説明は、開閉ボタンも一緒に出し入れする。
+     ボタンだけ残ると、関係のないプロバイダを選んでいるときに宙に浮いてしまう。 */
+  noteShow('xaiSttNote', CFG.sttProvider === 'xai');
   $('rtDir').value  = CFG.rtDir;
   $('rtBoth').value = CFG.rtBoth;
   refreshVvUI();
