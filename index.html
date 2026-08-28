@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.23 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.24 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -425,7 +425,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.23</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.24</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -435,7 +435,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.23</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.24</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -666,6 +666,7 @@
         <option value="browser">🆓 ブラウザ内蔵音声（無料・即時）</option>
         <option value="openai">OpenAI 音声（自然）</option>
         <option value="voicevox">🫛 VOICEVOX WEB版（ずんだもん等・日本語のみ／お遊び）</option>
+        <option value="eleven">🗣 ElevenLabs（自分の声をクローン・多言語・低遅延）</option>
         <option value="aivis">🎙 Aivis Cloud API（高品質・低遅延・日本語のみ）</option>
         <option value="localvv">🖥 ローカルエンジン（AivisSpeech / VOICEVOX・日本語のみ）</option>
       </select>
@@ -709,6 +710,36 @@
       <small id="outNote"></small>
     </div>
 
+    <div class="field" id="elField" style="display:none">
+      <label>🗣 ElevenLabs</label>
+      <input type="password" id="elKey" placeholder="ElevenLabs APIキー" autocomplete="off">
+      <div class="keyrow">
+        <button class="btn ghost" id="chkEl" title="キーの有効性と残り文字数を確かめます">🔍 キーと残量を確認</button>
+        <span class="keychk" id="chkElMsg"></span>
+      </div>
+      <select id="elModel">
+        <option value="eleven_flash_v2_5">Flash v2.5（最速・32言語・おすすめ）</option>
+        <option value="eleven_multilingual_v2">Multilingual v2（高品質・29言語・やや遅い）</option>
+        <option value="eleven_turbo_v2_5">Turbo v2.5（旧世代）</option>
+        <option value="eleven_flash_v2">Flash v2（最速・英語のみ）</option>
+      </select>
+      <div class="row">
+        <label class="seatpick seatA"><span>自分(A)の発言</span>
+        <select id="elVoiceA"></select></label>
+        <label class="seatpick seatB"><span>相手(B)の発言</span>
+        <select id="elVoice"></select></label>
+        <button class="btn ghost" id="elFetch" title="アカウントの声一覧を取得" style="align-self:flex-end">🔄 声を取得</button>
+      </div>
+      <small><b>自分の声で読み上げたい場合はこれです。</b>
+      <a href="https://elevenlabs.io/app/voice-lab" target="_blank" rel="noopener noreferrer">ElevenLabs の Voice Lab</a>
+      で <b>Instant Voice Cloning</b> を選び、2分未満の自分の録音をアップロードすると、すぐに自分の声が作れます（学習の待ち時間はありません）。
+      作った声は「🔄 声を取得」で一覧に出てきます。<br>
+      <b>日本語も英語も同じ声で読めます</b>ので、A席とB席の両方を自分の声に揃えることもできます。
+      キーは <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener noreferrer">API Keys</a> から取得してください。
+      Flash v2.5 は公称75ms級で、同時通訳の用途に向きます。品質を優先するなら Multilingual v2 ですが、そのぶん待ちが伸びます。<br>
+      本人の同意なく他人の声を複製することは規約でも法令でも認められません。自分の声、または許諾を得た声だけをお使いください。</small>
+    </div>
+
     <div class="field" id="aivisField" style="display:none">
       <label>🎙 Aivis Cloud API</label>
       <input type="password" id="aivisKey" placeholder="Aivis Cloud API キー" autocomplete="off">
@@ -725,7 +756,13 @@
       <small>キーは <a href="https://hub.aivis-project.com/cloud-api/dashboard" target="_blank" rel="noopener noreferrer">Aivis Cloud API ダッシュボード</a> で取得できます（登録時に無料クレジット付き・その後は従量課金または月額）。
       モデルUUIDは <a href="https://hub.aivis-project.com/" target="_blank" rel="noopener noreferrer">AivisHub</a> の各モデルのページからコピーして貼り付けてください。初期値は「Anneli」です。
       日本語の読み上げだけがこの声になり、それ以外の言語はブラウザ内蔵音声で読み上げます。
-      失敗した場合もブラウザ内蔵音声に自動で切り替わります。</small>
+      失敗した場合もブラウザ内蔵音声に自動で切り替わります。<br>
+      <b>自分の声を使う</b>：Style-Bert-VITS2 で作ったモデルを
+      <a href="https://aivis-project.com/" target="_blank" rel="noopener noreferrer">AIVM Generator</a> で変換し、
+      Aivis Cloud のダッシュボードにアップロードすると、そのモデルUUIDをここに貼るだけで使えます（<b>既定は非公開</b>なので社内利用でも安心です）。
+      推論の重さは声によって変わらないので、自分の声にしても速度は落ちません。<br>
+      <b>⚠ ただし Aivis は日本語専用です。</b>カスタムモデルを作っても<b>英語は出せません</b>（エンジン側の仕様）。
+      自分の声で英語を話したい場合は、上の <b>ElevenLabs</b> をお使いください。</small>
     </div>
 
     <div class="field" id="lvvField" style="display:none">
@@ -1053,6 +1090,11 @@ function loadCfg(){
     vvSpeakerA:pref('di.vvspa','vvSpeakerA','2'),
     aivisModel:pref('di.aim','aivisModel','a59cb814-0083-4369-8542-f51a29e72af7'),  /* 既定はAnneli */
     aivisModelA:pref('di.aima','aivisModelA',''),          /* 空なら相手(B)と同じ声 */
+    elModel:   pref('di.elm','elModel','eleven_flash_v2_5'),
+    elVoice:   pref('di.elv','elVoice',''),                /* 相手(B) */
+    elVoiceLbl:pref('di.elvl','elVoiceLbl',''),
+    elVoiceA:  pref('di.elva','elVoiceA',''),              /* 空なら相手(B)と同じ声 */
+    elVoiceALbl:pref('di.elval','elVoiceALbl',''),
     lvvBase:   pref('di.lvb','lvvBase','http://127.0.0.1:10101'),
     lvvSpeaker:pref('di.lvs','lvvSpeaker',''),
     lvvSpeakerLbl:pref('di.lvsl','lvvSpeakerLbl',''),
@@ -1982,6 +2024,20 @@ function verifyVvKey(){
       });
   });
 }
+/* ElevenLabs は残り文字数まで返るので、あと何文字読めるかを出す */
+function verifyElKey(){
+  return keyChkRun('chkEl', 'chkElMsg', 'ElevenLabs', function(){
+    var key = elKey();
+    if (!key) return Promise.reject(new Error('APIキーが未入力です'));
+    return keyProbe(EL_BASE + '/user', { 'xi-api-key':key }).then(function(j){
+      var s = (j && j.subscription) || {};
+      if (s.character_limit == null) return 'キーは有効です。';
+      var left = Math.max(0, (s.character_limit || 0) - (s.character_count || 0));
+      return 'キーは有効です。残り ' + left.toLocaleString() + ' 文字'
+           + (s.tier ? '（' + s.tier + 'プラン）' : '') + '。';
+    });
+  });
+}
 /* ローカルエンジンは「起動しているか」と「CORSを開けているか」が全て */
 function verifyLvv(){
   return keyChkRun('chkLvv', 'chkLvvMsg', 'ローカルエンジン', function(){
@@ -2656,6 +2712,112 @@ function aivisSpeak(text, lang, seat){
   });
 }
 
+/* ---------------- ElevenLabs ----------------
+   Aivis や VOICEVOX と違い日本語専用ではないので、どの言語でもこのエンジンで鳴らす。
+   Instant Voice Cloning で作った「自分の声」を、日本語でも英語でも同じ声で使えるのが要点。 */
+var EL_BASE = 'https://api.elevenlabs.io/v1';
+var elWarned = false;
+function elKey(){ return (KEYS['eleven'] || '').trim(); }
+function elVoiceId(seat){ return seatPick(seat || 'A', CFG.elVoiceA, CFG.elVoice); }
+/* language_code を受け付けるのは v2.5 系だけ。他に渡すとエラーになるので出し分ける */
+function elLangCode(lang){
+  var c = String(lang || '').split('-')[0];
+  return /v2_5$/.test(CFG.elModel || '') ? c : '';
+}
+function elSpeak(text, lang, seat){
+  var key = elKey(), vid = elVoiceId(seat);
+  if (!key || !vid)
+    return ttsFallback(text, lang, '未設定',
+      'ElevenLabs のAPIキーまたは声が未設定です。⚙→音声 でご確認ください。', 'elWarned');
+  var t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150));
+  var body = { text:text, model_id:(CFG.elModel || 'eleven_flash_v2_5') };
+  var lc = elLangCode(lang); if (lc) body.language_code = lc;
+  fetch(EL_BASE + '/text-to-speech/' + encodeURIComponent(vid) + '?output_format=mp3_44100_128', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'xi-api-key':key },
+    body: JSON.stringify(body)
+  }).then(function(r){
+    if (!r.ok) return r.text().then(function(x){ throw new Error(r.status + ' ' + String(x).slice(0,140)); });
+    return r.blob();
+  }).then(function(b){
+    dlog('tts','eleven-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size, seat:seat||'A', lang:lang, model:CFG.elModel });
+    playBlob(b, finish, 'eleven');
+  }).catch(function(err){
+    var m = String((err && err.message) || err);
+    dlog('tts','eleven-FAIL',{ err:m.slice(0,140), ms:Date.now()-t0, seat:seat||'A' });
+    finish();
+    var hint = /^401|^403/.test(m) ? 'ElevenLabs のキーが無効か、権限がありません。'
+             : /^422/.test(m)      ? 'この声またはモデルの組み合わせが受け付けられませんでした（言語の指定が合わない可能性があります）。'
+             : /^429/.test(m)      ? 'ElevenLabs の文字数上限に達したか、同時実行数を超えました。'
+             : /failed to fetch|networkerror|load failed/i.test(m) ? 'ElevenLabs に接続できませんでした。'
+             : 'ElevenLabs でエラーが返りました（' + m.slice(0,70) + '）。';
+    ttsFallback(text, lang, 'API失敗', hint, 'elWarned');
+  });
+}
+/* アカウントに登録済みの声（クローンした自分の声を含む）を一覧に流し込む */
+function elFillVoiceSelect(sel, list, keep, withSame){
+  sel.innerHTML = '';
+  if (withSame){
+    var z = document.createElement('option');
+    z.value = ''; z.textContent = '相手(B)と同じ';
+    sel.appendChild(z);
+  }
+  (list || []).forEach(function(v){
+    var o = document.createElement('option');
+    o.value = v.voice_id;
+    /* 自分でクローンした声が先に見つかるよう、種別を添えておく */
+    var kind = (v.category === 'cloned') ? '自分の声'
+             : (v.category === 'professional') ? 'PVC'
+             : (v.category === 'premade') ? '既定' : (v.category || '');
+    o.textContent = (v.name || v.voice_id) + (kind ? '（' + kind + '）' : '');
+    sel.appendChild(o);
+  });
+  var k = String(keep || ''), found = false;
+  for (var i=0;i<sel.options.length;i++) if (sel.options[i].value === k) found = true;
+  if (found) sel.value = k;
+  return withSame ? sel.options.length - 1 : sel.options.length;
+}
+function elFetchVoices(){
+  var key = elKey();
+  if (!key){ toast('先に ElevenLabs のAPIキーを入力してください'); return Promise.resolve(); }
+  return fetch(EL_BASE + '/voices', { headers:{ 'xi-api-key':key } }).then(function(r){
+    if (!r.ok) throw new Error(r.status + '');
+    return r.json();
+  }).then(function(j){
+    var list = (j && j.voices) || [];
+    /* 自分でクローンした声を上に持ってくる。既定の声に埋もれると探せない */
+    list.sort(function(a, b){
+      var rank = function(v){ return v.category === 'cloned' ? 0 : v.category === 'professional' ? 1 : 2; };
+      return rank(a) - rank(b);
+    });
+    var sel = $('elVoice'), selA = $('elVoiceA');
+    if (sel){
+      var n = elFillVoiceSelect(sel, list, CFG.elVoice, false);
+      if (n){
+        CFG.elVoice = sel.value;
+        CFG.elVoiceLbl = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+        store.set('di.elv', CFG.elVoice); store.set('di.elvl', CFG.elVoiceLbl);
+      }
+    }
+    if (selA){
+      elFillVoiceSelect(selA, list, CFG.elVoiceA, true);
+      CFG.elVoiceA = selA.value;
+      CFG.elVoiceALbl = selA.selectedIndex >= 0 ? selA.options[selA.selectedIndex].textContent : '';
+      store.set('di.elva', CFG.elVoiceA); store.set('di.elval', CFG.elVoiceALbl);
+    }
+    var cloned = list.filter(function(v){ return v.category === 'cloned' || v.category === 'professional'; }).length;
+    dlog('tts','eleven-voices',{ n:list.length, cloned:cloned });
+    toast('声を ' + list.length + ' 件取得しました'
+        + (cloned ? '（うち自分でクローンした声 ' + cloned + ' 件）' : '（クローンした声はまだありません）') + '。', true);
+    refreshVvUI();
+    return list;
+  }).catch(function(err){
+    var m = String((err && err.message) || err);
+    dlog('tts','eleven-voices-FAIL',{ err:m.slice(0,140) });
+    toast('声の一覧を取得できませんでした（' + m.slice(0,60) + '）。キーをご確認ください。');
+  });
+}
+
 /* ---------------- ローカルエンジン（AivisSpeech / VOICEVOX 互換） ----------------
    audio_query で読み仮名やアクセントを作り、synthesis で音声にする2段構え。
    どちらのエンジンも同じAPIなので、ベースURLとポートを変えるだけで両対応できる。 */
@@ -2847,6 +3009,11 @@ function ttsSetupMissing(){
     if (seatUsed('A') && !aivisModelFor('A')) return 'Aivis Cloud API の「自分(A)の発言」のモデルUUIDが未設定です。';
   }
   if (CFG.ttsMode === 'localvv' && !(CFG.lvvBase||'').trim()) return 'ローカルエンジンのURLが未設定です。';
+  if (CFG.ttsMode === 'eleven'){
+    if (!elKey())                       return 'ElevenLabs のAPIキーが未設定です。';
+    if (!(CFG.elVoice||'').trim())      return 'ElevenLabs の声が未選択です（「🔄 声を取得」を押してください）。';
+    if (seatUsed('A') && !elVoiceId('A')) return 'ElevenLabs の「自分(A)の発言」の声が未選択です。';
+  }
   return '';
 }
 function ttsPlanText(){
@@ -2861,6 +3028,17 @@ function ttsPlanText(){
     warn = true;
   } else if (CFG.outDev){
     t += '<br>出力先：<b>' + (CFG.outDevLbl || '指定したデバイス') + '</b>';
+  }
+  if (CFG.ttsMode === 'eleven'){
+    var missEl = ttsSetupMissing();
+    if (missEl){
+      t += '<br><b>⚠ ' + missEl + '</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';
+      warn = true;
+    } else {
+      t += '<br>' + (CFG.elVoiceLbl ? ('相手(B)は <b>' + CFG.elVoiceLbl + '</b>') : '')
+         + (seatUsed('A') && CFG.elVoiceA && CFG.elVoiceALbl ? ('／自分(A)は <b>' + CFG.elVoiceALbl + '</b>') : '')
+         + ' の声です。ElevenLabs は多言語なので、どの言語もこの声で読み上げます。';
+    }
   }
   if (jaOnlyMode(CFG.ttsMode)){
     var miss = ttsSetupMissing();
@@ -2885,6 +3063,12 @@ function ttsSeatVoices(){
     if (CFG.ttsMode === 'openai')   return seat === 'A' ? CFG.voiceA : CFG.voiceB;
     if (CFG.ttsMode === 'voicevox'){ var v = vvSpeakerInfo(vvSpeakerId(seat)); return v.name + '/' + v.style; }
     if (CFG.ttsMode === 'aivis')    return (aivisModelFor(seat) || '(未設定)').slice(0, 8);
+    if (CFG.ttsMode === 'eleven'){
+      /* A席が「Bと同じ」のときは、その選択肢の文言ではなく実際に鳴る声の名前を出す */
+      var vid = elVoiceId(seat);
+      var lbl = (vid && vid === CFG.elVoice) ? CFG.elVoiceLbl : CFG.elVoiceALbl;
+      return lbl || vid || '(未設定)';
+    }
     if (CFG.ttsMode === 'localvv')  return String(lvvSpeakerId(seat));
     if (CFG.ttsMode === 'browser')  return '(言語で自動選択)';
     return '(なし)';
@@ -2898,6 +3082,29 @@ function refreshVvUI(){
     var ak = $('aivisKey');   if (ak && ak !== document.activeElement) ak.value = KEYS['aivis'] || '';
     var am = $('aivisModel'); if (am && am !== document.activeElement) am.value = CFG.aivisModel || '';
     var ama = $('aivisModelA'); if (ama && ama !== document.activeElement) ama.value = CFG.aivisModelA || '';
+  }
+  var ef = $('elField');
+  if (ef){
+    ef.style.display = (CFG.ttsMode === 'eleven') ? '' : 'none';
+    var ek = $('elKey');   if (ek && ek !== document.activeElement) ek.value = KEYS['eleven'] || '';
+    var em = $('elModel'); if (em) em.value = CFG.elModel || 'eleven_flash_v2_5';
+    var ev = $('elVoice');
+    if (ev && !ev.options.length && CFG.elVoice){      /* 取得前でも前回の声を出しておく */
+      var eo = document.createElement('option');
+      eo.value = CFG.elVoice; eo.textContent = CFG.elVoiceLbl || CFG.elVoice;
+      ev.appendChild(eo); ev.value = CFG.elVoice;
+    }
+    var eva = $('elVoiceA');
+    if (eva && !eva.options.length){
+      var ez = document.createElement('option'); ez.value = ''; ez.textContent = '相手(B)と同じ';
+      eva.appendChild(ez);
+      if (CFG.elVoiceA){
+        var eoa = document.createElement('option');
+        eoa.value = CFG.elVoiceA; eoa.textContent = CFG.elVoiceALbl || CFG.elVoiceA;
+        eva.appendChild(eoa);
+      }
+      eva.value = CFG.elVoiceA || '';
+    }
   }
   var lf = $('lvvField');
   if (lf){
@@ -2974,6 +3181,7 @@ function speakManual(text, lang, btn, seat){
   if (CFG.ttsMode === 'openai') apiSpeak(text, seat);
   else if (CFG.ttsMode === 'voicevox') vvSpeak(text, lang, seat);
   else if (CFG.ttsMode === 'aivis')    aivisSpeak(text, lang, seat);
+  else if (CFG.ttsMode === 'eleven')   elSpeak(text, lang, seat);
   else if (CFG.ttsMode === 'localvv')  lvvSpeak(text, lang, seat);
   else browserSpeak(text, L(lang).tts);
 }
@@ -3009,6 +3217,7 @@ function speak(e){
   if (CFG.ttsMode === 'browser') browserSpeak(sayText, L(sayLang).tts);
   else if (CFG.ttsMode === 'voicevox') vvSpeak(sayText, sayLang, e.seat);
   else if (CFG.ttsMode === 'aivis')    aivisSpeak(sayText, sayLang, e.seat);
+  else if (CFG.ttsMode === 'eleven')   elSpeak(sayText, sayLang, e.seat);
   else if (CFG.ttsMode === 'localvv')  lvvSpeak(sayText, sayLang, e.seat);
   else apiSpeak(sayText, e.seat);
 }
@@ -3925,6 +4134,8 @@ function exportHtml(){
     ttsPad: CFG.ttsPad, aivisModel: CFG.aivisModel, aivisModelA: CFG.aivisModelA, lvvBase: CFG.lvvBase,
     lvvSpeaker: CFG.lvvSpeaker, lvvSpeakerLbl: CFG.lvvSpeakerLbl,
     lvvSpeakerA: CFG.lvvSpeakerA, lvvSpeakerALbl: CFG.lvvSpeakerALbl,
+    elModel: CFG.elModel, elVoice: CFG.elVoice, elVoiceLbl: CFG.elVoiceLbl,
+    elVoiceA: CFG.elVoiceA, elVoiceALbl: CFG.elVoiceALbl,
     focus: CFG.focus, rtDir: CFG.rtDir, rtBoth: CFG.rtBoth,
     savedAt: new Date().toISOString()
   };
@@ -3934,7 +4145,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.23</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.24</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -4472,6 +4683,7 @@ function ttsModeLabel(m){
   return m === 'openai'   ? 'OpenAI音声'
        : m === 'voicevox' ? 'VOICEVOX WEB版'
        : m === 'aivis'    ? 'Aivis Cloud API'
+       : m === 'eleven'   ? 'ElevenLabs'
        : m === 'localvv'  ? 'ローカルエンジン'
        : 'ブラウザ内蔵音声';
 }
@@ -4629,6 +4841,28 @@ $('chkStt').onclick   = function(){ verifySttKey(); };
 $('chkAivis').onclick = function(){ verifyAivisKey(); };
 $('chkVv').onclick    = function(){ verifyVvKey(); };
 $('chkLvv').onclick   = function(){ verifyLvv(); };
+$('chkEl').onclick    = function(){ verifyElKey(); };
+$('elFetch').onclick  = function(){ elFetchVoices(); };
+$('elKey').oninput = function(){
+  KEYS['eleven'] = this.value.trim(); saveKeys();
+  elWarned = false; keyChkShow('chkElMsg','',''); refreshVvUI();
+};
+$('elModel').onchange = function(){
+  CFG.elModel = this.value; store.set('di.elm', CFG.elModel);
+  elWarned = false; refreshVvUI();
+};
+$('elVoice').onchange = function(){
+  CFG.elVoice = this.value;
+  CFG.elVoiceLbl = this.options[this.selectedIndex] ? this.options[this.selectedIndex].textContent : '';
+  store.set('di.elv', CFG.elVoice); store.set('di.elvl', CFG.elVoiceLbl);
+  refreshVvUI();
+};
+$('elVoiceA').onchange = function(){
+  CFG.elVoiceA = this.value;
+  CFG.elVoiceALbl = this.selectedIndex >= 0 ? this.options[this.selectedIndex].textContent : '';
+  store.set('di.elva', CFG.elVoiceA); store.set('di.elval', CFG.elVoiceALbl);
+  refreshVvUI();
+};
 $('outDev').onchange = function(){
   var sel = this, id = sel.value;
   /* 表示名には🎚などの目印を付けているので、保存には元のラベルを使う
@@ -4711,7 +4945,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.23');
+  out.push('- バージョン: Duo Interpreter v1.24');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
