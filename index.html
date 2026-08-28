@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.27 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.28 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -441,7 +441,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.27</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.28</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -451,7 +451,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.27</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.28</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -781,16 +781,6 @@
         <button class="btn ghost" id="aivisFetch" title="モデル UUID からスタイル一覧を取得" style="align-self:flex-end">🔄 スタイル取得</button>
       </div>
       <small class="keychk" id="aivisStyleMsg"></small>
-      <div class="keyrow" id="aivisProbeRow" style="display:none">
-        <button class="btn ghost" id="aivisProbe" title="読み上げAPIを使って、使えるStyle IDを順に確かめます">🔎 使える Style ID を調べる</button>
-        <span class="keychk" id="aivisProbeMsg"></span>
-      </div>
-      <div class="row" id="aivisStyleNumRow" style="display:none">
-        <label class="seatpick seatA"><span>自分(A)の Style ID</span>
-        <input type="number" id="aivisStyleNumA" min="0" max="31" placeholder="空なら既定"></label>
-        <label class="seatpick seatB"><span>相手(B)の Style ID</span>
-        <input type="number" id="aivisStyleNumB" min="0" max="31" placeholder="空なら既定"></label>
-      </div>
       <div class="row">
         <span style="font-size:11.5px;color:var(--dim);width:104px;flex:0 0 auto">話す速さ</span>
         <select id="aivisRate" style="flex:1">
@@ -816,7 +806,8 @@
       推論の重さは声によって変わらないので、自分の声にしても速度は落ちません。<br>
       <b>⚠ ただし Aivis は日本語専用です。</b>カスタムモデルを作っても<b>英語は出せません</b>（エンジン側の仕様）。
       自分の声で英語を話したい場合は、上の <b>ElevenLabs</b> をお使いください。<br>
-      <b>スタイル</b>：モデルによっては「ノーマル／Calm／Shout」等の演じ分けを持っています。モデルUUIDを入れて「🔄 スタイル取得」を押すと一覧に出ます。
+      <b>スタイル</b>：モデルによっては「ノーマル／Calm／Shout」等の演じ分けを持っています。モデル UUID を入れて「🔄 スタイル取得」を押してください。
+      AivisHub 側の都合でスタイル<b>名</b>が読めない場合は、そのまま<b>使える番号</b>を自動で割り出します（並び順は AivisHub のスタイル欄と同じです）。
       <b>A席とB席で違うスタイルにすると、1つのモデルのままでも話者を聞き分けられます。</b>
       通訳用途では落ち着いた系（ノーマル／Calm）が聞きやすく、Shout や Surprise は向きません。<br>
       <b>話す速さ</b>：読み上げが会話に遅れがちなときは1.1〜1.2倍にすると詰められます。上げすぎると聞き取りにくくなります。<br>
@@ -3060,34 +3051,21 @@ function aivisResetStyles(){
     AIVIS_STYLES[id] = [];
   });
   var msg = $('aivisStyleMsg'); if (msg){ msg.className = 'keychk'; msg.textContent = ''; }
-  var row = $('aivisStyleNumRow'); if (row) row.style.display = 'none';
-  var pr = $('aivisProbeRow'); if (pr) pr.style.display = 'none';
-  var pm = $('aivisProbeMsg'); if (pm){ pm.className = 'keychk'; pm.textContent = ''; }
-  var na = $('aivisStyleNumA'); if (na) na.value = '';
-  var nb = $('aivisStyleNumB'); if (nb) nb.value = '';
 }
 /* 取得できなかったときに、実在するか分からない番号を並べるのは害しかない。
    （このモデルには無いスタイルを選べてしまい、しかも失敗に気づけない）
-   一覧は出さず、理由をその場に表示して、番号の直接入力に切り替える。 */
+   候補は作らず、理由をその場に短く出すだけにする。 */
 function aivisStyleFail(msg, mild){
   /* 環境側の制約で取れないだけのときは、赤字の警告にしない（直しようがないため） */
   var el = $('aivisStyleMsg');
   if (el){ el.className = 'keychk' + (mild ? '' : ' ng'); el.innerHTML = (mild ? 'ℹ ' : '⚠ ') + msg; }
-  var row = $('aivisStyleNumRow'); if (row) row.style.display = '';
-  var pr = $('aivisProbeRow'); if (pr) pr.style.display = '';      /* 総当たりの入口を出す */
   ['aivisStyle','aivisStyleA'].forEach(function(id){
     var sl = $(id); if (sl) aivisFillStyle(sl, [], '');    /* 既定だけに戻す */
   });
-  var na = $('aivisStyleNumA'), nb = $('aivisStyleNumB');
-  if (na) na.value = CFG.aivisStyleA || '';
-  if (nb) nb.value = CFG.aivisStyle  || '';
 }
 function aivisStyleOk(msg){
   var el = $('aivisStyleMsg');
   if (el){ el.className = 'keychk ok'; el.innerHTML = '✅ ' + msg; }
-  var row = $('aivisStyleNumRow'); if (row) row.style.display = 'none';
-  var pr = $('aivisProbeRow'); if (pr) pr.style.display = 'none';
-  var pm = $('aivisProbeMsg'); if (pm){ pm.className = 'keychk'; pm.textContent = ''; }
 }
 /* 一覧APIがブラウザから読めない環境向けの最後の手段。
    読み上げAPI（こちらは確実に動く）へ Style ID を変えながら1文字だけ投げ、
@@ -3106,16 +3084,19 @@ function aivisProbeOne(uuid, id){
     return r.ok;
   }).catch(function(){ return null; });        /* null = 判定不能 */
 }
-function aivisProbeStyles(){
+function aivisProbeStyles(head){
   var uuid = aivisModelFor(seatUsed('B') ? 'B' : 'A');
-  var btn = $('aivisProbe'), msg = $('aivisProbeMsg');
+  /* 「スタイル取得」から続けて呼ばれている間は、あちらがボタンを預かっている。
+     ここで勝手に戻すと途中で二度押しできてしまうので、単独で呼ばれたときだけ触る。 */
+  var btn = head ? null : $('aivisFetch'), msg = $('aivisStyleMsg');
+  var lead = head ? ('ℹ ' + head + '<br>') : '';
   if (!aivisKey()){ if (msg){ msg.className='keychk ng'; msg.textContent='⚠ 先にAPIキーを入力してください'; } return Promise.resolve(); }
   if (!uuid){ if (msg){ msg.className='keychk ng'; msg.textContent='⚠ 先にモデル UUID を入力してください'; } return Promise.resolve(); }
   if (btn) btn.disabled = true;
   var okIds = [], miss = 0, unknown = 0, t0 = Date.now();
   var step = function(i){
     if (i >= AIVIS_PROBE_MAX || miss >= 3) return Promise.resolve();
-    if (msg){ msg.className='keychk'; msg.textContent = '確かめています… (' + i + '/' + AIVIS_PROBE_MAX + ')'; }
+    if (msg){ msg.className='keychk'; msg.innerHTML = lead + '使える番号を確かめています… (' + i + '/' + AIVIS_PROBE_MAX + ')'; }
     return aivisProbeOne(uuid, i).then(function(ok){
       if (ok === null) unknown++;
       else if (ok){ okIds.push(i); miss = 0; }
@@ -3127,11 +3108,11 @@ function aivisProbeStyles(){
     if (btn) btn.disabled = false;
     dlog('tts','aivis-probe',{ ok: okIds.join(','), unknown: unknown, ms: Date.now()-t0 });
     if (unknown && !okIds.length){
-      if (msg){ msg.className='keychk ng'; msg.textContent = '⚠ 読み上げAPIにも繋がりませんでした。キーと通信環境をご確認ください。'; }
+      if (msg){ msg.className='keychk ng'; msg.innerHTML = lead + '⚠ 読み上げAPIにも繋がりませんでした。キーと通信環境をご確認ください。'; }
       return;
     }
     if (!okIds.length){
-      if (msg){ msg.className='keychk ng'; msg.textContent = '⚠ 使える Style ID が見つかりませんでした。モデル UUID をご確認ください。'; }
+      if (msg){ msg.className='keychk ng'; msg.innerHTML = lead + '⚠ 使える Style ID が見つかりませんでした。モデル UUID をご確認ください。'; }
       return;
     }
     /* 上限まで全部通った場合、範囲外でもエラーを返さないモデルの可能性がある。
@@ -3142,25 +3123,33 @@ function aivisProbeStyles(){
     aivisFillStyle($('aivisStyleA'), list, CFG.aivisStyleA);
     if (msg){
       msg.className = 'keychk ok';
-      msg.innerHTML = '✅ Style ID <b>' + okIds.join(', ') + '</b> が使えました。'
+      msg.innerHTML = lead + '✅ 使えるスタイルは <b>' + okIds.length + '件</b>（Style ID ' + okIds.join(', ') + '）。'
         + (sure ? '' : '<br>上限まで全部通ったので、このモデルは範囲外の番号でもエラーを返さない可能性があります。')
-        + '<br>名前は AivisHub のモデルページの並び順と同じです。「🔍 確認して試聴」で耳でもご確認ください。';
+        + '<br>並び順は AivisHub のスタイル欄と同じです（0＝いちばん上）。'
+        + '「🔍 確認して試聴」で実際の声を確かめられます。';
     }
-    var row = $('aivisStyleNumRow'); if (row) row.style.display = 'none';
     refreshVvUI();
   }).catch(function(err){
     if (btn) btn.disabled = false;
     var m = String((err && err.message) || err);
     dlog('tts','aivis-probe-FAIL',{ err:m.slice(0,140) });
-    if (msg){ msg.className='keychk ng'; msg.textContent = '⚠ 調べられませんでした（' + m.slice(0,60) + '）'; }
+    if (msg){ msg.className='keychk ng'; msg.innerHTML = lead + '⚠ 調べられませんでした（' + m.slice(0,60) + '）'; }
   });
 }
 
 function aivisFetchStyles(){
-  var mB = (CFG.aivisModel || '').trim(), mA = (CFG.aivisModelA || '').trim();
+  /* 読み上げ対象から外れている席は、そもそも使われない。
+     問い合わせて失敗すると「相手(B): Failed to fetch」のような無関係な文言が出て
+     原因を見誤らせるので、最初から対象外にする。 */
+  var mB = seatUsed('B') ? (CFG.aivisModel || '').trim() : '';
+  var mA = seatUsed('A') ? (CFG.aivisModelA || '').trim() : '';
+  if (!mB && !mA && seatUsed('A')) mA = (CFG.aivisModel || '').trim();   /* A席がB席の設定を借りている場合 */
   if (!mB && !mA){ toast('先にモデル UUID を入力してください'); return Promise.resolve(); }
   var el = $('aivisStyleMsg');
   if (el){ el.className = 'keychk'; el.textContent = '取得しています…'; }
+  /* 番号の割り出しまで進むと十数秒かかることがある。二度押しで二重に走らせない */
+  var fb = $('aivisFetch'); if (fb) fb.disabled = true;
+  var done = function(){ if (fb) fb.disabled = false; };
   /* 片方が失敗しても、もう片方は使えるようにそれぞれ独立して扱う */
   var wrap = function(uuid){
     return uuid ? aivisStyleList(uuid).then(
@@ -3192,29 +3181,24 @@ function aivisFetchStyles(){
          利用者に落ち度がある書き方をしないよう、原因の切り分けを分けて出す。 */
       var netish = /failed to fetch|networkerror|load failed/i.test(joined);
       if (!netish){
-        aivisStyleFail('スタイル一覧を取得できませんでした（' + joined.slice(0,90) + '）。<br>'
-          + 'モデル UUID が正しいかご確認のうえ、AivisHub のモデルページの <b>Style ID</b> を下の欄に入力してください。'
-          + '<br>存在しない番号を選ばせないよう、こちらでは候補を作りません。');
+        aivisStyleFail('スタイル一覧を取得できませんでした（' + joined.slice(0,90) + '）。'
+          + 'モデル UUID をご確認ください。');
         refreshVvUI();
         return;
       }
-      /* 届いていないのか、届いたが読ませてもらえないのかを確かめてから案内を決める */
+      /* 届いていないのか、届いたが読ませてもらえないのかを確かめる。
+         いずれにせよ名前は諦めるしかないので、ここで止めずに
+         「読み上げAPIで番号だけ割り出す」ところまで同じボタンの中で続ける。
+         ボタンを分けると押してもらえず、結局取得できないままになるため。 */
       return aivisWhyFail(mB || mA).then(function(why){
         dlog('tts','aivis-styles-why',{ why: why });
-        if (why === 'cors'){
-          aivisStyleFail(
-            'スタイル名の一覧は、ブラウザからは読み取れませんでした。'
-            + '<b>設定の誤りではありません</b>（AivisHub 側がブラウザからの直接読み取りを許可していないためです）。'
-            + '読み上げそのものには影響しません。<br>'
-            + '下の「🔎 使える Style ID を調べる」を押すと、読み上げAPI経由で使える番号を割り出せます。'
-            + 'AivisHub のモデルページの <b>Style ID</b> を見て、下の欄に直接入力しても構いません。', true);
-        } else {
-          aivisStyleFail(
-            'AivisHub に接続できませんでした（サーバーまで届いていません）。<br>'
-            + '社内ネットワークやセキュリティソフトに遮られている可能性があります。'
-            + '読み上げそのものが動いているなら、下の「🔎 使える Style ID を調べる」で番号を割り出せます。', true);
-        }
-        refreshVvUI();
+        var head = (why === 'cors')
+          ? 'スタイル<b>名</b>は AivisHub 側の制約でブラウザから読めません（<b>設定の誤りではありません</b>）。'
+          : 'AivisHub に接続できませんでした（社内ネットワーク等に遮られている可能性があります）。';
+        ['aivisStyle','aivisStyleA'].forEach(function(id){
+          var sl = $(id); if (sl) aivisFillStyle(sl, [], '');
+        });
+        return aivisProbeStyles(head).then(function(){ refreshVvUI(); });
       });
     }
     var spk = {};
@@ -3228,7 +3212,7 @@ function aivisFetchStyles(){
       + (errs.length ? '<br>一部は取得できませんでした：' + errs.join(' / ').slice(0,80) : ''));
     toast('スタイルを ' + total + ' 件取得しました。', true);
     refreshVvUI();
-  });
+  }).then(done, function(e){ done(); throw e; });      /* 成否にかかわらず押せる状態に戻す */
 }
 
 /* ---------------- ElevenLabs ----------------
@@ -4724,7 +4708,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.27</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.28</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -5429,7 +5413,6 @@ $('chkLvv').onclick   = function(){ verifyLvv(); };
 $('chkEl').onclick    = function(){ verifyElKey(); };
 $('elFetch').onclick  = function(){ elFetchVoices(); };
 $('aivisFetch').onclick = function(){ aivisFetchStyles(); };
-$('aivisProbe').onclick = function(){ aivisProbeStyles(); };
 $('aivisStyle').onchange = function(){
   CFG.aivisStyle = this.value; store.set('di.aist', CFG.aivisStyle);
   aivisSyncSpeaker(this); refreshVvUI();
@@ -5439,16 +5422,6 @@ $('aivisStyleA').onchange = function(){
   aivisSyncSpeaker(this); refreshVvUI();
 };
 simple('aivisStream','di.aistr','aivisStream',true);
-/* 一覧を取れなかったモデル向け。番号だけを受け取る（話者は特定できないので空にする） */
-function aivisStyleNum(el, isA){
-  var v = String(el.value || '').trim();
-  if (v !== '' && !/^\d{1,2}$/.test(v)) v = '';
-  if (isA){ CFG.aivisStyleA = v; store.set('di.aista', v); CFG.aivisSpkA = ''; store.set('di.aispa',''); }
-  else    { CFG.aivisStyle  = v; store.set('di.aist',  v); CFG.aivisSpk  = ''; store.set('di.aisp', ''); }
-  refreshVvUI();
-}
-$('aivisStyleNumA').oninput = function(){ aivisStyleNum(this, true); keyChkShow('chkAivisMsg','',''); };
-$('aivisStyleNumB').oninput = function(){ aivisStyleNum(this, false); keyChkShow('chkAivisMsg','',''); };
 $('aivisRate').onchange = function(){
   CFG.aivisRate = this.value; store.set('di.airt', CFG.aivisRate); refreshVvUI();
 };
@@ -5554,7 +5527,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.27');
+  out.push('- バージョン: Duo Interpreter v1.28');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
