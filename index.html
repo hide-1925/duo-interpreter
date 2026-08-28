@@ -781,6 +781,10 @@
         <button class="btn ghost" id="aivisFetch" title="モデル UUID からスタイル一覧を取得" style="align-self:flex-end">🔄 スタイル取得</button>
       </div>
       <small class="keychk" id="aivisStyleMsg"></small>
+      <div class="keyrow" id="aivisProbeRow" style="display:none">
+        <button class="btn ghost" id="aivisProbe" title="読み上げAPIを使って、使えるStyle IDを順に確かめます">🔎 使える Style ID を調べる</button>
+        <span class="keychk" id="aivisProbeMsg"></span>
+      </div>
       <div class="row" id="aivisStyleNumRow" style="display:none">
         <label class="seatpick seatA"><span>自分(A)の Style ID</span>
         <input type="number" id="aivisStyleNumA" min="0" max="31" placeholder="空なら既定"></label>
@@ -2971,6 +2975,15 @@ function aivisSpeakStream(text, lang, seat){
 /* AivisHub からモデルの情報を引いて、スタイルに名前を付けて選べるようにする。
    ブラウザから直接読めない場合もあるので、そのときは番号だけの一覧に落とす。 */
 var AIVIS_INFO = 'https://api.aivis-project.com/v1/aivm-models/';
+/* 「Failed to fetch」だけでは、サーバーに届いていないのか、
+   届いたが読み取りを許されていないのか（CORS）が分からない。
+   no-cors で投げ直すと、中身は読めないが「届いたかどうか」だけは分かる。
+   ここが分かると、利用者に何を案内すべきかが変わる。 */
+function aivisWhyFail(uuid){
+  return fetch(AIVIS_INFO + encodeURIComponent(uuid), { mode:'no-cors' })
+    .then(function(){ return 'cors'; })
+    .catch(function(){ return 'network'; });
+}
 function aivisStyleList(uuid){
   return fetch(AIVIS_INFO + encodeURIComponent(uuid)).then(function(r){
     if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -3011,7 +3024,10 @@ function aivisFillStyle(sel, list, keep){
        複数話者のモデルでは、同じ番号が別の人のものとして並ぶので話者名を前に出す。 */
     o.value = String(s.id);
     o.setAttribute('data-key', s.key || ('#' + s.id));
-    o.textContent = (s.who ? s.who + ' / ' : '') + s.name + ' (Style ID: ' + s.id + ')';
+    /* 名前が分からない場合（総当たりで割り出したとき）は番号だけを出す */
+    o.textContent = s.name
+      ? ((s.who ? s.who + ' / ' : '') + s.name + ' (Style ID: ' + s.id + ')')
+      : ('Style ID: ' + s.id);
     sel.appendChild(o);
   });
   var k = String(keep || ''), found = false;
@@ -3045,6 +3061,8 @@ function aivisResetStyles(){
   });
   var msg = $('aivisStyleMsg'); if (msg){ msg.className = 'keychk'; msg.textContent = ''; }
   var row = $('aivisStyleNumRow'); if (row) row.style.display = 'none';
+  var pr = $('aivisProbeRow'); if (pr) pr.style.display = 'none';
+  var pm = $('aivisProbeMsg'); if (pm){ pm.className = 'keychk'; pm.textContent = ''; }
   var na = $('aivisStyleNumA'); if (na) na.value = '';
   var nb = $('aivisStyleNumB'); if (nb) nb.value = '';
 }
@@ -3056,6 +3074,7 @@ function aivisStyleFail(msg, mild){
   var el = $('aivisStyleMsg');
   if (el){ el.className = 'keychk' + (mild ? '' : ' ng'); el.innerHTML = (mild ? 'ℹ ' : '⚠ ') + msg; }
   var row = $('aivisStyleNumRow'); if (row) row.style.display = '';
+  var pr = $('aivisProbeRow'); if (pr) pr.style.display = '';      /* 総当たりの入口を出す */
   ['aivisStyle','aivisStyleA'].forEach(function(id){
     var sl = $(id); if (sl) aivisFillStyle(sl, [], '');    /* 既定だけに戻す */
   });
@@ -3067,7 +3086,76 @@ function aivisStyleOk(msg){
   var el = $('aivisStyleMsg');
   if (el){ el.className = 'keychk ok'; el.innerHTML = '✅ ' + msg; }
   var row = $('aivisStyleNumRow'); if (row) row.style.display = 'none';
+  var pr = $('aivisProbeRow'); if (pr) pr.style.display = 'none';
+  var pm = $('aivisProbeMsg'); if (pm){ pm.className = 'keychk'; pm.textContent = ''; }
 }
+/* 一覧APIがブラウザから読めない環境向けの最後の手段。
+   読み上げAPI（こちらは確実に動く）へ Style ID を変えながら1文字だけ投げ、
+   受け付けられた番号を集める。名前までは分からないが、
+   「どの番号が実在するか」が分かるだけで設定は決められる。
+   1回あたり1文字ぶんしか消費しないので、費用はごくわずか。 */
+var AIVIS_PROBE_MAX = 12;
+function aivisProbeOne(uuid, id){
+  return fetch(AIVIS_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + aivisKey() },
+    body: JSON.stringify({ model_uuid:uuid, text:'あ', style_id:id, output_format:'mp3' })
+  }).then(function(r){
+    /* 本文は使わないので読み捨てる（接続を残さないため） */
+    if (r.body && r.body.cancel) { try{ r.body.cancel(); }catch(e){} }
+    return r.ok;
+  }).catch(function(){ return null; });        /* null = 判定不能 */
+}
+function aivisProbeStyles(){
+  var uuid = aivisModelFor(seatUsed('B') ? 'B' : 'A');
+  var btn = $('aivisProbe'), msg = $('aivisProbeMsg');
+  if (!aivisKey()){ if (msg){ msg.className='keychk ng'; msg.textContent='⚠ 先にAPIキーを入力してください'; } return Promise.resolve(); }
+  if (!uuid){ if (msg){ msg.className='keychk ng'; msg.textContent='⚠ 先にモデル UUID を入力してください'; } return Promise.resolve(); }
+  if (btn) btn.disabled = true;
+  var okIds = [], miss = 0, unknown = 0, t0 = Date.now();
+  var step = function(i){
+    if (i >= AIVIS_PROBE_MAX || miss >= 3) return Promise.resolve();
+    if (msg){ msg.className='keychk'; msg.textContent = '確かめています… (' + i + '/' + AIVIS_PROBE_MAX + ')'; }
+    return aivisProbeOne(uuid, i).then(function(ok){
+      if (ok === null) unknown++;
+      else if (ok){ okIds.push(i); miss = 0; }
+      else miss++;
+      return step(i + 1);
+    });
+  };
+  return step(0).then(function(){
+    if (btn) btn.disabled = false;
+    dlog('tts','aivis-probe',{ ok: okIds.join(','), unknown: unknown, ms: Date.now()-t0 });
+    if (unknown && !okIds.length){
+      if (msg){ msg.className='keychk ng'; msg.textContent = '⚠ 読み上げAPIにも繋がりませんでした。キーと通信環境をご確認ください。'; }
+      return;
+    }
+    if (!okIds.length){
+      if (msg){ msg.className='keychk ng'; msg.textContent = '⚠ 使える Style ID が見つかりませんでした。モデル UUID をご確認ください。'; }
+      return;
+    }
+    /* 上限まで全部通った場合、範囲外でもエラーを返さないモデルの可能性がある。
+       その場合「12個ある」と言い切ると嘘になるので、断定しない。 */
+    var sure = okIds.length < AIVIS_PROBE_MAX;
+    var list = okIds.map(function(n){ return { key:'#'+n, id:String(n), spk:'', name:'', who:'' }; });
+    aivisFillStyle($('aivisStyle'),  list, CFG.aivisStyle);
+    aivisFillStyle($('aivisStyleA'), list, CFG.aivisStyleA);
+    if (msg){
+      msg.className = 'keychk ok';
+      msg.innerHTML = '✅ Style ID <b>' + okIds.join(', ') + '</b> が使えました。'
+        + (sure ? '' : '<br>上限まで全部通ったので、このモデルは範囲外の番号でもエラーを返さない可能性があります。')
+        + '<br>名前は AivisHub のモデルページの並び順と同じです。「🔍 確認して試聴」で耳でもご確認ください。';
+    }
+    var row = $('aivisStyleNumRow'); if (row) row.style.display = 'none';
+    refreshVvUI();
+  }).catch(function(err){
+    if (btn) btn.disabled = false;
+    var m = String((err && err.message) || err);
+    dlog('tts','aivis-probe-FAIL',{ err:m.slice(0,140) });
+    if (msg){ msg.className='keychk ng'; msg.textContent = '⚠ 調べられませんでした（' + m.slice(0,60) + '）'; }
+  });
+}
+
 function aivisFetchStyles(){
   var mB = (CFG.aivisModel || '').trim(), mA = (CFG.aivisModelA || '').trim();
   if (!mB && !mA){ toast('先にモデル UUID を入力してください'); return Promise.resolve(); }
@@ -3102,21 +3190,32 @@ function aivisFetchStyles(){
          読み上げ本体（合成API）は同じホストで動いているので、キーやUUIDの問題ではなく
          この一覧用の入口だけがブラウザからの直接読み取りを許していない、という意味になる。
          利用者に落ち度がある書き方をしないよう、原因の切り分けを分けて出す。 */
-      var cors = /failed to fetch|networkerror|load failed/i.test(joined);
-      if (cors){
-        aivisStyleFail(
-          'スタイル名の一覧は、ブラウザからは読み取れませんでした。'
-          + '<b>設定の誤りではありません</b>（AivisHub 側がブラウザからの直接読み取りを許可していないためです）。<br>'
-          + 'AivisHub のモデルページに出ている <b>Style ID</b> の番号を、下の欄に入力してください。'
-          + '読み上げそのものは番号だけで問題なく動きます。'
-          + '<br>入力したら「🔍 確認して試聴」でその声を実際に聞いて確かめられます。', true);
-      } else {
+      var netish = /failed to fetch|networkerror|load failed/i.test(joined);
+      if (!netish){
         aivisStyleFail('スタイル一覧を取得できませんでした（' + joined.slice(0,90) + '）。<br>'
           + 'モデル UUID が正しいかご確認のうえ、AivisHub のモデルページの <b>Style ID</b> を下の欄に入力してください。'
           + '<br>存在しない番号を選ばせないよう、こちらでは候補を作りません。');
+        refreshVvUI();
+        return;
       }
-      refreshVvUI();
-      return;
+      /* 届いていないのか、届いたが読ませてもらえないのかを確かめてから案内を決める */
+      return aivisWhyFail(mB || mA).then(function(why){
+        dlog('tts','aivis-styles-why',{ why: why });
+        if (why === 'cors'){
+          aivisStyleFail(
+            'スタイル名の一覧は、ブラウザからは読み取れませんでした。'
+            + '<b>設定の誤りではありません</b>（AivisHub 側がブラウザからの直接読み取りを許可していないためです）。'
+            + '読み上げそのものには影響しません。<br>'
+            + '下の「🔎 使える Style ID を調べる」を押すと、読み上げAPI経由で使える番号を割り出せます。'
+            + 'AivisHub のモデルページの <b>Style ID</b> を見て、下の欄に直接入力しても構いません。', true);
+        } else {
+          aivisStyleFail(
+            'AivisHub に接続できませんでした（サーバーまで届いていません）。<br>'
+            + '社内ネットワークやセキュリティソフトに遮られている可能性があります。'
+            + '読み上げそのものが動いているなら、下の「🔎 使える Style ID を調べる」で番号を割り出せます。', true);
+        }
+        refreshVvUI();
+      });
     }
     var spk = {};
     ['aivisStyle','aivisStyleA'].forEach(function(id){
@@ -5330,6 +5429,7 @@ $('chkLvv').onclick   = function(){ verifyLvv(); };
 $('chkEl').onclick    = function(){ verifyElKey(); };
 $('elFetch').onclick  = function(){ elFetchVoices(); };
 $('aivisFetch').onclick = function(){ aivisFetchStyles(); };
+$('aivisProbe').onclick = function(){ aivisProbeStyles(); };
 $('aivisStyle').onchange = function(){
   CFG.aivisStyle = this.value; store.set('di.aist', CFG.aivisStyle);
   aivisSyncSpeaker(this); refreshVvUI();
@@ -5478,6 +5578,10 @@ function diagText(devices){
    ['読み上げ', CFG.ttsMode], ['読み上げモデル', CFG.ttsModel], ['読み上げ対象', CFG.ttsWho],
    ['声 A / B', ttsSeatVoices()],
    ['Aivisストリーミング', CFG.ttsMode === 'aivis' ? (CFG.aivisStream ? 'ON' : 'OFF') : '(未使用)'],
+   ['Aivisスタイル A / B', CFG.ttsMode === 'aivis'
+      ? ((CFG.aivisStyleA === '' ? '既定' : CFG.aivisStyleA) + ' / ' + (CFG.aivisStyle === '' ? '既定' : CFG.aivisStyle)
+         + (CFG.aivisSpk || CFG.aivisSpkA ? '（話者指定あり）' : ''))
+      : '(未使用)'],
    ['原文読み上げ', CFG.ttsSrc ? 'ON' : 'OFF'],
    ['鳴り始めの無音', CFG.ttsPad + ' ms'],
    ['再生経路', waMode ? 'Web Audio（開きっぱなし）' : '<audio>'],
