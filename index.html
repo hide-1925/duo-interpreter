@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.32.5 Phase 1 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.32.6 Phase 1 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -483,7 +483,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.5 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.6 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -493,7 +493,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.5 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.6 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -876,7 +876,17 @@
           <input type="text" id="aivisNameB" class="mname" placeholder="キャラ名" autocomplete="off">
         </div></label>
       </div>
+      <details class="adv" id="aivisMore">
+        <summary>その他のキャラ（「にせ」以降）</summary>
+        <div class="row">
+          <label class="seatpick seatA main"><span>自分(A)の発言</span>
+          <select id="aivisModelMore"></select></label>
+          <label class="seatpick seatB"><span>相手(B)の発言</span>
+          <select id="aivisModelMoreB"></select></label>
+        </div>
+      </details>
       <small id="uuidHelp">よく使うキャラは名前で選べます。「↗」でそのモデルの AivisHub ページを開けます。<br>
+      「にせ」以降のキャラは「<b>その他のキャラ</b>」を開くと選べます。
       一覧に無いモデル（自分で作ったモデルを含む）は「<b>── その他（モデル UUID を貼り付け）──</b>」を選ぶと入力欄が出ます。
       貼り付けるのは AivisHub のモデルページ →「<b>詳細情報</b>」→「<b>モデル UUID</b>」の値です。
       同じ画面の「<b>話者 UUID</b>」ではありません（モデルページのURL末尾と同じ値です）。<br>
@@ -976,8 +986,22 @@
         <button class="btn ghost" id="chkVv" title="キーの有効性とポイント残量を確かめます">🔍 確認</button>
       </div>
       <div class="keyrow"><span class="keychk" id="chkVvMsg"></span></div>
+      <details class="adv" id="vvAdv">
+        <summary>話し方の調整</summary>
+        <label class="sl"><span>話速</span>
+          <input type="range" id="vvRate" min="0.5" max="2" step="0.05"><b id="vvRateV"></b></label>
+        <label class="sl"><span>声の高さ</span>
+          <input type="range" id="vvPitch" min="-0.15" max="0.15" step="0.01"><b id="vvPitchV"></b></label>
+        <label class="sl"><span>抑揚</span>
+          <input type="range" id="vvIntonation" min="0" max="2" step="0.05"><b id="vvIntonationV"></b></label>
+        <div class="keyrow">
+          <button class="btn ghost" id="vvAdvReset">↩ 既定に戻す</button>
+          <span class="keychk" id="vvAdvMsg"></span>
+        </div>
+      </details>
       <small>キーは <a href="https://su-shiki.com/api/" target="_blank" rel="noopener noreferrer">su-shiki.com/api/</a> で無料取得できます（有志が運営する非公式APIです）。
       日本語の読み上げだけがこの声になり、<b>それ以外の言語はブラウザ内蔵音声</b>で読み上げます。
+      <b>話し方の調整</b>では話速・声の高さ・抑揚を変更できます。既定に戻せば従来と同じ音です。
       ポイント制の1日上限があり、混雑時は失敗することがあります（失敗時はブラウザ内蔵音声に自動で切り替わります）。
       個人利用向けのAPIなので、業務での常用には向きません。</small>
       <div class="note" id="vvCredit"></div>
@@ -1274,6 +1298,9 @@ function loadCfg(){
        既定の読み上げ対象が B2A（相手のみ）なので、こう対応させれば
        バージョンアップで急に別の声になることがない。A席は新しい枠に持つ。 */
     vvSpeakerA:pref('di.vvspa','vvSpeakerA','2'),
+    vvRate:    pref('di.vvrt','vvRate','1'),
+    vvPitch:   pref('di.vvpt','vvPitch','0'),
+    vvIntonation:pref('di.vvin','vvIntonation','1'),
     aivisModel:pref('di.aim','aivisModel','a59cb814-0083-4369-8542-f51a29e72af7'),  /* 既定はAnneli */
     aivisModelB:pref('di.aima','aivisModelB',''),          /* 空なら自分(A)と同じ声 */
     aivisStyle: pref('di.aist','aivisStyle',''),           /* 空なら既定スタイル */
@@ -1329,6 +1356,8 @@ function saveGloss(){ store.set('di.gloss', JSON.stringify(CFG.glossary)); }
 
 /* ---------------- 状態 ---------------- */
 var S = { running:false, entries:[], seq:0, speaking:false, listenSeat:'A', autoMode:true };
+/* セッションをまたいで遅れて返ったAPI音声認識を捨てるための世代番号 */
+var sessionGen = 0;
 
 /* ---------------- トースト ---------------- */
 var tTimer = null;
@@ -2298,7 +2327,7 @@ function redact(s){
 }
 
 /* =========================================================================
-   Prosody Analyzer — Phase 1B / v1.32.5
+   Prosody Analyzer — Phase 1B / v1.32.6
    ------------------------------------------------------------------
    同じ MediaStream を STT と並列に観測し、発話単位の物理量だけを要約する。
    高頻度フレームはメモリ内だけに保持し、dlog() には発話終了時の要約だけを書く。
@@ -2354,7 +2383,8 @@ function prosodyNewBaseline(){
     rateRecalibrations:0,speedTier:0,pitch:[],energy:[],pitchRange:[],energyRange:[],tempo:[]
   };
 }
-var PROSODY_SPEED_RATES=[0.88,0.94,1.00,1.08,1.16];
+/* 聞き分けやすさを優先し、5段階の差を広げる。判定しきい値とヒステリシスは据え置く */
+var PROSODY_SPEED_RATES=[0.82,0.90,1.00,1.15,1.30];
 var PROSODY_SPEED_NAMES=['very-slow','slow','normal','fast','very-fast'];
 function prosodySpeedTierFor(ratio, previousTier){
   var bounds=[0.78,0.92,1.10,1.28], hysteresis=0.04, i;
@@ -3420,6 +3450,7 @@ function playBlob(blob, finish, tag){
      通信の往復中に停止を押された場合、ここで世代が古くなり捨てられる。 */
   var g = (finish && finish.gen != null) ? finish.gen : ttsGen;
   ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:Date.now(), gen:g });
+  if (ttsPlayingNow) dlog('tts','queue-wait',{ src:tag||'', n:ttsQueue.length, why:'前の音声を再生中' });
   pumpTtsQueue();
 }
 function clearTtsQueue(){
@@ -3705,14 +3736,44 @@ function aivisSpeakStream(text, lang, seat, prosody){
   var twLog = aivisBodyTweaks(body);
   logProsodyMap(body._prosodyMap,{effectiveRate:body.speaking_rate==null?1:body.speaking_rate,
     effectiveDynamics:body.tempo_dynamics==null?1:body.tempo_dynamics,effectiveVolume:body.volume==null?1:body.volume,stream:true});
-  var finish = ttsGuard(text, Math.min(120000, 12000 + text.length * 200));
+  var guardMs = Math.min(120000, 12000 + text.length * 200);
+  var finish = ttsGuard(text, guardMs);
   var myGen = finish.gen;
+  /* 受信完了ではなく、AudioContext に並べた最後のPCMが鳴り終わるまで再生ロックを保持する。
+     これが無いと、その間に生成されたBlob方式の次発話が割り込み、2つの声が重なる。 */
+  var streamDone = false, streamEndTimer = null, streamWatchdog = null, timedOut = false;
+  var streamEnd = function(why){
+    if (streamDone) return; streamDone = true;
+    clearTimeout(streamEndTimer); clearTimeout(streamWatchdog);
+    if (ttsCurEnd === streamEnd) ttsCurEnd = null;
+    ttsPlayingNow = false;
+    aivisAbort = null;
+    finish();
+    dlog('tts','stream-play-end',{ src:'aivis', why:why||'ended', ms:Date.now()-t0, queued:ttsQueue.length });
+    pumpTtsQueue();
+  };
+  ttsPlayingNow = true;
+  ttsCurEnd = streamEnd;
   var ctrl = null; try { ctrl = new AbortController(); } catch(e){}
   aivisAbort = ctrl;
   ensureCtxSink(ctx);
 
   var head = null, pend = new Uint8Array(0), next = 0, minBytes = 0;
   var LEAD = Math.max(0.15, ttsPadMs() / 1000);
+  var endAfterBuffered = function(why){
+    var remainMs = Math.max(0, (next - ctx.currentTime)) * 1000;
+    clearTimeout(streamWatchdog); clearTimeout(streamEndTimer);
+    streamEndTimer = setTimeout(function(){ streamEnd(why || 'ended'); }, remainMs + 150);
+    return remainMs;
+  };
+  /* ttsGuardは表示上の読み上げ状態を戻す。こちらは再生ロックと通信も必ず解放する */
+  streamWatchdog = setTimeout(function(){
+    if (streamDone) return;
+    timedOut = true;
+    if (ctrl){ try{ ctrl.abort(); }catch(e){} }
+    dlog('tts','aivis-stream-TIMEOUT',{ ms:Date.now()-t0, started:started });
+    if (started) endAfterBuffered('timeout'); else streamEnd('timeout');
+  }, guardMs + 50);
 
   var drain = function(flush){
     if (!head) return;
@@ -3733,6 +3794,9 @@ function aivisSpeakStream(text, lang, seat, prosody){
     src.start(next);
     next += buf.duration;
     waStream.push(src);
+    src.onended = function(){
+      var wi=waStream.indexOf(src); if (wi>=0) waStream.splice(wi,1);
+    };
     if (!started){
       started = true; waMode = true; firstMs = Date.now() - t0;
       dlog('tts','aivis-first',{ ms: firstMs, leadMs: Math.round(LEAD*1000), rate: head.rate, ch: head.ch, style: stLog });
@@ -3752,11 +3816,13 @@ function aivisSpeakStream(text, lang, seat, prosody){
         if (myGen !== ttsGen){ try{ reader.cancel(); }catch(e){} return; }   /* 停止された */
         if (res.done){
           drain(true);
+          if (!started) throw new Error('音声データが空でした');
+          var remainMs = endAfterBuffered('ended');
           dlog('tts','aivis-stream-ok',{ chars:text.length, firstMs:firstMs, totalMs:Date.now()-t0,
                                          seat:seat, style:stLog, spk:(body.speaker_uuid?'あり':'なし'),
-                                         tweaks:twLog, underruns:underruns });
-          /* 並べた音が鳴り終わるまでは「読み上げ中」のままにしておく */
-          setTimeout(finish, Math.max(0, (next - ctx.currentTime)) * 1000 + 150);
+                                         tweaks:twLog, underruns:underruns, playRemainMs:Math.round(remainMs) });
+          if (ttsQueue.length) dlog('tts','overlap-prevented',{ waiting:ttsQueue.length, remainMs:Math.round(remainMs) });
+          /* 並べた最後の音が鳴り終わってからロックと「読み上げ中」を同時に解除する */
           return;
         }
         var u8 = new Uint8Array(res.value);
@@ -3777,9 +3843,11 @@ function aivisSpeakStream(text, lang, seat, prosody){
     return pump();
   }).catch(function(err){
     var m = String((err && err.message) || err);
-    if (myGen !== ttsGen || /abort/i.test(m)){ finish(); return; }
+    if (timedOut) return;
+    if (myGen !== ttsGen || /abort/i.test(m)){ streamEnd('stopped'); return; }
     dlog('tts','aivis-stream-FAIL',{ err:m.slice(0,140), ms:Date.now()-t0, started:started, style:stLog });
-    finish();
+    if (started){ endAfterBuffered('failed'); return; }
+    streamEnd('failed');
     /* まだ音が出ていなければ、確実な従来方式でやり直す。
        途中まで鳴っている場合にやり直すと二重に聞こえるので、そこでは諦める。 */
     if (!started) aivisSpeakBlob(text, lang, seat, prosody);
@@ -3820,7 +3888,9 @@ var AIVIS_MODELS = [
   { n:'zonoko', u:'7fc08a41-b64d-456d-8b22-8e1284674775' },
   { n:'かりん(現実20代女子AIボイチェン@リアボVC公式モデル)', u:'18972473-ca36-4e06-a33a-5cc14adba0c4' }
 ];
-var AIVIS_CUSTOM = '\u0000other';       /* 「その他」を表す、UUIDと衝突しない値 */
+var AIVIS_CUSTOM = '\u0000other';       /* UUIDを直接入力する項目 */
+var AIVIS_MORE = '\u0000more';          /* 折りたたみ側のキャラを表す項目 */
+var AIVIS_PRIMARY_COUNT = 5;             /* 「桜音」までを常時表示。「にせ」以降は折りたたむ */
 /* 一覧にあるモデルは名前を最初から知っている状態にしておく。保存はしないので、
    取得や手入力があればそちらが必ず勝つ。 */
 var AIVIS_KNOWN = (function(){
@@ -3833,8 +3903,15 @@ function aivisFillModels(sel, isA){
     var o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o);
   };
   if (!isA) add('', '自分(A)と同じ');
-  AIVIS_MODELS.forEach(function(x){ add(x.u, x.n); });
+  AIVIS_MODELS.slice(0, AIVIS_PRIMARY_COUNT).forEach(function(x){ add(x.u, x.n); });
+  add(AIVIS_MORE, '▼ その他のキャラ（「にせ」以降）');
   add(AIVIS_CUSTOM, '── その他（モデル UUID を貼り付け）──');
+}
+function aivisFillMoreModels(sel){
+  if (!sel || sel.options.length) return;
+  AIVIS_MODELS.slice(AIVIS_PRIMARY_COUNT).forEach(function(x){
+    var o = document.createElement('option'); o.value = x.u; o.textContent = x.n; sel.appendChild(o);
+  });
 }
 /* 「その他」を選んでいる席。UUIDが空でも入力欄を開いたままにするために要る */
 var AIVIS_OTHER = { A:false, B:false };
@@ -3846,14 +3923,24 @@ function aivisSyncModel(seat){
   var cst  = $(isA ? 'aivisModelCustom' : 'aivisModelBCustom');
   var name = $(isA ? 'aivisName' : 'aivisNameB');
   var link = $(isA ? 'aivisHub' : 'aivisHubB');
+  var more = $(isA ? 'aivisModelMore' : 'aivisModelMoreB');
+  var moreBox = $('aivisMore');
   if (!sel) return;
   aivisFillModels(sel, isA);
+  aivisFillMoreModels(more);
   var uuid = String((isA ? CFG.aivisModel : CFG.aivisModelB) || '').trim();
   /* 一覧に無いUUIDが入っているなら当然「その他」。
      空でも、利用者が「その他」を選んだ直後なら入力欄を閉じない。 */
   var known = !AIVIS_OTHER[seat] && ((uuid === '') || !!AIVIS_KNOWN[uuid]);
+  var moreKnown = false;
+  for (var mi=AIVIS_PRIMARY_COUNT; mi<AIVIS_MODELS.length; mi++){
+    if (AIVIS_MODELS[mi].u === uuid){ moreKnown = true; break; }
+  }
   if (uuid && AIVIS_KNOWN[uuid]) AIVIS_OTHER[seat] = false;
-  sel.value = known ? uuid : AIVIS_CUSTOM;
+  sel.value = moreKnown ? AIVIS_MORE : (known ? uuid : AIVIS_CUSTOM);
+  if (more && moreKnown) more.value = uuid;
+  /* 保存済みの折りたたみ側モデルを使っている場合だけ自動で開く。通常は閉じたまま */
+  if (moreBox && moreKnown) moreBox.open = true;
   if (row) row.style.display = known ? 'none' : '';
   if (cst && cst !== document.activeElement) cst.value = known ? '' : uuid;
   if (name && name !== document.activeElement) name.value = aivisNameOf(uuid);
@@ -4461,6 +4548,40 @@ var VV_SPEAKERS = [
 ];
 var vvWarned = false;
 function vvKey(){ return (KEYS['voicevox'] || '').trim(); }
+var VV_SLIDERS = [
+  { id:'vvRate', key:'vvRate', store:'di.vvrt', def:1, min:0.5, max:2, fmt:function(v){ return v.toFixed(2)+'×'; } },
+  { id:'vvPitch', key:'vvPitch', store:'di.vvpt', def:0, min:-0.15, max:0.15, fmt:function(v){ return (v>0?'+':'')+v.toFixed(2); } },
+  { id:'vvIntonation', key:'vvIntonation', store:'di.vvin', def:1, min:0, max:2, fmt:function(v){ return v.toFixed(2); } }
+];
+function vvNumber(key, def, min, max){
+  var v=parseFloat(CFG[key]); if (isNaN(v)) v=def;
+  return Math.max(min,Math.min(max,v));
+}
+function vvValues(){
+  return { speed:vvNumber('vvRate',1,0.5,2), pitch:vvNumber('vvPitch',0,-0.15,0.15),
+           intonation:vvNumber('vvIntonation',1,0,2) };
+}
+function vvTweaks(){
+  var v=vvValues(), out=[];
+  if (v.speed!==1) out.push('話速 '+v.speed.toFixed(2));
+  if (v.pitch!==0) out.push('声高 '+(v.pitch>0?'+':'')+v.pitch.toFixed(2));
+  if (v.intonation!==1) out.push('抑揚 '+v.intonation.toFixed(2));
+  return out.length ? out.join(' / ') : '既定のまま';
+}
+function vvAdvSync(){
+  VV_SLIDERS.forEach(function(s){
+    var el=$(s.id), out=$(s.id+'V'); if (!el) return;
+    var v=vvNumber(s.key,s.def,s.min,s.max);
+    if (el!==document.activeElement) el.value=String(v);
+    if (out) out.textContent=s.fmt(v);
+    var row=el.parentNode; if (row) row.className='sl'+(v===s.def?' off':'');
+  });
+  var msg=$('vvAdvMsg'); if (msg){ msg.className='keychk'; msg.textContent=vvTweaks(); }
+}
+function vvAdvReset(){
+  VV_SLIDERS.forEach(function(s){ CFG[s.key]=String(s.def); store.set(s.store,String(s.def)); });
+  vvAdvSync(); refreshVvUI();
+}
 /* VOICEVOX は A席・B席とも既定値を持つ（空欄で相手に合わせる仕組みが無い）ので、
    主従ではなく席そのままで引く。 */
 function vvSpeakerId(seat){
@@ -4484,9 +4605,12 @@ function vvCreditNames(){
   return names.join(' / ');
 }
 function vvUrl(text, seat){
+  var v=vvValues();
   return VV_BASE + '?key=' + encodeURIComponent(vvKey())
        + '&speaker=' + encodeURIComponent(vvSpeakerId(seat))
-       + '&pitch=0&intonationScale=1&speed=1'
+       + '&pitch=' + encodeURIComponent(v.pitch)
+       + '&intonationScale=' + encodeURIComponent(v.intonation)
+       + '&speed=' + encodeURIComponent(v.speed)
        + '&text=' + encodeURIComponent(text);
 }
 function vvSpeak(text, lang, seat){
@@ -4504,7 +4628,7 @@ function vvSpeak(text, lang, seat){
     browserSpeak(text, 'ja-JP');
     return;
   }
-  var done = false, tEnd = null, t0 = Date.now();
+  var done = false, tEnd = null, t0 = Date.now(), tweaks=vvTweaks();
   var finish = function(){ if (done) return; done = true; clearTimeout(tEnd); ttsEnd(); };
   rememberSpoken(text);
   ttsBegin();
@@ -4516,11 +4640,11 @@ function vvSpeak(text, lang, seat){
   primeOutput();
   audioEl.src = vvUrl(text, seat);
   audioEl.onended = function(){
-    dlog('tts','vv-end',{ seat: seat||'A', speaker: vvSpeakerId(seat), chars: text.length, ms: Date.now()-t0 });
+    dlog('tts','vv-end',{ seat: seat||'A', speaker: vvSpeakerId(seat), chars: text.length, ms: Date.now()-t0, tweaks:tweaks });
     finish();
   };
   audioEl.onerror = function(){
-    dlog('tts','vv-FAIL',{ seat: seat||'A', speaker: vvSpeakerId(seat), chars: text.length, ms: Date.now()-t0 });
+    dlog('tts','vv-FAIL',{ seat: seat||'A', speaker: vvSpeakerId(seat), chars: text.length, ms: Date.now()-t0, tweaks:tweaks });
     finish();
     if (!vvWarned){
       vvWarned = true;
@@ -4743,6 +4867,7 @@ function refreshVvUI(){
   });
   if (sel) sel.value = String(CFG.vvSpeaker || '3');
   if (selA) selA.value = String(CFG.vvSpeakerA || '2');
+  vvAdvSync();
   var c = $('vvCredit');
   if (c) c.innerHTML = '規約により、この音声を含む録音・書き起こしを公開・配布する場合は'
                      + 'クレジット表記が必要です　→　<b>VOICEVOX:' + vvCreditNames() + '</b>';
@@ -5250,9 +5375,14 @@ function pickMime(){
 function transcribeBlob(blob, seat, prosody){
   var lang = langOf(seat);
   var holder = addEntry(seat, '（認識中…）', true);
-  var t0 = Date.now();
+  var t0 = Date.now(), reqSessionGen = sessionGen;
   sttCall(blob, lang).then(function(text){
     text = (text||'').trim();
+    /* 停止後、または次の開始後に遅れて返った結果を新しい会話へ混ぜない */
+    if (!S.running || reqSessionGen !== sessionGen){
+      dlog('stt','stale-result-drop',{ seat:seat, chars:text.length, requestGen:reqSessionGen, currentGen:sessionGen });
+      removeEntry(holder); return;
+    }
     dlog('stt','api-result',{ prov: CFG.sttProvider, model: CFG.sttModel, seat: seat, lang: lang,
       ms: Date.now()-t0, bytes: blob.size, chars: text.length, text: text.slice(0,120) });
     if (!text || text.length<2 || !hasSpeechContent(text)){ removeEntry(holder); return; }
@@ -5274,6 +5404,10 @@ function transcribeBlob(blob, seat, prosody){
     translate(holder);
   }).catch(function(err){
     removeEntry(holder);
+    if (!S.running || reqSessionGen !== sessionGen){
+      dlog('stt','stale-error-drop',{ seat:seat, requestGen:reqSessionGen, currentGen:sessionGen });
+      return;
+    }
     dlog('stt','api-FAIL',{ prov: CFG.sttProvider, model: CFG.sttModel, ms: Date.now()-t0,
       bytes: blob.size, err: String(err.message||err).slice(0,200) });
     toast('音声認識失敗: ' + String(err.message||err));
@@ -5555,6 +5689,7 @@ function startAll(){
   if (p.key && !transKey()){ toast('APIキーを設定してください（⚙ → 翻訳・API）'); openDrawer(true); return; }
   if (p.baseEditable && !CFG.baseUrl){ toast('Base URL を入力してください'); openDrawer(true); return; }
 
+  sessionGen++;
   S.running = true;
   resetProsodyCaps(CFG.prosodyOn,true);
   $('mic').classList.add('live'); $('mic').textContent = '■ 停止';
@@ -5717,6 +5852,7 @@ function stopVU(){
 function stopAll(){
   if (S.running) dlog('session','STOP',{ entries: S.entries.length });
   S.running = false;
+  sessionGen++;                              /* 送信済みSTTの返答をこの時点で無効化 */
   clearTimeout(altTimer); clearTimeout(altStreamTimer);
   $('mic').classList.remove('live'); $('mic').textContent = '● 開始';
   killRec();
@@ -5846,7 +5982,8 @@ function exportHtml(){
     nameA: CFG.nameA, nameB: CFG.nameB, fsize: CFG.fsize,
     flipTop: CFG.flipTop?'1':'0', showSrc: CFG.showSrc?'1':'0', swap: CFG.swap?'1':'0', interimOn: CFG.interimOn?'1':'0',
     prosodyOn: CFG.prosodyOn?'1':'0', echoGuard: CFG.echoGuard?'1':'0',
-    syncScroll: CFG.syncScroll?'1':'0', vvSpeaker: CFG.vvSpeaker, vvSpeakerA: CFG.vvSpeakerA, ttsSrc: CFG.ttsSrc?'1':'0',
+    syncScroll: CFG.syncScroll?'1':'0', vvSpeaker: CFG.vvSpeaker, vvSpeakerA: CFG.vvSpeakerA,
+    vvRate: CFG.vvRate, vvPitch: CFG.vvPitch, vvIntonation: CFG.vvIntonation, ttsSrc: CFG.ttsSrc?'1':'0',
     ovlOn: CFG.ovlOn?'1':'0', ovlA: CFG.ovlA, ovlLines: CFG.ovlLines, ovlKey: CFG.ovlKey,
     ttsPad: CFG.ttsPad, aivisModel: CFG.aivisModel, aivisModelB: CFG.aivisModelB, lvvBase: CFG.lvvBase,
     aivisStyle: CFG.aivisStyle, aivisStyleB: CFG.aivisStyleB, aivisRate: CFG.aivisRate,
@@ -5867,7 +6004,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.32.5 Phase 1</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.32.6 Phase 1</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -6564,6 +6701,12 @@ $('vvKey').oninput = function(){
   vvWarned = false;          // キーを入れ直したら、失敗時の案内をもう一度出せるようにする
   refreshVvUI();
 };
+VV_SLIDERS.forEach(function(s){
+  var el=$(s.id); if (!el) return;
+  el.oninput=function(){ CFG[s.key]=this.value; store.set(s.store,this.value); vvAdvSync(); };
+  el.onchange=function(){ refreshVvUI(); };
+});
+$('vvAdvReset').onclick=function(){ vvAdvReset(); };
 $('aivisKey').oninput = function(){
   KEYS['aivis'] = this.value.trim(); saveKeys();
   keyChkShow('chkAivisMsg','','');
@@ -6589,14 +6732,26 @@ function aivisSetModel(seat, uuid){
   refreshVvUI(); aivisNameLater();
 }
 $('aivisModel').onchange = function(){
+  if (this.value === AIVIS_MORE){
+    var box=$('aivisMore'), more=$('aivisModelMore'); if (box) box.open=true;
+    if (more && more.value) aivisSetModel('A', more.value);
+    return;
+  }
   /* 「その他」を選んだ直後は、まだUUIDが無い状態を正とする（入力欄はこのあと開く） */
   AIVIS_OTHER.A = (this.value === AIVIS_CUSTOM);
   aivisSetModel('A', AIVIS_OTHER.A ? ($('aivisModelCustom').value || '') : this.value);
 };
 $('aivisModelB').onchange = function(){
+  if (this.value === AIVIS_MORE){
+    var box=$('aivisMore'), more=$('aivisModelMoreB'); if (box) box.open=true;
+    if (more && more.value) aivisSetModel('B', more.value);
+    return;
+  }
   AIVIS_OTHER.B = (this.value === AIVIS_CUSTOM);
   aivisSetModel('B', AIVIS_OTHER.B ? ($('aivisModelBCustom').value || '') : this.value);
 };
+$('aivisModelMore').onchange = function(){ AIVIS_OTHER.A=false; aivisSetModel('A', this.value); };
+$('aivisModelMoreB').onchange = function(){ AIVIS_OTHER.B=false; aivisSetModel('B', this.value); };
 $('aivisModelCustom').oninput  = function(){ aivisSetModel('A', this.value); };
 $('aivisModelBCustom').oninput = function(){ aivisSetModel('B', this.value); };
 $('aivisName').oninput  = function(){ aivisNameSet(CFG.aivisModel,  this.value); refreshVvUI(); };
@@ -6763,7 +6918,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.32.5 Phase 1');
+  out.push('- バージョン: Duo Interpreter v1.32.6 Phase 1');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
@@ -6807,6 +6962,7 @@ function diagText(devices){
       ? ((aivisNameOf(aivisModelFor('A')) || '(未設定)') + ' / ' + (aivisNameOf(aivisModelFor('B')) || '(未設定)'))
       : '(未使用)'],
    ['Aivis 話し方の調整', CFG.ttsMode === 'aivis' ? aivisTweaks() : '(未使用)'],
+   ['VOICEVOX 話し方の調整', CFG.ttsMode === 'voicevox' ? vvTweaks() : '(未使用)'],
    ['原文読み上げ', CFG.ttsSrc ? 'ON' : 'OFF'],
    ['鳴り始めの無音', CFG.ttsPad + ' ms'],
    ['再生経路', waMode ? 'Web Audio（開きっぱなし）' : '<audio>'],
