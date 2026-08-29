@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.32.4 Phase 1 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.32.5 Phase 1 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -483,7 +483,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.4 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.5 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -493,7 +493,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.4 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.5 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -2298,7 +2298,7 @@ function redact(s){
 }
 
 /* =========================================================================
-   Prosody Analyzer — Phase 1B / v1.32.4
+   Prosody Analyzer — Phase 1B / v1.32.5
    ------------------------------------------------------------------
    同じ MediaStream を STT と並列に観測し、発話単位の物理量だけを要約する。
    高頻度フレームはメモリ内だけに保持し、dlog() には発話終了時の要約だけを書く。
@@ -2335,10 +2335,11 @@ function prosodyStd(a){
   for (var i=0;i<a.length;i++){ var d=a[i]-m; s+=d*d; }
   return Math.sqrt(s/a.length);
 }
-function prosodyBlendBaseline(seed, values){
-  if (!values || !values.length) return seed;
-  var w=Math.min(0.85,values.length/4);
-  return seed*(1-w)+prosodyMedian(values)*w;
+function prosodyBootstrapBaseline(seed, values){
+  /* 実測3件だけでは、会話開始直後の意図的な早口・遅口が基準を支配しやすい。
+     言語別シードを2票だけ加えた中央値で、個人差を残しつつ初期値を安定させる。 */
+  var real=(values||[]).slice(-3);
+  return prosodyMedian(real.concat([seed,seed]));
 }
 function prosodySeedRate(lang, unit){
   lang=String(lang||'').split('-')[0];
@@ -2395,17 +2396,24 @@ function prosodyRememberBaseline(key,p){
   var ar=p.articulationRate||p.speechRate, currentBase=p.baseline&&p.baseline.articulationRate;
   var ref=currentBase||seedRate;
   var eligible=!!q.baselineEligible, rateEvent='';
-  /* 極端な演技は速度表現として使うが、通常テンポの学習からは除外する。 */
-  var outlierRef=h.rateReady?ref:seedRate, outlierLo=h.rateReady?0.60:0.50, outlierHi=h.rateReady?1.60:1.80;
+  /* 極端な演技は速度表現として使うが、通常テンポの学習からは除外する。
+     ウォームアップ中は本人基準がまだ無いため30～220%へ広げ、高品質な遅い
+     発話を3件目から排除しない。ready後は従来どおり60～160%へ戻す。 */
+  var outlierRef=h.rateReady?ref:seedRate, outlierLo=h.rateReady?0.60:0.30, outlierHi=h.rateReady?1.60:2.20;
   if (eligible && (ar<outlierRef*outlierLo || ar>outlierRef*outlierHi)){
     eligible=false; q.baselineEligible=false; q.baselineReason='rate_outlier';
   }
   if (eligible){
+    if (!h.rateReady) q.baselineReason='bootstrap_eligible';
     push(h.articulation,ar);
     if (!h.rateReady && h.articulation.length>=3){
-      h.articulationAnchor=prosodyMedian(h.articulation.slice(-3));
+      var bootstrapReal=h.articulation.slice(-3);
+      var bootstrapRealMedian=prosodyMedian(bootstrapReal);
+      h.articulationAnchor=prosodyBootstrapBaseline(seedRate,bootstrapReal);
       h.rateReady=true; h.rateEligibleSinceRebase=0; h.speedTier=0; rateEvent='ready';
-      dlog('prosody','baseline-ready',{key:key,samples:h.articulation.length,rate:prosodyRound(h.articulationAnchor,2)});
+      dlog('prosody','baseline-ready',{key:key,samples:h.articulation.length,realSamples:bootstrapReal.length,
+        realMedian:prosodyRound(bootstrapRealMedian,2),seedRate:prosodyRound(seedRate,2),seedWeight:2,
+        rate:prosodyRound(h.articulationAnchor,2)});
     } else if (h.rateReady){
       h.rateEligibleSinceRebase=(h.rateEligibleSinceRebase||0)+1;
       if (h.rateEligibleSinceRebase>=5){
@@ -2426,6 +2434,11 @@ function prosodyRememberBaseline(key,p){
   if (p.baseline){
     p.baseline.rateReadyAfter=!!h.rateReady;p.baseline.samplesAfter=h.articulation.length;
     p.baseline.rateAfter=h.articulationAnchor==null?null:prosodyRound(h.articulationAnchor,2);p.baseline.rateEvent=rateEvent;
+    p.baseline.seedRate=prosodyRound(seedRate,2);
+    if (rateEvent==='ready'){
+      p.baseline.bootstrapRealMedian=prosodyRound(bootstrapRealMedian,2);
+      p.baseline.bootstrapSeedWeight=2;
+    }
   }
   if ((q.confidence||0)>=0.50 && (q.pitchConfidence||0)>=0.35 && p.pitch){ push(h.pitch,p.pitch.meanHz); push(h.pitchRange,p.pitch.relativeRange); }
   if ((q.confidence||0)>=0.50 && (q.energyConfidence||0)>=0.35 && p.energy){ push(h.energy,p.energy.meanDb); push(h.energyRange,p.energy.rangeDb); }
@@ -2849,6 +2862,8 @@ function attachProsody(entry, snapshot){
     baselineReadyBefore:!!(p.baseline&&p.baseline.rateReady),baselineReadyAfter:!!(p.baseline&&p.baseline.rateReadyAfter),
     baselineSamplesBefore:p.baseline&&p.baseline.samples,baselineSamplesAfter:p.baseline&&p.baseline.samplesAfter,
     baselineRateBefore:p.baseline&&prosodyRound(p.baseline.articulationRate,2),baselineRateAfter:p.baseline&&p.baseline.rateAfter,
+    baselineSeedRate:p.baseline&&p.baseline.seedRate,bootstrapRealMedian:p.baseline&&p.baseline.bootstrapRealMedian,
+    bootstrapSeedWeight:p.baseline&&p.baseline.bootstrapSeedWeight,
     baselineEvent:p.baseline&&p.baseline.rateEvent,
     coverage:p.timing&&p.timing.coverage,maxInternalPauseMs:p.timing&&p.timing.maxInternalPauseMs,
     voiceRuns:p.timing&&p.timing.voiceRuns,acousticClusters:p.analyzer&&p.analyzer.acousticClusters,
@@ -5852,7 +5867,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.32.4 Phase 1</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.32.5 Phase 1</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -6748,7 +6763,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.32.4 Phase 1');
+  out.push('- バージョン: Duo Interpreter v1.32.5 Phase 1');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
