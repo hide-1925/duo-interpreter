@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.32.6 Phase 1 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.32.7 Phase 1 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -483,7 +483,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.6 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.7 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -493,7 +493,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.6 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.7 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1002,6 +1002,7 @@
       <small>キーは <a href="https://su-shiki.com/api/" target="_blank" rel="noopener noreferrer">su-shiki.com/api/</a> で無料取得できます（有志が運営する非公式APIです）。
       日本語の読み上げだけがこの声になり、<b>それ以外の言語はブラウザ内蔵音声</b>で読み上げます。
       <b>話し方の調整</b>では話速・声の高さ・抑揚を変更できます。既定に戻せば従来と同じ音です。
+      話し方保持をONにすると、ここで指定した値を基準に、元音声の話速・相対Pitch・表現幅を発話ごとに自動補正します（設定欄の値自体は変わりません）。
       ポイント制の1日上限があり、混雑時は失敗することがあります（失敗時はブラウザ内蔵音声に自動で切り替わります）。
       個人利用向けのAPIなので、業務での常用には向きません。</small>
       <div class="note" id="vvCredit"></div>
@@ -2327,7 +2328,7 @@ function redact(s){
 }
 
 /* =========================================================================
-   Prosody Analyzer — Phase 1B / v1.32.6
+   Prosody Analyzer — Phase 1B / v1.32.7
    ------------------------------------------------------------------
    同じ MediaStream を STT と並列に観測し、発話単位の物理量だけを要約する。
    高頻度フレームはメモリ内だけに保持し、dlog() には発話終了時の要約だけを書く。
@@ -2484,6 +2485,7 @@ function updateProsodyStatus(){
   if (tt) tt.textContent = !on ? 'OFF'
     : CFG.ttsMode==='browser' ? '速度・音量・語尾傾向'
     : CFG.ttsMode==='aivis' ? '速度・緩急・音量'
+    : CFG.ttsMode==='voicevox' ? '速度・声高・抑揚'
     : '解析のみ（未対応）';
 }
 function resetProsodyCaps(running, clearObserved){
@@ -4561,12 +4563,25 @@ function vvValues(){
   return { speed:vvNumber('vvRate',1,0.5,2), pitch:vvNumber('vvPitch',0,-0.15,0.15),
            intonation:vvNumber('vvIntonation',1,0,2) };
 }
-function vvTweaks(){
-  var v=vvValues(), out=[];
+function vvValueTweaks(v){
+  v=v||vvValues(); var out=[];
   if (v.speed!==1) out.push('話速 '+v.speed.toFixed(2));
   if (v.pitch!==0) out.push('声高 '+(v.pitch>0?'+':'')+v.pitch.toFixed(2));
   if (v.intonation!==1) out.push('抑揚 '+v.intonation.toFixed(2));
   return out.length ? out.join(' / ') : '既定のまま';
+}
+function vvTweaks(){ return vvValueTweaks(vvValues()); }
+/* 手動値を基準にProsody補正を重ねる。設定画面の値そのものは書き換えない。
+   共通Pitchは倍率（0.90～1.10）なので、VOICEVOXのoffsetへ穏やかに変換する。 */
+function vvEffectiveValues(prosody){
+  var manual=vvValues(), map=prosodyMapForTts(prosody,'ja','voicevox');
+  if (!map) return {speed:manual.speed,pitch:manual.pitch,intonation:manual.intonation,map:null};
+  return {
+    speed:prosodyRound(prosodyClamp(manual.speed*map.rate,0.5,2),3),
+    pitch:prosodyRound(prosodyClamp(manual.pitch+(map.pitch-1)*0.75,-0.15,0.15),3),
+    intonation:prosodyRound(prosodyClamp(manual.intonation*map.dynamics,0,2),3),
+    map:map
+  };
 }
 function vvAdvSync(){
   VV_SLIDERS.forEach(function(s){
@@ -4604,8 +4619,8 @@ function vvCreditNames(){
   if (!names.length) names.push(vvSpeakerInfo(CFG.vvSpeaker).name);
   return names.join(' / ');
 }
-function vvUrl(text, seat){
-  var v=vvValues();
+function vvUrl(text, seat, values){
+  var v=values||vvValues();
   return VV_BASE + '?key=' + encodeURIComponent(vvKey())
        + '&speaker=' + encodeURIComponent(vvSpeakerId(seat))
        + '&pitch=' + encodeURIComponent(v.pitch)
@@ -4613,10 +4628,10 @@ function vvUrl(text, seat){
        + '&speed=' + encodeURIComponent(v.speed)
        + '&text=' + encodeURIComponent(text);
 }
-function vvSpeak(text, lang, seat){
+function vvSpeak(text, lang, seat, prosody){
   if (lang !== 'ja'){                       // VOICEVOXは日本語専用
     dlog('tts','vv-skip',{ why:'日本語以外', lang: lang });
-    browserSpeak(text, L(lang).tts);
+    browserSpeak(text, L(lang).tts,prosody);
     return;
   }
   if (!vvKey()){
@@ -4625,10 +4640,13 @@ function vvSpeak(text, lang, seat){
       vvWarned = true;
       toast('VOICEVOXのAPIキーが未設定です。⚙→音声 の「VOICEVOX WEB版 API」欄に入力してください。<br>今回はブラウザ内蔵の音声で読み上げます。');
     }
-    browserSpeak(text, 'ja-JP');
+    browserSpeak(text, 'ja-JP',prosody);
     return;
   }
-  var done = false, tEnd = null, t0 = Date.now(), tweaks=vvTweaks();
+  var effective=vvEffectiveValues(prosody), tweaks=vvValueTweaks(effective), manualTweaks=vvTweaks();
+  logProsodyMap(effective.map,{effectiveRate:effective.speed,effectivePitch:effective.pitch,
+    effectiveIntonation:effective.intonation});
+  var done = false, tEnd = null, t0 = Date.now();
   var finish = function(){ if (done) return; done = true; clearTimeout(tEnd); ttsEnd(); };
   rememberSpoken(text);
   ttsBegin();
@@ -4638,19 +4656,21 @@ function vvSpeak(text, lang, seat){
   }, Math.min(90000, 10000 + text.length * 200));
   ensureSink();
   primeOutput();
-  audioEl.src = vvUrl(text, seat);
+  audioEl.src = vvUrl(text, seat, effective);
   audioEl.onended = function(){
-    dlog('tts','vv-end',{ seat: seat||'A', speaker: vvSpeakerId(seat), chars: text.length, ms: Date.now()-t0, tweaks:tweaks });
+    dlog('tts','vv-end',{ seat: seat||'A', speaker: vvSpeakerId(seat), chars: text.length, ms: Date.now()-t0,
+      tweaks:tweaks, manualTweaks:manualTweaks, prosody:!!effective.map });
     finish();
   };
   audioEl.onerror = function(){
-    dlog('tts','vv-FAIL',{ seat: seat||'A', speaker: vvSpeakerId(seat), chars: text.length, ms: Date.now()-t0, tweaks:tweaks });
+    dlog('tts','vv-FAIL',{ seat: seat||'A', speaker: vvSpeakerId(seat), chars: text.length, ms: Date.now()-t0,
+      tweaks:tweaks, manualTweaks:manualTweaks, prosody:!!effective.map });
     finish();
     if (!vvWarned){
       vvWarned = true;
       toast('VOICEVOXの音声を取得できませんでした。キー・ポイント残量・混雑状況をご確認ください。<br>今回はブラウザ内蔵の音声で読み上げます。');
     }
-    browserSpeak(text, 'ja-JP');    // 鳴らないより内蔵音声で鳴らす方がまし
+    browserSpeak(text, 'ja-JP',prosody);    // 鳴らないより内蔵音声で鳴らす方がまし
   };
   var pr = audioEl.play();
   if (pr && pr.catch) pr.catch(function(){ /* 失敗は onerror 側で拾う */ });
@@ -4941,7 +4961,7 @@ function speakManual(text, lang, btn, seat, prosody){
   primeOutput();
   setSayBtn(btn);
   if (CFG.ttsMode === 'openai') apiSpeak(text, seat);
-  else if (CFG.ttsMode === 'voicevox') vvSpeak(text, lang, seat);
+  else if (CFG.ttsMode === 'voicevox') vvSpeak(text, lang, seat,prosody);
   else if (CFG.ttsMode === 'aivis')    aivisSpeak(text, lang, seat,prosody);
   else if (CFG.ttsMode === 'eleven')   elSpeak(text, lang, seat);
   else if (CFG.ttsMode === 'xai')      xaiSpeak(text, lang, seat);
@@ -4978,7 +4998,7 @@ function speak(e){
     return;
   }
   if (CFG.ttsMode === 'browser') browserSpeak(sayText, L(sayLang).tts,e.prosody);
-  else if (CFG.ttsMode === 'voicevox') vvSpeak(sayText, sayLang, e.seat);
+  else if (CFG.ttsMode === 'voicevox') vvSpeak(sayText, sayLang, e.seat,e.prosody);
   else if (CFG.ttsMode === 'aivis')    aivisSpeak(sayText, sayLang, e.seat,e.prosody);
   else if (CFG.ttsMode === 'eleven')   elSpeak(sayText, sayLang, e.seat);
   else if (CFG.ttsMode === 'xai')      xaiSpeak(sayText, sayLang, e.seat);
@@ -6004,7 +6024,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.32.6 Phase 1</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.32.7 Phase 1</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -6918,7 +6938,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.32.6 Phase 1');
+  out.push('- バージョン: Duo Interpreter v1.32.7 Phase 1');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
@@ -6984,6 +7004,7 @@ function diagText(devices){
    ['Prosody TTS反映', !CFG.prosodyOn ? 'OFF'
       : CFG.ttsMode==='browser' ? 'ブラウザ標準：速度・音量・語尾傾向'
       : CFG.ttsMode==='aivis' ? 'Aivis：速度・緩急・音量'
+      : CFG.ttsMode==='voicevox' ? 'VOICEVOX：速度・声高・抑揚'
       : '解析のみ（現在のTTSは未対応）'],
    ['エコー除外', CFG.echoGuard ? 'ON' : 'OFF'],
    ['翻訳スタイル', CFG.tone], ['VADしきい値', CFG.vad],
