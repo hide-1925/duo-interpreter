@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.32.3 Phase 1 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.32.4 Phase 1 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -483,7 +483,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.3 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.4 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -493,7 +493,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.3 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.4 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -2298,7 +2298,7 @@ function redact(s){
 }
 
 /* =========================================================================
-   Prosody Analyzer — Phase 1B / v1.32.3
+   Prosody Analyzer — Phase 1B / v1.32.4
    ------------------------------------------------------------------
    同じ MediaStream を STT と並列に観測し、発話単位の物理量だけを要約する。
    高頻度フレームはメモリ内だけに保持し、dlog() には発話終了時の要約だけを書く。
@@ -2347,17 +2347,37 @@ function prosodySeedRate(lang, unit){
   if (unit==='char/s') return lang==='ja'?7.5:lang==='zh'?5.8:lang==='ko'?7.0:lang==='th'?10.0:7.0;
   return 3.4;
 }
+function prosodyNewBaseline(){
+  return {
+    articulation:[],articulationAnchor:null,rateReady:false,rateEligibleSinceRebase:0,
+    rateRecalibrations:0,speedTier:0,pitch:[],energy:[],pitchRange:[],energyRange:[],tempo:[]
+  };
+}
+var PROSODY_SPEED_RATES=[0.88,0.94,1.00,1.08,1.16];
+var PROSODY_SPEED_NAMES=['very-slow','slow','normal','fast','very-fast'];
+function prosodySpeedTierFor(ratio, previousTier){
+  var bounds=[0.78,0.92,1.10,1.28], hysteresis=0.04, i;
+  if (previousTier==null || previousTier<-2 || previousTier>2){
+    i=0; while(i<bounds.length && ratio>=bounds[i]) i++;
+    return i-2;
+  }
+  i=previousTier+2;
+  while(i<4 && ratio>bounds[i]+hysteresis) i++;
+  while(i>0 && ratio<bounds[i-1]-hysteresis) i--;
+  return i-2;
+}
 function prosodyBaselineFor(key,p){
-  var h=PROSODY_BASELINES[key]||{articulation:[],articulationAnchor:null,pitch:[],energy:[],pitchRange:[],energyRange:[],tempo:[]};
+  var h=PROSODY_BASELINES[key]||prosodyNewBaseline();
   var seedRate=prosodySeedRate(p.sourceLang,p.speechRateUnit);
   var pm=p.pitch&&p.pitch.meanHz, em=p.energy&&p.energy.meanDb;
   var ar=p.articulationRate||p.speechRate;
   var pr=p.pitch&&p.pitch.relativeRange, er=p.energy&&p.energy.rangeDb;
   var tv=p.timing&&p.timing.tempoVariability;
   return {
-    key:key,samples:h.articulation.length,
-    /* 初回発話は自分自身を基準にして中立にする。固定の日本語平均値を
-       最初から当てると、話者差だけでAivisが速く／遅くなるため。 */
+    key:key,samples:h.articulation.length,rateReady:!!h.rateReady,
+    bootstrapSamples:Math.min(3,h.articulation.length),eligibleSinceRebase:h.rateEligibleSinceRebase||0,
+    recalibrations:h.rateRecalibrations||0,speedTier:h.speedTier||0,
+    /* 有効発話が3件集まるまでは本人基準を確定せず、速度補正を中立にする。 */
     rate:h.articulationAnchor!=null?h.articulationAnchor:(h.articulation.length?prosodyMedian(h.articulation):(ar||seedRate)),
     articulationRate:h.articulationAnchor!=null?h.articulationAnchor:(h.articulation.length?prosodyMedian(h.articulation):(ar||seedRate)),
     pitchMean:h.pitch.length?prosodyMedian(h.pitch):pm,
@@ -2368,21 +2388,44 @@ function prosodyBaselineFor(key,p){
   };
 }
 function prosodyRememberBaseline(key,p){
-  var h=PROSODY_BASELINES[key]||(PROSODY_BASELINES[key]={articulation:[],articulationAnchor:null,pitch:[],energy:[],pitchRange:[],energyRange:[],tempo:[]});
+  var h=PROSODY_BASELINES[key]||(PROSODY_BASELINES[key]=prosodyNewBaseline());
   function push(a,v){ if (v==null || !isFinite(v)) return; a.push(v); if(a.length>12)a.shift(); }
   var q=p.quality||{};
   var seedRate=prosodySeedRate(p.sourceLang,p.speechRateUnit);
   var ar=p.articulationRate||p.speechRate, currentBase=p.baseline&&p.baseline.articulationRate;
   var ref=currentBase||seedRate;
-  /* 区間の被覆率と分断度を含む信頼度が足りない発話は基準へ混ぜない。
-     速い演技はTTSへ反映してよいが、普段の速度としては学習しない。 */
-  if ((q.confidence||0)>=0.55 && (q.timingConfidence||0)>=0.50 && ar>=ref*0.60 && ar<=ref*1.60){
+  var eligible=!!q.baselineEligible, rateEvent='';
+  /* 極端な演技は速度表現として使うが、通常テンポの学習からは除外する。 */
+  var outlierRef=h.rateReady?ref:seedRate, outlierLo=h.rateReady?0.60:0.50, outlierHi=h.rateReady?1.60:1.80;
+  if (eligible && (ar<outlierRef*outlierLo || ar>outlierRef*outlierHi)){
+    eligible=false; q.baselineEligible=false; q.baselineReason='rate_outlier';
+  }
+  if (eligible){
     push(h.articulation,ar);
-    /* 現在発話をマッピングした後にだけ、直近中央値へ10%ずつ追従する。
-       単発の加速・減速は表現として残し、会話全体の恒常的なテンポ変化には
-       約7～10発話かけて基準を移す。 */
-    var rateTarget=prosodyMedian(h.articulation);
-    h.articulationAnchor=h.articulationAnchor==null?ar:(h.articulationAnchor*0.90+rateTarget*0.10);
+    if (!h.rateReady && h.articulation.length>=3){
+      h.articulationAnchor=prosodyMedian(h.articulation.slice(-3));
+      h.rateReady=true; h.rateEligibleSinceRebase=0; h.speedTier=0; rateEvent='ready';
+      dlog('prosody','baseline-ready',{key:key,samples:h.articulation.length,rate:prosodyRound(h.articulationAnchor,2)});
+    } else if (h.rateReady){
+      h.rateEligibleSinceRebase=(h.rateEligibleSinceRebase||0)+1;
+      if (h.rateEligibleSinceRebase>=5){
+        var recent=h.articulation.slice(-3), up=true, down=true;
+        for (var ri=0;ri<recent.length;ri++){
+          if (!(recent[ri]>h.articulationAnchor*1.20)) up=false;
+          if (!(recent[ri]<h.articulationAnchor*0.80)) down=false;
+        }
+        var persistent=recent.length===3&&(up||down);
+        var alpha=persistent?0.35:0.20, oldRate=h.articulationAnchor;
+        var rateTarget=prosodyMedian(h.articulation);
+        h.articulationAnchor=oldRate*(1-alpha)+rateTarget*alpha;
+        h.rateEligibleSinceRebase=0; h.rateRecalibrations=(h.rateRecalibrations||0)+1; rateEvent='recalibrated';
+        dlog('prosody','baseline-recalibrated',{key:key,from:prosodyRound(oldRate,2),to:prosodyRound(h.articulationAnchor,2),target:prosodyRound(rateTarget,2),alpha:alpha,persistentShift:persistent,samples:h.articulation.length});
+      }
+    }
+  }
+  if (p.baseline){
+    p.baseline.rateReadyAfter=!!h.rateReady;p.baseline.samplesAfter=h.articulation.length;
+    p.baseline.rateAfter=h.articulationAnchor==null?null:prosodyRound(h.articulationAnchor,2);p.baseline.rateEvent=rateEvent;
   }
   if ((q.confidence||0)>=0.50 && (q.pitchConfidence||0)>=0.35 && p.pitch){ push(h.pitch,p.pitch.meanHz); push(h.pitchRange,p.pitch.relativeRange); }
   if ((q.confidence||0)>=0.50 && (q.energyConfidence||0)>=0.35 && p.energy){ push(h.energy,p.energy.meanDb); push(h.energyRange,p.energy.rangeDb); }
@@ -2464,13 +2507,14 @@ function ProsodyAnalyzer(analyser, sampleRate, source){
   this.an=analyser; this.sampleRate=sampleRate||48000; this.source=source||'audio';
   this.frames=[]; this.startedAt=Date.now(); this.segmentStart=this.startedAt;
   this.lastUtteranceEnd=null; this.tickNo=0; this.closed=false;
+  this.pitchBurstVoiceNo=0; this.lastPitchVoiceAt=null;
   this.noiseSamples=[]; this.voiceThreshold=0.012;
   this.floatBuf=new Float32Array(analyser ? analyser.fftSize : 2048);
   this.byteBuf=new Uint8Array(this.floatBuf.length);
   PROSODY_CAPS.running=true; updateProsodyStatus();
 }
 ProsodyAnalyzer.prototype.beginSegment=function(){
-  this.frames=[]; this.segmentStart=Date.now();
+  this.frames=[]; this.segmentStart=Date.now();this.pitchBurstVoiceNo=0;this.lastPitchVoiceAt=null;
 };
 ProsodyAnalyzer.prototype.sample=function(now, rmsHint){
   if (this.closed || !CFG.prosodyOn || !this.an) return;
@@ -2500,7 +2544,13 @@ ProsodyAnalyzer.prototype.sample=function(now, rmsHint){
   }
   var voice=rms>=threshold, pitch=null;
   this.tickNo++;
-  if (voice && this.tickNo%2===0) pitch=prosodyPitchYin(b,this.sampleRate);
+  /* 短い命令文でもPitchサンプルを確保するため、各音響クラスタの先頭10有声
+     フレームは毎回YINを実行し、それ以降だけ従来どおり1/2へ間引く。 */
+  if (voice){
+    if (this.lastPitchVoiceAt==null || now-this.lastPitchVoiceAt>=1200) this.pitchBurstVoiceNo=0;
+    this.pitchBurstVoiceNo++; this.lastPitchVoiceAt=now;
+    if (this.pitchBurstVoiceNo<=10 || this.tickNo%2===0) pitch=prosodyPitchYin(b,this.sampleRate);
+  }
   this.frames.push({t:now,rms:rms,db:db,pitch:pitch,voice:voice,threshold:threshold});
   if (this.frames.length>900) this.frames.splice(0,150);   // 約45～70秒を上限にする
   if (pitch && !PROSODY_CAPS.pitch){ PROSODY_CAPS.pitch=true; updateProsodyStatus(); }
@@ -2668,19 +2718,30 @@ function prosodyUnits(text, lang){
   var words=text.replace(/[^\p{L}\p{N}'’-]+/gu,' ').trim().split(/\s+/).filter(Boolean);
   return {count:words.length,unit:'word/s'};
 }
+function prosodyRateMinUnits(lang,unit){
+  lang=String(lang||'').split('-')[0];
+  if (unit==='word/s') return 4;
+  return lang==='th'?8:6;
+}
 function completeProsody(p, text, lang){
   if (!p || !p.available) return p || {available:false,reason:'analyzer_unavailable'};
   var u=prosodyUnits(text,lang), sec=p.durationMs/1000, active=(p.activeSpeechMs||p.durationMs)/1000;
   p.speechRate=sec>0 ? prosodyRound(u.count/sec,2) : null;
   p.articulationRate=active>0 ? prosodyRound(u.count/active,2) : p.speechRate;
   p.speechRateUnit=u.unit; p.speechUnits=u.count; p.sourceLang=lang;
+  var q=p.quality||(p.quality={}), minUnits=prosodyRateMinUnits(lang,u.unit);
+  var coverage=p.timing&&p.timing.coverage!=null?p.timing.coverage:0;
+  var qc=q.confidence||0, tc=q.timingConfidence||0, activeMs=p.activeSpeechMs||p.durationMs||0;
+  q.rateConfidence=prosodyRound(Math.min(qc,tc,prosodyClamp(activeMs/1200,0,1),prosodyClamp(u.count/minUnits,0,1)),3);
+  q.rateReliable=activeMs>=900 && u.count>=minUnits && qc>=0.65 && tc>=0.60 && coverage>=0.55;
+  q.baselineEligible=q.rateReliable;
+  q.baselineReason=q.rateReliable?'eligible':activeMs<900?'active_too_short':u.count<minUnits?'units_too_few':qc<0.65?'confidence_low':tc<0.60?'timing_low':'coverage_low';
   return p;
 }
 
 /* 物理量をTTSの共通制御値へ変換する。
-   現在発話のArticulation Rate（実際に声を出した時間あたりの速度）を、現在発話を
-   まだ含まない過去発話の中央値と比較する。会話途中のテンポ変更は直ちに反映し、
-   同じテンポが続いた場合だけ基準が遅れて追従する。低信頼区間は完全に中立化する。 */
+   長い有効発話だけを5段階の話速へ分類する。短文は速度を1.0に保ちながら、
+   信頼できるPitch・Energy・Tempoだけを独立して反映する。 */
 function prosodyMapForTts(p, targetLang, provider){
   if (!CFG.prosodyOn || !p || !p.available) return null;
   var q=p.quality||{}, base=p.baseline||{};
@@ -2690,21 +2751,29 @@ function prosodyMapForTts(p, targetLang, provider){
   var mapConfidence=q.confidence==null?0:q.confidence;
   var srcRate=p.articulationRate||p.speechRate;
   var baseRate=base.articulationRate||base.rate||prosodySeedRate(p.sourceLang,p.speechRateUnit);
-  var neutralized=q.label==='low' || mapConfidence<0.45 || srcRate==null || !(srcRate>0);
+  var neutralized=q.label==='low' || mapConfidence<0.45;
   if (neutralized){
     return {
       provider:provider,targetLang:targetLang,rate:1,volume:1,pitch:1,dynamics:1,
       pauseObservedMs:p.pauseBeforeMs||0,internalPauseMs:p.internalPauseMs||0,
       sourceRate:srcRate,speechRate:p.speechRate,articulationRate:p.articulationRate,
       baselineRate:prosodyRound(baseRate,2),confidence:q.confidence,confidenceLabel:q.label,
-      sourceRateUnit:p.speechRateUnit,sourceLang:p.sourceLang||'',neutralized:true,
-      neutralReason:srcRate==null?'rate_unavailable':'low_confidence'
+      rateConfidence:q.rateConfidence,rateReliable:!!q.rateReliable,baselineEligible:!!q.baselineEligible,
+      baselineReady:!!base.rateReady,baselineSamples:base.samples||0,rateRatio:null,speedTier:0,speedClass:'normal',
+      rateNeutralized:true,rateReason:'low_confidence',sourceRateUnit:p.speechRateUnit,sourceLang:p.sourceLang||'',
+      neutralized:true,neutralReason:'low_confidence'
     };
   }
-  var rate=1;
-  if (srcRate!=null && srcRate>0 && baseRate>0){
-    var rateSignal=Math.tanh(Math.log(srcRate/baseRate)*1.4);
-    rate=prosodyClamp(1+rateSignal*0.20*tc*mapConfidence,0.82,1.20);
+  var rate=1, rateRatio=null, speedTier=0, rateReason='';
+  var rateNeutralized=!q.rateReliable || !base.rateReady || srcRate==null || !(srcRate>0) || !(baseRate>0);
+  if (!rateNeutralized){
+    rateRatio=srcRate/baseRate;
+    speedTier=prosodySpeedTierFor(rateRatio,base.speedTier);
+    rate=PROSODY_SPEED_RATES[speedTier+2];
+    var hs=base.key&&PROSODY_BASELINES[base.key];
+    if (hs) hs.speedTier=speedTier;
+  } else {
+    rateReason=!q.rateReliable?(q.baselineReason||'short_or_unreliable'):!base.rateReady?'baseline_warmup':'rate_unavailable';
   }
   var edb=p.energy&&p.energy.meanDb!=null?p.energy.meanDb:null;
   var baseEnergy=base.energyMean!=null?base.energyMean:edb;
@@ -2737,7 +2806,10 @@ function prosodyMapForTts(p, targetLang, provider){
     pitch:prosodyRound(pitch,3),dynamics:prosodyRound(dynamics,3),pauseObservedMs:p.pauseBeforeMs||0,
     internalPauseMs:p.internalPauseMs||0,sourceRate:srcRate,speechRate:p.speechRate,articulationRate:p.articulationRate,
     baselineRate:prosodyRound(baseRate,2),confidence:q.confidence,confidenceLabel:q.label,
-    sourceRateUnit:p.speechRateUnit,sourceLang:p.sourceLang||'',neutralized:false
+    rateConfidence:q.rateConfidence,rateReliable:!!q.rateReliable,baselineEligible:!!q.baselineEligible,
+    baselineReady:!!base.rateReady,baselineSamples:base.samples||0,rateRatio:rateRatio==null?null:prosodyRound(rateRatio,3),
+    speedTier:speedTier,speedClass:PROSODY_SPEED_NAMES[speedTier+2],rateNeutralized:rateNeutralized,
+    rateReason:rateReason,sourceRateUnit:p.speechRateUnit,sourceLang:p.sourceLang||'',neutralized:false
   };
 }
 function logProsodyMap(map, extra){
@@ -2746,6 +2818,9 @@ function logProsodyMap(map, extra){
     pauseObservedMs:map.pauseObservedMs,internalPauseMs:map.internalPauseMs,
     sourceRate:map.sourceRate,speechRate:map.speechRate,articulationRate:map.articulationRate,baselineRate:map.baselineRate,
     confidence:map.confidence,confidenceLabel:map.confidenceLabel,sourceRateUnit:map.sourceRateUnit,
+    rateConfidence:map.rateConfidence,rateReliable:!!map.rateReliable,baselineEligible:!!map.baselineEligible,
+    baselineReady:!!map.baselineReady,baselineSamples:map.baselineSamples,rateRatio:map.rateRatio,
+    speedTier:map.speedTier,speedClass:map.speedClass,rateNeutralized:!!map.rateNeutralized,rateReason:map.rateReason||'',
     neutralized:!!map.neutralized,neutralReason:map.neutralReason||''};
   if (extra) for (var k in extra) d[k]=extra[k];
   dlog('tts','prosody-map',d);
@@ -2769,6 +2844,12 @@ function attachProsody(entry, snapshot){
     energyMeanDb:p.energy.meanDb,energyRangeDb:p.energy.rangeDb,
     confidence:p.quality&&p.quality.confidence,confidenceLabel:p.quality&&p.quality.label,
     voicedFrames:p.quality&&p.quality.voicedFrames,pitchFrames:p.quality&&p.quality.pitchFrames,
+    rateConfidence:p.quality&&p.quality.rateConfidence,rateReliable:!!(p.quality&&p.quality.rateReliable),
+    baselineEligible:!!(p.quality&&p.quality.baselineEligible),baselineReason:p.quality&&p.quality.baselineReason,
+    baselineReadyBefore:!!(p.baseline&&p.baseline.rateReady),baselineReadyAfter:!!(p.baseline&&p.baseline.rateReadyAfter),
+    baselineSamplesBefore:p.baseline&&p.baseline.samples,baselineSamplesAfter:p.baseline&&p.baseline.samplesAfter,
+    baselineRateBefore:p.baseline&&prosodyRound(p.baseline.articulationRate,2),baselineRateAfter:p.baseline&&p.baseline.rateAfter,
+    baselineEvent:p.baseline&&p.baseline.rateEvent,
     coverage:p.timing&&p.timing.coverage,maxInternalPauseMs:p.timing&&p.timing.maxInternalPauseMs,
     voiceRuns:p.timing&&p.timing.voiceRuns,acousticClusters:p.analyzer&&p.analyzer.acousticClusters,
     selectedCluster:p.analyzer&&p.analyzer.selectedCluster,discardedClusters:p.analyzer&&p.analyzer.discardedClusters,
@@ -5771,7 +5852,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.32.3 Phase 1</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.32.4 Phase 1</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -6667,7 +6748,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.32.3 Phase 1');
+  out.push('- バージョン: Duo Interpreter v1.32.4 Phase 1');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
@@ -6755,10 +6836,10 @@ function diagText(devices){
   if (!CFG.prosodyOn && !prows.length) out.push('（OFF：解析していません）', '');
   else if (!prows.length) out.push('（解析済みの発話なし）', '');
   else {
-    out.push('| 発話 | 席 | 状態 | Span / Active | Pause before / internal | Speech / articulation rate | Pitch mean/range | Energy mean/range | Confidence (V/P/T) | Coverage / clusters |',
-             '|---|---|---|---:|---:|---:|---:|---:|---:|---:|');
+    out.push('| 発話 | 席 | 状態 | Span / Active | Pause before / internal | Speech / articulation rate | Pitch mean/range | Energy mean/range | Confidence (V/P/T) | Rate confidence / baseline | Coverage / clusters |',
+             '|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|');
     prows.forEach(function(e){
-      var p=e.prosody||{}, ok=!!p.available;
+      var p=e.prosody||{}, ok=!!p.available, pq=p.quality||{}, pb=p.baseline||{};
       out.push('| '+cell(e.id)+' | '+cell(e.seat)+' | '+cell(ok?'OK':(p.reason||'unavailable'))
         +' | '+(ok?p.durationMs+' / '+(p.activeSpeechMs==null?'—':p.activeSpeechMs)+' ms':'—')
         +' | '+(ok?p.pauseBeforeMs+' / '+(p.internalPauseMs||0)+' ms':'—')
@@ -6766,6 +6847,9 @@ function diagText(devices){
         +' | '+(ok&&p.pitch&&p.pitch.meanHz!=null?p.pitch.meanHz+' / '+p.pitch.rangeHz+' Hz':'—')
         +' | '+(ok&&p.energy&&p.energy.meanDb!=null?p.energy.meanDb+' / '+p.energy.rangeDb+' dB':'—')
         +' | '+(ok&&p.quality?cell(p.quality.label)+' ('+p.quality.voicedFrames+'/'+p.quality.pitchFrames+'/'+p.quality.totalFrames+')':'—')
+        +' | '+(ok?(pq.rateConfidence==null?'—':pq.rateConfidence)+' / '
+          +(pb.rateEvent==='ready'?'warmup 3/3→ready':pb.rateReadyAfter?'ready '+(pb.samplesAfter||0):'warmup '+(pb.samplesAfter||0)+'/3')
+          +(pq.baselineEligible?'':' ('+cell(pq.baselineReason||'excluded')+')'):'—')
         +' | '+(ok&&p.timing&&p.analyzer?Math.round((p.timing.coverage||0)*100)+'% / '
           +(p.analyzer.selectedCluster||1)+' of '+(p.analyzer.acousticClusters||1)
           +(p.analyzer.discardedClusters?'（除外'+p.analyzer.discardedClusters+'）':''):'—')+' |');
