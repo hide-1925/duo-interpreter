@@ -1146,7 +1146,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260830-v1329-vv3.5';
+var APP_BUILD = '20260831-v1329-vv3.7';
 
 /* ---------------- 言語定義 ---------------- */
 var LANGS = [
@@ -3372,7 +3372,9 @@ function silentWavUrl(ms){
 }
 function primeOutput(){
   if (CFG.ttsMode === 'off') return;
-  if (waMode) return;          /* 開きっぱなしの経路が動いていれば呼び水は不要 */
+  /* waMode は「Web Audio を一度使った」ことしか表さない。iOS Safari/PWAでは
+     AudioContext が running のままでも、無音が続くと実出力だけ休止することがある。
+     発話ごとに呼び水の停止タイマーを更新し、停止済みなら play() し直す。 */
   try{
     if (!primeEl){ primeEl = new Audio(silentWavUrl(400)); primeEl.loop = true; }
     if (OUT_SUPPORTED && CFG.outDev && primeEl.sinkId !== CFG.outDev){
@@ -3489,7 +3491,9 @@ function ttsAudioCtx(){
     } catch(e){}
     dlog('tts','wa-init',{ rate: ttsCtx.sampleRate, state: ttsCtx.state });
   }
-  if (ttsCtx.state === 'suspended'){
+  /* Safari は suspended 以外に interrupted 相当になる場合がある。
+     running/closed 以外は発話ごとに復帰を試みる。 */
+  if (ttsCtx.state !== 'running' && ttsCtx.state !== 'closed'){
     try { ttsCtx.resume().then(function(){ dlog('tts','wa-resume',{ state: ttsCtx.state }); }, function(){}); } catch(e){}
   }
   return ttsCtx;
@@ -4873,6 +4877,10 @@ function vvRequest(text, seat, attempt, signal, gen){
       try{ j=raw ? JSON.parse(raw) : {}; }catch(e){
         throw vvApiError('JSONを解析できません', {phase:'synthesis',http:r.status,body:raw.slice(0,120)});
       }
+      if (r.status===429 || j.retryAfter!=null){
+        var sec=Math.max(0.5,Math.min(10,Number(j.retryAfter)||1));
+        vvOnRateLimit(Math.round(sec*1000));
+      }
       if ((r.status===429 || j.retryAfter!=null) && attempt<2){
         var sec=Math.max(0.5,Math.min(10,Number(j.retryAfter)||1));
         dlog('tts','vv-retry',{attempt:attempt+1,afterMs:Math.round(sec*1000),http:r.status||429});
@@ -4899,7 +4907,40 @@ function vvRequest(text, seat, attempt, signal, gen){
 /* 合成と再生を分離する。TTS Questへの合成要求は最大4件まで並列に進めるが、
    返ってきたストリーミングURLは発話順に1本の<audio>へ渡す。
    これにより合成待ちを隠しつつ、音声同士が重なる・srcを書き換えて中断する問題を防ぐ。 */
-var VV_MAX_SYNTH = 4, vvJobs = [], vvSynthActive = 0, vvPlaying = null, vvControllers = [];
+var VV_MAX_SYNTH = 4, vvSynthLimit = VV_MAX_SYNTH;
+var vvBackoffUntil = 0, vvLast429At = 0, vvCleanSuccesses = 0, vvThrottleTimer = null;
+var vvJobs = [], vvSynthActive = 0, vvPlaying = null, vvControllers = [];
+function vvArmThrottlePump(){
+  clearTimeout(vvThrottleTimer); vvThrottleTimer=null;
+  var wait=Math.max(0,vvBackoffUntil-Date.now());
+  if (!wait) return;
+  vvThrottleTimer=setTimeout(function(){
+    vvThrottleTimer=null;
+    dlog('tts','vv-cooldown-end',{limit:vvSynthLimit,queued:vvJobs.length,active:vvSynthActive});
+    vvPumpSynthesis();
+  },wait+30);
+}
+/* 429時だけ並列上限を1段ずつ下げ、Retry-After中は新規要求を止める。
+   成功が安定してから1段ずつ戻すことで、4件固定による429連鎖を避ける。 */
+function vvOnRateLimit(afterMs){
+  var now=Date.now(),old=vvSynthLimit;
+  vvSynthLimit=Math.max(1,vvSynthLimit-1);
+  vvCleanSuccesses=0; vvLast429At=now;
+  vvBackoffUntil=Math.max(vvBackoffUntil,now+Math.max(500,Math.min(10000,Number(afterMs)||1000)));
+  dlog('tts','vv-throttle',{from:old,to:vvSynthLimit,cooldownMs:vvBackoffUntil-now,
+    active:vvSynthActive,queued:vvJobs.length});
+  vvArmThrottlePump();
+}
+function vvOnSynthSuccess(data){
+  /* リトライ後の成功は回復判定に使わない。429なしの成功だけを数える。 */
+  if (!data || Number(data._attempt||0)>0 || Date.now()<vvBackoffUntil) return;
+  vvCleanSuccesses++;
+  if (vvSynthLimit<VV_MAX_SYNTH && Date.now()-vvLast429At>=15000 && vvCleanSuccesses>=3){
+    var old=vvSynthLimit; vvSynthLimit++; vvCleanSuccesses=0;
+    dlog('tts','vv-recover',{from:old,to:vvSynthLimit,after429Ms:Date.now()-vvLast429At,
+      active:vvSynthActive,queued:vvJobs.length});
+  }
+}
 function vvReleaseSynth(job){
   if (!job || !job.synthSlot) return;
   job.synthSlot=false; vvSynthActive=Math.max(0,vvSynthActive-1);
@@ -4934,7 +4975,11 @@ function vvDropHead(job, why){
   setTimeout(vvPumpSynthesis,0);
 }
 function vvPumpSynthesis(){
-  for (var i=0;i<vvJobs.length && vvSynthActive<VV_MAX_SYNTH;i++){
+  if (Date.now()<vvBackoffUntil){
+    if (!vvThrottleTimer) vvArmThrottlePump();
+    vvPumpPlayback(); return;
+  }
+  for (var i=0;i<vvJobs.length && vvSynthActive<vvSynthLimit;i++){
     var job=vvJobs[i];
     if (job.done || job.state!=='waiting') continue;
     if (Date.now()-job.at>TTS_STALE_MS){ job.state='stale'; continue; }
@@ -4943,9 +4988,11 @@ function vvPumpSynthesis(){
       vvRequest(j.text,j.seat,0,j.ctrl.signal,j.gen).then(function(data){
         vvReleaseSynth(j); vvRemoveController(j.ctrl);
         if (j.done || j.gen!==ttsGen) return;
+        vvOnSynthSuccess(data);
         j.data=data; j.state='ready';
         dlog('tts','vv-ready',{seat:j.seat||'A',speaker:vvSpeakerId(j.seat),speakerName:String(data.speakerName||''),
-          ms:Date.now()-j.at,keyValid:data.isApiKeyValid!==false,retries:data._attempt||0,parallel:VV_MAX_SYNTH});
+          ms:Date.now()-j.at,keyValid:data.isApiKeyValid!==false,retries:data._attempt||0,
+          parallelMax:VV_MAX_SYNTH,parallelLimit:vvSynthLimit});
         vvPumpSynthesis(); vvPumpPlayback();
       }).catch(function(err){
         vvReleaseSynth(j); vvRemoveController(j.ctrl);
@@ -5127,7 +5174,8 @@ function vvSpeak(text, lang, seat, prosody){
     else { try{ job.ctrl.abort(); }catch(e){} job.state='stale'; vvPumpPlayback(); }
   },Math.min(90000,30000+text.length*250));
   job.staleTimer=setTimeout(vvPumpPlayback,TTS_STALE_MS+20);
-  if (vvJobs.length>1) dlog('tts','vv-queue',{n:vvJobs.length-1,chars:text.length,parallel:VV_MAX_SYNTH});
+  if (vvJobs.length>1) dlog('tts','vv-queue',{n:vvJobs.length-1,chars:text.length,
+    parallelMax:VV_MAX_SYNTH,parallelLimit:vvSynthLimit});
   vvPumpSynthesis();
 }
 /* 設定の組み合わせで「結局どれが何語で読まれるのか」は分かりにくく、
@@ -7493,7 +7541,7 @@ function diagText(devices){
       : '(未使用)'],
    ['Aivis 話し方の調整', CFG.ttsMode === 'aivis' ? aivisTweaks() : '(未使用)'],
    ['VOICEVOX 話し方の調整', CFG.ttsMode === 'voicevox' ? vvTweaks() : '(未使用)'],
-   ['VOICEVOX処理', CFG.ttsMode === 'voicevox' ? '最大4件並列合成 / 発話順に1件ずつ再生 / 最大6件保持 / 8秒超は破棄 / 高速再生は先読み保護' : '(未使用)'],
+   ['VOICEVOX処理', CFG.ttsMode === 'voicevox' ? '最大4件並列合成（429時は現在'+vvSynthLimit+'件へ自動抑制） / 発話順に1件ずつ再生 / 最大6件保持 / 8秒超は破棄 / 高速再生は先読み保護' : '(未使用)'],
    ['原文読み上げ', CFG.ttsSrc ? 'ON' : 'OFF'],
    ['鳴り始めの無音', CFG.ttsPad + ' ms'],
    ['再生経路', waMode ? 'Web Audio（開きっぱなし）' : '<audio>'],
