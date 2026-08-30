@@ -806,7 +806,7 @@
       <label>🗣 ElevenLabs</label>
       <div class="keyline">
         <input type="password" id="elKey" placeholder="ElevenLabs APIキー" autocomplete="off">
-        <button class="btn ghost" id="chkEl" title="キーの有効性と残り文字数を確かめます">🔍 確認</button>
+        <button class="btn ghost" id="chkEl" title="キーと Voices（read）権限を確かめます">🔍 確認</button>
       </div>
       <div class="keyrow"><span class="keychk" id="chkElMsg"></span></div>
       <select id="elModel">
@@ -817,17 +817,22 @@
       </select>
       <div class="row">
         <label class="seatpick seatA main"><span>自分(A)の発言</span>
-        <select id="elVoice"></select></label>
+        <select id="elVoice"></select>
+        <input type="text" id="elVoiceId" placeholder="または声IDを直接貼り付け" autocomplete="off"></label>
         <label class="seatpick seatB"><span>相手(B)の発言</span>
-        <select id="elVoiceB"></select></label>
+        <select id="elVoiceB"></select>
+        <input type="text" id="elVoiceIdB" placeholder="または声IDを直接貼り付け" autocomplete="off"></label>
         <button class="btn ghost" id="elFetch" title="アカウントの声一覧を取得" style="align-self:flex-end">🔄 声を取得</button>
+        <button class="btn ghost" id="elTest" title="選択中の声と Text to Speech 権限を、短い読み上げで確認（数文字分のクレジットを使用）" style="align-self:flex-end">🔊 TTSテスト</button>
       </div>
       <small><b>自分の声で読み上げたい場合はこれです。</b>
       <a href="https://elevenlabs.io/app/voice-lab" target="_blank" rel="noopener noreferrer">ElevenLabs の Voice Lab</a>
       で <b>Instant Voice Cloning</b> を選び、2分未満の自分の録音をアップロードすると、すぐに自分の声が作れます（学習の待ち時間はありません）。
-      作った声は「🔄 声を取得」で一覧に出てきます。<br>
+      作った声は「🔄 声を取得」で一覧に出てきます。<b>声を共有・公開する必要はありません。</b><br>
       <b>日本語も英語も同じ声で読めます</b>ので、A席とB席の両方を自分の声に揃えることもできます。
-      キーは <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener noreferrer">API Keys</a> から取得してください。
+      キーは <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener noreferrer">API Keys</a> から取得し、制限設定で <b>Text to Speech</b> を許可してください。
+      「🔄 声を取得」も使う場合は <b>Voices：Read</b> も必要です。コピー済みの声IDを直接貼る場合は Voices：Read なしでも構いません。
+      ただし「声のIDをコピー」だけではTTS利用権限は付きません。IP制限を使う場合は、このブラウザが通信する現在のグローバルIPを許可する必要があります。<br>
       Flash v2.5 は公称75ms級で、同時通訳の用途に向きます。品質を優先するなら Multilingual v2 ですが、そのぶん待ちが伸びます。<br>
       本人の同意なく他人の声を複製することは規約でも法令でも認められません。自分の声、または許諾を得た声だけをお使いください。</small>
     </div>
@@ -2278,17 +2283,29 @@ function verifyVvKey(){
       });
   });
 }
-/* ElevenLabs は残り文字数まで返るので、あと何文字読めるかを出す */
+/* ElevenLabs の API キーは既定でスコープ制限される。
+   /user の確認だけでは User(read) の有無しか分からず、TTS 可否を誤判定するため、
+   ここでは実際に必要な Voices(read) を副作用なしで確認する。 */
 function verifyElKey(){
   return keyChkRun('chkEl', 'chkElMsg', 'ElevenLabs', function(){
     var key = elKey();
     if (!key) return Promise.reject(new Error('APIキーが未入力です'));
-    return keyProbe(EL_BASE + '/user', { 'xi-api-key':key }).then(function(j){
-      var s = (j && j.subscription) || {};
-      if (s.character_limit == null) return 'キーは有効です。';
-      var left = Math.max(0, (s.character_limit || 0) - (s.character_count || 0));
-      return 'キーは有効です。残り ' + left.toLocaleString() + ' 文字'
-           + (s.tier ? '（' + s.tier + 'プラン）' : '') + '。';
+    return elFetchJson(EL_VOICES_URL + '?page_size=1&include_total_count=true', 'voices').then(function(j){
+      var n = Number(j && j.total_count);
+      return 'キーは有効で、Voices（read）も許可されています'
+           + (isFinite(n) ? '（利用可能な声 ' + n.toLocaleString() + ' 件）' : '')
+           + '。Text to Speech 権限は「🔊 TTSテスト」で確認してください。';
+    }).catch(function(err){
+      var info=(err && err.elInfo) || {};
+      var scan=String((info.code || '') + ' ' + (info.message || '')).toLowerCase();
+      /* 声IDを直接指定する最小権限構成では Voices(read) は任意。
+         missing_permissions はキー自体の認証には成功した結果なので、NG扱いしない。 */
+      if (Number(info.http)===403 && /missing_permissions|permission|forbidden|access_denied/.test(scan)
+          && !/ip|allowlist|allow-list/.test(scan)){
+        return 'キーは認証されています。Voices（read）は未許可なので「🔄 声を取得」は使えませんが、'
+             + '声IDの直接指定とText to Speech再生は利用できます。';
+      }
+      throw new Error(elFriendlyError(err, 'voices'));
     });
   });
 }
@@ -4310,7 +4327,9 @@ function aivisFetchStyles(){
 /* ---------------- ElevenLabs ----------------
    Aivis や VOICEVOX と違い日本語専用ではないので、どの言語でもこのエンジンで鳴らす。
    Instant Voice Cloning で作った「自分の声」を、日本語でも英語でも同じ声で使えるのが要点。 */
-var EL_BASE = 'https://api.elevenlabs.io/v1';
+var EL_ROOT = 'https://api.elevenlabs.io';
+var EL_BASE = EL_ROOT + '/v1';
+var EL_VOICES_URL = EL_ROOT + '/v2/voices';
 var elWarned = false;
 var xaiWarned = false;
 function elKey(){ return (KEYS['eleven'] || '').trim(); }
@@ -4319,6 +4338,94 @@ function elVoiceId(seat){ return seatPick(seat || 'A', CFG.elVoiceB, CFG.elVoice
 function elLangCode(lang){
   var c = String(lang || '').split('-')[0];
   return /v2_5$/.test(CFG.elModel || '') ? c : '';
+}
+/* ElevenLabs のエラー本文は detail.code / detail.message が原因判定の本体。
+   HTTP 401/403 だけに丸めると、権限・IP制限・声ID不一致を区別できない。 */
+function elMakeError(status, raw, action){
+  var parsed={}, detail={}, text=String(raw || '');
+  try{ parsed=JSON.parse(text); }catch(e){}
+  detail=(parsed && parsed.detail != null) ? parsed.detail : parsed;
+  if (typeof detail === 'string') detail={ message:detail };
+  detail=detail || {};
+  var code=String(detail.code || detail.status || parsed.code || '').trim();
+  var msg=String(detail.message || parsed.message || text || ('HTTP ' + status)).trim();
+  var err=new Error('HTTP ' + status + (code ? ' [' + code + ']' : '') + (msg ? ' ' + msg : ''));
+  err.elInfo={ http:Number(status)||0, code:code, message:msg,
+               requestId:String(detail.request_id || parsed.request_id || ''), action:action || '' };
+  return err;
+}
+function elRejectResponse(r, action){
+  return r.text().then(function(t){ throw elMakeError(r.status, t, action); });
+}
+function elFriendlyError(err, action){
+  var info=(err && err.elInfo) || {}, http=Number(info.http)||0;
+  var code=String(info.code || '').toLowerCase(), msg=String(info.message || '');
+  var scan=(code + ' ' + msg).toLowerCase(), tail=info.requestId ? '（Request ID: ' + info.requestId + '）' : '';
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(String((err&&err.message)||err)))
+    return 'ElevenLabsへ接続できません。ネットワークまたはブラウザの通信制限を確認してください。';
+  if (http===401 || /invalid_api_key|unauthorized|expired/.test(scan))
+    return 'ElevenLabsのAPIキーが無効・期限切れ・無効化済みです。キーを作り直して入れ替えてください。' + tail;
+  if (/ip|allowlist|allow-list/.test(scan))
+    return 'APIキーのIP制限に、このブラウザの現在のグローバルIPが含まれていません。IP制限を外すか、現在IPを許可してください。' + tail;
+  if (/voice_not_found|resource_not_found/.test(scan))
+    return '声IDが見つかりません。声を作成したものと同じElevenLabsアカウント／ワークスペースのAPIキーか確認してください。' + tail;
+  if (/quota|credit|character_limit|payment|required_balance/.test(scan))
+    return 'ElevenLabsのクレジット残量または利用上限が不足しています。Subscription / Usageを確認してください。' + tail;
+  if (/fine.?tun|not.?ready|verification|voice.*processing/.test(scan))
+    return 'この声はまだ検証・学習処理中で、API読み上げに利用できません。My Voicesで完了状態を確認してください。' + tail;
+  if (/too_many|concurr|rate.?limit/.test(scan) || http===429)
+    return 'ElevenLabsの同時実行数またはレート上限を超えています。再生終了後に再試行してください。' + tail;
+  if (/missing_permissions|permission|forbidden|not_allowed|access_denied/.test(scan) || http===403){
+    if (action === 'voices')
+      return 'APIキーに「Voices：Read」権限がありません。ElevenLabsのDevelopers → API Keysで有効にしてください。' + tail;
+    return 'APIキーに「Text to Speech」権限がありません。ElevenLabsのDevelopers → API Keysで有効にしてください。IP制限とワークスペースも併せて確認してください。' + tail;
+  }
+  if (http===422)
+    return 'ElevenLabsが声・モデル・言語の指定を受け付けませんでした。' + (msg ? ' ' + msg.slice(0,180) : '') + tail;
+  return 'ElevenLabsエラー' + (http ? '（HTTP ' + http + '）' : '')
+       + (code ? ' [' + code + ']' : '') + (msg ? ' ' + msg.slice(0,180) : '') + tail;
+}
+function elFetchJson(url, action){
+  return fetch(url, { headers:{ 'xi-api-key':elKey() } }).then(function(r){
+    if (!r.ok) return elRejectResponse(r, action);
+    return r.json();
+  });
+}
+/* v2一覧はページングされる。個人声が101件目以降でも落とさないよう全ページをたどる。 */
+function elFetchVoicePages(token, out, depth){
+  out=out || []; depth=depth || 0;
+  var url=EL_VOICES_URL + '?page_size=100&include_total_count=false';
+  if (token) url += '&next_page_token=' + encodeURIComponent(token);
+  return elFetchJson(url, 'voices').then(function(j){
+    out=out.concat((j && j.voices) || []);
+    if (j && j.has_more && j.next_page_token && depth < 9)
+      return elFetchVoicePages(j.next_page_token, out, depth+1);
+    return out;
+  });
+}
+function elSpeechBlob(text, lang, seat){
+  var key=elKey(), vid=elVoiceId(seat);
+  if (!key) return Promise.reject(new Error('ElevenLabsのAPIキーが未入力です。'));
+  if (!vid) return Promise.reject(new Error('ElevenLabsの声が未選択です。「🔄 声を取得」を押してください。'));
+  var body={ text:text, model_id:(CFG.elModel || 'eleven_flash_v2_5') };
+  var lc=elLangCode(lang); if (lc) body.language_code=lc;
+  return fetch(EL_BASE + '/text-to-speech/' + encodeURIComponent(vid) + '?output_format=mp3_44100_128', {
+    method:'POST', headers:{ 'Content-Type':'application/json', 'xi-api-key':key }, body:JSON.stringify(body)
+  }).then(function(r){
+    if (!r.ok) return elRejectResponse(r, 'tts');
+    return r.blob();
+  });
+}
+function verifyElTts(){
+  return keyChkRun('elTest', 'chkElMsg', 'ElevenLabs TTS', function(){
+    var seat=(seatUsed('B') && !seatUsed('A')) ? 'B' : 'A', line='テストです。';
+    return elSpeechBlob(line, 'ja', seat).then(function(b){
+      stopSpeaking('ElevenLabs試聴の前に停止');
+      ttsAudioCtx(); primeOutput();
+      playBlob(b, ttsGuard(line, 20000), 'eleven-test');
+      return 'Text to Speech権限と声IDは有効です。選択中の声でテスト音声を再生します。';
+    }).catch(function(err){ throw new Error(elFriendlyError(err, 'tts')); });
+  });
 }
 /* =========================================================================
    xAI Grok Voice（読み上げ）
@@ -4377,27 +4484,15 @@ function elSpeak(text, lang, seat){
     return ttsFallback(text, lang, '未設定',
       'ElevenLabs のAPIキーまたは声が未設定です。⚙→音声 でご確認ください。', 'elWarned');
   var t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150));
-  var body = { text:text, model_id:(CFG.elModel || 'eleven_flash_v2_5') };
-  var lc = elLangCode(lang); if (lc) body.language_code = lc;
-  fetch(EL_BASE + '/text-to-speech/' + encodeURIComponent(vid) + '?output_format=mp3_44100_128', {
-    method:'POST',
-    headers:{ 'Content-Type':'application/json', 'xi-api-key':key },
-    body: JSON.stringify(body)
-  }).then(function(r){
-    if (!r.ok) return r.text().then(function(x){ throw new Error(r.status + ' ' + String(x).slice(0,140)); });
-    return r.blob();
-  }).then(function(b){
+  elSpeechBlob(text, lang, seat).then(function(b){
     dlog('tts','eleven-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size, seat:seat||'A', lang:lang, model:CFG.elModel });
     playBlob(b, finish, 'eleven');
   }).catch(function(err){
-    var m = String((err && err.message) || err);
-    dlog('tts','eleven-FAIL',{ err:m.slice(0,140), ms:Date.now()-t0, seat:seat||'A' });
+    var m = String((err && err.message) || err), info=(err && err.elInfo) || {};
+    dlog('tts','eleven-FAIL',{ http:info.http||0, code:info.code||'', message:String(info.message||m).slice(0,180),
+                               requestId:info.requestId||'', ms:Date.now()-t0, seat:seat||'A' });
     finish();
-    var hint = /^401|^403/.test(m) ? 'ElevenLabs のキーが無効か、権限がありません。'
-             : /^422/.test(m)      ? 'この声またはモデルの組み合わせが受け付けられませんでした（言語の指定が合わない可能性があります）。'
-             : /^429/.test(m)      ? 'ElevenLabs の文字数上限に達したか、同時実行数を超えました。'
-             : /failed to fetch|networkerror|load failed/i.test(m) ? 'ElevenLabs に接続できませんでした。'
-             : 'ElevenLabs でエラーが返りました（' + m.slice(0,70) + '）。';
+    var hint = elFriendlyError(err, 'tts');
     ttsFallback(text, lang, 'API失敗', hint, 'elWarned');
   });
 }
@@ -4421,17 +4516,25 @@ function elFillVoiceSelect(sel, list, keep, withSame){
   });
   var k = String(keep || ''), found = false;
   for (var i=0;i<sel.options.length;i++) if (sel.options[i].value === k) found = true;
+  /* Voices(read)を付けず、コピーしたIDだけでTTSを使う最小権限構成も許す。 */
+  if (k && !found){
+    var manual=document.createElement('option');
+    manual.value=k; manual.textContent='直接指定：' + k;
+    sel.appendChild(manual); found=true;
+  }
   if (found) sel.value = k;
   return withSame ? sel.options.length - 1 : sel.options.length;
 }
 function elFetchVoices(){
   var key = elKey();
   if (!key){ toast('先に ElevenLabs のAPIキーを入力してください'); return Promise.resolve(); }
-  return fetch(EL_BASE + '/voices', { headers:{ 'xi-api-key':key } }).then(function(r){
-    if (!r.ok) throw new Error(r.status + '');
-    return r.json();
-  }).then(function(j){
-    var list = (j && j.voices) || [];
+  return elFetchVoicePages('', [], 0).then(function(list){
+    var seen={};
+    list=list.filter(function(v){
+      var id=String((v && v.voice_id) || '');
+      if (!id || seen[id]) return false;
+      seen[id]=true; return true;
+    });
     /* 自分でクローンした声を上に持ってくる。既定の声に埋もれると探せない */
     list.sort(function(a, b){
       var rank = function(v){ return v.category === 'cloned' ? 0 : v.category === 'professional' ? 1 : 2; };
@@ -4459,9 +4562,9 @@ function elFetchVoices(){
     refreshVvUI();
     return list;
   }).catch(function(err){
-    var m = String((err && err.message) || err);
-    dlog('tts','eleven-voices-FAIL',{ err:m.slice(0,140) });
-    toast('声の一覧を取得できませんでした（' + m.slice(0,60) + '）。キーをご確認ください。');
+    var info=(err && err.elInfo) || {}, hint=elFriendlyError(err, 'voices');
+    dlog('tts','eleven-voices-FAIL',{ http:info.http||0, code:info.code||'', message:String(info.message||err).slice(0,180), requestId:info.requestId||'' });
+    toast(hint);
   });
 }
 
@@ -4933,6 +5036,7 @@ function refreshVvUI(){
       eo.value = CFG.elVoice; eo.textContent = CFG.elVoiceLbl || CFG.elVoice;
       ev.appendChild(eo); ev.value = CFG.elVoice;
     }
+    var evid=$('elVoiceId'); if (evid && evid !== document.activeElement) evid.value=CFG.elVoice || '';
     var evb = $('elVoiceB');
     if (evb && !evb.options.length){
       var ez = document.createElement('option'); ez.value = ''; ez.textContent = inheritedVoiceLabel();
@@ -4944,6 +5048,7 @@ function refreshVvUI(){
       }
       evb.value = CFG.elVoiceB || '';
     }
+    var evidb=$('elVoiceIdB'); if (evidb && evidb !== document.activeElement) evidb.value=CFG.elVoiceB || '';
   }
   var xf = $('xaiField');
   if (xf){
@@ -6924,6 +7029,7 @@ $('chkVv').onclick    = function(){ verifyVvKey(); };
 $('chkLvv').onclick   = function(){ verifyLvv(); };
 $('chkEl').onclick    = function(){ verifyElKey(); };
 $('elFetch').onclick  = function(){ elFetchVoices(); };
+$('elTest').onclick   = function(){ verifyElTts(); };
 $('aivisFetch').onclick = function(){ aivisFetchStyles(); };
 $('aivisStyle').onchange = function(){
   CFG.aivisStyle = this.value; store.set('di.aist', CFG.aivisStyle);
@@ -6974,14 +7080,39 @@ $('elVoice').onchange = function(){
   CFG.elVoice = this.value;
   CFG.elVoiceLbl = this.options[this.selectedIndex] ? this.options[this.selectedIndex].textContent : '';
   store.set('di.elv', CFG.elVoice); store.set('di.elvl', CFG.elVoiceLbl);
+  if ($('elVoiceId')) $('elVoiceId').value=CFG.elVoice;
   refreshVvUI();
 };
 $('elVoiceB').onchange = function(){
   CFG.elVoiceB = this.value;
   CFG.elVoiceBLbl = this.selectedIndex >= 0 ? this.options[this.selectedIndex].textContent : '';
   store.set('di.elva', CFG.elVoiceB); store.set('di.elval', CFG.elVoiceBLbl);
+  if ($('elVoiceIdB')) $('elVoiceIdB').value=CFG.elVoiceB;
   refreshVvUI();
 };
+function elSetManualVoice(seat, value){
+  value=String(value || '').trim();
+  var isB=seat==='B', sel=$(isB ? 'elVoiceB' : 'elVoice');
+  var label=value ? '直接指定：' + value : (isB ? inheritedVoiceLabel() : '');
+  if (isB){
+    CFG.elVoiceB=value; CFG.elVoiceBLbl=label;
+    store.set('di.elva', value); store.set('di.elval', label);
+  } else {
+    CFG.elVoice=value; CFG.elVoiceLbl=label;
+    store.set('di.elv', value); store.set('di.elvl', label);
+  }
+  if (sel){
+    var found=false;
+    for (var i=0;i<sel.options.length;i++) if (sel.options[i].value===value) found=true;
+    if (value && !found){
+      var o=document.createElement('option'); o.value=value; o.textContent=label; sel.appendChild(o);
+    }
+    sel.value=value;
+  }
+  elWarned=false; keyChkShow('chkElMsg','',''); refreshVvUI();
+}
+$('elVoiceId').onchange=function(){ elSetManualVoice('A', this.value); };
+$('elVoiceIdB').onchange=function(){ elSetManualVoice('B', this.value); };
 $('outDev').onchange = function(){
   var sel = this, id = sel.value;
   /* 表示名には🎚などの目印を付けているので、保存には元のラベルを使う
