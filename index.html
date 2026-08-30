@@ -1010,8 +1010,8 @@
       <small>キャラとスタイルは、VOICEVOX WEB版APIが公開する一覧を起動時に取得します。取得できない場合も内蔵の網羅リストを表示します。<br>
       キーは <a href="https://su-shiki.com/api/" target="_blank" rel="noopener noreferrer">su-shiki.com/api/</a> で無料取得できます（有志が運営する非公式APIです）。
       日本語の読み上げだけがこの声になり、<b>それ以外の言語はブラウザ内蔵音声</b>で読み上げます。
-      <b>話し方の調整</b>では話速・声の高さ・抑揚を変更できます。既定に戻せば従来と同じ音です。
-      話し方保持をONにすると、ここで指定した値を基準に、元音声の話速・相対Pitch・表現幅を発話ごとに自動補正します（設定欄の値自体は変わりません）。
+      現行v3 APIでは合成時の声高・抑揚指定がないため、<b>話速だけを端末側の再生速度で反映</b>します。声の高さ・抑揚は解析・診断用として保持します。
+      話し方保持をONにすると、元音声の話速を発話ごとに自動補正します（設定欄の値自体は変わりません）。
       ポイント制の1日上限があり、混雑時は失敗することがあります（失敗時はブラウザ内蔵音声に自動で切り替わります）。
       個人利用向けのAPIなので、業務での常用には向きません。</small>
       <div class="note" id="vvCredit"></div>
@@ -1142,6 +1142,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
+var APP_BUILD = '20260830-vv3.1';
 
 /* ---------------- 言語定義 ---------------- */
 var LANGS = [
@@ -2266,18 +2267,19 @@ function verifyAivisKey(){
     });
   }, 'モデル UUID が見つかりません。AivisHub のモデルページからコピーし直してください。');
 }
-/* VOICEVOX WEB版はポイント残量の入口があるので、残りも一緒に出す */
+/* VOICEVOX WEB版はポイント残量の入口があるので、残りも一緒に出す。
+   v2 は廃止済みのため、合成と同じ現行 v3 API で検証する。 */
 function verifyVvKey(){
   return keyChkRun('chkVv', 'chkVvMsg', 'VOICEVOX WEB版', function(){
     var key = vvKey();
     if (!key) return Promise.reject(new Error('APIキーが未入力です'));
-    return keyProbe('https://deprecatedapis.tts.quest/v2/api/?key=' + encodeURIComponent(key))
+    return keyProbe('https://api.tts.quest/v3/key/points?key=' + encodeURIComponent(key))
       .then(function(j){
-        if (j && j.isApiKeyValid === false) throw new Error('HTTP 401 invalidApiKey');
+        if (j && j.isApiKeyValid === false) throw new Error('キーが無効、またはポイント残量がありません');
         var pts = (j && (j.points != null ? j.points : j.point));
         if (pts == null) return 'キーは有効です。';
-        /* 1回の読み上げは 1500 + 100×文字数 ポイント */
-        var n = Math.floor(pts / (1500 + 100 * 30));
+        /* v3 の有効キーは1文字あたり1ポイントを消費する */
+        var n = Math.floor(pts / 30);
         return 'キーは有効です。残り ' + pts.toLocaleString() + ' ポイント'
              + '（30字の読み上げで約 ' + n + ' 回分）。';
       });
@@ -2507,7 +2509,7 @@ function updateProsodyStatus(){
   if (tt) tt.textContent = !on ? 'OFF'
     : CFG.ttsMode==='browser' ? '速度・音量・語尾傾向'
     : CFG.ttsMode==='aivis' ? '速度・緩急・音量'
-    : CFG.ttsMode==='voicevox' ? '速度・声高・抑揚'
+    : CFG.ttsMode==='voicevox' ? '速度（声高・抑揚は解析のみ）'
     : '解析のみ（未対応）';
 }
 function resetProsodyCaps(running, clearObserved){
@@ -4656,10 +4658,9 @@ function lvvFetchSpeakers(){
 
 /* ---------------- VOICEVOX WEB版（お遊び機能） ----------------
    有志が公開している非公式のWEB版VOICEVOX APIを叩いて、ずんだもん等の声で読み上げる。
-   fetchではなく<audio>のsrcに直接URLを入れているのは、相手側のCORS設定に
-   依存せず再生できるようにするため（キーがURLに乗るので個人用キー前提）。
+   v3 は最初に合成APIからストリーミングURLを受け取り、そのURLを<audio>で再生する。
    VOICEVOXは日本語専用なので、日本語以外はブラウザ内蔵音声に回す。 */
-var VV_BASE = 'https://deprecatedapis.tts.quest/v2/voicevox/audio/';
+var VV_BASE = 'https://api.tts.quest/v3/voicevox/synthesis';
 var VV_SPEAKERS_URL = 'https://static.tts.quest/voicevox_speakers_utf8.json';
 /* TTS Questが公開している配列は「配列index = speaker/style ID」。通信不能でも
    全選択肢を出せるよう、2026-08-30時点の118スタイルを内蔵する。起動後に
@@ -4831,14 +4832,43 @@ function vvCreditNames(){
   if (!names.length) names.push(vvSpeakerInfo(CFG.vvSpeaker).name);
   return names.join(' / ');
 }
-function vvUrl(text, seat, values){
-  var v=values||vvValues();
+function vvUrl(text, seat){
   return VV_BASE + '?key=' + encodeURIComponent(vvKey())
        + '&speaker=' + encodeURIComponent(vvSpeakerId(seat))
-       + '&pitch=' + encodeURIComponent(v.pitch)
-       + '&intonationScale=' + encodeURIComponent(v.intonation)
-       + '&speed=' + encodeURIComponent(v.speed)
        + '&text=' + encodeURIComponent(text);
+}
+function vvApiError(msg, detail){
+  var e=new Error(msg||'VOICEVOX API error'), k;
+  detail=detail||{}; for (k in detail) if (Object.prototype.hasOwnProperty.call(detail,k)) e[k]=detail[k];
+  return e;
+}
+function vvRequest(text, seat, attempt){
+  attempt=attempt||0;
+  return fetch(vvUrl(text,seat),{cache:'no-store'}).then(function(r){
+    return r.text().then(function(raw){
+      var j={};
+      try{ j=raw ? JSON.parse(raw) : {}; }catch(e){
+        throw vvApiError('JSONを解析できません', {phase:'synthesis',http:r.status,body:raw.slice(0,120)});
+      }
+      if ((r.status===429 || j.retryAfter!=null) && attempt<2){
+        var sec=Math.max(0.5,Math.min(10,Number(j.retryAfter)||1));
+        dlog('tts','vv-retry',{attempt:attempt+1,afterMs:Math.round(sec*1000),http:r.status||429});
+        return new Promise(function(resolve){ setTimeout(resolve,Math.round(sec*1000)); })
+          .then(function(){ return vvRequest(text,seat,attempt+1); });
+      }
+      if (!r.ok || j.success===false || j.errorMessage){
+        throw vvApiError(String(j.errorMessage||('HTTP '+r.status)),
+          {phase:'synthesis',http:r.status,code:j.errorCode||'',retryAfter:j.retryAfter,body:raw.slice(0,120)});
+      }
+      if (!j.mp3StreamingUrl){
+        throw vvApiError('ストリーミングURLがありません',{phase:'synthesis',http:r.status,body:raw.slice(0,120)});
+      }
+      j._attempt=attempt; return j;
+    });
+  }).catch(function(e){
+    if (e && e.phase) throw e;
+    throw vvApiError(String((e&&e.message)||e),{phase:'network'});
+  });
 }
 function vvSpeak(text, lang, seat, prosody){
   if (lang !== 'ja'){                       // VOICEVOXは日本語専用
@@ -4857,35 +4887,55 @@ function vvSpeak(text, lang, seat, prosody){
   }
   var effective=vvEffectiveValues(prosody), tweaks=vvValueTweaks(effective), manualTweaks=vvTweaks();
   logProsodyMap(effective.map,{effectiveRate:effective.speed,effectivePitch:effective.pitch,
-    effectiveIntonation:effective.intonation});
-  var done = false, tEnd = null, t0 = Date.now();
-  var finish = function(){ if (done) return; done = true; clearTimeout(tEnd); ttsEnd(); };
+    effectiveIntonation:effective.intonation,appliedRate:true,appliedPitch:false,appliedIntonation:false});
+  var done = false, tEnd = null, t0 = Date.now(), gen=ttsGen, failed=false;
+  var finish = function(){
+    if (done) return; done=true; clearTimeout(tEnd);
+    if (ttsCurEnd===finish) ttsCurEnd=null;
+    try{ audioEl.playbackRate=1; audioEl.defaultPlaybackRate=1; }catch(e){}
+    ttsEnd();
+  };
+  function fallback(err){
+    if (failed || done || gen!==ttsGen) return;
+    failed=true;
+    var me=audioEl.error;
+    dlog('tts','vv-FAIL',{ seat:seat||'A',speaker:vvSpeakerId(seat),chars:text.length,ms:Date.now()-t0,
+      phase:(err&&err.phase)||'audio',http:(err&&err.http)||0,code:(err&&err.code)||(me&&me.code)||'',
+      err:String((err&&err.message)||err||'media error').slice(0,120),networkState:audioEl.networkState,
+      readyState:audioEl.readyState,tweaks:tweaks,manualTweaks:manualTweaks,prosody:!!effective.map });
+    finish();
+    if (!vvWarned){
+      vvWarned=true;
+      toast('VOICEVOXの音声を取得できませんでした。診断ログの <code>vv-FAIL</code> に失敗箇所を記録しました。<br>今回はブラウザ内蔵の音声で読み上げます。');
+    }
+    browserSpeak(text,'ja-JP',prosody);
+  }
   rememberSpoken(text);
   ttsBegin();
+  ttsCurEnd=finish;                         /* 停止中の合成要求も確実に無効化 */
   tEnd = setTimeout(function(){
     dlog('tts','vv-TIMEOUT',{ ms: Date.now()-t0 });
     finish();
-  }, Math.min(90000, 10000 + text.length * 200));
+  }, Math.min(90000, 30000 + text.length * 250));
   ensureSink();
   primeOutput();
-  audioEl.src = vvUrl(text, seat, effective);
-  audioEl.onended = function(){
-    dlog('tts','vv-end',{ seat: seat||'A', speaker: vvSpeakerId(seat), chars: text.length, ms: Date.now()-t0,
-      tweaks:tweaks, manualTweaks:manualTweaks, prosody:!!effective.map });
-    finish();
-  };
-  audioEl.onerror = function(){
-    dlog('tts','vv-FAIL',{ seat: seat||'A', speaker: vvSpeakerId(seat), chars: text.length, ms: Date.now()-t0,
-      tweaks:tweaks, manualTweaks:manualTweaks, prosody:!!effective.map });
-    finish();
-    if (!vvWarned){
-      vvWarned = true;
-      toast('VOICEVOXの音声を取得できませんでした。キー・ポイント残量・混雑状況をご確認ください。<br>今回はブラウザ内蔵の音声で読み上げます。');
-    }
-    browserSpeak(text, 'ja-JP',prosody);    // 鳴らないより内蔵音声で鳴らす方がまし
-  };
-  var pr = audioEl.play();
-  if (pr && pr.catch) pr.catch(function(){ /* 失敗は onerror 側で拾う */ });
+  vvRequest(text,seat,0).then(function(j){
+    if (gen!==ttsGen || done){ dlog('tts','vv-drop',{why:'停止後に届いた',speaker:vvSpeakerId(seat)}); finish(); return; }
+    dlog('tts','vv-ready',{seat:seat||'A',speaker:vvSpeakerId(seat),speakerName:String(j.speakerName||''),
+      ms:Date.now()-t0,keyValid:j.isApiKeyValid!==false,retries:j._attempt||0});
+    audioEl.onended=function(){
+      dlog('tts','vv-end',{seat:seat||'A',speaker:vvSpeakerId(seat),chars:text.length,ms:Date.now()-t0,
+        tweaks:tweaks,manualTweaks:manualTweaks,prosody:!!effective.map}); finish();
+    };
+    audioEl.onerror=function(){ fallback(vvApiError('音声ストリームを再生できません',{phase:'audio'})); };
+    /* v3 が受け付ける合成指定は speaker/text/key。話速だけは端末側の再生速度で反映し、
+       声高・抑揚は解析値として残す（未対応値をAPIへ送って成功したように見せない）。 */
+    audioEl.defaultPlaybackRate=effective.speed; audioEl.playbackRate=effective.speed;
+    try{ audioEl.preservesPitch=true; audioEl.webkitPreservesPitch=true; }catch(e){}
+    audioEl.src=j.mp3StreamingUrl;
+    var pr=audioEl.play();
+    if (pr&&pr.catch) pr.catch(function(e){ fallback(vvApiError(String((e&&e.message)||e),{phase:'play'})); });
+  }).catch(fallback);
 }
 /* 設定の組み合わせで「結局どれが何語で読まれるのか」は分かりにくく、
    鳴らない・別の声で鳴る理由に気づけない。実際の動作を文章にして常に見せる。 */
@@ -7196,6 +7246,7 @@ function diagText(devices){
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
   out.push('- バージョン: Duo Interpreter v1.32.8 Phase 1');
+  out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
@@ -7261,7 +7312,7 @@ function diagText(devices){
    ['Prosody TTS反映', !CFG.prosodyOn ? 'OFF'
       : CFG.ttsMode==='browser' ? 'ブラウザ標準：速度・音量・語尾傾向'
       : CFG.ttsMode==='aivis' ? 'Aivis：速度・緩急・音量'
-      : CFG.ttsMode==='voicevox' ? 'VOICEVOX：速度・声高・抑揚'
+      : CFG.ttsMode==='voicevox' ? 'VOICEVOX：速度（声高・抑揚は解析のみ）'
       : '解析のみ（現在のTTSは未対応）'],
    ['エコー除外', CFG.echoGuard ? 'ON' : 'OFF'],
    ['翻訳スタイル', CFG.tone], ['VADしきい値', CFG.vad],
@@ -7413,6 +7464,7 @@ applyCfg();
 setMode(store.get('di.automode','1') === '1');
 setFocus(CFG.focus || 'split');
 updateStatus();
+dlog('app','build',{id:APP_BUILD,voicevoxApi:'v3'});
 
 /* =========================================================================
    iOS（iPhone / iPad）向けの環境チェックと自動調整
