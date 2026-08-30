@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.32.7 Phase 1 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.32.8 Phase 1 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -483,7 +483,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.7 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.8 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -493,7 +493,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.7 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.8 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -665,6 +665,8 @@
       </div>
       <input type="text" id="sttModelCustom" placeholder="モデル名を直接入力" style="display:none">
       <small id="sttModelNote"></small>
+      <label class="switch"><input type="checkbox" id="sttPunct"> 句読点を自動補完する</label>
+      <small>API型STTには、内容を変えず自然な句読点を付けるよう指示します。ブラウザ内蔵STTは単語時刻を返さないため、誤挿入を避けて文末の「。／？／.／?」だけを補完します。</small>
       <small id="xaiSttNote" style="display:none">xAI の音声認識はモデルを選ぶ必要がありません。
       キーは翻訳プロバイダの xAI と共通で、上の欄が空ならそちらのキーを使います。<br>
       日本語・英語を含む25言語に対応しています。<b>中国語は対応一覧にありません</b>ので、
@@ -980,6 +982,7 @@
         <select id="vvSpeakerA"></select></label>
         <label class="seatpick seatB"><span>相手(B)の発言</span>
         <select id="vvSpeaker"></select></label>
+        <button class="btn ghost" id="vvSpeakerFetch" title="TTS Questから現在のキャラ・スタイル一覧を取得" style="align-self:flex-end">🔄 一覧更新</button>
       </div>
       <div class="keyline">
         <input type="password" id="vvKey" placeholder="WEB版VOICEVOX APIキー" autocomplete="off">
@@ -999,7 +1002,8 @@
           <span class="keychk" id="vvAdvMsg"></span>
         </div>
       </details>
-      <small>キーは <a href="https://su-shiki.com/api/" target="_blank" rel="noopener noreferrer">su-shiki.com/api/</a> で無料取得できます（有志が運営する非公式APIです）。
+      <small>キャラとスタイルは、VOICEVOX WEB版APIが公開する一覧を起動時に取得します。取得できない場合も内蔵の網羅リストを表示します。<br>
+      キーは <a href="https://su-shiki.com/api/" target="_blank" rel="noopener noreferrer">su-shiki.com/api/</a> で無料取得できます（有志が運営する非公式APIです）。
       日本語の読み上げだけがこの声になり、<b>それ以外の言語はブラウザ内蔵音声</b>で読み上げます。
       <b>話し方の調整</b>では話速・声の高さ・抑揚を変更できます。既定に戻せば従来と同じ音です。
       話し方保持をONにすると、ここで指定した値を基準に、元音声の話速・相対Pitch・表現幅を発話ごとに自動補正します（設定欄の値自体は変わりません）。
@@ -1266,6 +1270,7 @@ function loadCfg(){
     ctx:       pref('di.ctx','ctx',''),
     sttProvider: pref('di.sttp','sttProvider','webspeech'),
     sttModel:  pref('di.sttm','sttModel',''),
+    sttPunct:  pref('di.sttpunc','sttPunct','1')+'' === '1',
     ttsMode:   pref('di.tts','ttsMode','off'),
     ttsWho:    pref('di.ttsw','ttsWho','B2A'),
     focus:     pref('di.focus','focus','split'),
@@ -1318,11 +1323,11 @@ function loadCfg(){
     aivisSpk:   pref('di.aisp','aivisSpk',''),                   /* 複数話者モデル向け */
     aivisSpkB:  pref('di.aispa','aivisSpkB',''),
     elModel:   pref('di.elm','elModel','eleven_flash_v2_5'),
-    elVoice:   pref('di.elv','elVoice',''),                /* 相手(B) */
+    elVoice:   pref('di.elv','elVoice',''),                /* 自分(A)の基準声 */
     elVoiceLbl:pref('di.elvl','elVoiceLbl',''),
     elVoiceB:  pref('di.elva','elVoiceB',''),              /* 空なら自分(A)と同じ声 */
     elVoiceBLbl:pref('di.elval','elVoiceBLbl',''),
-    xaiVoice:  pref('di.xav','xaiVoice','eve'),            /* 相手(B) */
+    xaiVoice:  pref('di.xav','xaiVoice','eve'),            /* 自分(A)の基準声 */
     xaiVoiceB: pref('di.xava','xaiVoiceB',''),             /* 空なら自分(A)と同じ声 */
     lvvBase:   pref('di.lvb','lvvBase','http://127.0.0.1:10101'),
     lvvSpeaker:pref('di.lvs','lvvSpeaker',''),
@@ -2328,7 +2333,7 @@ function redact(s){
 }
 
 /* =========================================================================
-   Prosody Analyzer — Phase 1B / v1.32.7
+   Prosody Analyzer — Phase 1B / v1.32.8
    ------------------------------------------------------------------
    同じ MediaStream を STT と並列に観測し、発話単位の物理量だけを要約する。
    高頻度フレームはメモリ内だけに保持し、dlog() には発話終了時の要約だけを書く。
@@ -2930,11 +2935,27 @@ var ttsActive = 0, ttsWarned = false, ttsSilentFails = 0;
    代わりに「自分が読み上げた文章をマイクが拾ってしまった分」だけを、
    内容を照合して除外する。時間で一律に捨てると本物の発言まで失われる。 */
 var spokenRecent = [];
-function normTxt(s){ return String(s||'').toLowerCase().replace(/[\s\u3000]/g,'').replace(/[.,!?;:、。・…「」『』()（）]/g,''); }
+function normTxt(s){ return String(s||'').toLowerCase().replace(/[\s\u3000]/g,'').replace(/[.,!?！？;:、。・…「」『』()（）]/g,''); }
 function hasSpeechContent(s){
   s=String(s||'').trim();
   if (!s) return false;
   try{ return /[\p{L}\p{N}]/u.test(s); }catch(e){ return /[A-Za-z0-9ぁ-んァ-ヶ一-龠]/.test(s); }
+}
+/* Web Speechは端末によって句読点を付けない。単語timestampが無い状態で文中へ
+   読点を推測挿入すると意味を変え得るため、ローカル補完は文末だけに限定する。
+   API型STTには別途、自然な句読点を含む逐語書き起こしを指示する。 */
+function punctuateTranscript(text, lang){
+  text=String(text||'').trim();
+  if (!CFG.sttPunct || !text || !hasSpeechContent(text)) return text;
+  var closing='', m=text.match(/([」』】）\]\}"']+)$/);
+  if (m){ closing=m[1]; text=text.slice(0,-closing.length).trim(); }
+  if (!text || /[。！？.!?…]$/.test(text)) return text+closing;
+  var lc=String(lang||'').split('-')[0], question=false;
+  if (lc==='ja') question=/(?:ですか|ますか|でしょうか|だろうか|なのか|のか|かな|か)$/.test(text);
+  else if (lc==='zh') question=/(?:吗|呢|麼|么)$/.test(text);
+  else if (/^(?:who|what|when|where|why|how|which|whose|whom|is|are|am|was|were|do|does|did|can|could|will|would|shall|should|have|has|had|may|might)\b/i.test(text)) question=true;
+  var mark=(lc==='ja'||lc==='zh')?(question?'？':'。'):(question?'?':'.');
+  return text+mark+closing;
 }
 function rememberSpoken(t){
   spokenRecent.push({ t: normTxt(t), at: Date.now() });
@@ -3564,19 +3585,20 @@ function seatPick(seat, subVal, mainVal){
   var sub = String(subVal || '').trim(), main = String(mainVal || '').trim();
   return (seat === 'B') ? (sub || main) : main;
 }
-/* 使われない側の列は出しても迷うだけなので隠す。
-   ただし継承のもと（main）になっている列は、その席を読み上げないときも隠さない。
-   相手(B)が「自分(A)と同じ」を指しているとき、隠すと“同じ”を決める欄が消えてしまい、
-   声を1つも選べない画面になるため。 */
+function inheritedVoiceLabel(){ return seatUsed('A') ? '自分(A)と同じ' : '既定の声（保存済み設定）'; }
+/* 使われない側の列は完全に隠す。B席がA席の保存値を継承していても、B席側の
+   プルダウンから独立した声を選べるため、非対象のA欄を残す必要はない。 */
 function applySeatCols(){
   var showA = seatUsed('A'), showB = seatUsed('B');
   ['seatA','seatB'].forEach(function(cls){
     var base = (cls === 'seatA') ? showA : showB;
     var els = document.querySelectorAll('.' + cls);
     for (var i=0;i<els.length;i++){
-      var on = base || (cls === 'seatA' && hasClass(els[i], 'main'));
-      els[i].style.display = on ? '' : 'none';
+      els[i].style.display = base ? '' : 'none';
     }
+  });
+  ['elVoiceB','xaiVoiceB','lvvSpeakerB'].forEach(function(id){
+    var sl=$(id); if (sl && sl.options.length && sl.options[0].value==='') sl.options[0].textContent=inheritedVoiceLabel();
   });
 }
 
@@ -3904,7 +3926,7 @@ function aivisFillModels(sel, isA){
   var add = function(v, t){
     var o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o);
   };
-  if (!isA) add('', '自分(A)と同じ');
+  if (!isA) add('', inheritedVoiceLabel());
   AIVIS_MODELS.slice(0, AIVIS_PRIMARY_COUNT).forEach(function(x){ add(x.u, x.n); });
   add(AIVIS_MORE, '▼ その他のキャラ（「にせ」以降）');
   add(AIVIS_CUSTOM, '── その他（モデル UUID を貼り付け）──');
@@ -3929,6 +3951,7 @@ function aivisSyncModel(seat){
   var moreBox = $('aivisMore');
   if (!sel) return;
   aivisFillModels(sel, isA);
+  if (!isA && sel.options.length && sel.options[0].value==='') sel.options[0].textContent=inheritedVoiceLabel();
   aivisFillMoreModels(more);
   var uuid = String((isA ? CFG.aivisModel : CFG.aivisModelB) || '').trim();
   /* 一覧に無いUUIDが入っているなら当然「その他」。
@@ -4383,7 +4406,7 @@ function elFillVoiceSelect(sel, list, keep, withSame){
   sel.innerHTML = '';
   if (withSame){
     var z = document.createElement('option');
-    z.value = ''; z.textContent = '自分(A)と同じ';
+    z.value = ''; z.textContent = inheritedVoiceLabel();
     sel.appendChild(z);
   }
   (list || []).forEach(function(v){
@@ -4534,20 +4557,106 @@ function lvvFetchSpeakers(){
    依存せず再生できるようにするため（キーがURLに乗るので個人用キー前提）。
    VOICEVOXは日本語専用なので、日本語以外はブラウザ内蔵音声に回す。 */
 var VV_BASE = 'https://deprecatedapis.tts.quest/v2/voicevox/audio/';
-var VV_SPEAKERS = [
-  { id:'3',  name:'ずんだもん',   style:'ノーマル' },
-  { id:'1',  name:'ずんだもん',   style:'あまあま' },
-  { id:'7',  name:'ずんだもん',   style:'ツンツン' },
-  { id:'5',  name:'ずんだもん',   style:'セクシー' },
-  { id:'2',  name:'四国めたん',   style:'ノーマル' },
-  { id:'0',  name:'四国めたん',   style:'あまあま' },
-  { id:'8',  name:'春日部つむぎ', style:'ノーマル' },
-  { id:'10', name:'雨晴はう',     style:'ノーマル' },
-  { id:'9',  name:'波音リツ',     style:'ノーマル' },
-  { id:'11', name:'玄野武宏',     style:'ノーマル' },
-  { id:'13', name:'青山龍星',     style:'ノーマル' },
-  { id:'14', name:'冥鳴ひまり',   style:'ノーマル' }
+var VV_SPEAKERS_URL = 'https://static.tts.quest/voicevox_speakers_utf8.json';
+/* TTS Questが公開している配列は「配列index = speaker/style ID」。通信不能でも
+   全選択肢を出せるよう、2026-08-30時点の118スタイルを内蔵する。起動後に
+   公開JSONを取得できれば、ID対応を保ったまま新しい一覧へ置き換える。 */
+var VV_FALLBACK_LABELS = [
+  'VOICEVOX:四国めたん（あまあま）','VOICEVOX:ずんだもん（あまあま）','VOICEVOX:四国めたん（ノーマル）','VOICEVOX:ずんだもん（ノーマル）',
+  'VOICEVOX:四国めたん（セクシー）','VOICEVOX:ずんだもん（セクシー）','VOICEVOX:四国めたん（ツンツン）','VOICEVOX:ずんだもん（ツンツン）',
+  'VOICEVOX:春日部つむぎ（ノーマル）','VOICEVOX:波音リツ（ノーマル）','VOICEVOX:雨晴はう（ノーマル）','VOICEVOX:玄野武宏（ノーマル）',
+  'VOICEVOX:白上虎太郎（ふつう）','VOICEVOX:青山龍星（ノーマル）','VOICEVOX:冥鳴ひまり（ノーマル）','VOICEVOX:九州そら（あまあま）',
+  'VOICEVOX:九州そら（ノーマル）','VOICEVOX:九州そら（セクシー）','VOICEVOX:九州そら（ツンツン）','VOICEVOX:九州そら（ささやき）',
+  'VOICEVOX:もち子(cv 明日葉よもぎ)（ノーマル）','VOICEVOX:剣崎雌雄（ノーマル）','VOICEVOX:ずんだもん（ささやき）','VOICEVOX:WhiteCUL（ノーマル）',
+  'VOICEVOX:WhiteCUL（たのしい）','VOICEVOX:WhiteCUL（かなしい）','VOICEVOX:WhiteCUL（びえーん）','VOICEVOX:後鬼（人間ver.）',
+  'VOICEVOX:後鬼（ぬいぐるみver.）','VOICEVOX:No.7（ノーマル）','VOICEVOX:No.7（アナウンス）','VOICEVOX:No.7（読み聞かせ）',
+  'VOICEVOX:白上虎太郎（わーい）','VOICEVOX:白上虎太郎（びくびく）','VOICEVOX:白上虎太郎（おこ）','VOICEVOX:白上虎太郎（びえーん）',
+  'VOICEVOX:四国めたん（ささやき）','VOICEVOX:四国めたん（ヒソヒソ）','VOICEVOX:ずんだもん（ヒソヒソ）','VOICEVOX:玄野武宏（喜び）',
+  'VOICEVOX:玄野武宏（ツンギレ）','VOICEVOX:玄野武宏（悲しみ）','VOICEVOX:ちび式じい（ノーマル）','VOICEVOX:櫻歌ミコ（ノーマル）',
+  'VOICEVOX:櫻歌ミコ（第二形態）','VOICEVOX:櫻歌ミコ（ロリ）','VOICEVOX:小夜/SAYO（ノーマル）','VOICEVOX:ナースロボ＿タイプＴ（ノーマル）',
+  'VOICEVOX:ナースロボ＿タイプＴ（楽々）','VOICEVOX:ナースロボ＿タイプＴ（恐怖）','VOICEVOX:ナースロボ＿タイプＴ（内緒話）','VOICEVOX:†聖騎士 紅桜†（ノーマル）',
+  'VOICEVOX:雀松朱司（ノーマル）','VOICEVOX:麒ヶ島宗麟（ノーマル）','VOICEVOX:春歌ナナ（ノーマル）','VOICEVOX:猫使アル（ノーマル）',
+  'VOICEVOX:猫使アル（おちつき）','VOICEVOX:猫使アル（うきうき）','VOICEVOX:猫使ビィ（ノーマル）','VOICEVOX:猫使ビィ（おちつき）',
+  'VOICEVOX:猫使ビィ（人見知り）','VOICEVOX:中国うさぎ（ノーマル）','VOICEVOX:中国うさぎ（おどろき）','VOICEVOX:中国うさぎ（こわがり）',
+  'VOICEVOX:中国うさぎ（へろへろ）','VOICEVOX:波音リツ（クイーン）','VOICEVOX:もち子(cv 明日葉よもぎ)（セクシー／あん子）','VOICEVOX:栗田まろん（ノーマル）',
+  'VOICEVOX:あいえるたん（ノーマル）','VOICEVOX:満別花丸（ノーマル）','VOICEVOX:満別花丸（元気）','VOICEVOX:満別花丸（ささやき）',
+  'VOICEVOX:満別花丸（ぶりっ子）','VOICEVOX:満別花丸（ボーイ）','VOICEVOX:琴詠ニア（ノーマル）','VOICEVOX:ずんだもん（ヘロヘロ）',
+  'VOICEVOX:ずんだもん（なみだめ）','VOICEVOX:もち子(cv 明日葉よもぎ)（泣き）','VOICEVOX:もち子(cv 明日葉よもぎ)（怒り）','VOICEVOX:もち子(cv 明日葉よもぎ)（喜び）',
+  'VOICEVOX:もち子(cv 明日葉よもぎ)（のんびり）','VOICEVOX:青山龍星（熱血）','VOICEVOX:青山龍星（不機嫌）','VOICEVOX:青山龍星（喜び）',
+  'VOICEVOX:青山龍星（しっとり）','VOICEVOX:青山龍星（かなしみ）','VOICEVOX:青山龍星（囁き）','VOICEVOX:後鬼（人間（怒り）ver.）',
+  'VOICEVOX:後鬼（鬼ver.）','VOICEVOX:Voidoll(CV:丹下桜)（ノーマル）','VOICEVOX:ぞん子（ノーマル）','VOICEVOX:ぞん子（低血圧）',
+  'VOICEVOX:ぞん子（覚醒）','VOICEVOX:ぞん子（実況風）','VOICEVOX:中部つるぎ（ノーマル）','VOICEVOX:中部つるぎ（怒り）',
+  'VOICEVOX:中部つるぎ（ヒソヒソ）','VOICEVOX:中部つるぎ（おどおど）','VOICEVOX:中部つるぎ（絶望と敗北）','VOICEVOX:離途（ノーマル）',
+  'VOICEVOX:黒沢冴白（ノーマル）','VOICEVOX:離途（シリアス）','VOICEVOX:ユーレイちゃん(CV:神崎零)（ノーマル）','VOICEVOX:ユーレイちゃん(CV:神崎零)（甘々）',
+  'VOICEVOX:ユーレイちゃん(CV:神崎零)（哀しみ）','VOICEVOX:ユーレイちゃん(CV:神崎零)（ささやき）','VOICEVOX:ユーレイちゃん(CV:神崎零)（ツクモちゃん）','VOICEVOX:東北ずん子（ノーマル）',
+  'VOICEVOX:東北きりたん（ノーマル）','VOICEVOX:東北イタコ（ノーマル）','VOICEVOX:猫使アル（つよつよ）','VOICEVOX:猫使アル（へろへろ）',
+  'VOICEVOX:猫使ビィ（つよつよ）','VOICEVOX:あんこもん（ノーマル）','VOICEVOX:あんこもん（つよつよ）','VOICEVOX:あんこもん（よわよわ）',
+  'VOICEVOX:あんこもん（けだるげ）','VOICEVOX:あんこもん（ささやき）'
 ];
+function vvSpeakersFromLabels(labels){
+  var out=[];
+  (labels||[]).forEach(function(raw,id){
+    if (!raw) return;
+    var label=String(raw).replace(/^VOICEVOX:/,'').trim();
+    var m=label.match(/^(.*)（([^（）]*)）$/);
+    out.push({id:String(id),name:m?m[1]:label,style:m?m[2]:'ノーマル'});
+  });
+  return out;
+}
+var VV_SPEAKERS = vvSpeakersFromLabels(VV_FALLBACK_LABELS);
+var vvSpeakersLoaded=false, vvSpeakersLoading=null;
+function vvFillSpeakerSelect(sel, keep){
+  if (!sel) return;
+  sel.innerHTML='';
+  var groups={}, order=[];
+  VV_SPEAKERS.forEach(function(v){
+    if (!groups[v.name]){ groups[v.name]=[]; order.push(v.name); }
+    groups[v.name].push(v);
+  });
+  /* 最も使われる2キャラは先頭、その後はAPIの初出順。 */
+  ['四国めたん','ずんだもん'].forEach(function(n){
+    var i=order.indexOf(n); if (i>=0) order.splice(i,1);
+  });
+  order.unshift('四国めたん'); order.unshift('ずんだもん');
+  order.forEach(function(name){
+    if (!groups[name]) return;
+    var g=document.createElement('optgroup'); g.label=name;
+    groups[name].forEach(function(v){
+      var o=document.createElement('option'); o.value=v.id;
+      o.textContent=v.name+'（'+v.style+'）'; g.appendChild(o);
+    });
+    sel.appendChild(g);
+  });
+  var want=String(keep||'');
+  if (want && Array.prototype.some.call(sel.options,function(o){return o.value===want;})) sel.value=want;
+}
+function vvLoadSpeakers(force){
+  if (vvSpeakersLoading) return vvSpeakersLoading;
+  if (vvSpeakersLoaded && !force) return Promise.resolve(VV_SPEAKERS);
+  vvSpeakersLoading=fetch(VV_SPEAKERS_URL,{cache:'no-store'}).then(function(r){
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }).then(function(j){
+    var labels=Array.isArray(j)?j:(j&&j.speakers);
+    var list=vvSpeakersFromLabels(labels);
+    if (!list.length) throw new Error('話者一覧が空です');
+    VV_SPEAKERS=list; vvSpeakersLoaded=true;
+    vvFillSpeakerSelect($('vvSpeaker'),CFG.vvSpeaker||'3');
+    vvFillSpeakerSelect($('vvSpeakerA'),CFG.vvSpeakerA||'2');
+    dlog('tts','vv-speakers',{n:list.length,source:'remote'});
+    refreshVvUI();
+    if (force) toast('VOICEVOXのキャラ・スタイルを '+list.length+' 件取得しました。',true);
+    return list;
+  }).catch(function(err){
+    vvSpeakersLoaded=true;
+    dlog('tts','vv-speakers-fallback',{n:VV_SPEAKERS.length,err:String((err&&err.message)||err).slice(0,100)});
+    vvFillSpeakerSelect($('vvSpeaker'),CFG.vvSpeaker||'3');
+    vvFillSpeakerSelect($('vvSpeakerA'),CFG.vvSpeakerA||'2');
+    if (force) toast('一覧を更新できなかったため、内蔵の '+VV_SPEAKERS.length+' スタイルを表示します。');
+    return VV_SPEAKERS;
+  }).then(function(v){ vvSpeakersLoading=null; return v; },function(e){ vvSpeakersLoading=null; throw e; });
+  return vvSpeakersLoading;
+}
 var vvWarned = false;
 function vvKey(){ return (KEYS['voicevox'] || '').trim(); }
 var VV_SLIDERS = [
@@ -4606,7 +4715,7 @@ function vvSpeakerId(seat){
 function vvSpeakerInfo(id){
   var s = String(id || CFG.vvSpeaker || '3');
   for (var i=0;i<VV_SPEAKERS.length;i++) if (VV_SPEAKERS[i].id === s) return VV_SPEAKERS[i];
-  return VV_SPEAKERS[0];
+  return {id:s,name:'話者 '+s,style:'名称未取得'};
 }
 /* クレジット表記は実際に鳴る可能性のあるキャラだけを並べる */
 function vvCreditNames(){
@@ -4720,9 +4829,13 @@ function ttsPlanText(){
       t += '<br><b>⚠ ' + missEl + '</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';
       warn = true;
     } else {
-      t += '<br>' + (CFG.elVoiceLbl ? ('自分(A)は <b>' + CFG.elVoiceLbl + '</b>') : '')
-         + (seatUsed('B') && CFG.elVoiceB && CFG.elVoiceBLbl ? ('／相手(B)は <b>' + CFG.elVoiceBLbl + '</b>') : '')
-         + ' の声です。ElevenLabs は多言語なので、どの言語もこの声で読み上げます。';
+      var ep=[];
+      if (seatUsed('A')) ep.push('自分(A)は <b>' + (CFG.elVoiceLbl || elVoiceId('A')) + '</b>');
+      if (seatUsed('B')){
+        var ebid=elVoiceId('B'), ebl=(ebid===CFG.elVoice ? CFG.elVoiceLbl : CFG.elVoiceBLbl) || ebid;
+        ep.push('相手(B)は <b>' + ebl + '</b>');
+      }
+      t += '<br>' + ep.join('／') + ' の声です。ElevenLabs は多言語なので、どの言語もこの声で読み上げます。';
     }
   }
   if (CFG.ttsMode === 'xai'){
@@ -4731,8 +4844,10 @@ function ttsPlanText(){
       t += '<br><b>⚠ ' + missX + '</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';
       warn = true;
     } else {
-      t += '<br>自分(A)は <b>' + xaiVoiceId('A') + '</b>'
-         + (seatUsed('B') ? ('／相手(B)は <b>' + xaiVoiceId('B') + '</b>') : '') + ' の声です。';
+      var xp=[];
+      if (seatUsed('A')) xp.push('自分(A)は <b>' + xaiVoiceId('A') + '</b>');
+      if (seatUsed('B')) xp.push('相手(B)は <b>' + xaiVoiceId('B') + '</b>');
+      t += '<br>' + xp.join('／') + ' の声です。';
       /* 対応外の言語は xAI 側の自動判定にゆだねる。黙って任せると
          「指定したのに違う言語で読まれた」ときに理由が分からないので先に書いておく。 */
       var auto = rows.filter(function(r){ return !XAI_TTS_LANGS[r.lang]; });
@@ -4820,7 +4935,7 @@ function refreshVvUI(){
     }
     var evb = $('elVoiceB');
     if (evb && !evb.options.length){
-      var ez = document.createElement('option'); ez.value = ''; ez.textContent = '自分(A)と同じ';
+      var ez = document.createElement('option'); ez.value = ''; ez.textContent = inheritedVoiceLabel();
       evb.appendChild(ez);
       if (CFG.elVoiceB){
         var eob = document.createElement('option');
@@ -4841,7 +4956,7 @@ function refreshVvUI(){
       });
     }
     if (xvb && !xvb.options.length){
-      var xzb = document.createElement('option'); xzb.value = ''; xzb.textContent = '自分(A)と同じ';
+      var xzb = document.createElement('option'); xzb.value = ''; xzb.textContent = inheritedVoiceLabel();
       xvb.appendChild(xzb);
       XAI_VOICES.forEach(function(v){
         var o = document.createElement('option'); o.value = v; o.textContent = v; xvb.appendChild(o);
@@ -4862,7 +4977,7 @@ function refreshVvUI(){
     }
     var lsb = $('lvvSpeakerB');
     if (lsb && !lsb.options.length){
-      var z = document.createElement('option'); z.value = ''; z.textContent = '自分(A)と同じ';
+      var z = document.createElement('option'); z.value = ''; z.textContent = inheritedVoiceLabel();
       lsb.appendChild(z);
       if (CFG.lvvSpeakerB){
         var oa = document.createElement('option');
@@ -4877,16 +4992,11 @@ function refreshVvUI(){
   f.style.display = (CFG.ttsMode === 'voicevox') ? '' : 'none';
   var k = $('vvKey'); if (k && k !== document.activeElement) k.value = KEYS['voicevox'] || '';
   var sel = $('vvSpeaker'), selA = $('vvSpeakerA');
-  [sel, selA].forEach(function(sl){
-    if (!sl || sl.options.length) return;
-    for (var i=0;i<VV_SPEAKERS.length;i++){
-      var v = VV_SPEAKERS[i], o = document.createElement('option');
-      o.value = v.id; o.textContent = v.name + '（' + v.style + '）';
-      sl.appendChild(o);
-    }
-  });
+  if (sel && !sel.options.length) vvFillSpeakerSelect(sel,CFG.vvSpeaker||'3');
+  if (selA && !selA.options.length) vvFillSpeakerSelect(selA,CFG.vvSpeakerA||'2');
   if (sel) sel.value = String(CFG.vvSpeaker || '3');
   if (selA) selA.value = String(CFG.vvSpeakerA || '2');
+  if (CFG.ttsMode === 'voicevox' && !vvSpeakersLoaded && !vvSpeakersLoading) vvLoadSpeakers(false);
   vvAdvSync();
   var c = $('vvCredit');
   if (c) c.innerHTML = '規約により、この音声を含む録音・書き起こしを公開・配布する場合は'
@@ -5151,7 +5261,9 @@ function buildRec(){
         if (itmEntry){ removeEntry(itmEntry); itmEntry = null; }
         return;
       }
-      var batchIndex=realFinIndex++;
+      var batchIndex=realFinIndex++, rawText=t;
+      t=punctuateTranscript(t,langOf(seat));
+      if (t!==rawText) dlog('stt','punctuated',{provider:'webspeech',seat:seat,mode:'terminal',from:rawText.slice(-20),to:t.slice(-20)});
       if (itmEntry){ e = itmEntry; itmEntry = null; e.interim = false; e.srcText = t; }
       else e = addEntry(seat, t, false);
       sawSpeech = true;
@@ -5403,6 +5515,9 @@ function transcribeBlob(blob, seat, prosody){
       dlog('stt','stale-result-drop',{ seat:seat, chars:text.length, requestGen:reqSessionGen, currentGen:sessionGen });
       removeEntry(holder); return;
     }
+    var rawText=text;
+    text=punctuateTranscript(text,lang);
+    if (text!==rawText) dlog('stt','punctuated',{provider:CFG.sttProvider,seat:seat,mode:'terminal',from:rawText.slice(-20),to:text.slice(-20)});
     dlog('stt','api-result',{ prov: CFG.sttProvider, model: CFG.sttModel, seat: seat, lang: lang,
       ms: Date.now()-t0, bytes: blob.size, chars: text.length, text: text.slice(0,120) });
     if (!text || text.length<2 || !hasSpeechContent(text)){ removeEntry(holder); return; }
@@ -5496,7 +5611,8 @@ function xaiSTT(blob, lang){
   /* AUTO かつマイクを2人で共有している場合は言語を固定しない */
   var autoDetect = S.autoMode && micSeats().length > 1;
   var lc = autoDetect ? '' : (XAI_STT_LANGS[lang] || '');
-  if (lc){ fd.append('language', lc); fd.append('format', 'true'); }
+  if (lc) fd.append('language', lc);
+  if (CFG.sttPunct) fd.append('format', 'true');
   /* 用語集は聞き取りのヒントとして渡せる（1語50字まで・最大100語） */
   CFG.glossary.slice(0, 100).forEach(function(r){
     var t = String(r.s || '').trim();
@@ -5527,8 +5643,10 @@ function sttCall(blob, lang){
   // AUTO かつマイクを2人で共有している場合は language を送らず、AI側に言語を自動判定させる
   var autoDetect = S.autoMode && micSeats().length > 1;
   if (!autoDetect) fd.append('language', L(lang).g.split('-')[0]);
-  var terms = CFG.glossary.slice(0,60).map(function(r){ return r.s; }).filter(Boolean).join(', ');
-  if (terms) fd.append('prompt', terms);
+  var terms = CFG.glossary.slice(0,60).map(function(r){ return r.s; }).filter(Boolean).join(', '), hints=[];
+  if (CFG.sttPunct) hints.push('Transcribe verbatim with natural punctuation. Do not add, omit, paraphrase, or translate words.');
+  if (terms) hints.push('Terminology: '+terms);
+  if (hints.length) fd.append('prompt', hints.join('\n'));
   return fetch((STT_BASE[p]||STT_BASE.openai) + '/audio/transcriptions', {
     method:'POST', headers:{ 'Authorization':'Bearer '+key }, body: fd
   }).then(chk).then(function(j){ return j.text || ''; });
@@ -5542,7 +5660,9 @@ function geminiSTT(blob, lang){
               ':generateContent?key=' + encodeURIComponent(key);
     return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ contents:[{ role:'user', parts:[
-        { text:'Transcribe this '+L(lang).en+' audio verbatim. Output only the transcript text. If there is no speech, output nothing.' },
+        { text:'Transcribe this '+L(lang).en+' audio verbatim. '
+              +(CFG.sttPunct?'Use natural punctuation without adding, omitting, paraphrasing, or translating words. ':'')
+              +'Output only the transcript text. If there is no speech, output nothing.' },
         { inlineData:{ mimeType: blob.type.split(';')[0] || 'audio/webm', data: b64 } }
       ]}]})
     }).then(chk).then(function(j){
@@ -5677,8 +5797,10 @@ RealtimeEngine.prototype.onEvent = function(ev){
         || t === 'session.output_transcript.completed'){
     if (this.entry){
       this.entry.interim = false;
-      if (t === 'session.input_transcript.completed' && CFG.prosodyOn)
-        attachProsody(this.entry,micProsodySnapshot(this.entry.srcText,true));
+      if (t === 'session.input_transcript.completed'){
+        this.entry.srcText=punctuateTranscript(this.entry.srcText,this.entry.srcLang);
+        if (CFG.prosodyOn) attachProsody(this.entry,micProsodySnapshot(this.entry.srcText,true));
+      }
       render(this.entry);
     }
     // 次の発話に備えて区切る
@@ -6001,7 +6123,7 @@ function exportHtml(){
     langA: CFG.langA, langB: CFG.langB, srcA: CFG.srcA, srcB: CFG.srcB,
     nameA: CFG.nameA, nameB: CFG.nameB, fsize: CFG.fsize,
     flipTop: CFG.flipTop?'1':'0', showSrc: CFG.showSrc?'1':'0', swap: CFG.swap?'1':'0', interimOn: CFG.interimOn?'1':'0',
-    prosodyOn: CFG.prosodyOn?'1':'0', echoGuard: CFG.echoGuard?'1':'0',
+    prosodyOn: CFG.prosodyOn?'1':'0', echoGuard: CFG.echoGuard?'1':'0', sttPunct: CFG.sttPunct?'1':'0',
     syncScroll: CFG.syncScroll?'1':'0', vvSpeaker: CFG.vvSpeaker, vvSpeakerA: CFG.vvSpeakerA,
     vvRate: CFG.vvRate, vvPitch: CFG.vvPitch, vvIntonation: CFG.vvIntonation, ttsSrc: CFG.ttsSrc?'1':'0',
     ovlOn: CFG.ovlOn?'1':'0', ovlA: CFG.ovlA, ovlLines: CFG.ovlLines, ovlKey: CFG.ovlKey,
@@ -6024,7 +6146,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.32.7 Phase 1</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.32.8 Phase 1</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -6404,6 +6526,7 @@ function applyCfg(){
   $('showSrc').checked = CFG.showSrc;
   $('swapSides').checked = CFG.swap;
   $('interimOn').checked = CFG.interimOn;
+  $('sttPunct').checked = CFG.sttPunct;
   $('prosodyOn').checked = CFG.prosodyOn;
   $('echoGuard').checked = CFG.echoGuard;
   $('syncScroll').checked = CFG.syncScroll;
@@ -6681,6 +6804,7 @@ function simple(id, key, prop, isCheck){
       }
     }
     if (prop==='echoGuard') dlog('stt','echo-guard',{on:!!v});
+    if (prop==='sttPunct') dlog('stt','punctuation',{on:!!v,webspeech:'terminal-only'});
     if (prop==='ttsMode'){
       refreshTtsBtn(); refreshVvUI(); ttsLastMode = (v==='off') ? ttsLastMode : v;
       updateProsodyStatus();
@@ -6708,11 +6832,13 @@ simple('flipTop','di.flip','flipTop',true);
 simple('showSrc','di.src','showSrc',true);
 simple('swapSides','di.swap','swap',true);
 simple('interimOn','di.itm','interimOn',true);
+simple('sttPunct','di.sttpunc','sttPunct',true);
 simple('prosodyOn','di.prosody','prosodyOn',true);
 simple('echoGuard','di.echo','echoGuard',true);
 simple('syncScroll','di.sync','syncScroll',true);
 simple('vvSpeaker','di.vvsp','vvSpeaker');
 simple('vvSpeakerA','di.vvspa','vvSpeakerA');
+$('vvSpeakerFetch').onclick=function(){ vvLoadSpeakers(true); };
 simple('ttsSrc','di.ttssrc','ttsSrc',true);
 simple('ttsPad','di.ttspad','ttsPad');
 $('vvKey').oninput = function(){
@@ -6938,7 +7064,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.32.7 Phase 1');
+  out.push('- バージョン: Duo Interpreter v1.32.8 Phase 1');
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
 
@@ -6969,10 +7095,10 @@ function diagText(devices){
     return '(不明)';
   }
   [['翻訳プロバイダ', CFG.provider], ['翻訳モデル', CFG.model],
-   ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel],
+   ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel], ['句読点の自動補完', CFG.sttPunct ? 'ON' : 'OFF'],
    ['読み上げ', CFG.ttsMode], ['読み上げモデル', diagTtsModel()], ['読み上げ対象', CFG.ttsWho],
    ['声 A / B', ttsSeatVoices()],
-   ['xAIの声 A / B', CFG.ttsMode === 'xai' ? (xaiVoiceId('A') + ' / ' + xaiVoiceId('B')) : '(未使用)'],
+   ['xAIの声 A / B', CFG.ttsMode === 'xai' ? ttsSeatVoices() : '(未使用)'],
    ['Aivisストリーミング', CFG.ttsMode === 'aivis' ? (CFG.aivisStream ? 'ON' : 'OFF') : '(未使用)'],
    ['Aivisスタイル A / B', CFG.ttsMode === 'aivis'
       ? ((CFG.aivisStyleB === '' ? '既定' : CFG.aivisStyleB) + ' / ' + (CFG.aivisStyle === '' ? '既定' : CFG.aivisStyle)
