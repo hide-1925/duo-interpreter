@@ -1146,7 +1146,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260830-v1329-vv3.3';
+var APP_BUILD = '20260830-v1329-vv3.4';
 
 /* ---------------- 言語定義 ---------------- */
 var LANGS = [
@@ -3051,8 +3051,12 @@ function pickVoice(tag){
   return loose;
 }
 
-function browserSpeak(text, tag, prosody){
-  if (!window.speechSynthesis){ ttsFailNotice('このブラウザは読み上げに対応していません'); return; }
+function browserSpeak(text, tag, prosody, onFinish){
+  if (!window.speechSynthesis){
+    ttsFailNotice('このブラウザは読み上げに対応していません');
+    if (onFinish) try{ onFinish('unsupported'); }catch(e){}
+    return;
+  }
   var done = false, started = false, tStart = null, tEnd = null, t0 = Date.now();
   var pmap=prosodyMapForTts(prosody,tag,'browser');
   var finish = function(why){
@@ -3065,6 +3069,7 @@ function browserSpeak(text, tag, prosody){
     // 先に終わったほうが再生時刻を消してしまい判定を狂わせるため。
     // 次の onstart で必ず上書きされ、未再生時は再生中判定で弾かれる。
     ttsEnd();
+    if (onFinish) try{ onFinish(why || 'ended'); }catch(e){}
   };
   try{
     /* 再生中の読み上げは中断しない。
@@ -3122,9 +3127,10 @@ function browserSpeak(text, tag, prosody){
 function apiSpeak(text, seat){
   var key = keyOf('openai') || transKey();
   if (!key){ toast('OpenAI音声にはOpenAIのAPIキーが必要です'); return; }
-  var done = false, tEnd = null;
+  var done = false, tEnd = null, queuedAt = Date.now();
   var finish = function(){ if (done) return; done = true; clearTimeout(tEnd); ttsEnd(); };
   finish.gen = ttsGen;             /* 停止後に返ってきた音声を鳴らさないための札 */
+  finish.queuedAt = queuedAt;
   rememberSpoken(text);
   ttsBegin();
   // 応答が返らない・再生が終わらない場合の保険（状態を必ず戻す）
@@ -3389,6 +3395,9 @@ function primeOutput(){
    <audio> は1つしかないので、前の再生中に次のsrcを入れると前が途中で切れる。
    順番待ちの列にして、必ず最後まで鳴らしてから次に進む。 */
 var ttsQueue = [], ttsPlayingNow = false, ttsLastUrl = '';
+/* ライブ入力では、合成できても再生が入力に追いつかなければ遅延が増え続ける。
+   再生開始前に8秒を超えた発話は捨て、現在の会話へ追いつく。 */
+var TTS_STALE_MS = 8000, TTS_MAX_PENDING = 6;
 /* 停止のために覚えておくもの。
    ttsCurEnd … 再生中の後始末。<audio> は止めても終了イベントが来ないので手で呼ぶ
    waSrc     … Web Audio で鳴らしている音源。stop() で即座に黙らせる
@@ -3495,7 +3504,8 @@ function playBlob(blob, finish, tag){
   /* 世代は finish に刻んである（＝読み上げを始めた時点のもの）。
      通信の往復中に停止を押された場合、ここで世代が古くなり捨てられる。 */
   var g = (finish && finish.gen != null) ? finish.gen : ttsGen;
-  ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:Date.now(), gen:g });
+  var at = (finish && finish.queuedAt) ? finish.queuedAt : Date.now();
+  ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:at, gen:g });
   if (ttsPlayingNow) dlog('tts','queue-wait',{ src:tag||'', n:ttsQueue.length, why:'前の音声を再生中' });
   pumpTtsQueue();
 }
@@ -3508,6 +3518,12 @@ function pumpTtsQueue(){
   /* 停止を押したあとに返ってきた音声。もう鳴らす意味がないので捨てる */
   if (job.gen !== ttsGen){
     dlog('tts','drop',{ src: job.tag, why:'停止後に届いた' });
+    try{ job.finish(); }catch(e){}
+    pumpTtsQueue();
+    return;
+  }
+  if (Date.now() - job.at > TTS_STALE_MS){
+    dlog('tts','drop',{ src:job.tag, why:'再生待ちが8秒を超えた', ageMs:Date.now()-job.at });
     try{ job.finish(); }catch(e){}
     pumpTtsQueue();
     return;
@@ -3588,6 +3604,7 @@ function ttsGuard(text, ms){
   var done = false, tEnd = null;
   var finish = function(){ if (done) return; done = true; clearTimeout(tEnd); ttsEnd(); };
   finish.gen = ttsGen;             /* この読み上げを始めた時点の世代を刻む */
+  finish.queuedAt = Date.now();     /* 合成時間も含めた実際の遅延を測る */
   rememberSpoken(text);
   ttsBegin();
   tEnd = setTimeout(finish, ms);
@@ -4846,9 +4863,11 @@ function vvApiError(msg, detail){
   detail=detail||{}; for (k in detail) if (Object.prototype.hasOwnProperty.call(detail,k)) e[k]=detail[k];
   return e;
 }
-function vvRequest(text, seat, attempt){
+function vvRequest(text, seat, attempt, signal, gen){
   attempt=attempt||0;
-  return fetch(vvUrl(text,seat),{cache:'no-store'}).then(function(r){
+  if (gen !== ttsGen || (signal && signal.aborted))
+    return Promise.reject(vvApiError('停止されました',{phase:'aborted'}));
+  return fetch(vvUrl(text,seat),{cache:'no-store',signal:signal}).then(function(r){
     return r.text().then(function(raw){
       var j={};
       try{ j=raw ? JSON.parse(raw) : {}; }catch(e){
@@ -4858,7 +4877,7 @@ function vvRequest(text, seat, attempt){
         var sec=Math.max(0.5,Math.min(10,Number(j.retryAfter)||1));
         dlog('tts','vv-retry',{attempt:attempt+1,afterMs:Math.round(sec*1000),http:r.status||429});
         return new Promise(function(resolve){ setTimeout(resolve,Math.round(sec*1000)); })
-          .then(function(){ return vvRequest(text,seat,attempt+1); });
+          .then(function(){ return vvRequest(text,seat,attempt+1,signal,gen); });
       }
       if (!r.ok || j.success===false || j.errorMessage){
         throw vvApiError(String(j.errorMessage||('HTTP '+r.status)),
@@ -4871,8 +4890,139 @@ function vvRequest(text, seat, attempt){
     });
   }).catch(function(e){
     if (e && e.phase) throw e;
+    if ((signal && signal.aborted) || /abort/i.test(String((e&&e.message)||e)))
+      throw vvApiError('停止されました',{phase:'aborted'});
     throw vvApiError(String((e&&e.message)||e),{phase:'network'});
   });
+}
+
+/* 合成と再生を分離する。TTS Questへの合成要求は最大4件まで並列に進めるが、
+   返ってきたストリーミングURLは発話順に1本の<audio>へ渡す。
+   これにより合成待ちを隠しつつ、音声同士が重なる・srcを書き換えて中断する問題を防ぐ。 */
+var VV_MAX_SYNTH = 4, vvJobs = [], vvSynthActive = 0, vvPlaying = null, vvControllers = [];
+function vvReleaseSynth(job){
+  if (!job || !job.synthSlot) return;
+  job.synthSlot=false; vvSynthActive=Math.max(0,vvSynthActive-1);
+}
+function vvRemoveController(ctrl){
+  var i=vvControllers.indexOf(ctrl); if (i>=0) vvControllers.splice(i,1);
+}
+function vvFinishJob(job){
+  if (!job || job.done) return;
+  job.done=true; clearTimeout(job.watchdog); clearTimeout(job.staleTimer);
+  vvReleaseSynth(job); vvRemoveController(job.ctrl);
+  try{ if (job.ctrl) job.ctrl.abort(); }catch(e){}
+  ttsEnd();
+}
+function vvAbortAll(){
+  vvControllers.slice().forEach(function(c){ try{ c.abort(); }catch(e){} });
+  vvControllers=[];
+}
+function vvClearQueue(why){
+  var list=vvJobs.slice(); vvJobs=[]; vvPlaying=null; vvSynthActive=0;
+  list.forEach(function(job){
+    if (!job.done) dlog('tts','vv-drop',{why:why||'停止',chars:job.text.length,state:job.state});
+    job.synthSlot=false; vvFinishJob(job);
+  });
+}
+function vvDropHead(job, why){
+  if (vvJobs[0]===job) vvJobs.shift();
+  dlog('tts','vv-drop',{why:why,chars:job.text.length,ageMs:Date.now()-job.at,state:job.state});
+  vvFinishJob(job);
+  /* 合成中の古い先頭を捨てた場合は並列枠が1つ空く。現在のpumpの外で次を開始する。 */
+  setTimeout(vvPumpSynthesis,0);
+}
+function vvPumpSynthesis(){
+  for (var i=0;i<vvJobs.length && vvSynthActive<VV_MAX_SYNTH;i++){
+    var job=vvJobs[i];
+    if (job.done || job.state!=='waiting') continue;
+    if (Date.now()-job.at>TTS_STALE_MS){ job.state='stale'; continue; }
+    job.state='synthesizing'; job.synthSlot=true; vvSynthActive++;
+    (function(j){
+      vvRequest(j.text,j.seat,0,j.ctrl.signal,j.gen).then(function(data){
+        vvReleaseSynth(j); vvRemoveController(j.ctrl);
+        if (j.done || j.gen!==ttsGen) return;
+        j.data=data; j.state='ready';
+        dlog('tts','vv-ready',{seat:j.seat||'A',speaker:vvSpeakerId(j.seat),speakerName:String(data.speakerName||''),
+          ms:Date.now()-j.at,keyValid:data.isApiKeyValid!==false,retries:data._attempt||0,parallel:VV_MAX_SYNTH});
+        vvPumpSynthesis(); vvPumpPlayback();
+      }).catch(function(err){
+        vvReleaseSynth(j); vvRemoveController(j.ctrl);
+        if (j.done || j.gen!==ttsGen || (err&&err.phase)==='aborted') return;
+        j.error=err; j.state='fallback';
+        dlog('tts','vv-FAIL',{seat:j.seat||'A',speaker:vvSpeakerId(j.seat),chars:j.text.length,ms:Date.now()-j.at,
+          phase:(err&&err.phase)||'synthesis',http:(err&&err.http)||0,code:(err&&err.code)||'',
+          err:String((err&&err.message)||err||'error').slice(0,120),tweaks:j.tweaks,
+          manualTweaks:j.manualTweaks,prosody:!!j.effective.map});
+        if (!vvWarned){
+          vvWarned=true;
+          toast('VOICEVOXの音声を取得できませんでした。今回はブラウザ内蔵音声で読み上げます。');
+        }
+        vvPumpSynthesis(); vvPumpPlayback();
+      });
+    })(job);
+  }
+  vvPumpPlayback();
+}
+function vvCompletePlayback(job, why){
+  if (!job || job.done) return;
+  if (vvPlaying===job) vvPlaying=null;
+  if (ttsCurEnd===job.stopPlayback) ttsCurEnd=null;
+  try{ audioEl.playbackRate=1; audioEl.defaultPlaybackRate=1; }catch(e){}
+  if (vvJobs[0]===job) vvJobs.shift();
+  dlog('tts','vv-end',{seat:job.seat||'A',speaker:vvSpeakerId(job.seat),chars:job.text.length,
+    ms:Date.now()-job.at,why:why||'ended',tweaks:job.tweaks,manualTweaks:job.manualTweaks,prosody:!!job.effective.map});
+  vvFinishJob(job); vvPumpSynthesis(); vvPumpPlayback();
+}
+function vvPlayFallback(job){
+  vvPlaying=job; job.state='fallback-playing';
+  job.stopPlayback=function(){
+    try{ if (window.speechSynthesis) speechSynthesis.cancel(); }catch(e){}
+    vvCompletePlayback(job,'fallback-stopped');
+  };
+  ttsCurEnd=job.stopPlayback;
+  browserSpeak(job.text,'ja-JP',job.prosody,function(why){ vvCompletePlayback(job,'fallback-'+why); });
+}
+function vvPlayReady(job){
+  vvPlaying=job; job.state='playing';
+  var ended=false;
+  job.stopPlayback=function(){
+    if (ended) return; ended=true;
+    try{ audioEl.pause(); }catch(e){}
+    vvCompletePlayback(job,'stopped');
+  };
+  ttsCurEnd=job.stopPlayback;
+  ensureSink(); primeOutput();
+  audioEl.onended=function(){ if (!ended){ ended=true; vvCompletePlayback(job,'ended'); } };
+  audioEl.onerror=function(){
+    if (ended) return; ended=true;
+    var me=audioEl.error;
+    dlog('tts','vv-FAIL',{seat:job.seat||'A',speaker:vvSpeakerId(job.seat),chars:job.text.length,ms:Date.now()-job.at,
+      phase:'play',http:0,code:(me&&me.code)||'',err:'音声ストリームを再生できません',
+      networkState:audioEl.networkState,readyState:audioEl.readyState,tweaks:job.tweaks,
+      manualTweaks:job.manualTweaks,prosody:!!job.effective.map});
+    vvPlaying=null; job.state='fallback'; vvPlayFallback(job);
+  };
+  audioEl.defaultPlaybackRate=job.effective.speed; audioEl.playbackRate=job.effective.speed;
+  try{ audioEl.preservesPitch=true; audioEl.webkitPreservesPitch=true; }catch(e){}
+  audioEl.src=job.data.mp3StreamingUrl;
+  var pr=audioEl.play();
+  if (pr&&pr.catch) pr.catch(function(){
+    if (ended) return; ended=true; vvPlaying=null; job.state='fallback'; vvPlayFallback(job);
+  });
+}
+function vvPumpPlayback(){
+  if (vvPlaying) return;
+  while (vvJobs.length){
+    var job=vvJobs[0];
+    if (job.done){ vvJobs.shift(); continue; }
+    if (Date.now()-job.at>TTS_STALE_MS){ vvDropHead(job,'再生待ちが8秒を超えた'); continue; }
+    if (job.state==='stale'){ vvDropHead(job,'合成開始前に8秒を超えた'); continue; }
+    if (job.state==='waiting' || job.state==='synthesizing') return;
+    if (job.state==='fallback'){ vvPlayFallback(job); return; }
+    if (job.state==='ready'){ vvPlayReady(job); return; }
+    return;
+  }
 }
 function vvSpeak(text, lang, seat, prosody){
   if (lang !== 'ja'){                       // VOICEVOXは日本語専用
@@ -4892,54 +5042,20 @@ function vvSpeak(text, lang, seat, prosody){
   var effective=vvEffectiveValues(prosody), tweaks=vvValueTweaks(effective), manualTweaks=vvTweaks();
   logProsodyMap(effective.map,{effectiveRate:effective.speed,effectivePitch:effective.pitch,
     effectiveIntonation:effective.intonation,appliedRate:true,appliedPitch:false,appliedIntonation:false});
-  var done = false, tEnd = null, t0 = Date.now(), gen=ttsGen, failed=false;
-  var finish = function(){
-    if (done) return; done=true; clearTimeout(tEnd);
-    if (ttsCurEnd===finish) ttsCurEnd=null;
-    try{ audioEl.playbackRate=1; audioEl.defaultPlaybackRate=1; }catch(e){}
-    ttsEnd();
-  };
-  function fallback(err){
-    if (failed || done || gen!==ttsGen) return;
-    failed=true;
-    var me=audioEl.error;
-    dlog('tts','vv-FAIL',{ seat:seat||'A',speaker:vvSpeakerId(seat),chars:text.length,ms:Date.now()-t0,
-      phase:(err&&err.phase)||'audio',http:(err&&err.http)||0,code:(err&&err.code)||(me&&me.code)||'',
-      err:String((err&&err.message)||err||'media error').slice(0,120),networkState:audioEl.networkState,
-      readyState:audioEl.readyState,tweaks:tweaks,manualTweaks:manualTweaks,prosody:!!effective.map });
-    finish();
-    if (!vvWarned){
-      vvWarned=true;
-      toast('VOICEVOXの音声を取得できませんでした。診断ログの <code>vv-FAIL</code> に失敗箇所を記録しました。<br>今回はブラウザ内蔵の音声で読み上げます。');
-    }
-    browserSpeak(text,'ja-JP',prosody);
-  }
   rememberSpoken(text);
   ttsBegin();
-  ttsCurEnd=finish;                         /* 停止中の合成要求も確実に無効化 */
-  tEnd = setTimeout(function(){
-    dlog('tts','vv-TIMEOUT',{ ms: Date.now()-t0 });
-    finish();
-  }, Math.min(90000, 30000 + text.length * 250));
-  ensureSink();
-  primeOutput();
-  vvRequest(text,seat,0).then(function(j){
-    if (gen!==ttsGen || done){ dlog('tts','vv-drop',{why:'停止後に届いた',speaker:vvSpeakerId(seat)}); finish(); return; }
-    dlog('tts','vv-ready',{seat:seat||'A',speaker:vvSpeakerId(seat),speakerName:String(j.speakerName||''),
-      ms:Date.now()-t0,keyValid:j.isApiKeyValid!==false,retries:j._attempt||0});
-    audioEl.onended=function(){
-      dlog('tts','vv-end',{seat:seat||'A',speaker:vvSpeakerId(seat),chars:text.length,ms:Date.now()-t0,
-        tweaks:tweaks,manualTweaks:manualTweaks,prosody:!!effective.map}); finish();
-    };
-    audioEl.onerror=function(){ fallback(vvApiError('音声ストリームを再生できません',{phase:'audio'})); };
-    /* v3 が受け付ける合成指定は speaker/text/key。話速だけは端末側の再生速度で反映し、
-       声高・抑揚は解析値として残す（未対応値をAPIへ送って成功したように見せない）。 */
-    audioEl.defaultPlaybackRate=effective.speed; audioEl.playbackRate=effective.speed;
-    try{ audioEl.preservesPitch=true; audioEl.webkitPreservesPitch=true; }catch(e){}
-    audioEl.src=j.mp3StreamingUrl;
-    var pr=audioEl.play();
-    if (pr&&pr.catch) pr.catch(function(e){ fallback(vvApiError(String((e&&e.message)||e),{phase:'play'})); });
-  }).catch(fallback);
+  var ctrl=new AbortController(), job={text:text,lang:lang,seat:seat||'A',prosody:prosody,effective:effective,
+    tweaks:tweaks,manualTweaks:manualTweaks,at:Date.now(),gen:ttsGen,ctrl:ctrl,state:'waiting',done:false};
+  vvJobs.push(job); vvControllers.push(ctrl);
+  job.watchdog=setTimeout(function(){
+    if (job.done) return;
+    dlog('tts','vv-TIMEOUT',{ms:Date.now()-job.at,chars:job.text.length,state:job.state});
+    if (vvJobs[0]===job && !vvPlaying) vvDropHead(job,'タイムアウト');
+    else { try{ job.ctrl.abort(); }catch(e){} job.state='stale'; vvPumpPlayback(); }
+  },Math.min(90000,30000+text.length*250));
+  job.staleTimer=setTimeout(vvPumpPlayback,TTS_STALE_MS+20);
+  if (vvJobs.length>1) dlog('tts','vv-queue',{n:vvJobs.length-1,chars:text.length,parallel:VV_MAX_SYNTH});
+  vvPumpSynthesis();
 }
 /* 設定の組み合わせで「結局どれが何語で読まれるのか」は分かりにくく、
    鳴らない・別の声で鳴る理由に気づけない。実際の動作を文章にして常に見せる。 */
@@ -5190,6 +5306,10 @@ function stopSpeaking(why){
   var had = ttsIsBusy();
   ttsGen++;                                  /* 以後に届く音声は鳴らさない */
   clearTtsQueue();                           /* 待ち行列を先に空にする */
+  /* VOICEVOXは合成要求を並列化しているため、世代番号だけで再生を止めるのではなく
+     通信・再試行待ち・再生待ちもここでまとめて破棄する。 */
+  if (typeof vvAbortAll === 'function') vvAbortAll();
+  if (typeof vvClearQueue === 'function') vvClearQueue(why || '停止');
   try{ if (window.speechSynthesis) speechSynthesis.cancel(); }catch(e){}
   try{ audioEl.pause(); }catch(e){}
   if (waSrc){ try{ waSrc.stop(0); }catch(e){} waSrc = null; }
@@ -5262,8 +5382,8 @@ function speak(e){
   ttsAudioCtx();          // 出力経路を先に開いておく（頭切れ対策）
   primeOutput();          // Web Audio が使えない環境向けの保険
   // 溜まりすぎた場合は、再生中のものを止めるのではなく新しい方を見送る
-  if (ttsActive >= 3){
-    dlog('tts','skip',{ why:'読み上げが溜まっているため見送り', queued: ttsActive });
+  if (ttsActive >= TTS_MAX_PENDING){
+    dlog('tts','skip',{ why:'読み上げが溜まっているため見送り', queued: ttsActive, limit:TTS_MAX_PENDING });
     return;
   }
   if (CFG.ttsMode === 'browser') browserSpeak(sayText, L(sayLang).tts,e.prosody);
@@ -6863,6 +6983,7 @@ function ttsModeLabel(m){
        : 'ブラウザ内蔵音声';
 }
 $('ttsToggle').onclick = function(){
+  stopSpeaking('読み上げON/OFFを変更');
   if (CFG.ttsMode === 'off') CFG.ttsMode = ttsLastMode || 'browser';
   else { ttsLastMode = CFG.ttsMode; CFG.ttsMode = 'off'; }
   store.set('di.tts', CFG.ttsMode); $('ttsMode').value = CFG.ttsMode;
@@ -6948,6 +7069,9 @@ $('remember').onchange = function(){
 function simple(id, key, prop, isCheck){
   $(id).onchange = function(){
     var v = isCheck ? this.checked : this.value;
+    var old = CFG[prop];
+    /* TTS方式を変えたあとに旧方式の音声が割り込まないよう、変更前の要求・再生・待ち列を止める。 */
+    if (prop==='ttsMode' && old!==v) stopSpeaking('TTS方式を変更');
     CFG[prop] = v;
     store.set(key, isCheck ? (v?'1':'0') : v);
     if (prop==='flipTop'||prop==='swap'||prop==='nameA'||prop==='nameB') layout();
@@ -6965,6 +7089,7 @@ function simple(id, key, prop, isCheck){
     if (prop==='echoGuard') dlog('stt','echo-guard',{on:!!v});
     if (prop==='sttPunct') dlog('stt','punctuation',{on:!!v,webspeech:'terminal-only'});
     if (prop==='ttsMode'){
+      dlog('tts','mode-change',{from:old,to:v});
       refreshTtsBtn(); refreshVvUI(); ttsLastMode = (v==='off') ? ttsLastMode : v;
       updateProsodyStatus();
       /* Aivis に切り替えた時点で、まだ名前を知らないモデルなら取りにいく */
@@ -7295,6 +7420,7 @@ function diagText(devices){
       : '(未使用)'],
    ['Aivis 話し方の調整', CFG.ttsMode === 'aivis' ? aivisTweaks() : '(未使用)'],
    ['VOICEVOX 話し方の調整', CFG.ttsMode === 'voicevox' ? vvTweaks() : '(未使用)'],
+   ['VOICEVOX処理', CFG.ttsMode === 'voicevox' ? '最大4件並列合成 / 発話順に1件ずつ再生 / 最大6件保持 / 8秒超は破棄' : '(未使用)'],
    ['原文読み上げ', CFG.ttsSrc ? 'ON' : 'OFF'],
    ['鳴り始めの無音', CFG.ttsPad + ' ms'],
    ['再生経路', waMode ? 'Web Audio（開きっぱなし）' : '<audio>'],
