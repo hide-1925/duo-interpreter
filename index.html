@@ -1146,7 +1146,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260830-v1329-vv3.4';
+var APP_BUILD = '20260830-v1329-vv3.5';
 
 /* ---------------- 言語定義 ---------------- */
 var LANGS = [
@@ -4910,6 +4910,7 @@ function vvRemoveController(ctrl){
 function vvFinishJob(job){
   if (!job || job.done) return;
   job.done=true; clearTimeout(job.watchdog); clearTimeout(job.staleTimer);
+  clearTimeout(job.preloadTimer); clearInterval(job.bufferGuard);
   vvReleaseSynth(job); vvRemoveController(job.ctrl);
   try{ if (job.ctrl) job.ctrl.abort(); }catch(e){}
   ttsEnd();
@@ -4983,9 +4984,26 @@ function vvPlayFallback(job){
   ttsCurEnd=job.stopPlayback;
   browserSpeak(job.text,'ja-JP',job.prosody,function(why){ vvCompletePlayback(job,'fallback-'+why); });
 }
+function vvBufferedAhead(){
+  try{
+    if (!audioEl.buffered || !audioEl.buffered.length) return 0;
+    for (var i=audioEl.buffered.length-1;i>=0;i--){
+      if (audioEl.buffered.start(i)<=audioEl.currentTime+0.05)
+        return Math.max(0,audioEl.buffered.end(i)-audioEl.currentTime);
+    }
+  }catch(e){}
+  return 0;
+}
+function vvPrebufferLead(job){
+  var rate=Math.max(1,Number(job.effective.speed)||1), lead=2+(rate-1)*5;
+  if (job.text.length>=100) lead+=1;
+  return Math.min(6,Math.max(2,lead));
+}
 function vvPlayReady(job){
-  vvPlaying=job; job.state='playing';
-  var ended=false;
+  vvPlaying=job; job.state='prebuffering';
+  var ended=false,started=false,waitingAt=0;
+  var desiredRate=Math.max(0.5,Number(job.effective.speed)||1);
+  var leadSec=vvPrebufferLead(job),preloadAt=Date.now(),lastGuardRate=desiredRate;
   job.stopPlayback=function(){
     if (ended) return; ended=true;
     try{ audioEl.pause(); }catch(e){}
@@ -4994,6 +5012,23 @@ function vvPlayReady(job){
   ttsCurEnd=job.stopPlayback;
   ensureSink(); primeOutput();
   audioEl.onended=function(){ if (!ended){ ended=true; vvCompletePlayback(job,'ended'); } };
+  audioEl.onwaiting=function(){
+    if (!started || ended) return;
+    waitingAt=Date.now();
+    dlog('tts','vv-buffering',{chars:job.text.length,currentSec:+audioEl.currentTime.toFixed(2),
+      bufferSec:+vvBufferedAhead().toFixed(2),rate:+audioEl.playbackRate.toFixed(2)});
+  };
+  audioEl.onstalled=function(){
+    if (!ended) dlog('tts','vv-stalled',{chars:job.text.length,currentSec:+audioEl.currentTime.toFixed(2),
+      bufferSec:+vvBufferedAhead().toFixed(2),readyState:audioEl.readyState,networkState:audioEl.networkState});
+  };
+  audioEl.onplaying=function(){
+    if (waitingAt){
+      dlog('tts','vv-resume',{chars:job.text.length,waitMs:Date.now()-waitingAt,
+        bufferSec:+vvBufferedAhead().toFixed(2),rate:+audioEl.playbackRate.toFixed(2)});
+      waitingAt=0;
+    }
+  };
   audioEl.onerror=function(){
     if (ended) return; ended=true;
     var me=audioEl.error;
@@ -5003,13 +5038,51 @@ function vvPlayReady(job){
       manualTweaks:job.manualTweaks,prosody:!!job.effective.map});
     vvPlaying=null; job.state='fallback'; vvPlayFallback(job);
   };
-  audioEl.defaultPlaybackRate=job.effective.speed; audioEl.playbackRate=job.effective.speed;
+  function failToFallback(){
+    if (ended) return;
+    ended=true; clearTimeout(job.preloadTimer); clearInterval(job.bufferGuard);
+    vvPlaying=null; job.state='fallback'; vvPlayFallback(job);
+  }
+  function begin(reason){
+    if (ended || started) return;
+    started=true; job.state='playing'; clearTimeout(job.preloadTimer);
+    audioEl.defaultPlaybackRate=desiredRate; audioEl.playbackRate=desiredRate;
+    dlog('tts','vv-start',{chars:job.text.length,preloadMs:Date.now()-preloadAt,
+      bufferSec:+vvBufferedAhead().toFixed(2),leadSec:+leadSec.toFixed(2),rate:+desiredRate.toFixed(2),by:reason});
+    var pr=audioEl.play(); if (pr&&pr.catch) pr.catch(failToFallback);
+    /* 高速再生がストリーム生成を追い越す直前に速度を落とす。
+       無音停止より軽い速度変化を優先し、十分に先読みできたら設定速度へ戻す。 */
+    job.bufferGuard=setInterval(function(){
+      if (ended || !started || audioEl.paused) return;
+      var ahead=vvBufferedAhead(),target=desiredRate;
+      var nearEnd=isFinite(audioEl.duration) && audioEl.duration-audioEl.currentTime<1.25;
+      if (desiredRate>1.05 && !nearEnd){
+        if (ahead<1.25) target=1;
+        else if (ahead<Math.max(2,leadSec*0.65)) target=Math.min(desiredRate,1.15);
+      }
+      if (Math.abs(target-lastGuardRate)>=0.04){
+        audioEl.playbackRate=target; lastGuardRate=target;
+        dlog('tts','vv-rate-guard',{chars:job.text.length,bufferSec:+ahead.toFixed(2),
+          from:+(audioEl.defaultPlaybackRate||desiredRate).toFixed(2),to:+target.toFixed(2),desired:+desiredRate.toFixed(2)});
+      }
+    },500);
+  }
+  function maybeBegin(reason){
+    if (ended || started) return;
+    var ahead=vvBufferedAhead();
+    if (ahead>=leadSec || audioEl.readyState>=4) begin(reason);
+  }
+  audioEl.onprogress=function(){ maybeBegin('progress'); };
+  audioEl.oncanplay=function(){ maybeBegin('canplay'); };
+  audioEl.oncanplaythrough=function(){ maybeBegin('canplaythrough'); };
+  audioEl.defaultPlaybackRate=desiredRate; audioEl.playbackRate=desiredRate;
   try{ audioEl.preservesPitch=true; audioEl.webkitPreservesPitch=true; }catch(e){}
+  audioEl.preload='auto';
   audioEl.src=job.data.mp3StreamingUrl;
-  var pr=audioEl.play();
-  if (pr&&pr.catch) pr.catch(function(){
-    if (ended) return; ended=true; vvPlaying=null; job.state='fallback'; vvPlayFallback(job);
-  });
+  try{ audioEl.load(); }catch(e){}
+  /* preloadを抑制するブラウザでも停止しないよう、最長8秒で従来の即時再生へ戻す。 */
+  job.preloadTimer=setTimeout(function(){ begin('preload-timeout'); },Math.min(8000,2500+leadSec*1000));
+  maybeBegin('immediate');
 }
 function vvPumpPlayback(){
   if (vvPlaying) return;
@@ -7420,7 +7493,7 @@ function diagText(devices){
       : '(未使用)'],
    ['Aivis 話し方の調整', CFG.ttsMode === 'aivis' ? aivisTweaks() : '(未使用)'],
    ['VOICEVOX 話し方の調整', CFG.ttsMode === 'voicevox' ? vvTweaks() : '(未使用)'],
-   ['VOICEVOX処理', CFG.ttsMode === 'voicevox' ? '最大4件並列合成 / 発話順に1件ずつ再生 / 最大6件保持 / 8秒超は破棄' : '(未使用)'],
+   ['VOICEVOX処理', CFG.ttsMode === 'voicevox' ? '最大4件並列合成 / 発話順に1件ずつ再生 / 最大6件保持 / 8秒超は破棄 / 高速再生は先読み保護' : '(未使用)'],
    ['原文読み上げ', CFG.ttsSrc ? 'ON' : 'OFF'],
    ['鳴り始めの無音', CFG.ttsPad + ' ms'],
    ['再生経路', waMode ? 'Web Audio（開きっぱなし）' : '<audio>'],
