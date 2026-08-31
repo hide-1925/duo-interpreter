@@ -491,7 +491,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260831-v13210-oaitts1.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260831-v13210-oaitts1.5</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -501,7 +501,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260831-v13210-oaitts1.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260831-v13210-oaitts1.5</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -796,7 +796,7 @@
           <div class="tunerow"><span>緩急</span><select id="oaiDynamics"><option value="-2">一定</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">動的</option><option value="2">非常に動的</option></select></div>
           <div class="tunerow"><span>文中の間</span><select id="oaiPause"><option value="-2">かなり短い</option><option value="-1">短い</option><option value="0">標準</option><option value="1">長い</option><option value="2">非常に長い</option></select></div>
           <div class="tunerow"><span>音量</span><select id="oaiVolume"><option value="-2">かなり小さい</option><option value="-1">小さい</option><option value="0">標準</option><option value="1">大きい</option><option value="2">かなり大きい</option></select></div>
-          <label class="switch"><input type="checkbox" id="oaiStream" checked> PCMストリーミング再生（低遅延）</label>
+          <label class="switch"><input type="checkbox" id="oaiStream" checked> <span id="oaiStreamLabel">PCMストリーミング再生（低遅延）</span></label>
           <textarea id="oaiStyle" maxlength="500" placeholder="追加の話し方（任意）&#10;例：落ち着いた専門家として、簡潔かつ自信を持って話す。"></textarea>
           <small id="oaiStyleNote" data-fold="off"><code>gpt-4o-mini-tts</code>では、話速をAPIの数値<code>speed</code>、音量をWeb Audioで反映し、感情・抑揚・緩急・間は発話ごとの強い指示文で反映します。旧<code>tts-1</code>系では話し方指示は適用されません。</small>
         </details>
@@ -1169,7 +1169,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260831-v13210-oaitts1.3';
+var APP_BUILD = '20260831-v13210-oaitts1.5';
 
 /* ---------------- 言語定義 ---------------- */
 var LANGS = [
@@ -3276,6 +3276,10 @@ function oaiLogRequest(body, plan, text, seat, stream){
   logProsodyMap(plan.map,{effectiveRate:plan.rate,effectiveVolume:plan.gain,
     effectiveDynamics:plan.dynamics,stream:!!stream,instructions:true});
 }
+/* Windowsでは細切れのAudioBufferSourceを24kHz→端末レートへ個別変換すると
+   ビープ／連続ノイズが再現した。WindowsだけAudioWorkletの連続PCM経路を使う。 */
+function oaiIsWindows(){ return /Windows/i.test(String(navigator.userAgent||'')); }
+function oaiPcmStreamAllowed(){ return !oaiIsWindows() || !!window.AudioWorkletNode; }
 function apiSpeak(text, lang, seat, prosody){
   var key=keyOf('openai');
   if (!key){ toast('OpenAI音声にはOpenAIのAPIキーが必要です'); return; }
@@ -3285,7 +3289,13 @@ function apiSpeak(text, lang, seat, prosody){
      Web Audioで守れる場合だけ使い、それ以外はWAV一括方式へ安全に落とす。 */
   if (CFG.oaiStream && !ttsIsBusy() && window.ReadableStream){
     var ctx=ttsAudioCtx();
-    if (ctx && ttsCtxCanRoute(ctx)) return apiSpeakStream(text,lang,seat,prosody,plan,ctx,key);
+    if (ctx && ttsCtxCanRoute(ctx)){
+      if (oaiIsWindows()){
+        if (ctx.audioWorklet && window.AudioWorkletNode)
+          return apiSpeakStreamWorklet(text,lang,seat,prosody,plan,ctx,key);
+        dlog('tts','openai-stream-skip',{why:'AudioWorklet非対応（WAVへ切替）'});
+      } else return apiSpeakStream(text,lang,seat,prosody,plan,ctx,key);
+    }
     if (ctx && !ttsCtxCanRoute(ctx)) dlog('tts','openai-stream-skip',{why:'指定出力先をWeb Audioで守れない'});
   }
   return apiSpeakBlob(text,lang,seat,prosody,plan,key);
@@ -3308,6 +3318,172 @@ function apiSpeakBlob(text, lang, seat, prosody, plan, key){
     var m=String((err&&err.message)||err);
     dlog('tts','openai-FAIL',{err:m.slice(0,160),ms:Date.now()-t0}); finish();
     if (!openaiTtsWarned){ openaiTtsWarned=true; toast('OpenAI音声の生成に失敗しました。<br><small>'+m.slice(0,100)+'</small>'); }
+  });
+}
+
+/* Windows用 OpenAI PCM連続再生 -----------------------------------------
+   raw PCMを発話ごとに1本のAudioWorkletへ流し、24kHzから端末のAudioContext
+   レートへ連続的に線形補間する。従来のように120msごとのAudioBufferSourceを
+   作らないため、チャンク境界でリサンプラが切れてビープになる経路を避けられる。 */
+var oaiPcmWorkletReady = null, oaiPcmWorkletUrl = '';
+function ensureOpenAiPcmWorklet(ctx){
+  if (oaiPcmWorkletReady) return oaiPcmWorkletReady;
+  if (!ctx.audioWorklet || !window.AudioWorkletNode) return Promise.reject(new Error('AudioWorklet非対応'));
+  var code = [
+    'class DIOpenAIPcmProcessor extends AudioWorkletProcessor {',
+    '  constructor(options){',
+    '    super();',
+    '    const p=(options&&options.processorOptions)||{};',
+    '    this.ratio=(p.sourceRate||24000)/sampleRate;',
+    '    this.startSamples=p.startSamples||8400;',
+    '    this.q=[];this.qi=0;this.si=0;this.available=0;',
+    '    this.phase=0;this.a=0;this.b=0;this.havePair=false;',
+    '    this.started=false;this.ended=false;this.drained=false;this.inUnderrun=false;',
+    '    this.port.onmessage=(ev)=>{',
+    '      const m=ev.data||{};',
+    '      if(m.type==="chunk"&&m.samples&&m.samples.length){this.q.push(m.samples);this.available+=m.samples.length;this.inUnderrun=false;}',
+    '      else if(m.type==="end")this.ended=true;',
+    '      else if(m.type==="reset"){this.q=[];this.available=0;this.havePair=false;this.ended=true;}',
+    '    };',
+    '  }',
+    '  take(){',
+    '    while(this.qi<this.q.length){',
+    '      const c=this.q[this.qi];',
+    '      if(this.si<c.length){const v=c[this.si++];this.available--;return v;}',
+    '      this.qi++;this.si=0;',
+    '      if(this.qi>24){this.q=this.q.slice(this.qi);this.qi=0;}',
+    '    }',
+    '    return null;',
+    '  }',
+    '  finishIfDrained(){',
+    '    if(this.ended&&!this.drained&&this.available<=0&&!this.havePair){this.drained=true;this.port.postMessage({type:"drained"});}',
+    '  }',
+    '  process(inputs,outputs){',
+    '    const out=outputs[0]&&outputs[0][0];if(!out)return true;out.fill(0);',
+    '    if(!this.started){',
+    '      if(this.available<this.startSamples&&!this.ended)return true;',
+    '      if(this.available<2){this.finishIfDrained();return true;}',
+    '      this.started=true;this.port.postMessage({type:"started",bufferedSamples:this.available});',
+    '    }',
+    '    for(let i=0;i<out.length;i++){',
+    '      if(!this.havePair){',
+    '        const x=this.take(),y=this.take();',
+    '        if(x===null||y===null){this.finishIfDrained();return true;}',
+    '        this.a=x;this.b=y;this.phase=0;this.havePair=true;',
+    '      }',
+    '      out[i]=this.a+(this.b-this.a)*this.phase;',
+    '      this.phase+=this.ratio;',
+    '      while(this.phase>=1){',
+    '        this.phase-=1;this.a=this.b;',
+    '        const n=this.take();',
+    '        if(n===null){',
+    '          this.havePair=false;',
+    '          if(!this.ended&&!this.inUnderrun){this.inUnderrun=true;this.port.postMessage({type:"underrun"});}',
+    '          this.finishIfDrained();return true;',
+    '        }',
+    '        this.b=n;',
+    '      }',
+    '    }',
+    '    return true;',
+    '  }',
+    '}',
+    'registerProcessor("di-openai-pcm-player",DIOpenAIPcmProcessor);'
+  ].join('\n');
+  oaiPcmWorkletUrl=URL.createObjectURL(new Blob([code],{type:'application/javascript'}));
+  oaiPcmWorkletReady=ctx.audioWorklet.addModule(oaiPcmWorkletUrl).then(function(){
+    try{URL.revokeObjectURL(oaiPcmWorkletUrl);}catch(e){} oaiPcmWorkletUrl='';
+    dlog('tts','openai-worklet-ready',{ctxRate:ctx.sampleRate,sourceRate:24000});
+    return true;
+  }).catch(function(err){
+    try{URL.revokeObjectURL(oaiPcmWorkletUrl);}catch(e){} oaiPcmWorkletUrl='';oaiPcmWorkletReady=null;
+    throw err;
+  });
+  return oaiPcmWorkletReady;
+}
+function pcm16ToFloat32(u8){
+  var n=Math.floor(u8.byteLength/2), out=new Float32Array(n), dv=new DataView(u8.buffer,u8.byteOffset,n*2);
+  for(var i=0;i<n;i++) out[i]=dv.getInt16(i*2,true)/32768;
+  return out;
+}
+function apiSpeakStreamWorklet(text,lang,seat,prosody,plan,ctx,key){
+  var t0=Date.now(),firstMs=0,started=false,underruns=0,receivedSamples=0,networkDone=false;
+  var body=oaiSpeechBody(text,seat,'pcm',plan), guardMs=Math.min(120000,12000+text.length*200);
+  var finish=ttsGuard(text,guardMs),myGen=finish.gen,streamDone=false,watchdog=null,node=null,streamGain=null;
+  var ctrl=null;try{ctrl=new AbortController();}catch(e){}
+  var streamEnd=function(why){
+    if(streamDone)return;streamDone=true;clearTimeout(watchdog);
+    if(ttsCurEnd===streamEnd)ttsCurEnd=null;
+    if(node){try{node.port.postMessage({type:'reset'});node.disconnect();}catch(e){}node=null;}
+    if(streamGain){try{streamGain.disconnect();}catch(e){}streamGain=null;}
+    ttsPlayingNow=false;openaiTtsAbort=null;finish();
+    dlog('tts','stream-play-end',{src:'openai-worklet',why:why||'ended',ms:Date.now()-t0,queued:ttsQueue.length});
+    pumpTtsQueue();
+  };
+  ttsPlayingNow=true;ttsCurEnd=streamEnd;openaiTtsAbort=ctrl;ensureCtxSink(ctx);oaiLogRequest(body,plan,text,seat,true);
+  watchdog=setTimeout(function(){
+    if(streamDone)return;try{if(ctrl)ctrl.abort();}catch(e){}
+    dlog('tts','openai-stream-TIMEOUT',{ms:Date.now()-t0,started:started,transport:'audio-worklet'});
+    streamEnd('timeout');
+  },guardMs+50);
+  ensureOpenAiPcmWorklet(ctx).then(function(){
+    if(myGen!==ttsGen)throw new Error('stopped');
+    node=new AudioWorkletNode(ctx,'di-openai-pcm-player',{numberOfInputs:0,numberOfOutputs:1,
+      outputChannelCount:[1],processorOptions:{sourceRate:24000,startSamples:Math.round(24000*0.35)}});
+    streamGain=ctx.createGain();streamGain.gain.value=plan.gain;node.connect(streamGain);streamGain.connect(ttsGain);
+    node.onprocessorerror=function(){dlog('tts','openai-worklet-FAIL',{why:'processorerror'});streamEnd('processorerror');};
+    node.port.onmessage=function(ev){
+      var m=ev.data||{};
+      if(m.type==='started'&&!started){started=true;waMode=true;firstMs=Date.now()-t0;
+        dlog('tts','openai-first',{ms:firstMs,leadMs:350,rate:24000,ch:1,model:body.model,voice:body.voice,
+          gain:plan.gain,transport:'audio-worklet',bufferedMs:Math.round((m.bufferedSamples||0)/24)});
+      } else if(m.type==='underrun'){
+        underruns++;dlog('tts','openai-underrun',{ms:Date.now()-t0,n:underruns,transport:'audio-worklet'});
+      } else if(m.type==='drained'&&networkDone){
+        setTimeout(function(){streamEnd('ended');},60);
+      }
+    };
+    return fetch('https://api.openai.com/v1/audio/speech',{
+      method:'POST',signal:ctrl&&ctrl.signal,
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'Accept':'audio/pcm, application/octet-stream'},
+      body:JSON.stringify(body)
+    });
+  }).then(function(r){
+    if(!r.ok)return r.text().then(function(x){throw new Error('TTS '+r.status+' '+String(x).slice(0,140));});
+    var contentType='';try{contentType=String(r.headers.get('content-type')||'');}catch(e){}
+    dlog('tts','openai-response',{status:r.status,contentType:contentType||'(不明)',streamFormat:body.stream_format,
+      transport:'audio-worklet'});
+    if(/text\/event-stream|application\/json|text\/plain/i.test(contentType))throw new Error('音声ではないレスポンス形式: '+contentType);
+    if(!r.body||!r.body.getReader)throw new Error('ストリーミング非対応');
+    var reader=r.body.getReader(),pend=new Uint8Array(0);
+    var pushBytes=function(u8,flush){
+      var merged=new Uint8Array(pend.length+u8.length);merged.set(pend);merged.set(u8,pend.length);
+      var usable=merged.length-(merged.length%2);pend=merged.slice(usable);
+      if(!usable)return;
+      var samples=pcm16ToFloat32(merged.subarray(0,usable));receivedSamples+=samples.length;
+      node.port.postMessage({type:'chunk',samples:samples},[samples.buffer]);
+      if(flush&&pend.length)dlog('tts','openai-pcm-tail',{bytes:pend.length});
+    };
+    var pump=function(){return reader.read().then(function(res){
+      if(myGen!==ttsGen){try{reader.cancel();}catch(e){}throw new Error('stopped');}
+      if(res.done){
+        pushBytes(new Uint8Array(0),true);if(!receivedSamples)throw new Error('音声データが空でした');
+        networkDone=true;node.port.postMessage({type:'end'});
+        var playedMs=started?Math.max(0,Date.now()-t0-firstMs):0;
+        dlog('tts','openai-stream-ok',{chars:text.length,firstMs:firstMs,totalMs:Date.now()-t0,seat:seat,
+          model:body.model,voice:body.voice,gain:plan.gain,underruns:underruns,transport:'audio-worklet',
+          audioMs:Math.round(receivedSamples/24),playRemainMs:Math.max(0,Math.round(receivedSamples/24-playedMs))});
+        return;
+      }
+      pushBytes(new Uint8Array(res.value),false);return pump();
+    });};
+    return pump();
+  }).catch(function(err){
+    var m=String((err&&err.message)||err);
+    if(streamDone)return;
+    if(myGen!==ttsGen||/abort|stopped/i.test(m)){streamEnd('stopped');return;}
+    dlog('tts','openai-stream-FAIL',{err:m.slice(0,160),ms:Date.now()-t0,started:started,transport:'audio-worklet'});
+    if(started){networkDone=true;try{node.port.postMessage({type:'end'});}catch(e){}setTimeout(function(){streamEnd('failed');},250);return;}
+    streamEnd('failed');apiSpeakBlob(text,lang,seat,prosody,plan,key);
   });
 }
 function apiSpeakStream(text, lang, seat, prosody, plan, ctx, key){
@@ -5489,7 +5665,9 @@ function ttsPlanText(){
   if (CFG.ttsMode === 'openai'){
     var missO=ttsSetupMissing();
     if(missO){t+='<br><b>⚠ '+missO+'</b>';warn=true;}
-    else t+='<br>'+oaiManualTweaks()+'。'+(CFG.oaiStream?'PCMストリーミング再生を使用します。':'WAVを生成完了後に再生します。');
+    else t+='<br>'+oaiManualTweaks()+'。'+(CFG.oaiStream&&oaiPcmStreamAllowed()
+      ? (oaiIsWindows()?'PCMをAudioWorkletで連続ストリーミング再生します。':'PCMストリーミング再生を使用します。')
+      : CFG.oaiStream?'AudioWorklet非対応のためWAVを生成完了後に再生します。':'WAVを生成完了後に再生します。');
   }
   if (CFG.ttsMode === 'eleven'){
     var missEl = ttsSetupMissing();
@@ -5599,7 +5777,12 @@ function refreshVvUI(){
     var instructable=oaiInstructionsSupported(CFG.ttsModel), ids=['oaiEmotion','oaiIntonation','oaiDynamics','oaiPause','oaiStyle'];
     ids.forEach(function(id){ var el=$(id); if(el) el.disabled=!instructable; });
     var orate=$('oaiRate'); if(orate) orate.disabled=false; /* speedは旧tts-1系でもAPI対応 */
-    var os=$('oaiStream'); if(os) os.checked=!!CFG.oaiStream;
+    var pcmAllowed=oaiPcmStreamAllowed(), os=$('oaiStream');
+    if(os){ os.checked=!!CFG.oaiStream&&pcmAllowed; os.disabled=!pcmAllowed; }
+    var osl=$('oaiStreamLabel');
+    if(osl) osl.textContent=pcmAllowed
+      ? (oaiIsWindows()?'PCMストリーミング再生（AudioWorklet連続再生）':'PCMストリーミング再生（低遅延）')
+      : 'PCMストリーミング停止中（AudioWorklet非対応・WAV再生）';
     var on=$('oaiStyleNote');
     if(on) on.innerHTML=instructable
       ? '<code>gpt-4o-mini-tts</code>へ、話速はAPIの数値<code>speed</code>、音量はWeb Audioで反映し、感情・抑揚・緩急・間は段階別の強い指示文として送ります。'
@@ -7857,7 +8040,9 @@ function diagText(devices){
    ['読み上げモデル', rtNativeAudio ? 'gpt-realtime-translate' : diagTtsModel()],
    ['読み上げ対象', rtNativeAudio ? '訳す方向に従う' : CFG.ttsWho],
    ['声 A / B', rtNativeAudio ? '(外部TTS設定は未使用)' : ttsSeatVoices()],
-   ['OpenAI PCMストリーミング', !rtNativeAudio && CFG.ttsMode === 'openai' ? (CFG.oaiStream ? 'ON' : 'OFF') : '(未使用)'],
+   ['OpenAI PCMストリーミング', !rtNativeAudio && CFG.ttsMode === 'openai'
+      ? (CFG.oaiStream ? (oaiPcmStreamAllowed() ? (oaiIsWindows()?'ON（AudioWorklet連続再生）':'ON')
+                                                : '自動OFF（AudioWorklet非対応・WAV使用）') : 'OFF') : '(未使用)'],
    ['OpenAI 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'openai' ? oaiManualTweaks() : '(未使用)'],
    ['OpenAI API speed', !rtNativeAudio && CFG.ttsMode === 'openai'
       ? String(OAI_RATE_FACTORS[oaiLevel(CFG.oaiRate)+2]) : '(未使用)'],
