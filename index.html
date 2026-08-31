@@ -491,7 +491,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260831-v13210-oaitts1.2</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260831-v13210-oaitts1.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -501,7 +501,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260831-v13210-oaitts1.2</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260831-v13210-oaitts1.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -790,7 +790,7 @@
         <input type="text" id="ttsModelCustom" placeholder="モデル名を直接入力" style="display:none">
         <details class="adv" id="oaiAdv">
           <summary>OpenAI 話し方の調整</summary>
-          <div class="tunerow"><span>話速</span><select id="oaiRate"><option value="-2">かなり遅い</option><option value="-1">遅い</option><option value="0">標準</option><option value="1">速い</option><option value="2">かなり速い</option></select></div>
+          <div class="tunerow"><span>話速</span><select id="oaiRate"><option value="-2">かなり遅い（0.75倍）</option><option value="-1">遅い（0.88倍）</option><option value="0">標準（1.00倍）</option><option value="1">速い（1.15倍）</option><option value="2">かなり速い（1.35倍）</option></select></div>
           <div class="tunerow"><span>感情</span><select id="oaiEmotion"><option value="-2">かなり抑制</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">強い</option><option value="2">非常に強い</option></select></div>
           <div class="tunerow"><span>抑揚</span><select id="oaiIntonation"><option value="-2">かなり平坦</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">豊か</option><option value="2">非常に豊か</option></select></div>
           <div class="tunerow"><span>緩急</span><select id="oaiDynamics"><option value="-2">一定</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">動的</option><option value="2">非常に動的</option></select></div>
@@ -798,7 +798,7 @@
           <div class="tunerow"><span>音量</span><select id="oaiVolume"><option value="-2">かなり小さい</option><option value="-1">小さい</option><option value="0">標準</option><option value="1">大きい</option><option value="2">かなり大きい</option></select></div>
           <label class="switch"><input type="checkbox" id="oaiStream" checked> PCMストリーミング再生（低遅延）</label>
           <textarea id="oaiStyle" maxlength="500" placeholder="追加の話し方（任意）&#10;例：落ち着いた専門家として、簡潔かつ自信を持って話す。"></textarea>
-          <small id="oaiStyleNote" data-fold="off"><code>gpt-4o-mini-tts</code>では、上記設定と元音声の話し方解析を発話ごとの指示文へ変換します。音量はWeb Audioで数値反映します。旧<code>tts-1</code>系では話し方指示は適用されません。</small>
+          <small id="oaiStyleNote" data-fold="off"><code>gpt-4o-mini-tts</code>では、話速をAPIの数値<code>speed</code>、音量をWeb Audioで反映し、感情・抑揚・緩急・間は発話ごとの強い指示文で反映します。旧<code>tts-1</code>系では話し方指示は適用されません。</small>
         </details>
       </div>
       <label class="switch"><input type="checkbox" id="ttsSrc"> 訳文ではなく<b>原文</b>をそのまま読み上げる</label>
@@ -1169,7 +1169,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260831-v13210-oaitts1.2';
+var APP_BUILD = '20260831-v13210-oaitts1.3';
 
 /* ---------------- 言語定義 ---------------- */
 var LANGS = [
@@ -3174,9 +3174,10 @@ function browserSpeak(text, tag, prosody, onFinish){
 }
 
 /* ---------------- OpenAI TTS の話し方制御 ----------------
-   Aivisのような数値APIではないため、手動設定と元音声の相対変化を英語の
-   instructionsへ変換する。音量だけはモデル任せにせず、Web AudioのGainで反映する。 */
-var OAI_RATE_FACTORS = [0.78,0.90,1,1.12,1.25];
+   話速はAPIの数値speed、音量はWeb AudioのGainで確定的に反映する。
+   感情・抑揚・緩急・間は独立した数値APIがないため、段階差が明瞭になる
+   instructionsへ変換する。 */
+var OAI_RATE_FACTORS = [0.75,0.88,1,1.15,1.35];
 var OAI_GAIN_FACTORS = [0.75,0.88,1,1.12,1.25];
 var openaiTtsWarned = false;
 function oaiLevel(v){
@@ -3220,38 +3221,37 @@ function oaiBuildPlan(lang, prosody){
     'Read exactly the supplied text without adding, omitting, translating, or paraphrasing any words.',
     'Speak clearly and naturally in the language of the supplied text, suitable for a live business conversation.'
   ];
-  var pct=Math.round(Math.abs(rate-1)*100);
-  lines.push(rate>1.025 ? ('Speak approximately '+pct+'% faster than a normal conversational pace without sounding rushed.')
-             : rate<0.975 ? ('Speak approximately '+pct+'% slower than a normal conversational pace without sounding unnatural.')
-             : 'Use a normal conversational speaking rate.');
+  lines.push('The numeric speed parameter controls speaking rate. Preserve natural phrasing, but do not counteract or normalize that requested speed.');
   lines.push([
-    'Keep emotional expression highly restrained and neutral.',
-    'Use restrained emotional expression.',
+    'Use an intentionally neutral, emotionally flat delivery with almost no affect.',
+    'Use restrained emotional expression with only subtle affect.',
     'Use natural, moderate emotional expression.',
-    'Use clearly expressive emotion while remaining intelligible.',
-    'Use strong, vivid emotional expression while preserving every word.'
+    'Use clearly audible emotional expression, with noticeable changes in energy and affect.',
+    'Use very strong and vivid emotional expression. Make the affect unmistakable while preserving every word.'
   ][emotion+2]);
   lines.push([
-    'Keep pitch and intonation very flat.',
-    'Use restrained pitch variation and intonation.',
+    'Keep pitch almost completely flat and minimize melodic movement.',
+    'Use limited pitch variation and restrained intonation.',
     'Use natural conversational intonation.',
-    'Use a broad and expressive intonation range.',
-    'Use a very broad, vivid intonation range without becoming theatrical.'
+    'Use a broad pitch range with clearly audible rises, falls, and sentence-level contours.',
+    'Use a very broad and vivid pitch range with pronounced rises, falls, and emphatic contours. Make the intonation unmistakable without losing intelligibility.'
   ][intonation+2]);
   lines.push([
-    'Keep pacing highly even with almost no tempo variation.',
-    'Keep pacing mostly even with limited tempo variation.',
+    'Keep pacing deliberately even, with almost no tempo or emphasis variation.',
+    'Keep pacing mostly even, with only limited tempo and emphasis variation.',
     'Use natural pacing and tempo variation.',
-    'Use dynamic pacing with noticeable acceleration and deceleration.',
-    'Use strongly dynamic pacing and emphasis while keeping the text clear.'
+    'Use dynamic pacing with clearly noticeable acceleration, deceleration, and emphasis.',
+    'Use strongly contrasting pacing: pronounced acceleration, deceleration, and emphatic stress. Make the variation unmistakable while keeping the text clear.'
   ][dynamics+2]);
   lines.push([
-    'Keep pauses between clauses extremely short.',
+    'Use almost no pause between clauses; connect phrases tightly.',
     'Use short pauses between clauses.',
-    'Use natural pauses between clauses.',
-    'Use clearly noticeable pauses between clauses.',
-    'Use long deliberate pauses between clauses, while keeping the response cohesive.'
+    'Use natural conversational pauses between clauses.',
+    'Use clearly noticeable, deliberate pauses between clauses.',
+    'Use long and unmistakable deliberate pauses between clauses while keeping the response cohesive.'
   ][pause+2]);
+  if (emotion || intonation || dynamics || pause)
+    lines.push('These delivery controls are mandatory. Make their difference from a neutral reading clearly perceptible in the generated audio.');
   var custom=String(CFG.oaiStyle||'').trim().replace(/\s+/g,' ').slice(0,500);
   if (custom) lines.push('Additional delivery instruction: '+custom);
   return { map:pmap,rate:prosodyRound(rate,3),gain:prosodyRound(gain,3),emotion:emotion,
@@ -3259,7 +3259,8 @@ function oaiBuildPlan(lang, prosody){
 }
 function oaiSpeechBody(text, seat, format, plan){
   var model=CFG.ttsModel||'gpt-4o-mini-tts';
-  var body={model:model,voice:(seat==='A'?CFG.voiceA:CFG.voiceB),input:text,response_format:format};
+  var body={model:model,voice:(seat==='A'?CFG.voiceA:CFG.voiceB),input:text,response_format:format,
+    speed:prosodyClamp(plan.rate,0.25,4)};
   /* response_format=pcm は音声の符号化形式、stream_format=audio はHTTP本文の運び方。
      後者を省くとSSEイベント文字列が返る場合があり、それをPCMとして鳴らすとビープ音になる。 */
   if(format==='pcm') body.stream_format='audio';
@@ -3270,7 +3271,8 @@ function oaiLogRequest(body, plan, text, seat, stream){
   dlog('tts','openai-request',{model:body.model,voice:body.voice,seat:seat||'A',chars:text.length,
     format:body.response_format,streamFormat:body.stream_format||'(default)',stream:!!stream,instructionsApplied:!!body.instructions,
     instructions:body.instructions||'(このモデルはinstructions非対応)',manual:oaiManualTweaks(),
-    effectiveRate:plan.rate,effectiveGain:plan.gain,prosody:!!plan.map});
+    speed:body.speed,effectiveRate:plan.rate,effectiveGain:plan.gain,
+    controlLevels:{emotion:plan.emotion,intonation:plan.intonation,dynamics:plan.dynamics,pause:plan.pause},prosody:!!plan.map});
   logProsodyMap(plan.map,{effectiveRate:plan.rate,effectiveVolume:plan.gain,
     effectiveDynamics:plan.dynamics,stream:!!stream,instructions:true});
 }
@@ -3612,7 +3614,7 @@ function ttsFallback(text, lang, why, warnMsg, flagName, prosody){
    音を出し始めてから実際に鳴るまでの数百msが欠ける。診断ログでも、読み上げの
    間隔が7〜26秒空いたあとの再生で頭が切れていた。
    そこで合成を始めた時点から極小の無音を流し続け、出力を起こしたままにする。 */
-var primeEl = null, primeTimer = 0;
+var primeEl = null, primeTimer = 0, primeSkipLogged = false;
 function silentWavUrl(ms){
   var sr = 8000, n = Math.round(sr * ms / 1000), len = 44 + n * 2;
   var buf = new ArrayBuffer(len), v = new DataView(buf);
@@ -3625,6 +3627,12 @@ function silentWavUrl(ms){
 }
 function primeOutput(){
   if (CFG.ttsMode === 'off') return;
+  /* HTMLAudioElementの無音呼び水はiOSの出力経路維持専用。Windowsでは一部の
+     オーディオドライバが無音ストリームの開始自体をビープで通知するため使わない。 */
+  if (!IS_IOS){
+    if (!primeSkipLogged){ primeSkipLogged=true; dlog('audio','prime-skip',{why:'iOS以外では不要'}); }
+    return;
+  }
   /* waMode は「Web Audio を一度使った」ことしか表さない。iOS Safari/PWAでは
      AudioContext が running のままでも、無音が続くと実出力だけ休止することがある。
      発話ごとに呼び水の停止タイマーを更新し、停止済みなら play() し直す。 */
@@ -5588,13 +5596,14 @@ function refreshVvUI(){
   if (oo) oo.style.display = (!isRT && CFG.ttsMode === 'openai') ? '' : 'none';
   if (oo){
     var ok=$('oaiTtsKey'); if(ok&&ok!==document.activeElement) ok.value=KEYS['openai']||'';
-    var instructable=oaiInstructionsSupported(CFG.ttsModel), ids=['oaiRate','oaiEmotion','oaiIntonation','oaiDynamics','oaiPause','oaiStyle'];
+    var instructable=oaiInstructionsSupported(CFG.ttsModel), ids=['oaiEmotion','oaiIntonation','oaiDynamics','oaiPause','oaiStyle'];
     ids.forEach(function(id){ var el=$(id); if(el) el.disabled=!instructable; });
+    var orate=$('oaiRate'); if(orate) orate.disabled=false; /* speedは旧tts-1系でもAPI対応 */
     var os=$('oaiStream'); if(os) os.checked=!!CFG.oaiStream;
     var on=$('oaiStyleNote');
     if(on) on.innerHTML=instructable
-      ? '<code>gpt-4o-mini-tts</code>へ、手動設定と元音声の解析結果を発話ごとの指示文として送ります。音量はWeb Audioで数値反映します。'
-      : '⚠ 選択中のモデルは話し方の<code>instructions</code>に対応しないため、音量とストリーミングだけを適用します。話し方を変えるには<code>gpt-4o-mini-tts</code>を選んでください。';
+      ? '<code>gpt-4o-mini-tts</code>へ、話速はAPIの数値<code>speed</code>、音量はWeb Audioで反映し、感情・抑揚・緩急・間は段階別の強い指示文として送ります。'
+      : '⚠ 選択中のモデルは話し方の<code>instructions</code>に対応しません。話速（API speed）・音量・ストリーミングは適用します。感情・抑揚・緩急・間を変えるには<code>gpt-4o-mini-tts</code>を選んでください。';
   }
   var ef = $('elField');
   if (ef){
@@ -7850,6 +7859,8 @@ function diagText(devices){
    ['声 A / B', rtNativeAudio ? '(外部TTS設定は未使用)' : ttsSeatVoices()],
    ['OpenAI PCMストリーミング', !rtNativeAudio && CFG.ttsMode === 'openai' ? (CFG.oaiStream ? 'ON' : 'OFF') : '(未使用)'],
    ['OpenAI 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'openai' ? oaiManualTweaks() : '(未使用)'],
+   ['OpenAI API speed', !rtNativeAudio && CFG.ttsMode === 'openai'
+      ? String(OAI_RATE_FACTORS[oaiLevel(CFG.oaiRate)+2]) : '(未使用)'],
    ['OpenAI instructions', !rtNativeAudio && CFG.ttsMode === 'openai'
       ? (oaiInstructionsSupported(CFG.ttsModel) ? '対応（発話ごとに動的生成）' : '非対応モデルのため未適用') : '(未使用)'],
    ['xAIの声 A / B', !rtNativeAudio && CFG.ttsMode === 'xai' ? ttsSeatVoices() : '(未使用)'],
@@ -7885,7 +7896,7 @@ function diagText(devices){
    ['Prosody TTS反映', !CFG.prosodyOn ? 'OFF'
       : rtNativeAudio ? '解析のみ（モデル内蔵音声へは未反映）'
       : CFG.ttsMode==='browser' ? 'ブラウザ標準：速度・音量・語尾傾向'
-      : CFG.ttsMode==='openai' ? 'OpenAI：速度・抑揚・緩急・間（instructions）＋音量（Web Audio）'
+      : CFG.ttsMode==='openai' ? 'OpenAI：速度（API speed）＋感情・抑揚・緩急・間（instructions）＋音量（Web Audio）'
       : CFG.ttsMode==='aivis' ? 'Aivis：速度・緩急・音量'
       : CFG.ttsMode==='voicevox' ? 'VOICEVOX：速度（声高・抑揚は解析のみ）'
       : '解析のみ（現在のTTSは未対応）'],
