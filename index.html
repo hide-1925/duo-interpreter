@@ -491,7 +491,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260901-v13210-oaitts1.7</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260901-v13210-oaitts1.8</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -501,7 +501,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260901-v13210-oaitts1.7</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260901-v13210-oaitts1.8</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1198,7 +1198,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260901-v13210-oaitts1.7';
+var APP_BUILD = '20260901-v13210-oaitts1.8';
 
 /* ---------------- 言語定義 ---------------- */
 var LANGS = [
@@ -3901,6 +3901,31 @@ function primeOutput(){
    <audio> は1つしかないので、前の再生中に次のsrcを入れると前が途中で切れる。
    順番待ちの列にして、必ず最後まで鳴らしてから次に進む。 */
 var ttsQueue = [], ttsPlayingNow = false, ttsLastUrl = '';
+/* 音声生成は並列のまま行うが、短い後続文が先に完成しても会話順を追い越させない。
+   ttsGuard() を作った時点（= 読み上げ要求の受付順）で連番を予約し、再生キューは
+   その連番の先頭が完成するまで待つ。生成完了順で push するだけだと、
+   「長文 -> 長文 -> 短文」で短文が2件目より先に鳴ってしまうため。 */
+var ttsOrderSeq = 0, ttsPendingOrders = {}, ttsOrderWaitLogged = '';
+function ttsRegisterOrder(finish){
+  var order = ++ttsOrderSeq;
+  finish.order = order;
+  ttsPendingOrders[order] = { gen:finish.gen, at:finish.queuedAt, chars:finish.textChars };
+}
+function ttsReleaseOrder(finish){
+  var order = finish && finish.order;
+  if (order != null) delete ttsPendingOrders[order];
+  /* 先行文が通信失敗・タイムアウトになった場合も、後続文を待たせ続けない。 */
+  setTimeout(function(){ pumpTtsQueue(); }, 0);
+}
+function ttsOldestPendingOrder(){
+  var min = null;
+  Object.keys(ttsPendingOrders).forEach(function(k){
+    var p = ttsPendingOrders[k], n = parseInt(k,10);
+    if (!p || p.gen !== ttsGen){ delete ttsPendingOrders[k]; return; }
+    if (min == null || n < min) min = n;
+  });
+  return min;
+}
 /* 長文1件だけで20秒以上になるため、固定8秒では正常な次発話まで必ず落ちる。
    既定は文章長に応じて20～45秒。ユーザー指定時は全TTSの共通上限として使い、
    時間破棄を止めても6件以上たまる場合だけ新規を見送る。 */
@@ -4031,10 +4056,18 @@ function playBlob(blob, finish, tag, opts){
   var at = (finish && finish.queuedAt) ? finish.queuedAt : Date.now();
   var chars=(finish&&finish.textChars)||0, staleMs=ttsQueueWaitLimit(chars);
   opts = opts || {};
-  ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:at, gen:g,
+  /* guardの期限後や停止後に遅れて届いた音声は、順番列へ戻さない。 */
+  if (finish && finish.done){
+    dlog('tts','drop',{ src:tag||'', why:'読み上げ要求の終了後に音声が届いた', order:finish.order||null });
+    pumpTtsQueue();
+    return;
+  }
+  var order = (finish && finish.order != null) ? finish.order : ++ttsOrderSeq;
+  ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:at, gen:g, order:order,
                   chars:chars,staleMs:staleMs,gain:prosodyClamp(parseFloat(opts.gain)||1,0.5,1.5) });
+  ttsQueue.sort(function(a,b){ return a.order-b.order; });
   if (ttsPlayingNow) dlog('tts','queue-wait',{ src:tag||'', n:ttsQueue.length, chars:chars,
-    waitLimitMs:staleMs,why:'前の音声を再生中' });
+    order:order,waitLimitMs:staleMs,why:'前の音声を再生中' });
   pumpTtsQueue();
 }
 function clearTtsQueue(){
@@ -4042,7 +4075,29 @@ function clearTtsQueue(){
 }
 function pumpTtsQueue(){
   if (ttsPlayingNow || !ttsQueue.length) return;
-  var job = ttsQueue.shift();
+  ttsQueue.sort(function(a,b){ return a.order-b.order; });
+  /* 停止済み・期限切れのguardに属する項目を先に除去する。 */
+  while (ttsQueue.length &&
+        (ttsQueue[0].gen !== ttsGen || (ttsQueue[0].finish && ttsQueue[0].finish.done))){
+    var old = ttsQueue.shift();
+    dlog('tts','drop',{ src:old.tag, why:old.gen!==ttsGen?'停止後に届いた':'読み上げ要求が終了済み',
+      order:old.order });
+    try{ old.finish(); }catch(e){}
+  }
+  if (!ttsQueue.length){ ttsOrderWaitLogged=''; return; }
+  var job = ttsQueue[0], oldest = ttsOldestPendingOrder();
+  /* 先行する読み上げがまだ合成中なら、完成済みの短い後続文を再生しない。 */
+  if (oldest != null && job.order !== oldest){
+    var waitKey = String(oldest)+'>'+String(job.order);
+    if (ttsOrderWaitLogged !== waitKey){
+      ttsOrderWaitLogged = waitKey;
+      dlog('tts','order-wait',{ waitingFor:oldest, ready:job.order, queued:ttsQueue.length,
+        why:'先に受け付けた音声を生成中' });
+    }
+    return;
+  }
+  ttsOrderWaitLogged='';
+  job = ttsQueue.shift();
   /* 停止を押したあとに返ってきた音声。もう鳴らす意味がないので捨てる */
   if (job.gen !== ttsGen){
     dlog('tts','drop',{ src: job.tag, why:'停止後に届いた' });
@@ -4102,7 +4157,7 @@ function playJob(job, end){
       srcNode.start(ctx.currentTime + lead);
       waSrc = srcNode;                 /* 停止できるように掴んでおく */
       waMode = true;
-      dlog('tts','wa-play',{ src: job.tag, leadMs: Math.round(lead*1000), queuedMs: t0 - job.at,
+      dlog('tts','wa-play',{ src: job.tag, order:job.order, leadMs: Math.round(lead*1000), queuedMs: t0 - job.at,
         decodeMs: Date.now()-t0, dur: Math.round(ab.duration*1000), state: ctx.state, rate: ab.sampleRate,
         gain:prosodyRound(jobGain.gain.value,3) });
       /* onended が来ない機種の保険 */
@@ -4125,7 +4180,7 @@ function playViaAudioEl(job, end){
     audioEl.onended = end;
     audioEl.onerror = end;
     audioEl.onplaying = function(){
-      dlog('tts','play-start',{ src: job.tag, waitMs: Date.now()-t0,
+      dlog('tts','play-start',{ src: job.tag, order:job.order, waitMs: Date.now()-t0,
         queuedMs: t0 - job.at, dur: Math.round((audioEl.duration || 0) * 1000),
         gain:prosodyRound(audioEl.volume,3),gainLimited:(job.gain||1)>1 });
     };
@@ -4136,10 +4191,15 @@ function playViaAudioEl(job, end){
 }
 function ttsGuard(text, ms){
   var done = false, tEnd = null;
-  var finish = function(){ if (done) return; done = true; clearTimeout(tEnd); ttsEnd(); };
+  var finish = function(){
+    if (done) return;
+    done = true; finish.done = true; clearTimeout(tEnd); ttsReleaseOrder(finish); ttsEnd();
+  };
+  finish.done = false;
   finish.gen = ttsGen;             /* この読み上げを始めた時点の世代を刻む */
   finish.queuedAt = Date.now();     /* 合成時間も含めた実際の遅延を測る */
   finish.textChars = String(text||'').length;
+  ttsRegisterOrder(finish);        /* 合成完了時ではなく受付時の順番を確保する */
   rememberSpoken(text);
   ttsBegin();
   tEnd = setTimeout(finish, ms);
@@ -6050,6 +6110,7 @@ function ttsIsBusy(){ return ttsActive > 0 || ttsPlayingNow || ttsQueue.length >
 function stopSpeaking(why){
   var had = ttsIsBusy();
   ttsGen++;                                  /* 以後に届く音声は鳴らさない */
+  ttsPendingOrders = {}; ttsOrderWaitLogged = '';
   clearTtsQueue();                           /* 待ち行列を先に空にする */
   /* VOICEVOXは合成要求を並列化しているため、世代番号だけで再生を止めるのではなく
      通信・再試行待ち・再生待ちもここでまとめて破棄する。 */
