@@ -116,6 +116,7 @@
   .bubble.interim{opacity:.55;border-left-style:dashed}
   .empty{margin:auto;text-align:center;color:var(--dim);font-size:14px;line-height:1.9;padding:20px}
   .empty b{display:block;font-size:19px;color:var(--txt);margin-bottom:6px}
+  .empty .build-id{display:block;margin-top:2px;color:var(--dim);font:500 11px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.01em}
 
   /* ---- 操作バー（画面最下部に固定） ---- */
   #bar{
@@ -490,7 +491,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260831-v13210-oaitts1.2</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -500,7 +501,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260831-v13210-oaitts1.2</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1168,7 +1169,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260831-v13210-oaitts1.1';
+var APP_BUILD = '20260831-v13210-oaitts1.2';
 
 /* ---------------- 言語定義 ---------------- */
 var LANGS = [
@@ -6831,7 +6832,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.32.10 Phase 1</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.32.10 Phase 1</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -8088,18 +8089,24 @@ function iosSetup(){
   }
 }
 
-/* iOS は無音のままだと音声を再生できないため、最初のタップで再生を解禁しておく */
+/* iOS はユーザー操作の外から音声を開始できないため、最初のタップで Web Audio を解禁する。
+   以前は全OSで空文字の SpeechSynthesisUtterance を speak() していたが、Windowsや一部の
+   音声デバイスでは空発話でも通知音／ビープになる。iOS以外では何もせず、iOSでも
+   Speech Synthesis は使わず、実際にTTSで使うWeb Audio経路へ1サンプルの無音だけ流す。 */
 function unlockAudioOnce(){
+  if (!IS_IOS) return;
   var done = false;
   var unlock = function(){
     if (done) return; done = true;
     try{
-      var ac = new (window.AudioContext||window.webkitAudioContext)();
-      if (ac.state === 'suspended') ac.resume();
-      var b = ac.createBuffer(1,1,22050), s = ac.createBufferSource();
-      s.buffer = b; s.connect(ac.destination); s.start(0);
+      var ac = ttsAudioCtx();
+      if (ac){
+        if (ac.state !== 'running' && ac.state !== 'closed') ac.resume();
+        var b = ac.createBuffer(1,1,ac.sampleRate), s = ac.createBufferSource();
+        s.buffer = b; s.connect(ttsGain || ac.destination); s.start(0);
+        dlog('audio','unlock',{platform:'ios',state:ac.state,method:'web-audio-silence'});
+      }
     }catch(e){}
-    try{ if (window.speechSynthesis){ var u=new SpeechSynthesisUtterance(''); speechSynthesis.speak(u); } }catch(e){}
     document.removeEventListener('touchend', unlock);
     document.removeEventListener('click', unlock);
   };
