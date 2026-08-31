@@ -491,7 +491,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260831-v13210-oaitts1.5</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260831-v13210-oaitts1.6</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -501,7 +501,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260831-v13210-oaitts1.5</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260831-v13210-oaitts1.6</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -790,7 +790,7 @@
         <input type="text" id="ttsModelCustom" placeholder="モデル名を直接入力" style="display:none">
         <details class="adv" id="oaiAdv">
           <summary>OpenAI 話し方の調整</summary>
-          <div class="tunerow"><span>話速</span><select id="oaiRate"><option value="-2">かなり遅い（0.75倍）</option><option value="-1">遅い（0.88倍）</option><option value="0">標準（1.00倍）</option><option value="1">速い（1.15倍）</option><option value="2">かなり速い（1.35倍）</option></select></div>
+          <div class="tunerow"><span>話速</span><select id="oaiRate"><option value="-2">かなり遅い（0.75倍）</option><option value="-1">遅い（0.88倍）</option><option value="0">標準（1.00倍）</option><option value="1">速い（1.15倍）</option><option value="2">かなり速い（1.35倍）</option><option value="3">高速（1.50倍）</option><option value="4">最高速（1.80倍）</option></select></div>
           <div class="tunerow"><span>感情</span><select id="oaiEmotion"><option value="-2">かなり抑制</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">強い</option><option value="2">非常に強い</option></select></div>
           <div class="tunerow"><span>抑揚</span><select id="oaiIntonation"><option value="-2">かなり平坦</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">豊か</option><option value="2">非常に豊か</option></select></div>
           <div class="tunerow"><span>緩急</span><select id="oaiDynamics"><option value="-2">一定</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">動的</option><option value="2">非常に動的</option></select></div>
@@ -1169,7 +1169,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260831-v13210-oaitts1.5';
+var APP_BUILD = '20260831-v13210-oaitts1.6';
 
 /* ---------------- 言語定義 ---------------- */
 var LANGS = [
@@ -3177,17 +3177,21 @@ function browserSpeak(text, tag, prosody, onFinish){
    話速はAPIの数値speed、音量はWeb AudioのGainで確定的に反映する。
    感情・抑揚・緩急・間は独立した数値APIがないため、段階差が明瞭になる
    instructionsへ変換する。 */
-var OAI_RATE_FACTORS = [0.75,0.88,1,1.15,1.35];
+var OAI_RATE_FACTORS = [0.75,0.88,1,1.15,1.35,1.50,1.80];
 var OAI_GAIN_FACTORS = [0.75,0.88,1,1.12,1.25];
 var openaiTtsWarned = false;
 function oaiLevel(v){
   var n=parseInt(v,10); if (isNaN(n)) n=0;
   return Math.max(-2,Math.min(2,n));
 }
+function oaiRateLevel(v){
+  var n=parseInt(v,10); if(isNaN(n))n=0;
+  return Math.max(-2,Math.min(4,n));
+}
 function oaiInstructionsSupported(model){ return /^gpt-4o-mini-tts(?:$|-)/.test(String(model||'')); }
 function oaiLevelLabel(n, labels){ return labels[oaiLevel(n)+2]; }
 function oaiManualTweaks(){
-  return '話速 '+oaiLevelLabel(CFG.oaiRate,['かなり遅い','遅い','標準','速い','かなり速い'])
+  return '話速 '+['かなり遅い','遅い','標準','速い','かなり速い','高速','最高速'][oaiRateLevel(CFG.oaiRate)+2]
     +' / 感情 '+oaiLevelLabel(CFG.oaiEmotion,['かなり抑制','控えめ','標準','強い','非常に強い'])
     +' / 抑揚 '+oaiLevelLabel(CFG.oaiIntonation,['かなり平坦','控えめ','標準','豊か','非常に豊か'])
     +' / 緩急 '+oaiLevelLabel(CFG.oaiDynamics,['一定','控えめ','標準','動的','非常に動的'])
@@ -3202,9 +3206,9 @@ function oaiShiftLevel(base, value, low, high){
 }
 function oaiBuildPlan(lang, prosody){
   var pmap=prosodyMapForTts(prosody,lang||'', 'openai');
-  var rateBase=OAI_RATE_FACTORS[oaiLevel(CFG.oaiRate)+2];
+  var rateBase=OAI_RATE_FACTORS[oaiRateLevel(CFG.oaiRate)+2];
   var gainBase=OAI_GAIN_FACTORS[oaiLevel(CFG.oaiVolume)+2];
-  var rate=prosodyClamp(rateBase*(pmap?pmap.rate:1),0.70,1.40);
+  var rate=prosodyClamp(rateBase*(pmap?pmap.rate:1),0.70,1.80);
   var gain=prosodyClamp(gainBase*(pmap?pmap.volume:1),0.50,1.50);
   var emotion=oaiLevel(CFG.oaiEmotion);
   var intonation=oaiLevel(CFG.oaiIntonation);
@@ -8045,7 +8049,7 @@ function diagText(devices){
                                                 : '自動OFF（AudioWorklet非対応・WAV使用）') : 'OFF') : '(未使用)'],
    ['OpenAI 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'openai' ? oaiManualTweaks() : '(未使用)'],
    ['OpenAI API speed', !rtNativeAudio && CFG.ttsMode === 'openai'
-      ? String(OAI_RATE_FACTORS[oaiLevel(CFG.oaiRate)+2]) : '(未使用)'],
+      ? String(OAI_RATE_FACTORS[oaiRateLevel(CFG.oaiRate)+2]) : '(未使用)'],
    ['OpenAI instructions', !rtNativeAudio && CFG.ttsMode === 'openai'
       ? (oaiInstructionsSupported(CFG.ttsModel) ? '対応（発話ごとに動的生成）' : '非対応モデルのため未適用') : '(未使用)'],
    ['xAIの声 A / B', !rtNativeAudio && CFG.ttsMode === 'xai' ? ttsSeatVoices() : '(未使用)'],
