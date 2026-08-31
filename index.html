@@ -579,7 +579,7 @@
       <select id="provider">
         <option value="free">🆓 無料モード（APIキー不要 / Google翻訳ウェブ版）</option>
         <option value="openai">OpenAI</option>
-        <option value="xai">xAI (Grok)</option>
+        <option value="xai">xAI（Grokモデル）</option>
         <option value="anthropic">Anthropic (Claude)</option>
         <option value="gemini">Google Gemini</option>
         <option value="groq">Groq（高速・無料枠あり）</option>
@@ -693,15 +693,12 @@
       </div>
       <div class="field" id="rtDirField" style="display:none">
         <label>訳す方向</label>
-        <select id="rtDir">
-          <option value="B">A（自分）が話した内容を → B（相手）の言語へ</option>
-          <option value="A">B（相手）が話した内容を → A（自分）の言語へ</option>
+        <select id="rtDirection">
+          <option value="A2B">A（自分）が話した内容を → B（相手）の言語へ</option>
+          <option value="B2A">B（相手）が話した内容を → A（自分）の言語へ</option>
+          <option value="both">両方向（2接続・料金2倍）</option>
         </select>
-        <small>このモードは1接続につき1方向です。双方向にしたい場合は「両方向（2接続）」を選んでください（料金は2倍になります）。</small>
-        <select id="rtBoth">
-          <option value="0">片方向のみ（安価）</option>
-          <option value="1">両方向（2接続・料金2倍）</option>
-        </select>
+        <small>片方向は1接続、両方向はA→BとB→Aの2接続を同時に使うため、料金も2倍になります。</small>
       </div>
     </div>
 
@@ -752,6 +749,12 @@
 
     <div class="field">
       <label>読み上げ（TTS）</label>
+      <div class="note" id="rtTtsNotice" style="display:none" data-fold="off">
+        <b>⚡ リアルタイム同時通訳では外部TTSを使用しません</b><br>
+        <code>gpt-realtime-translate</code> が翻訳音声を直接ストリーミング出力し、自動で再生します。
+        読み上げ方式・読み上げ対象・原文読み上げ・声・外部TTSの出力先設定は、このモードでは適用されません。
+      </div>
+      <div id="ttsSettings">
       <select id="ttsMode">
         <option value="off">なし</option>
         <option value="browser">🆓 ブラウザ内蔵音声（無料・即時）</option>
@@ -795,6 +798,7 @@
       自分の声をずんだもんにするなら、読み上げ＝<b>VOICEVOX</b>／読み上げ対象＝<b>自分(A)の発言だけ</b>／原文読み上げ＝<b>ON</b> の組み合わせです。
       （会話ログの翻訳表示はこれまで通り出ます。リアルタイム同時通訳モードは音声がAPI側から返るため対象外です。）</small>
       <div class="note" id="ttsPlan"></div>
+      </div>
     </div>
 
     <div class="field" id="outField">
@@ -1146,7 +1150,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260831-v1329-vv3.7';
+var APP_BUILD = '20260831-v1329-ui3.8';
 
 /* ---------------- 言語定義 ---------------- */
 var LANGS = [
@@ -1267,6 +1271,21 @@ function pref(key, embedKey, def){
   return def;
 }
 
+/* v1.32.9 ui3.8: Realtimeの方向設定を1つの3択へ統合する。
+   新設定が無い場合だけ旧 rtDir + rtBoth を読み、既存ユーザーの選択を移行する。 */
+function realtimeDirectionPref(){
+  var current = pref('di.rtdirection','rtDirection',null);
+  if (current === 'A2B' || current === 'B2A' || current === 'both') return current;
+  var oldBoth = pref('di.rtboth','rtBoth','0');
+  if (String(oldBoth) === '1') return 'both';
+  return pref('di.rtdir','rtDir','B') === 'A' ? 'B2A' : 'A2B';
+}
+function realtimeDirectionLabel(v){
+  return v === 'B2A' ? 'B（相手）→ A（自分）'
+       : v === 'both' ? '両方向（A→B / B→A、2接続・料金2倍）'
+       : 'A（自分）→ B（相手）';
+}
+
 /* ---------------- 設定 ---------------- */
 var CFG = {};
 var KEYS = {};   // provider -> apikey
@@ -1284,8 +1303,7 @@ function loadCfg(){
     ttsMode:   pref('di.tts','ttsMode','off'),
     ttsWho:    pref('di.ttsw','ttsWho','B2A'),
     focus:     pref('di.focus','focus','split'),
-    rtDir:     pref('di.rtdir','rtDir','B'),
-    rtBoth:    pref('di.rtboth','rtBoth','0'),
+    rtDirection: realtimeDirectionPref(),
     ttsModel:  pref('di.ttsm','ttsModel',''),
     camModel:  pref('di.cam','camModel','gpt-4o-mini'),   // カメラ翻訳用（画像を読めるモデル）
     voiceA:    pref('di.va','voiceA','alloy'),
@@ -3023,6 +3041,9 @@ function ttsEnd(){
    状態と表示がずれないようにする。 */
 function refreshTtsBtn(){
   var b = $('ttsToggle'); if (!b) return;
+  var isRT = (CFG.sttProvider === 'realtime');
+  b.style.display = isRT ? 'none' : '';
+  if (isRT) return;
   var off = (CFG.ttsMode === 'off');
   b.style.opacity = '';                 // 斜線まで薄くならないよう、要素全体の透過はやめる
   b.classList.toggle('muted', off);
@@ -5292,9 +5313,13 @@ function ttsSeatVoices(){
   return f('A') + ' / ' + f('B');
 }
 function refreshVvUI(){
+  var isRT = (CFG.sttProvider === 'realtime');
+  var ts = $('ttsSettings');  if (ts) ts.style.display = isRT ? 'none' : '';
+  var tn = $('rtTtsNotice');  if (tn) tn.style.display = isRT ? '' : 'none';
+  var of = $('outField');      if (of) of.style.display = isRT ? 'none' : '';
   var af = $('aivisField');
   if (af){
-    af.style.display = (CFG.ttsMode === 'aivis') ? '' : 'none';
+    af.style.display = (!isRT && CFG.ttsMode === 'aivis') ? '' : 'none';
     var ak = $('aivisKey');   if (ak && ak !== document.activeElement) ak.value = KEYS['aivis'] || '';
     aivisSyncModel('B'); aivisSyncModel('A');
     aivisAdvSync();
@@ -5315,10 +5340,10 @@ function refreshVvUI(){
      フォールバック時もこれらは使われない（鳴らない場合はブラウザ内蔵音声に回る）ので、
      残しておくと「設定したのに効かない」誤解のもとになる。 */
   var oo = $('oaiOnly');
-  if (oo) oo.style.display = (CFG.ttsMode === 'openai') ? '' : 'none';
+  if (oo) oo.style.display = (!isRT && CFG.ttsMode === 'openai') ? '' : 'none';
   var ef = $('elField');
   if (ef){
-    ef.style.display = (CFG.ttsMode === 'eleven') ? '' : 'none';
+    ef.style.display = (!isRT && CFG.ttsMode === 'eleven') ? '' : 'none';
     var ek = $('elKey');   if (ek && ek !== document.activeElement) ek.value = KEYS['eleven'] || '';
     var em = $('elModel'); if (em) em.value = CFG.elModel || 'eleven_flash_v2_5';
     var ev = $('elVoice');
@@ -5343,7 +5368,7 @@ function refreshVvUI(){
   }
   var xf = $('xaiField');
   if (xf){
-    xf.style.display = (CFG.ttsMode === 'xai') ? '' : 'none';
+    xf.style.display = (!isRT && CFG.ttsMode === 'xai') ? '' : 'none';
     var xk = $('xaiTtsKey'); if (xk && xk !== document.activeElement) xk.value = KEYS['tts:xai'] || '';
     var xv = $('xaiVoice'), xvb = $('xaiVoiceB');
     if (xv && !xv.options.length){
@@ -5363,7 +5388,7 @@ function refreshVvUI(){
   }
   var lf = $('lvvField');
   if (lf){
-    lf.style.display = (CFG.ttsMode === 'localvv') ? '' : 'none';
+    lf.style.display = (!isRT && CFG.ttsMode === 'localvv') ? '' : 'none';
     var lb = $('lvvBase'); if (lb && lb !== document.activeElement) lb.value = CFG.lvvBase || '';
     var ls = $('lvvSpeaker');
     if (ls && !ls.options.length && CFG.lvvSpeaker){      /* 取得前でも前回の話者を出しておく */
@@ -5385,7 +5410,7 @@ function refreshVvUI(){
   }
   var f = $('vvField');
   if (!f){ applySeatCols(); return; }
-  f.style.display = (CFG.ttsMode === 'voicevox') ? '' : 'none';
+  f.style.display = (!isRT && CFG.ttsMode === 'voicevox') ? '' : 'none';
   var k = $('vvKey'); if (k && k !== document.activeElement) k.value = KEYS['voicevox'] || '';
   var sel = $('vvSpeaker'), selA = $('vvSpeakerA');
   if (sel && !sel.options.length) vvFillSpeakerSelect(sel,CFG.vvSpeaker||'3');
@@ -6238,7 +6263,9 @@ function startAll(){
   acquireWakeLock();
   dlog('session','START',{ stt: CFG.sttProvider, sttModel: CFG.sttModel, prov: CFG.provider, model: CFG.model,
     langA: CFG.langA, langB: CFG.langB, srcA: CFG.srcA, srcB: CFG.srcB,
-    auto: S.autoMode, tts: CFG.ttsMode, prosody:CFG.prosodyOn, listenSeat: S.listenSeat });
+    auto: S.autoMode, tts: CFG.sttProvider === 'realtime' ? 'realtime-native-audio' : CFG.ttsMode,
+    rtDirection: CFG.sttProvider === 'realtime' ? CFG.rtDirection : '(unused)',
+    prosody:CFG.prosodyOn, listenSeat: S.listenSeat });
 
   var jobs = [];
 
@@ -6250,7 +6277,7 @@ function startAll(){
     }
     jobs.push(
       ensureMic().then(function(st){
-        var dirs = (CFG.rtBoth === '1') ? ['A','B'] : [CFG.rtDir === 'A' ? 'B' : 'A'];
+        var dirs = (CFG.rtDirection === 'both') ? ['A','B'] : [CFG.rtDirection === 'B2A' ? 'B' : 'A'];
         // dirs = 「話し手の席」の配列
         return Promise.all(dirs.map(function(seat){
           var eng = new RealtimeEngine(seat, st);
@@ -6260,7 +6287,7 @@ function startAll(){
           });
         }));
       }).then(function(){
-        if (engines.length) toast('リアルタイム同時通訳を開始しました。そのまま話してください。', true);
+        if (engines.length) toast('リアルタイム同時通訳を開始しました（' + realtimeDirectionLabel(CFG.rtDirection) + '）。そのまま話してください。', true);
       }).catch(function(err){
         toast('マイクにアクセスできません: ' + err.message);
         stopAll();
@@ -6537,7 +6564,7 @@ function exportHtml(){
     xaiVoice: CFG.xaiVoice, xaiVoiceB: CFG.xaiVoiceB,
     elModel: CFG.elModel, elVoice: CFG.elVoice, elVoiceLbl: CFG.elVoiceLbl,
     elVoiceB: CFG.elVoiceB, elVoiceBLbl: CFG.elVoiceBLbl,
-    focus: CFG.focus, rtDir: CFG.rtDir, rtBoth: CFG.rtBoth,
+    focus: CFG.focus, rtDirection: CFG.rtDirection,
     savedAt: new Date().toISOString()
   };
   if ($('embedKey').checked) data.keys = KEYS;
@@ -6900,8 +6927,7 @@ function refreshProviderUI(){
   /* たたまれている説明は、開閉ボタンも一緒に出し入れする。
      ボタンだけ残ると、関係のないプロバイダを選んでいるときに宙に浮いてしまう。 */
   noteShow('xaiSttNote', CFG.sttProvider === 'xai');
-  $('rtDir').value  = CFG.rtDir;
-  $('rtBoth').value = CFG.rtBoth;
+  $('rtDirection').value = CFG.rtDirection;
   refreshVvUI();
   refreshListenBtn();
 }
@@ -7209,6 +7235,14 @@ function simple(id, key, prop, isCheck){
     }
     if (prop==='echoGuard') dlog('stt','echo-guard',{on:!!v});
     if (prop==='sttPunct') dlog('stt','punctuation',{on:!!v,webspeech:'terminal-only'});
+    if (prop==='rtDirection'){
+      dlog('realtime','direction',{from:old,to:v,label:realtimeDirectionLabel(v)});
+      if (S.running){
+        stopAll();
+        setTimeout(startAll,300);
+        toast('訳す方向を変更したため、リアルタイム接続を張り直します。',true);
+      }
+    }
     if (prop==='ttsMode'){
       dlog('tts','mode-change',{from:old,to:v});
       refreshTtsBtn(); refreshVvUI(); ttsLastMode = (v==='off') ? ttsLastMode : v;
@@ -7229,8 +7263,7 @@ simple('camModel','di.cam','camModel');
 simple('ctx','di.ctx','ctx');
 simple('ttsMode','di.tts','ttsMode');
 simple('ttsWho','di.ttsw','ttsWho');
-simple('rtDir','di.rtdir','rtDir');
-simple('rtBoth','di.rtboth','rtBoth');
+simple('rtDirection','di.rtdirection','rtDirection');
 simple('voiceA','di.va','voiceA');
 simple('voiceB','di.vb','voiceB');
 simple('flipTop','di.flip','flipTop',true);
@@ -7515,6 +7548,7 @@ function diagText(devices){
   out.push('');
 
   out.push('## 設定', '', '| 項目 | 値 |', '|---|---|');
+  var rtNativeAudio = (CFG.sttProvider === 'realtime');
   function diagTtsModel(){
     if (CFG.ttsMode==='off') return '(未使用)';
     if (CFG.ttsMode==='browser') return '(ブラウザ内蔵)';
@@ -7528,30 +7562,33 @@ function diagText(devices){
   }
   [['翻訳プロバイダ', CFG.provider], ['翻訳モデル', CFG.model],
    ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel], ['句読点の自動補完', CFG.sttPunct ? 'ON' : 'OFF'],
-   ['読み上げ', CFG.ttsMode], ['読み上げモデル', diagTtsModel()], ['読み上げ対象', CFG.ttsWho],
-   ['声 A / B', ttsSeatVoices()],
-   ['xAIの声 A / B', CFG.ttsMode === 'xai' ? ttsSeatVoices() : '(未使用)'],
-   ['Aivisストリーミング', CFG.ttsMode === 'aivis' ? (CFG.aivisStream ? 'ON' : 'OFF') : '(未使用)'],
-   ['Aivisスタイル A / B', CFG.ttsMode === 'aivis'
+   ['リアルタイム翻訳方向', rtNativeAudio ? realtimeDirectionLabel(CFG.rtDirection) : '(未使用)'],
+   ['読み上げ', rtNativeAudio ? 'gpt-realtime-translate 内蔵音声（自動再生）' : CFG.ttsMode],
+   ['読み上げモデル', rtNativeAudio ? 'gpt-realtime-translate' : diagTtsModel()],
+   ['読み上げ対象', rtNativeAudio ? '訳す方向に従う' : CFG.ttsWho],
+   ['声 A / B', rtNativeAudio ? '(外部TTS設定は未使用)' : ttsSeatVoices()],
+   ['xAIの声 A / B', !rtNativeAudio && CFG.ttsMode === 'xai' ? ttsSeatVoices() : '(未使用)'],
+   ['Aivisストリーミング', !rtNativeAudio && CFG.ttsMode === 'aivis' ? (CFG.aivisStream ? 'ON' : 'OFF') : '(未使用)'],
+   ['Aivisスタイル A / B', !rtNativeAudio && CFG.ttsMode === 'aivis'
       ? ((CFG.aivisStyleB === '' ? '既定' : CFG.aivisStyleB) + ' / ' + (CFG.aivisStyle === '' ? '既定' : CFG.aivisStyle)
          + (CFG.aivisSpk || CFG.aivisSpkB ? '（話者指定あり）' : ''))
       : '(未使用)'],
-   ['Aivisのキャラ名 A / B', CFG.ttsMode === 'aivis'
+   ['Aivisのキャラ名 A / B', !rtNativeAudio && CFG.ttsMode === 'aivis'
       ? ((aivisNameOf(aivisModelFor('A')) || '(未設定)') + ' / ' + (aivisNameOf(aivisModelFor('B')) || '(未設定)'))
       : '(未使用)'],
-   ['Aivis 話し方の調整', CFG.ttsMode === 'aivis' ? aivisTweaks() : '(未使用)'],
-   ['VOICEVOX 話し方の調整', CFG.ttsMode === 'voicevox' ? vvTweaks() : '(未使用)'],
-   ['VOICEVOX処理', CFG.ttsMode === 'voicevox' ? '最大4件並列合成（429時は現在'+vvSynthLimit+'件へ自動抑制） / 発話順に1件ずつ再生 / 最大6件保持 / 8秒超は破棄 / 高速再生は先読み保護' : '(未使用)'],
-   ['原文読み上げ', CFG.ttsSrc ? 'ON' : 'OFF'],
-   ['鳴り始めの無音', CFG.ttsPad + ' ms'],
-   ['再生経路', waMode ? 'Web Audio（開きっぱなし）' : '<audio>'],
-   ['出力先の指定を守れるか', !CFG.outDev ? '(既定なので指定なし)'
+   ['Aivis 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'aivis' ? aivisTweaks() : '(未使用)'],
+   ['VOICEVOX 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'voicevox' ? vvTweaks() : '(未使用)'],
+   ['VOICEVOX処理', !rtNativeAudio && CFG.ttsMode === 'voicevox' ? '最大4件並列合成（429時は現在'+vvSynthLimit+'件へ自動抑制） / 発話順に1件ずつ再生 / 最大6件保持 / 8秒超は破棄 / 高速再生は先読み保護' : '(未使用)'],
+   ['原文読み上げ', rtNativeAudio ? '(外部TTS設定は未使用)' : (CFG.ttsSrc ? 'ON' : 'OFF')],
+   ['鳴り始めの無音', rtNativeAudio ? '(外部TTS設定は未使用)' : (CFG.ttsPad + ' ms')],
+   ['再生経路', rtNativeAudio ? 'WebRTCリモート音声' : (waMode ? 'Web Audio（開きっぱなし）' : '<audio>')],
+   ['出力先の指定を守れるか', rtNativeAudio ? '(外部TTSの出力先設定は未使用)' : (!CFG.outDev ? '(既定なので指定なし)'
       : (ttsCtx ? (ttsCtxCanRoute(ttsCtx) ? 'Web Audio でも守れる' : 'Web Audio では守れない → <audio> に回す')
-                : '(再生経路が未使用のため不明)')],
-   ['再生経路の状態', ttsCtx ? (ttsCtx.state + ' / ' + ttsCtx.sampleRate + 'Hz') : '(未使用)'],
-   ['読み上げの設定不足', ttsSetupMissing() || 'なし'],
-   ['ローカルエンジンURL', CFG.ttsMode === 'localvv' ? CFG.lvvBase : '(未使用)'],
-   ['読み上げの出力先', OUT_SUPPORTED ? (CFG.outDevLbl || (CFG.outDev ? '(名称不明)' : '既定')) : '(このブラウザは非対応)'],
+                : '(再生経路が未使用のため不明)'))],
+   ['再生経路の状態', rtNativeAudio ? (engines.length ? engines.length + '接続' : '(未接続)') : (ttsCtx ? (ttsCtx.state + ' / ' + ttsCtx.sampleRate + 'Hz') : '(未使用)')],
+   ['読み上げの設定不足', rtNativeAudio ? 'なし（モデル内蔵音声）' : (ttsSetupMissing() || 'なし')],
+   ['ローカルエンジンURL', !rtNativeAudio && CFG.ttsMode === 'localvv' ? CFG.lvvBase : '(未使用)'],
+   ['読み上げの出力先', rtNativeAudio ? 'ブラウザの既定出力（WebRTC）' : (OUT_SUPPORTED ? (CFG.outDevLbl || (CFG.outDev ? '(名称不明)' : '既定')) : '(このブラウザは非対応)')],
    ['言語A / B', CFG.langA + ' / ' + CFG.langB],
    ['入力元A / B', CFG.srcA + ' / ' + CFG.srcB],
    ['言語切替', S.autoMode ? 'AUTO' : '手動'], ['認識中の席', S.listenSeat],
@@ -7561,6 +7598,7 @@ function diagText(devices){
       ? ('Pitch='+(PROSODY_CAPS.pitch?'可':'未検出')+' / Energy='+(PROSODY_CAPS.energy?'可':'未検出')+' / Timing='+(PROSODY_CAPS.timing?'可':'未検出'))
       : '(未使用)'],
    ['Prosody TTS反映', !CFG.prosodyOn ? 'OFF'
+      : rtNativeAudio ? '解析のみ（モデル内蔵音声へは未反映）'
       : CFG.ttsMode==='browser' ? 'ブラウザ標準：速度・音量・語尾傾向'
       : CFG.ttsMode==='aivis' ? 'Aivis：速度・緩急・音量'
       : CFG.ttsMode==='voicevox' ? 'VOICEVOX：速度（声高・抑揚は解析のみ）'
