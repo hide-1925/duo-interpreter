@@ -1168,7 +1168,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260831-v13210-oaitts1.0';
+var APP_BUILD = '20260831-v13210-oaitts1.1';
 
 /* ---------------- 言語定義 ---------------- */
 var LANGS = [
@@ -3259,12 +3259,15 @@ function oaiBuildPlan(lang, prosody){
 function oaiSpeechBody(text, seat, format, plan){
   var model=CFG.ttsModel||'gpt-4o-mini-tts';
   var body={model:model,voice:(seat==='A'?CFG.voiceA:CFG.voiceB),input:text,response_format:format};
+  /* response_format=pcm は音声の符号化形式、stream_format=audio はHTTP本文の運び方。
+     後者を省くとSSEイベント文字列が返る場合があり、それをPCMとして鳴らすとビープ音になる。 */
+  if(format==='pcm') body.stream_format='audio';
   if (oaiInstructionsSupported(model)) body.instructions=plan.instructions;
   return body;
 }
 function oaiLogRequest(body, plan, text, seat, stream){
   dlog('tts','openai-request',{model:body.model,voice:body.voice,seat:seat||'A',chars:text.length,
-    format:body.response_format,stream:!!stream,instructionsApplied:!!body.instructions,
+    format:body.response_format,streamFormat:body.stream_format||'(default)',stream:!!stream,instructionsApplied:!!body.instructions,
     instructions:body.instructions||'(このモデルはinstructions非対応)',manual:oaiManualTweaks(),
     effectiveRate:plan.rate,effectiveGain:plan.gain,prosody:!!plan.map});
   logProsodyMap(plan.map,{effectiveRate:plan.rate,effectiveVolume:plan.gain,
@@ -3356,10 +3359,16 @@ function apiSpeakStream(text, lang, seat, prosody, plan, ctx, key){
   };
   fetch('https://api.openai.com/v1/audio/speech',{
     method:'POST',signal:ctrl&&ctrl.signal,
-    headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'Accept':'application/octet-stream'},
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'Accept':'audio/pcm, application/octet-stream'},
     body:JSON.stringify(body)
   }).then(function(r){
     if (!r.ok) return r.text().then(function(x){throw new Error('TTS '+r.status+' '+String(x).slice(0,140));});
+    var contentType='';try{contentType=String(r.headers.get('content-type')||'');}catch(e){}
+    dlog('tts','openai-response',{status:r.status,contentType:contentType||'(不明)',streamFormat:body.stream_format});
+    /* SSEやJSONをPCMとして再生すると大音量のビープ／ノイズになる。指定が無視された場合は
+       1バイトもスピーカーへ送らず、WAV一括方式へフォールバックする。 */
+    if(/text\/event-stream|application\/json|text\/plain/i.test(contentType))
+      throw new Error('音声ではないレスポンス形式: '+contentType);
     if (!r.body||!r.body.getReader) throw new Error('ストリーミング非対応');
     var reader=r.body.getReader();
     var pump=function(){return reader.read().then(function(res){
