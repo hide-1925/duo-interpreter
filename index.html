@@ -491,7 +491,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260901-v13210-oaitts1.8</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260901-v13210-eltts1.0</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -501,7 +501,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260901-v13210-oaitts1.8</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260901-v13210-eltts1.0</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -871,6 +871,19 @@
         <button class="btn ghost" id="elFetch" title="アカウントの声一覧を取得" style="align-self:flex-end">🔄 声を取得</button>
         <button class="btn ghost" id="elTest" title="選択中の声と Text to Speech 権限を、短い読み上げで確認（数文字分のクレジットを使用）" style="align-self:flex-end">🔊 TTSテスト</button>
       </div>
+      <label>話し方の調整</label>
+      <div class="tunerow"><span>話速</span><select id="elRate"><option value="-2">かなり遅い（0.75倍）</option><option value="-1">遅い（0.88倍）</option><option value="0">標準（1.00倍）</option><option value="1">速い（1.15倍）</option><option value="2">かなり速い（1.20倍）</option><option value="3">高速（1.50倍）</option><option value="4">最高速（1.80倍）</option></select></div>
+      <div class="tunerow"><span>感情幅</span><select id="elEmotion"><option value="-2">かなり抑制</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">強い</option><option value="2">非常に強い</option></select></div>
+      <div class="tunerow"><span>抑揚強調</span><select id="elIntonation"><option value="-2">かなり平坦</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">豊か</option><option value="2">非常に豊か</option></select></div>
+      <div class="tunerow"><span>緩急</span><select id="elDynamics"><option value="-2">一定</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">動的</option><option value="2">非常に動的</option></select></div>
+      <div class="tunerow"><span>文中の間</span><select id="elPause"><option value="-2">かなり短い</option><option value="-1">短い</option><option value="0">標準</option><option value="1">長い</option><option value="2">非常に長い</option></select></div>
+      <div class="tunerow"><span>音量</span><select id="elVolume"><option value="-2">かなり小さい</option><option value="-1">小さい</option><option value="0">標準</option><option value="1">大きい</option><option value="2">かなり大きい</option></select></div>
+      <details class="prosodybox">
+        <summary>声の再現度・話者強調を調整</summary>
+        <div class="tunerow"><span>声の再現度</span><select id="elSimilarity"><option value="-2">低い</option><option value="-1">やや低い</option><option value="0">標準</option><option value="1">高い</option><option value="2">非常に高い</option></select></div>
+        <label class="check"><input type="checkbox" id="elSpeakerBoost"> 話者強調（元の声へ近づける・わずかに遅延増）</label>
+      </details>
+      <small>話速1.20倍まではElevenLabs APIで生成します。1.50／1.80倍はAPI側を1.20倍にし、残りをブラウザのピッチ保持再生で加速します。感情幅は<code>stability</code>、抑揚・緩急は<code>style</code>等で近似するため、声素材とモデルによって効き方が変わります。</small>
       <small><b>自分の声で読み上げたい場合はこれです。</b>
       <a href="https://elevenlabs.io/app/voice-lab" target="_blank" rel="noopener noreferrer">ElevenLabs の Voice Lab</a>
       で <b>Instant Voice Cloning</b> を選び、2分未満の自分の録音をアップロードすると、すぐに自分の声が作れます（学習の待ち時間はありません）。
@@ -1198,7 +1211,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260901-v13210-oaitts1.8';
+var APP_BUILD = '20260901-v13210-eltts1.0';
 
 /* ---------------- 言語定義 ---------------- */
 var LANGS = [
@@ -1414,6 +1427,14 @@ function loadCfg(){
     elVoiceLbl:pref('di.elvl','elVoiceLbl',''),
     elVoiceB:  pref('di.elva','elVoiceB',''),              /* 空なら自分(A)と同じ声 */
     elVoiceBLbl:pref('di.elval','elVoiceBLbl',''),
+    elRate:    pref('di.elrt','elRate','0'),
+    elEmotion: pref('di.elem','elEmotion','0'),
+    elIntonation:pref('di.elin','elIntonation','0'),
+    elDynamics:pref('di.eldy','elDynamics','0'),
+    elPause:   pref('di.elpa','elPause','0'),
+    elVolume:  pref('di.elvo','elVolume','0'),
+    elSimilarity:pref('di.elsi','elSimilarity','0'),
+    elSpeakerBoost:pref('di.elsb','elSpeakerBoost','1')+'' === '1',
     xaiVoice:  pref('di.xav','xaiVoice','eve'),            /* 自分(A)の基準声 */
     xaiVoiceB: pref('di.xava','xaiVoiceB',''),             /* 空なら自分(A)と同じ声 */
     xaiRate:   pref('di.xart','xaiRate','0'),
@@ -3030,6 +3051,10 @@ function micProsodySnapshot(text, allowReuse){
 
 /* ---------------- 読み上げ ---------------- */
 var audioEl = new Audio();
+/* ElevenLabsのAPI上限（1.2倍）を超える話速用。
+   MediaElementのpitch保持を使い、AudioBufferSourceNode.playbackRateのように声高まで上げない。 */
+var rateAudioEl = new Audio(), rateDirectEl = new Audio();
+var ttsRateMediaSrc = null, ttsRateGain = null, ttsRateElNow = null;
 
 /* 読み上げは「おまけ」であり、音声認識より優先しない。
    ―― 以前は読み上げ中に認識を止めていたが、読み上げが無音で失敗する環境では
@@ -4064,7 +4089,8 @@ function playBlob(blob, finish, tag, opts){
   }
   var order = (finish && finish.order != null) ? finish.order : ++ttsOrderSeq;
   ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:at, gen:g, order:order,
-                  chars:chars,staleMs:staleMs,gain:prosodyClamp(parseFloat(opts.gain)||1,0.5,1.5) });
+                  chars:chars,staleMs:staleMs,gain:prosodyClamp(parseFloat(opts.gain)||1,0.5,1.5),
+                  playbackRate:prosodyClamp(parseFloat(opts.playbackRate)||1,0.5,2) });
   ttsQueue.sort(function(a,b){ return a.order-b.order; });
   if (ttsPlayingNow) dlog('tts','queue-wait',{ src:tag||'', n:ttsQueue.length, chars:chars,
     order:order,waitLimitMs:staleMs,why:'前の音声を再生中' });
@@ -4134,6 +4160,11 @@ function ttsCtxCanRoute(ctx){ return !CFG.outDev || !!(ctx && ctx.setSinkId); }
 /* まず開きっぱなしの経路で試し、使えないときだけ従来の <audio> に落とす */
 function playJob(job, end){
   var ctx = ttsAudioCtx();
+  /* 1.2倍を超えるElevenLabs音声は、ピッチ保持対応のMediaElementへ回す。 */
+  if (Math.abs((job.playbackRate || 1) - 1) > 0.01){
+    playViaPitchRate(job, end, ctx);
+    return;
+  }
   if (!ctx || !job.blob.arrayBuffer){ playViaAudioEl(job, end); return; }
   if (!ttsCtxCanRoute(ctx)){ playViaAudioEl(job, end); return; }
   var t0 = Date.now();
@@ -4167,6 +4198,64 @@ function playJob(job, end){
       dlog('tts','wa-FAIL',{ err:String((err&&err.message)||err).slice(0,90) });
       playViaAudioEl(job, end);
     });
+}
+function ensureRateMediaRoute(ctx, gain){
+  if (!ctx || !ttsCtxCanRoute(ctx)) return false;
+  try{
+    if (!ttsRateMediaSrc){
+      ttsRateMediaSrc = ctx.createMediaElementSource(rateAudioEl);
+      ttsRateGain = ctx.createGain();
+      ttsRateMediaSrc.connect(ttsRateGain); ttsRateGain.connect(ttsGain);
+    }
+    ensureCtxSink(ctx);
+    ttsRateGain.gain.value = prosodyClamp(gain || 1, 0.5, 1.5);
+    waMode = true;
+    return true;
+  }catch(e){
+    dlog('tts','rate-route-FAIL',{err:String((e&&e.message)||e).slice(0,90)});
+    return false;
+  }
+}
+/* HTMLMediaElementのpreservesPitchを使う倍速経路。Web Audioへ接続できる環境では
+   同じ開きっぱなしの出力へ流し、音量1.0超もGainで反映する。 */
+function playViaPitchRate(job, end, ctx){
+  var t0=Date.now(), rate=prosodyClamp(job.playbackRate||1,0.5,2);
+  padAudioBlob(job.blob, ttsPadMs()).then(function(b){
+    var routed=ensureRateMediaRoute(ctx,job.gain), el=routed?rateAudioEl:rateDirectEl;
+    var rateDone=false, rateTimer=0;
+    ttsRateElNow=el;
+    if (!routed){
+      if (OUT_SUPPORTED && CFG.outDev && el.sinkId!==CFG.outDev){ try{ el.setSinkId(CFG.outDev); }catch(e){} }
+      primeOutput();
+    }
+    try{ el.preservesPitch=true; el.webkitPreservesPitch=true; }catch(e){}
+    el.defaultPlaybackRate=rate; el.playbackRate=rate;
+    el.volume=routed?1:prosodyClamp(job.gain||1,0,1);
+    if (ttsLastUrl){ try{ URL.revokeObjectURL(ttsLastUrl); }catch(e){} }
+    ttsLastUrl=URL.createObjectURL(b);
+    var rateEnd=function(){
+      if(rateDone) return;
+      rateDone=true; clearTimeout(rateTimer);
+      if(ttsRateElNow===el) ttsRateElNow=null;
+      end();
+    };
+    el.onended=rateEnd; el.onerror=rateEnd;
+    el.onplaying=function(){
+      clearTimeout(rateTimer);
+      /* iOS等でendedが欠落してもキューを塞がない。durationは元音声の長さなので
+         倍速で割った実再生時間に余裕を足す。 */
+      rateTimer=setTimeout(rateEnd,Math.max(3000,((el.duration||0)/rate)*1000+2000));
+      dlog('tts','rate-play',{src:job.tag,order:job.order,rate:rate,pitchPreserved:true,
+        routed:routed?'web-audio':'media-element',queuedMs:t0-job.at,waitMs:Date.now()-t0,
+        dur:Math.round((el.duration||0)*1000),gain:prosodyRound(routed?(job.gain||1):el.volume,3),
+        gainLimited:!routed&&(job.gain||1)>1});
+    };
+    el.src=ttsLastUrl;
+    var pr=el.play(); if(pr&&pr.catch) pr.catch(rateEnd);
+  }).catch(function(err){
+    dlog('tts','rate-play-FAIL',{err:String((err&&err.message)||err).slice(0,90)});
+    end();
+  });
 }
 function playViaAudioEl(job, end){
   var t0 = Date.now();
@@ -4957,6 +5046,64 @@ function elLangCode(lang){
   var c = String(lang || '').split('-')[0];
   return /v2_5$/.test(CFG.elModel || '') ? c : '';
 }
+var EL_RATE_FACTORS = [0.75,0.88,1,1.15,1.20,1.50,1.80];
+var EL_GAIN_FACTORS = [0.75,0.88,1,1.12,1.25];
+var EL_STABILITY_FACTORS = [0.82,0.66,0.50,0.34,0.20];
+var EL_STYLE_FACTORS = [0,0,0,0.18,0.35];
+var EL_SIMILARITY_FACTORS = [0.45,0.60,0.75,0.85,0.95];
+function elRateLevel(v){
+  var n=parseInt(v,10); if(isNaN(n)) n=0;
+  return Math.max(-2,Math.min(4,n));
+}
+function elManualTweaks(){
+  return '話速 '+['かなり遅い','遅い','標準','速い','かなり速い','高速','最高速'][elRateLevel(CFG.elRate)+2]
+    +' / 感情幅 '+oaiLevelLabel(CFG.elEmotion,['かなり抑制','控えめ','標準','強い','非常に強い'])
+    +' / 抑揚 '+oaiLevelLabel(CFG.elIntonation,['かなり平坦','控えめ','標準','豊か','非常に豊か'])
+    +' / 緩急 '+oaiLevelLabel(CFG.elDynamics,['一定','控えめ','標準','動的','非常に動的'])
+    +' / 間 '+oaiLevelLabel(CFG.elPause,['かなり短い','短い','標準','長い','非常に長い'])
+    +' / 音量 '+oaiLevelLabel(CFG.elVolume,['かなり小さい','小さい','標準','大きい','かなり大きい'])
+    +' / 声の再現度 '+oaiLevelLabel(CFG.elSimilarity,['低い','やや低い','標準','高い','非常に高い'])
+    +' / 話者強調 '+(CFG.elSpeakerBoost?'ON':'OFF');
+}
+function elBuildPlan(lang, prosody){
+  var map=prosodyMapForTts(prosody,lang||'','eleven');
+  var desired=EL_RATE_FACTORS[elRateLevel(CFG.elRate)+2];
+  var gain=EL_GAIN_FACTORS[oaiLevel(CFG.elVolume)+2];
+  var emotion=oaiLevel(CFG.elEmotion), intonation=oaiLevel(CFG.elIntonation);
+  var dynamics=oaiLevel(CFG.elDynamics), pause=oaiLevel(CFG.elPause);
+  if(map){
+    desired*=map.rate; gain*=map.volume;
+    if(!map.neutralized){
+      intonation=oaiShiftLevel(intonation,map.dynamics,0.94,1.06);
+      dynamics=oaiShiftLevel(dynamics,map.dynamics,0.94,1.06);
+      if(map.internalPauseMs>=1100) pause=Math.min(2,pause+2);
+      else if(map.internalPauseMs>=600) pause=Math.min(2,pause+1);
+    }
+  }
+  desired=prosodyRound(prosodyClamp(desired,0.70,1.80),3);
+  gain=prosodyRound(prosodyClamp(gain,0.50,1.50),3);
+  var stability=EL_STABILITY_FACTORS[emotion+2];
+  if(intonation<0) stability+=Math.abs(intonation)*0.06;
+  stability-=Math.max(0,dynamics)*0.04;
+  stability+=Math.max(0,-dynamics)*0.04;
+  var style=EL_STYLE_FACTORS[intonation+2]+Math.max(0,dynamics)*0.05;
+  if(dynamics<0) style=Math.max(0,style-Math.abs(dynamics)*0.05);
+  var apiSpeed=prosodyRound(prosodyClamp(desired,0.70,1.20),3);
+  return {map:map,desiredRate:desired,apiSpeed:apiSpeed,
+    playbackRate:prosodyRound(desired/apiSpeed,3),gain:gain,
+    stability:prosodyRound(prosodyClamp(stability,0,1),3),
+    style:prosodyRound(prosodyClamp(style,0,0.5),3),
+    similarity:EL_SIMILARITY_FACTORS[oaiLevel(CFG.elSimilarity)+2],
+    speakerBoost:!!CFG.elSpeakerBoost,emotion:emotion,intonation:intonation,dynamics:dynamics,pause:pause};
+}
+function elStyledText(text, plan){
+  var out=String(text||''), sec=plan.pause>=2?0.70:(plan.pause>=1?0.35:0);
+  if(sec){
+    /* 文中の区切りだけへ自然なSSML breakを追加。文末には無音を足さない。 */
+    out=out.replace(/([、，,;；:：])(?!\s*<break\b)/g,'$1 <break time="'+sec.toFixed(2)+'s" />');
+  }
+  return {text:out,breakSec:sec};
+}
 /* ElevenLabs のエラー本文は detail.code / detail.message が原因判定の本体。
    HTTP 401/403 だけに丸めると、権限・IP制限・声ID不一致を区別できない。 */
 function elMakeError(status, raw, action){
@@ -5021,11 +5168,15 @@ function elFetchVoicePages(token, out, depth){
     return out;
   });
 }
-function elSpeechBlob(text, lang, seat){
+function elSpeechBlob(text, lang, seat, plan){
   var key=elKey(), vid=elVoiceId(seat);
   if (!key) return Promise.reject(new Error('ElevenLabsのAPIキーが未入力です。'));
   if (!vid) return Promise.reject(new Error('ElevenLabsの声が未選択です。「🔄 声を取得」を押してください。'));
-  var body={ text:text, model_id:(CFG.elModel || 'eleven_flash_v2_5') };
+  plan=plan||elBuildPlan(lang,null);
+  var styled=elStyledText(text,plan);
+  var body={ text:styled.text, model_id:(CFG.elModel || 'eleven_flash_v2_5'),
+    voice_settings:{stability:plan.stability,similarity_boost:plan.similarity,
+      style:plan.style,use_speaker_boost:plan.speakerBoost,speed:plan.apiSpeed} };
   var lc=elLangCode(lang); if (lc) body.language_code=lc;
   return fetch(EL_BASE + '/text-to-speech/' + encodeURIComponent(vid) + '?output_format=mp3_44100_128', {
     method:'POST', headers:{ 'Content-Type':'application/json', 'xi-api-key':key }, body:JSON.stringify(body)
@@ -5037,10 +5188,11 @@ function elSpeechBlob(text, lang, seat){
 function verifyElTts(){
   return keyChkRun('elTest', 'chkElMsg', 'ElevenLabs TTS', function(){
     var seat=(seatUsed('B') && !seatUsed('A')) ? 'B' : 'A', line='テストです。';
-    return elSpeechBlob(line, 'ja', seat).then(function(b){
+    var plan=elBuildPlan('ja',null);
+    return elSpeechBlob(line, 'ja', seat,plan).then(function(b){
       stopSpeaking('ElevenLabs試聴の前に停止');
       ttsAudioCtx(); primeOutput();
-      playBlob(b, ttsGuard(line, 20000), 'eleven-test');
+      playBlob(b, ttsGuard(line, 20000), 'eleven-test',{gain:plan.gain,playbackRate:plan.playbackRate});
       return 'Text to Speech権限と声IDは有効です。選択中の声でテスト音声を再生します。';
     }).catch(function(err){ throw new Error(elFriendlyError(err, 'tts')); });
   });
@@ -5155,15 +5307,24 @@ function xaiSpeak(text, lang, seat, prosody){
   });
 }
 
-function elSpeak(text, lang, seat){
+function elSpeak(text, lang, seat, prosody){
   var key = elKey(), vid = elVoiceId(seat);
   if (!key || !vid)
     return ttsFallback(text, lang, '未設定',
       'ElevenLabs のAPIキーまたは声が未設定です。⚙→音声 でご確認ください。', 'elWarned');
   var t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150));
-  elSpeechBlob(text, lang, seat).then(function(b){
-    dlog('tts','eleven-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size, seat:seat||'A', lang:lang, model:CFG.elModel });
-    playBlob(b, finish, 'eleven');
+  var plan=elBuildPlan(lang,prosody), styled=elStyledText(text,plan);
+  dlog('tts','eleven-request',{chars:text.length,seat:seat||'A',lang:lang,model:CFG.elModel,
+    desiredSpeed:plan.desiredRate,apiSpeed:plan.apiSpeed,playbackRate:plan.playbackRate,
+    stability:plan.stability,similarity:plan.similarity,style:plan.style,speakerBoost:plan.speakerBoost,
+    breakSec:styled.breakSec,gain:plan.gain,manual:elManualTweaks(),prosody:!!plan.map});
+  logProsodyMap(plan.map,{effectiveRate:plan.desiredRate,apiSpeed:plan.apiSpeed,playbackRate:plan.playbackRate,
+    effectiveVolume:plan.gain,effectiveDynamics:plan.dynamics,stability:plan.stability,style:plan.style});
+  elSpeechBlob(text, lang, seat,plan).then(function(b){
+    dlog('tts','eleven-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size, seat:seat||'A', lang:lang,
+      model:CFG.elModel,desiredSpeed:plan.desiredRate,apiSpeed:plan.apiSpeed,playbackRate:plan.playbackRate,
+      stability:plan.stability,similarity:plan.similarity,style:plan.style,gain:plan.gain });
+    playBlob(b, finish, 'eleven',{gain:plan.gain,playbackRate:plan.playbackRate});
   }).catch(function(err){
     var m = String((err && err.message) || err), info=(err && err.elInfo) || {};
     dlog('tts','eleven-FAIL',{ http:info.http||0, code:info.code||'', message:String(info.message||m).slice(0,180),
@@ -6118,6 +6279,8 @@ function stopSpeaking(why){
   if (typeof vvClearQueue === 'function') vvClearQueue(why || '停止');
   try{ if (window.speechSynthesis) speechSynthesis.cancel(); }catch(e){}
   try{ audioEl.pause(); }catch(e){}
+  try{ rateAudioEl.pause(); rateDirectEl.pause(); }catch(e){}
+  ttsRateElNow = null;
   if (waSrc){ try{ waSrc.stop(0); }catch(e){} waSrc = null; }
   /* ストリーミング中なら、並べ終えた音源を全部止めて受信も打ち切る */
   while (waStream.length){ var ws = waStream.pop(); try{ ws.onended = null; ws.stop(0); }catch(e){} }
@@ -6159,7 +6322,7 @@ function speakManual(text, lang, btn, seat, prosody){
   if (CFG.ttsMode === 'openai') apiSpeak(text, lang, seat, prosody);
   else if (CFG.ttsMode === 'voicevox') vvSpeak(text, lang, seat,prosody);
   else if (CFG.ttsMode === 'aivis')    aivisSpeak(text, lang, seat,prosody);
-  else if (CFG.ttsMode === 'eleven')   elSpeak(text, lang, seat);
+  else if (CFG.ttsMode === 'eleven')   elSpeak(text, lang, seat,prosody);
   else if (CFG.ttsMode === 'xai')      xaiSpeak(text, lang, seat,prosody);
   else if (CFG.ttsMode === 'localvv')  lvvSpeak(text, lang, seat);
   else browserSpeak(text, L(lang).tts,prosody);
@@ -6196,7 +6359,7 @@ function speak(e){
   if (CFG.ttsMode === 'browser') browserSpeak(sayText, L(sayLang).tts,e.prosody);
   else if (CFG.ttsMode === 'voicevox') vvSpeak(sayText, sayLang, e.seat,e.prosody);
   else if (CFG.ttsMode === 'aivis')    aivisSpeak(sayText, sayLang, e.seat,e.prosody);
-  else if (CFG.ttsMode === 'eleven')   elSpeak(sayText, sayLang, e.seat);
+  else if (CFG.ttsMode === 'eleven')   elSpeak(sayText, sayLang, e.seat,e.prosody);
   else if (CFG.ttsMode === 'xai')      xaiSpeak(sayText, sayLang, e.seat,e.prosody);
   else if (CFG.ttsMode === 'localvv')  lvvSpeak(sayText, sayLang, e.seat);
   else apiSpeak(sayText, sayLang, e.seat, e.prosody);
@@ -7246,6 +7409,9 @@ function exportHtml(){
     xaiPause: CFG.xaiPause, xaiVolume: CFG.xaiVolume,
     elModel: CFG.elModel, elVoice: CFG.elVoice, elVoiceLbl: CFG.elVoiceLbl,
     elVoiceB: CFG.elVoiceB, elVoiceBLbl: CFG.elVoiceBLbl,
+    elRate: CFG.elRate, elEmotion: CFG.elEmotion, elIntonation: CFG.elIntonation,
+    elDynamics: CFG.elDynamics, elPause: CFG.elPause, elVolume: CFG.elVolume,
+    elSimilarity: CFG.elSimilarity, elSpeakerBoost: CFG.elSpeakerBoost?'1':'0',
     focus: CFG.focus, rtDirection: CFG.rtDirection,
     savedAt: new Date().toISOString()
   };
@@ -7646,6 +7812,14 @@ function applyCfg(){
   $('xaiDynamics').value = String(CFG.xaiDynamics);
   $('xaiPause').value = String(CFG.xaiPause);
   $('xaiVolume').value = String(CFG.xaiVolume);
+  $('elRate').value = String(CFG.elRate);
+  $('elEmotion').value = String(CFG.elEmotion);
+  $('elIntonation').value = String(CFG.elIntonation);
+  $('elDynamics').value = String(CFG.elDynamics);
+  $('elPause').value = String(CFG.elPause);
+  $('elVolume').value = String(CFG.elVolume);
+  $('elSimilarity').value = String(CFG.elSimilarity);
+  $('elSpeakerBoost').checked = !!CFG.elSpeakerBoost;
   $('vad').value = CFG.vad;
   $('fsize').value = CFG.fsize;
   $('flipTop').checked = CFG.flipTop;
@@ -7960,6 +8134,10 @@ function simple(id, key, prop, isCheck){
       dlog('tts','xai-config',{prop:prop,value:v});
       refreshVvUI();
     }
+    if (/^el/.test(prop)){
+      dlog('tts','eleven-config',{prop:prop,value:v});
+      refreshVvUI();
+    }
     if (/^browser/.test(prop)) dlog('tts','browser-config',{prop:prop,value:v});
     if (prop==='ttsSrc'){
       dlog('tts','src-mode',{ on:!!v, mode:CFG.ttsMode, who:CFG.ttsWho });
@@ -7988,6 +8166,14 @@ simple('oaiStream','di.oaistream','oaiStream',true);
 simple('browserRate','di.brrt','browserRate');
 simple('browserPitch','di.brpt','browserPitch');
 simple('browserVolume','di.brvo','browserVolume');
+simple('elRate','di.elrt','elRate');
+simple('elEmotion','di.elem','elEmotion');
+simple('elIntonation','di.elin','elIntonation');
+simple('elDynamics','di.eldy','elDynamics');
+simple('elPause','di.elpa','elPause');
+simple('elVolume','di.elvo','elVolume');
+simple('elSimilarity','di.elsi','elSimilarity');
+simple('elSpeakerBoost','di.elsb','elSpeakerBoost',true);
 simple('xaiRate','di.xart','xaiRate');
 simple('xaiEmotion','di.xaem','xaiEmotion');
 simple('xaiIntonation','di.xain','xaiIntonation');
@@ -8305,6 +8491,10 @@ function diagText(devices){
    ['OpenAI instructions', !rtNativeAudio && CFG.ttsMode === 'openai'
       ? (oaiInstructionsSupported(CFG.ttsModel) ? '対応（発話ごとに動的生成）' : '非対応モデルのため未適用') : '(未使用)'],
    ['ブラウザ内蔵音声 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'browser' ? browserTweaks() : '(未使用)'],
+   ['ElevenLabs 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'eleven' ? elManualTweaks() : '(未使用)'],
+   ['ElevenLabs 話速処理', !rtNativeAudio && CFG.ttsMode === 'eleven'
+      ? (function(){var p=elBuildPlan(CFG.langA,null);return '実効 '+p.desiredRate+'倍 / API '+p.apiSpeed+'倍 / ピッチ保持再生 '+p.playbackRate+'倍';})()
+      : '(未使用)'],
    ['xAIの声 A / B', !rtNativeAudio && CFG.ttsMode === 'xai' ? ttsSeatVoices() : '(未使用)'],
    ['xAI 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'xai' ? xaiManualTweaks() : '(未使用)'],
    ['xAI API speed', !rtNativeAudio && CFG.ttsMode === 'xai'
@@ -8343,6 +8533,7 @@ function diagText(devices){
       : rtNativeAudio ? '解析のみ（モデル内蔵音声へは未反映）'
       : CFG.ttsMode==='browser' ? 'ブラウザ標準：設定値を基準に速度・声高・音量を相対補正'
       : CFG.ttsMode==='openai' ? 'OpenAI：速度（API speed）＋感情・抑揚・緩急・間（instructions）＋音量（Web Audio）'
+      : CFG.ttsMode==='eleven' ? 'ElevenLabs：速度（API＋ピッチ保持再生）＋感情幅・抑揚・緩急（voice_settings）＋間（SSML）＋音量（Web Audio）'
       : CFG.ttsMode==='xai' ? 'xAI：速度（API speed）＋感情・抑揚・緩急・間（音声タグ）＋音量（Web Audio）'
       : CFG.ttsMode==='aivis' ? 'Aivis：速度・緩急・音量'
       : CFG.ttsMode==='voicevox' ? 'VOICEVOX：速度（声高・抑揚は解析のみ）'
