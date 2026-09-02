@@ -133,6 +133,14 @@
   /* アイコンだけのボタンは、絵文字の字幅の差で横幅がバラつくため固定幅にそろえる。
      操作バーの段数が増えないよう、余白は最小限にしている。 */
   .cbtn.icon{width:35px;padding:9px 0;justify-content:center}
+  /* PCでは外枠寸法を変えず、アイコンだけを拡大する。 */
+  @media (min-width:900px){
+    #bar .cbtn.icon{width:35px;height:36px;min-height:36px;padding:0}
+    #ttsToggle .ic,#kbdBtn .bar-icon,#camBtn .bar-icon,#clearBtn .bar-icon,#cog .bar-icon{
+      display:block;font-size:28px;line-height:1
+    }
+    #bar .cbtn.icon + .cbtn.icon{margin-left:-5px}
+  }
   /* 読み上げ～設定のアイコン列だけ間隔を詰め、認識中言語の表示幅は維持する。 */
   .cbtn.icon + .cbtn.icon{margin-left:-3px}
   /* 表示切替ボタン：話者A/Bの言語選択欄と同じ色を、外枠として実際の配置順に並べる。
@@ -208,8 +216,27 @@
   #txtSend{flex:0 0 auto;font-weight:800}
   #txtSend:disabled{opacity:.5;cursor:default}
   #kbdBtn.on{border-color:var(--a);color:var(--a)}
-  #ovlBtn{font-weight:800}
+  #ovlBtn{font-weight:800;position:relative}
+  #ovlBtn::after{content:'画';visibility:hidden}
   #ovlBtn.on{border-color:var(--a);color:var(--a);background:rgba(61,220,151,.12)}
+  .overlay-icon-svg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:block;width:27px;height:27px;overflow:visible}
+  .overlay-icon-svg .back{fill:#1a2432;stroke:#697b94;stroke-width:1.4}
+  .overlay-icon-svg .front{fill:#263448;stroke:#b8d6ff;stroke-width:1.5}
+  .overlay-icon-svg .detail{fill:none;stroke:#7186a5;stroke-width:1.2;stroke-linecap:round}
+  .overlay-icon-svg text{fill:#f1f6ff;font:700 6.5px/1 sans-serif;letter-spacing:-.25px}
+
+  /* 画面取込中も、下端へカーソルを運べば通常の操作バーを前面へ戻す。 */
+  body.capture-mode #bar{
+    z-index:96;opacity:0;transform:translateY(calc(100% + 12px));pointer-events:none;
+    transition:opacity .16s ease,transform .16s ease
+  }
+  body.capture-mode.capture-controls-on #bar{opacity:1;transform:none;pointer-events:auto}
+  body.capture-mode #txtbar{z-index:97}
+  body.capture-mode #scrim{z-index:108}
+  body.capture-mode #drawer{z-index:109}
+  body.capture-mode #cam{z-index:112}
+  body.capture-mode #minutes{z-index:112}
+  body.capture-mode #toast{z-index:120}
 
   /* ---- 画面取込オーバーレイ ----
      OS背後を透過する旧方式ではなく、getDisplayMedia()で取得した映像をDuo内へ
@@ -227,8 +254,8 @@
     background:rgba(11,14,20,.84);backdrop-filter:blur(9px);box-shadow:0 5px 20px rgba(0,0,0,.35);
     transition:opacity .18s,transform .18s
   }
-  #captureOverlay.toolbar-idle:fullscreen #captureTop{opacity:.18;transform:translateY(-6px)}
-  #captureOverlay.toolbar-idle:fullscreen #captureTop:hover,#captureOverlay.toolbar-idle:fullscreen #captureTop:focus-within{opacity:1;transform:none}
+  html:fullscreen #captureOverlay.toolbar-idle #captureTop{opacity:.18;transform:translateY(-6px)}
+  html:fullscreen #captureOverlay.toolbar-idle #captureTop:hover,html:fullscreen #captureOverlay.toolbar-idle #captureTop:focus-within{opacity:1;transform:none}
   #captureState{font-size:12px;color:var(--dim);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #captureState.ok{color:var(--a)} #captureState.warn{color:var(--warn)} #captureState.err{color:var(--danger)}
   #captureTop .cbtn{padding:7px 11px;font-size:12px}
@@ -242,6 +269,11 @@
   #captureRail.bottom{left:10%;right:10%;bottom:18px;max-height:42%;width:auto;justify-content:flex-end;align-items:center}
   #captureRail.free{left:var(--rail-x,68%);top:var(--rail-y,18%);width:var(--rail-w);max-height:72%}
   #captureRailItems{display:flex;flex-direction:column;gap:8px;width:100%;justify-content:flex-end;min-height:0}
+  #captureRail.history-scroll{overflow-y:auto;overscroll-behavior:contain;pointer-events:auto;scrollbar-gutter:stable}
+  #captureRail.history-scroll #captureRailItems{justify-content:flex-start;min-height:min-content}
+  #captureRail.history-scroll .capture-caption{pointer-events:none}
+  #captureRail.history-scroll::-webkit-scrollbar{width:9px}
+  #captureRail.history-scroll::-webkit-scrollbar-thumb{background:rgba(190,207,230,.38);border-radius:999px}
   #captureRail.bottom #captureRailItems{max-width:100%;align-items:center}
   .capture-caption{
     width:100%;max-width:var(--item-w,100%);align-self:flex-end;padding:10px 13px;border-radius:12px;
@@ -532,7 +564,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260902-v13210-overlay1.1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260902-v13210-overlay1.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -542,7 +574,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260902-v13210-overlay1.1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260902-v13210-overlay1.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -650,11 +682,19 @@
     <button id="fsUp" class="fsB" title="文字を大きく">A＋</button>
   </div>
   <button class="cbtn icon" id="ttsToggle" title="読み上げ ON/OFF"><span class="ic">🔊</span></button>
-  <button class="cbtn icon" id="kbdBtn" title="キーボードで入力して翻訳">⌨</button>
-  <button class="cbtn icon" id="ovlBtn" title="画面取込オーバーレイ">画</button>
-  <button class="cbtn icon" id="camBtn" title="カメラで文字を翻訳">📷</button>
-  <button class="cbtn icon" id="clearBtn" title="ログ消去">🗑</button>
-  <button class="cbtn icon" id="cog" title="設定">⚙</button>
+  <button class="cbtn icon" id="kbdBtn" title="キーボードで入力して翻訳"><span class="bar-icon">⌨</span></button>
+  <button class="cbtn icon" id="ovlBtn" title="画面取込オーバーレイ" aria-label="画面取込オーバーレイ">
+    <svg class="overlay-icon-svg" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+      <rect class="back" x="2.5" y="3" width="20" height="17.5" rx="3"/>
+      <path class="detail" d="M3 8h19M6 5.6h.1M9 5.6h.1M12 5.6h.1"/>
+      <path class="front" d="M10 10.5h17a3 3 0 0 1 3 3v9.7a3 3 0 0 1-3 3h-3.1l-3.1 3.1v-3.1H10a3 3 0 0 1-3-3v-9.7a3 3 0 0 1 3-3Z"/>
+      <text x="10" y="19.3">あ→A</text>
+      <path class="detail" d="M10.2 22h12.5"/>
+    </svg>
+  </button>
+  <button class="cbtn icon" id="camBtn" title="カメラで文字を翻訳"><span class="bar-icon">📷</span></button>
+  <button class="cbtn icon" id="clearBtn" title="ログ消去"><span class="bar-icon">🗑</span></button>
+  <button class="cbtn icon" id="cog" title="設定"><span class="bar-icon">⚙</span></button>
 </div>
 
 <div id="cam">
@@ -1298,7 +1338,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260902-v13210-overlay1.1';
+var APP_BUILD = '20260902-v13210-overlay1.3';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -2133,7 +2173,7 @@ function overlayNum(v, fallback, min, max){
 
 var OverlaySession = {
   state:'IDLE', stream:null, videoTrack:null, audioTrack:null, opened:false,
-  stopping:false, lastError:'', sourceInfo:null,
+  stopping:false, lastError:'', sourceInfo:null, ownsFullscreen:false,
   transition:function(next, detail){
     this.state = next;
     updateCaptureStatus(detail || '');
@@ -2174,7 +2214,7 @@ var OverlaySession = {
       video.onended = function(){ self.sourceEnded('共有元から画面共有が終了されました'); };
       if (audio) audio.onended = function(){
         self.audioTrack = null; self.sourceInfo.audio = false;
-        self.transition('VIDEO_ONLY','映像のみ（共有音声が終了しました）');
+        self.transition('VIDEO_ONLY','共有音声Trackが終了しました。映像表示は継続しています');
       };
       var el = $('captureVideo');
       el.srcObject = stream;
@@ -2182,7 +2222,7 @@ var OverlaySession = {
       $('capturePlaceholder').hidden = true;
       this.transition(audio ? 'AUDIO_TRACK_READY' : 'VIDEO_ONLY',
         audio ? '映像＋共有音声を取得（音声の直接認識はPhase 2）'
-              : '映像のみ。共有音声をONにするか、既存のマイク／外部STT APIを利用してください（VB-CABLE経路はPhase 2）');
+              : '共有音声は取得されていません。音声共有をONにするか、既存のマイク／外部STT APIを利用してください（VB-CABLE経路はPhase 2）');
       dlog('overlay','capture-ok',this.sourceInfo);
     } catch(err){
       if (stream) stream.getTracks().forEach(function(t){ try{t.stop();}catch(e){} });
@@ -2212,12 +2252,13 @@ var OverlaySession = {
   },
   open:function(autoStart){
     this.opened=true;
+    document.body.classList.add('capture-mode');
     $('captureOverlay').classList.add('on');
     $('captureOverlay').setAttribute('aria-hidden','false');
     $('capturePlaceholder').hidden=!!this.stream;
     $('ovlBtn').classList.add('on');
     applyCaptureProfile(); renderOverlayRail(); renderCaptureCapability();
-    overlayWakeToolbar();
+    overlayWakeToolbar(); overlayWakeMainControls();
     if (autoStart && !this.stream) this.start();
   },
   close:function(){
@@ -2227,12 +2268,18 @@ var OverlaySession = {
     $('captureOverlay').setAttribute('aria-hidden','true');
     $('captureSettings').classList.remove('on');
     $('ovlBtn').classList.remove('on');
-    if (document.fullscreenElement === $('captureOverlay')) document.exitFullscreen().catch(function(){});
+    document.body.classList.remove('capture-mode','capture-controls-on');
+    clearTimeout(overlayControlsTimer);
+    if (this.ownsFullscreen && document.fullscreenElement){
+      var fp=document.exitFullscreen(); if(fp&&fp.catch) fp.catch(function(){});
+    }
+    this.ownsFullscreen=false;
     dlog('overlay','close',null);
   },
   activeAudioTrack:function(){ return this.audioTrack && this.audioTrack.readyState === 'live' ? this.audioTrack : null; }
 };
-var overlaySession = OverlaySession, overlayRailTimer=0, overlayToolbarTimer=0, overlayDrag=null;
+var overlaySession = OverlaySession, overlayRailTimer=0, overlayToolbarTimer=0,
+    overlayControlsTimer=0, overlayDrag=null;
 
 /* Phase 0の入出力境界。既存通常モードの経路は変えず、Phase 2がここへ接続する。 */
 var OverlayAudioRoutes = {
@@ -2250,6 +2297,11 @@ function updateCaptureStatus(detail){
   var labels={IDLE:'停止中',SELECTING_SOURCE:'選択中',CAPTURING_VIDEO:'接続中',VIDEO_ONLY:'映像のみ',AUDIO_TRACK_READY:'映像＋音声',SOURCE_ENDED:'共有終了',ERROR:'エラー'};
   el.textContent=(labels[overlaySession.state]||overlaySession.state)+(detail?' · '+detail:'');
   el.className=overlaySession.state==='ERROR'?'err':(overlaySession.state==='VIDEO_ONLY'||overlaySession.state==='SOURCE_ENDED'?'warn':(overlaySession.stream?'ok':''));
+  el.title=overlaySession.state==='VIDEO_ONLY'
+    ? '映像Trackは取得済みですが、共有音声Trackが無い状態です。映像表示は動作しています。'
+    : overlaySession.state==='AUDIO_TRACK_READY'
+      ? '映像Trackと共有音声Trackを取得済みです。共有音声Trackの直接STT接続はPhase 2です。'
+      : detail||labels[overlaySession.state]||overlaySession.state;
   $('captureStart').disabled=overlaySession.state==='SELECTING_SOURCE';
   $('captureStop').disabled=!overlaySession.stream;
   var hint=$('capturePlaceholderText');
@@ -2266,7 +2318,7 @@ function renderCaptureCapability(){
     '（音声Track STT・TTS出力分離はPhase 2）'+
     (overlaySession.sourceInfo && !overlaySession.sourceInfo.audio
       ? ' / 共有音声なし：既存マイク・外部STT APIを利用可能。VB-CABLE UIはPhase 2。'
-      : '');
+      : '')+' / 取込映像は表示専用です。外部アプリのボタン操作は元ウィンドウで行い、Duo内Zoom／PanはPhase 3で追加します。';
 }
 function applyCaptureProfile(){
   var root=$('captureOverlay'), rail=$('captureRail'); if(!root||!rail) return;
@@ -2292,11 +2344,14 @@ function overlayEntryAt(e){
   return e._overlayReadyAt;
 }
 function renderOverlayRail(){
-  var rail=$('captureRailItems'); if(!rail) return;
+  var rail=$('captureRailItems'), host=$('captureRail'); if(!rail||!host) return;
   clearTimeout(overlayRailTimer);
   var now=Date.now(), hold=overlayNum(CFG.ovCapHold,18,0,180)*1000;
   var max=Math.round(overlayNum(CFG.ovCapItems,4,1,12));
-  var rows=S.entries.filter(function(e){ return e.srcText && (!hold || now-overlayEntryAt(e)<=hold); }).slice(-max);
+  var stayAtBottom=!hold && (host.scrollHeight-host.scrollTop-host.clientHeight<36);
+  host.classList.toggle('history-scroll',!hold);
+  var available=S.entries.filter(function(e){ return e.srcText && (!hold || now-overlayEntryAt(e)<=hold); });
+  var rows=hold ? available.slice(-max) : available;
   rail.innerHTML='';
   rows.forEach(function(e){
     var item=document.createElement('article');
@@ -2318,6 +2373,7 @@ function renderOverlayRail(){
     var empty=document.createElement('div'); empty.className='capture-caption capture-caption-empty';
     empty.textContent='認識・翻訳された字幕がここに表示されます'; rail.appendChild(empty);
   }
+  if(!hold && stayAtBottom) requestAnimationFrame(function(){ host.scrollTop=host.scrollHeight; });
   if(hold && S.entries.length) overlayRailTimer=setTimeout(renderOverlayRail,1000);
 }
 function overlayWakeToolbar(){
@@ -2325,11 +2381,35 @@ function overlayWakeToolbar(){
   root.classList.remove('toolbar-idle'); clearTimeout(overlayToolbarTimer);
   overlayToolbarTimer=setTimeout(function(){ root.classList.add('toolbar-idle'); },3200);
 }
+function overlayWakeMainControls(){
+  if(!overlaySession.opened) return;
+  document.body.classList.add('capture-controls-on');
+  clearTimeout(overlayControlsTimer);
+  overlayControlsTimer=setTimeout(overlayMaybeHideMainControls,3600);
+}
+function overlayMaybeHideMainControls(){
+  if(!overlaySession.opened) return;
+  if($('bar').matches(':hover') || $('txtbar').classList.contains('on')){
+    overlayControlsTimer=setTimeout(overlayMaybeHideMainControls,900); return;
+  }
+  document.body.classList.remove('capture-controls-on');
+}
+function overlayBottomEdge(ev){
+  if(overlaySession.opened && ev.clientY >= window.innerHeight-96) overlayWakeMainControls();
+}
 function openCaptureOverlay(autoStart){ overlaySession.open(autoStart!==false); }
 function captureFullscreen(){
-  var root=$('captureOverlay');
-  if(document.fullscreenElement===root) document.exitFullscreen().catch(function(){});
-  else if(root.requestFullscreen) root.requestFullscreen().catch(function(e){ toast('全画面にできませんでした：'+e.message); });
+  if(document.fullscreenElement){
+    overlaySession.ownsFullscreen=false;
+    var ep=document.exitFullscreen(); if(ep&&ep.catch) ep.catch(function(){});
+    return;
+  }
+  var root=document.documentElement;
+  if(root.requestFullscreen){
+    var rp=root.requestFullscreen();
+    if(rp&&rp.then) rp.then(function(){ overlaySession.ownsFullscreen=true; overlayWakeMainControls(); })
+      .catch(function(e){ toast('全画面にできませんでした：'+e.message); });
+  }
 }
 function resetCaptureProfile(){
   var d={ovCapLayout:'right',ovCapWidth:'28',ovCapTextA:'#FFFFFF',ovCapTextB:'#A7E8FF',ovCapSrcA:'#D4E8DE',ovCapSrcB:'#E7D3DA',ovCapBg:'#000000',ovCapTextOpacity:'92',ovCapBgOpacity:'35',ovCapFont:'26',ovCapLine:'1.35',ovCapItemWidth:'100',ovCapItems:'4',ovCapHold:'18',ovCapShadow:true,ovCapOutline:false,ovCapRound:true,ovCapX:'68',ovCapY:'18'};
@@ -8293,8 +8373,18 @@ $('ovCapReset').onclick = resetCaptureProfile;
 ['ovCapShadow','ovCapOutline','ovCapRound'].forEach(function(id){
   $(id).addEventListener('change',function(){ CFG[id]=this.checked; saveCaptureProfile(); applyCaptureProfile(); renderOverlayRail(); });
 });
-$('captureOverlay').addEventListener('pointermove',overlayWakeToolbar,{passive:true});
-$('captureOverlay').addEventListener('pointerdown',overlayWakeToolbar,{passive:true});
+$('captureOverlay').addEventListener('pointermove',function(ev){ overlayWakeToolbar(); overlayBottomEdge(ev); },{passive:true});
+$('captureOverlay').addEventListener('pointerdown',function(ev){
+  overlayWakeToolbar(); overlayBottomEdge(ev);
+  if($('captureSettings').classList.contains('on') &&
+     !ev.target.closest('#captureSettings') && !ev.target.closest('#captureSettingsBtn')){
+    $('captureSettings').classList.remove('on');
+  }
+},{passive:true});
+$('bar').addEventListener('pointerenter',overlayWakeMainControls,{passive:true});
+$('bar').addEventListener('pointermove',overlayWakeMainControls,{passive:true});
+$('bar').addEventListener('click',overlayWakeMainControls);
+$('txtbar').addEventListener('pointerenter',overlayWakeMainControls,{passive:true});
 $('captureRailHandle').addEventListener('pointerdown',function(ev){
   if(CFG.ovCapLayout!=='free') return;
   ev.preventDefault(); this.setPointerCapture(ev.pointerId);
@@ -8312,7 +8402,10 @@ document.addEventListener('pointerup',function(ev){
   overlayDrag=null; saveCaptureProfile();
 });
 $('captureVideo').addEventListener('dblclick',captureFullscreen);
-$('captureOverlay').addEventListener('fullscreenchange',function(){ overlayWakeToolbar(); });
+document.addEventListener('fullscreenchange',function(){
+  if(!document.fullscreenElement) overlaySession.ownsFullscreen=false;
+  overlayWakeToolbar(); overlayWakeMainControls();
+});
 $('captureStage').addEventListener('contextmenu',function(ev){ if(overlaySession.opened) ev.preventDefault(); });
 $('captureOverlay').addEventListener('dragstart',function(ev){ ev.preventDefault(); });
 $('txtClose').onclick   = function(){ txtOpen(false); };
@@ -9036,7 +9129,10 @@ document.addEventListener('keydown', function(e){
   if (overlaySession.opened && e.key==='Escape'){
     e.preventDefault();
     if ($('captureSettings').classList.contains('on')) $('captureSettings').classList.remove('on');
-    else if (document.fullscreenElement === $('captureOverlay')) document.exitFullscreen().catch(function(){});
+    else if (overlaySession.ownsFullscreen && document.fullscreenElement){
+      overlaySession.ownsFullscreen=false;
+      var xp=document.exitFullscreen(); if(xp&&xp.catch) xp.catch(function(){});
+    }
     else overlaySession.close();
     return;
   }
