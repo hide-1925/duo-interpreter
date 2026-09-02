@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.33.0 Phase 1 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.33.1 Phase 1 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -260,7 +260,9 @@
   #captureState.ok{color:var(--a)} #captureState.warn{color:var(--warn)} #captureState.err{color:var(--danger)}
   #captureTop .cbtn{padding:7px 11px;font-size:12px}
   #captureTop .cbtn.icon{width:32px;padding:7px 0}
-  #captureStart{gap:7px}
+  #captureTop #captureStart,#captureTop #captureStop{width:86px;flex:0 0 86px;justify-content:center;padding-left:6px;padding-right:6px}
+  #captureStart{gap:7px;border-color:var(--a);background:rgba(61,220,151,.10)}
+  #captureStart:hover{background:rgba(61,220,151,.18)}
   .capture-start-icon{position:relative;display:inline-block;width:15px;height:11px;flex:0 0 15px;border:1.7px solid var(--a);border-radius:2px}
   .capture-start-icon::before{content:'';position:absolute;left:5.2px;bottom:-4px;width:4px;height:3px;border-left:1.7px solid var(--a);border-right:1.7px solid var(--a)}
   .capture-start-icon::after{content:'';position:absolute;left:3px;right:3px;bottom:-5px;height:1.7px;border-radius:2px;background:var(--a)}
@@ -284,8 +286,8 @@
   #captureRail.bottom{left:10%;right:10%;bottom:18px;max-height:42%;width:auto;justify-content:flex-end;align-items:center}
   #captureRail.free{left:var(--rail-x,68%);top:var(--rail-y,18%);width:var(--rail-w);max-height:72%}
   #captureRailItems{display:flex;flex-direction:column;gap:8px;width:100%;justify-content:flex-end;min-height:0}
-  #captureRail.history-scroll{overflow-y:auto;overscroll-behavior:contain;pointer-events:auto;scrollbar-gutter:stable}
-  #captureRail.history-scroll #captureRailItems{justify-content:flex-start;min-height:min-content}
+  #captureRail.history-scroll{overflow-y:auto;overscroll-behavior:contain;pointer-events:auto;touch-action:pan-y;scrollbar-gutter:stable}
+  #captureRail.history-scroll #captureRailItems{justify-content:flex-start;min-height:min-content;flex:0 0 auto}
   #captureRail.history-scroll .capture-caption{pointer-events:none}
   #captureRail.history-scroll::-webkit-scrollbar{width:9px}
   #captureRail.history-scroll::-webkit-scrollbar-thumb{background:rgba(190,207,230,.38);border-radius:999px}
@@ -579,7 +581,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.33.0 Phase 1</span><span class="build-id">Build: 20260902-v1330-overlay1.6</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.33.1 Phase 1</span><span class="build-id">Build: 20260902-v1331-overlay1.7</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -589,7 +591,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.33.0 Phase 1</span><span class="build-id">Build: 20260902-v1330-overlay1.6</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.33.1 Phase 1</span><span class="build-id">Build: 20260902-v1331-overlay1.7</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -599,7 +601,7 @@
     <video id="captureVideo" playsinline muted autoplay></video>
     <div id="capturePlaceholder"><div><b>画面取込オーバーレイ</b><span id="capturePlaceholderText">「画面取込」を押し、資料のタブ・ウィンドウ・画面を選択してください。</span></div></div>
 
-    <div id="captureRail" class="right">
+    <div id="captureRail" class="right" tabindex="0" aria-label="オーバーレイ字幕履歴">
       <button id="captureRailHandle" type="button" title="ドラッグして字幕レールを移動">↕ 字幕を移動</button>
       <div id="captureRailItems"></div>
     </div>
@@ -1354,7 +1356,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260902-v1330-overlay1.6';
+var APP_BUILD = '20260902-v1331-overlay1.7';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -2644,6 +2646,22 @@ function geminiTranslate(text, from, to){
   });
 }
 
+/* MyMemoryは短い語を辞書形式（例：/(int) (1) hey!/oi!...）で返すことがある。
+   会話字幕へ辞書メタデータをそのまま出さず、先頭の自然な訳語へ正規化する。 */
+function normalizeMyMemoryTranslation(raw, text, from, to){
+  var out=String(raw||'').trim();
+  var compact=String(text||'').replace(/[\s。．.!！?？]/g,'');
+  if(from==='ja' && to==='en' && compact==='おい') return 'Hey!';
+  if(/^\s*\/\([^)]+\)/.test(out) || /\/\((?:int|pn|ksb|n|v|adj|adv)[^)]*\)/i.test(out)){
+    var m=out.match(/\/\([^)]+\)\s*(?:\(\d+\)\s*)?([^\/]+)/);
+    if(m && m[1]){
+      var first=m[1].replace(/^\(\d+\)\s*/,'').trim();
+      if(first) out=first;
+    }
+  }
+  return out;
+}
+
 /* 無料翻訳：Google翻訳ウェブ版 → 失敗時 MyMemory */
 function freeTranslate(text, from, to){
   var sl = L(from).g, tl = L(to).g;
@@ -2668,8 +2686,9 @@ function freeTranslate(text, from, to){
       .then(function(j){
         var t = j && j.responseData && j.responseData.translatedText;
         if (!t) throw new Error('無料翻訳に失敗しました');
-        dlog('translate','free-mymemory-ok',{ms:Date.now()-tf,chars:t.length});
-        return t;
+        var normalized=normalizeMyMemoryTranslation(t,text,from,to);
+        dlog('translate','free-mymemory-ok',{ms:Date.now()-tf,chars:normalized.length,normalized:normalized!==t});
+        return normalized;
       });
   });
 }
@@ -7877,7 +7896,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.33.0 Phase 1</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.33.1 Phase 1</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -8420,6 +8439,16 @@ $('ovCapReset').onclick = resetCaptureProfile;
 });
 $('captureOverlay').addEventListener('pointermove',function(ev){ overlayTopEdge(ev); overlayBottomEdge(ev); },{passive:true});
 $('captureOverlay').addEventListener('pointerleave',function(){ overlayPointerY=Infinity; },{passive:true});
+$('captureRail').addEventListener('wheel',function(ev){
+  if(!this.classList.contains('history-scroll')) return;
+  var max=this.scrollHeight-this.clientHeight; if(max<=0) return;
+  var delta=ev.deltaY;
+  if(ev.deltaMode===1) delta*=18;
+  else if(ev.deltaMode===2) delta*=this.clientHeight;
+  var before=this.scrollTop;
+  this.scrollTop=Math.max(0,Math.min(max,before+delta));
+  if(this.scrollTop!==before){ ev.preventDefault(); ev.stopPropagation(); }
+},{passive:false});
 $('captureOverlay').addEventListener('pointerdown',function(ev){
   overlayTopEdge(ev); overlayBottomEdge(ev);
   if($('captureSettings').classList.contains('on') &&
@@ -8945,7 +8974,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.33.0 Phase 1');
+  out.push('- バージョン: Duo Interpreter v1.33.1 Phase 1');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
