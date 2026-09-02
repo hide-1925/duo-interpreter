@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.34.0 Phase 1 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.35.0 Phase 2 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -582,7 +582,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.34.0 Phase 1</span><span class="build-id">Build: 20260902-v1340-overlay1.8</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.35.0 Phase 2</span><span class="build-id">Build: 20260902-v1350-audio2.0</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -592,7 +592,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.34.0 Phase 1</span><span class="build-id">Build: 20260902-v1340-overlay1.8</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.35.0 Phase 2</span><span class="build-id">Build: 20260902-v1350-audio2.0</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -831,7 +831,7 @@
     <div class="field">
       <label>音声認識（STT）</label>
       <select id="sttProvider">
-        <option value="webspeech">🆓 ブラウザ内蔵 Web Speech API（無料・低遅延 / Chrome・Edge / マイクのみ）</option>
+        <option value="webspeech">🆓 ブラウザ内蔵 Web Speech API（無料・低遅延 / Chrome・Edge）</option>
         <option value="realtime">⚡ リアルタイム同時通訳（gpt-realtime-translate / OpenAI）</option>
         <option value="openai">OpenAI（gpt-4o-transcribe / whisper-1）</option>
         <option value="xai">xAI Grok（多言語・キーは翻訳側と共通）</option>
@@ -892,8 +892,29 @@
       <label>音声入力元の設定</label>
       <div class="note">
         <b>対面で使う</b>：A・B とも「マイク」。1本のマイクで両言語を交互に待ち受けます。<br><br>
-        <b>Zoom / Teams で使う</b>：A =「マイク」（自分）、B =「タブ／システム音声」（相手）。開始時に画面共有ダイアログが出るので、<b>会議のタブ（またはウィンドウ／画面全体）を選び「タブの音声も共有」を必ずON</b>にしてください。映像は使わず音声だけを利用します。<br>
-        このとき、<b>音声認識はブラウザ内蔵ではなく API 側</b>（OpenAI・xAI など）を選んでください。ブラウザ内蔵の音声認識はマイクしか扱えず、タブ／システム音声を聞き取れません。
+        <b>Zoom / Teams で使う</b>：A =「マイク」（自分）、B =「タブ／システム音声」（相手）。開始時に画面共有ダイアログが出るので、<b>会議のタブ（またはウィンドウ／画面全体）を選び「タブの音声も共有」を必ずON</b>にしてください。オーバーレイで既に取り込んでいる場合は、その音声Trackを再利用します。
+      </div>
+      <div class="note" id="phase2AudioRoutes" data-fold="off">
+        <b>Phase 2：タブ／システム音声の認識経路</b><br>
+        <div class="row" style="margin-top:6px">
+          <select id="displaySttRoute" style="flex:1">
+            <option value="direct">🆓 直接Web Speech（Chrome 135+・共有音声Track）</option>
+            <option value="vb">🔌 VB-CABLE入力（互換性重視）</option>
+            <option value="api">🎯 外部API（設定中のOpenAI / Groq / Gemini等）</option>
+          </select>
+        </div>
+        <small id="displaySttRouteNote"></small>
+        <div class="row" style="margin-top:6px">
+          <span style="font-size:11.5px;color:var(--dim);width:104px;flex:0 0 auto">通常マイク</span>
+          <select id="micDev" style="flex:1"></select>
+        </div>
+        <div class="row" style="margin-top:4px">
+          <span style="font-size:11.5px;color:var(--dim);width:104px;flex:0 0 auto">VB-CABLE入力</span>
+          <select id="vbDev" style="flex:1"></select>
+          <button class="btn ghost" id="inRefresh" title="入力デバイスの一覧を取り直す">🔄 更新</button>
+        </div>
+        <label class="switch"><input type="checkbox" id="preventSelfRecognition" checked> 同じ仮想経路へ出したTTSの自己認識を防止する</label>
+        <small id="audioRouteWarning"></small>
       </div>
       <div class="note">
         <b>対面で2人が1本のマイクを使うときのコツ</b><br>
@@ -1011,9 +1032,18 @@
     </div>
 
     <div class="field" id="outField">
-      <label>読み上げの出力先デバイス（会議のマイクに流す）</label>
+      <label>読み上げの出力先デバイス</label>
       <div class="row">
-        <select id="outDev" style="flex:1"></select>
+        <span style="font-size:11.5px;color:var(--dim);width:104px;flex:0 0 auto">自分向け<br><small>B→A</small></span>
+        <select id="outDevLocal" style="flex:1"></select>
+        <button class="btn ghost" id="outChooseLocal" title="ブラウザの出力先選択を開く">選択</button>
+      </div>
+      <div class="row" style="margin-top:4px">
+        <span style="font-size:11.5px;color:var(--dim);width:104px;flex:0 0 auto">相手向け<br><small>A→B</small></span>
+        <select id="outDevRemote" style="flex:1"></select>
+        <button class="btn ghost" id="outChooseRemote" title="ブラウザの出力先選択を開く">選択</button>
+      </div>
+      <div class="row" style="margin-top:4px;justify-content:flex-end">
         <button class="btn ghost" id="outRefresh" title="出力デバイスの一覧を取り直す">🔄 更新</button>
       </div>
       <small id="outNote"></small>
@@ -1312,7 +1342,7 @@
       <label>画面取込オーバーレイ（PC）</label>
       <button class="btn primary" id="ovCapOpen">🖥 画面を取り込んで字幕を重ねる</button>
       <small>PDF、PowerPoint、Teams、Zoom、ブラウザ資料などをDuo内へ取り込み、画面端へコメント形式の字幕を表示します。ブラウザ自体を透明にする旧方式、クロマキー、AutoHotkeyは使用しません。<br>
-      Phase 0～1では映像取込と字幕表示まで対応します。画面音声をWeb Speechへ直接渡す機能と方向別TTS出力はPhase 2、Zoom・Pan・注釈はPhase 3で追加します。iPhone／iPadでは通常モードをお使いください。</small>
+      Phase 2では共有音声の直接Web Speech／VB-CABLE／外部APIと、方向別TTS出力に対応しています。Zoom・Pan・注釈はPhase 3で追加します。iPhone／iPadでは通常モードをお使いください。</small>
       <label class="switch"><input type="checkbox" id="syncScroll" checked> A/Bの会話ログのスクロールを連動させる</label>
     </div>
     <div class="field">
@@ -1361,7 +1391,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260902-v1340-overlay1.8';
+var APP_BUILD = '20260902-v1350-audio2.0';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -1541,6 +1571,9 @@ function loadCfg(){
     langB:     pref('di.lb','langB','en'),
     srcA:      pref('di.sa','srcA','mic'),
     srcB:      pref('di.sb','srcB','mic'),
+    displaySttRoute:pref('di.audio.displayRoute','displaySttRoute',
+      store.get('di.sttp','webspeech')==='webspeech'?'direct':'api'),
+    preventSelfRecognition:pref('di.audio.preventLoop','preventSelfRecognition','1')+'' === '1',
     nameA:     pref('di.na','nameA',''),
     nameB:     pref('di.nb','nameB',''),
     fsize:     pref('di.fs','fsize', (window.innerWidth <= 480 ? '22' : '30')),
@@ -1625,8 +1658,15 @@ function loadCfg(){
     ttsSrc:    pref('di.ttssrc','ttsSrc','0')+'' === '1',
     ttsPad:    pref('di.ttspad','ttsPad','300'),
     ttsStale:  pref('di.ttsstale','ttsStale','auto'),
-    outDev:    store.get('di.outdev',''),      /* 端末ごとの値なのでHTMLには焼き込まない */
-    outDevLbl: store.get('di.outdevl',''),
+    /* 旧1系統の出力先は「会議へ流す」用途だったため相手向けへ移行する。 */
+    outDevLocal:store.get('di.outdev.local',''),
+    outDevLocalLbl:store.get('di.outdevl.local',''),
+    outDevRemote:store.get('di.outdev.remote',store.get('di.outdev','')),
+    outDevRemoteLbl:store.get('di.outdevl.remote',store.get('di.outdevl','')),
+    micDev:    store.get('di.indev.mic',''),
+    micDevLbl: store.get('di.indevl.mic',''),
+    vbDev:     store.get('di.indev.vb',''),
+    vbDevLbl:  store.get('di.indevl.vb',''),
     remember:  store.get('di.remember','1') === '1',
     glossary:  []
   };
@@ -1778,10 +1818,11 @@ function paint(feedId, e, viewer){
      「今読んでいるものがそのまま鳴る」ので、どちらのパネルでも直感的に使える。 */
   var say = el.querySelector('.saybtn');
   var sayLang = isSelf ? e.srcLang : e.dstLang;
+  say.setAttribute('data-say-key',e.id+':'+viewer);
   say.style.display = (main && main !== '…') ? '' : 'none';
   say.onclick = function(ev){
     ev.stopPropagation();      // パネルのタップ（聞き取り言語の切替）を誘発させない
-    speakManual(main, sayLang, say, e.seat, e.prosody);
+    speakManual(main, sayLang, say, e.seat, e.prosody, e.id+':'+viewer);
   };
   var s = el.querySelector('.sub');
   s.textContent = CFG.showSrc ? sub : '';
@@ -2161,9 +2202,9 @@ function fitSafeBottom(){
   dlog('layout','safe-bottom',{ inner:window.innerHeight, screen:screenH, covered:covered, sab:Math.round(v) });
 }
 
-/* ---------------- 画面取込オーバーレイ（Phase 0-1） ----------------
+/* ---------------- 画面取込オーバーレイ（Phase 0-2） ----------------
    透明ブラウザ化ではなく、getDisplayMedia() で選択した画面を Duo 内に表示し、
-   その上へ独立した字幕レールを重ねる。音声TrackのSTT直結はPhase 2の境界だけ用意する。 */
+   その上へ独立した字幕レールを重ねる。Phase 2では共有音声TrackもSTTへ接続する。 */
 function overlayCapabilities(){
   var mediaProto = (typeof HTMLMediaElement !== 'undefined') ? HTMLMediaElement.prototype : {};
   var AC = window.AudioContext || window.webkitAudioContext;
@@ -2176,13 +2217,17 @@ function overlayCapabilities(){
     mobileUnsupported: ios,
     displayMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia),
     speechRecognition: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
-    speechTrackInput: 'runtime-probe',
+    speechTrackInput: overlayChromeMajor() >= 135 ? 'candidate' : 'unsupported',
     mediaSink: !!mediaProto && ('setSinkId' in mediaProto),
     audioContextSink: !!acProto && ('setSinkId' in acProto),
     captureController: typeof CC === 'function',
     forwardWheel: !!(CC && CC.prototype && ('forwardWheel' in CC.prototype)),
     fullscreen: !!(document.fullscreenEnabled && Element.prototype.requestFullscreen)
   };
+}
+function overlayChromeMajor(){
+  var m=String(navigator.userAgent||'').match(/(?:Chrome|Chromium|Edg)\/(\d+)/);
+  return m?parseInt(m[1],10):0;
 }
 function overlayHexRgba(hex, alpha){
   var h = String(hex || '#000000').replace('#','');
@@ -2269,6 +2314,7 @@ var OverlaySession = {
       var self = this;
       video.onended = function(){ self.sourceEnded('共有元から画面共有が終了されました'); };
       if (audio) audio.onended = function(){
+        stopEnginesForTrack(audio,'共有音声Track終了');
         self.audioTrack = null; self.sourceInfo.audio = false;
         self.transition('VIDEO_ONLY','共有音声Trackが終了しました。映像表示は継続しています');
       };
@@ -2277,8 +2323,8 @@ var OverlaySession = {
       try { await el.play(); } catch(playErr){ dlog('overlay','video-play-FAIL',{err:String(playErr)}); }
       $('capturePlaceholder').hidden = true;
       this.transition(audio ? 'AUDIO_TRACK_READY' : 'VIDEO_ONLY',
-        audio ? '映像＋共有音声を取得（音声の直接認識はPhase 2）'
-              : '共有音声は取得されていません。音声共有をONにするか、既存のマイク／外部STT APIを利用してください（VB-CABLE経路はPhase 2）');
+        audio ? '映像＋共有音声を取得（直接Web Speech／外部APIで利用できます）'
+              : '共有音声は取得されていません。音声共有をONにするか、VB-CABLE／外部STT APIを利用してください');
       overlayWakeToolbar();
       dlog('overlay','capture-ok',this.sourceInfo);
     } catch(err){
@@ -2296,6 +2342,8 @@ var OverlaySession = {
   stopSource:function(quiet){
     if (this.stopping) return;
     this.stopping = true;
+    var audio=this.audioTrack;
+    if(audio)stopEnginesForTrack(audio,'画面取込停止');
     var tracks = this.stream && this.stream.getTracks ? this.stream.getTracks() : [];
     tracks.forEach(function(t){ t.onended=null; try{t.stop();}catch(e){} });
     this.stream=null; this.videoTrack=null; this.audioTrack=null; this.sourceInfo=null;
@@ -2305,6 +2353,7 @@ var OverlaySession = {
   },
   sourceEnded:function(message){
     this.stopSource(true);
+    stopSpeaking('共有元終了');
     $('capturePlaceholder').hidden = false;
     this.transition('SOURCE_ENDED',message || '画面共有が終了しました');
   },
@@ -2348,14 +2397,15 @@ var OverlaySession = {
 var overlaySession = OverlaySession, overlayRailTimer=0, overlayToolbarTimer=0,
     overlayControlsTimer=0, overlayNoticeTimer=0, overlayPointerY=Infinity, overlayDrag=null;
 
-/* Phase 0の入出力境界。既存通常モードの経路は変えず、Phase 2がここへ接続する。 */
+/* Phase 2の入出力境界。 */
 var OverlayAudioRoutes = {
   sttInput:function(){
     var track=overlaySession.activeAudioTrack();
-    return {kind:track?'display-track':'existing',track:track,phase:track?'ready-for-phase-2':'normal-mode'};
+    return {kind:track?'display-track':'existing',track:track,route:CFG.displaySttRoute||'direct'};
   },
   ttsOutput:function(seat){
-    return {seat:seat||'A',sinkId:CFG.outDev||'default',split:false,phase:'phase-2'};
+    var sink=sinkForSeat(seat);
+    return {seat:seat||'A',sinkId:sink.id||'default',label:sink.label||'既定',target:sink.target,split:true};
   }
 };
 
@@ -2371,7 +2421,7 @@ function updateCaptureStatus(detail){
   el.title=overlaySession.state==='VIDEO_ONLY'
     ? '映像Trackは取得済みですが、共有音声Trackが無い状態です。映像表示は動作しています。'
     : overlaySession.state==='AUDIO_TRACK_READY'
-      ? '映像Trackと共有音声Trackを取得済みです。共有音声Trackの直接STT接続はPhase 2です。'
+      ? '映像Trackと共有音声Trackを取得済みです。音声設定の選択経路で認識できます。'
       : detail||labels[overlaySession.state]||overlaySession.state;
   $('captureStart').disabled=overlaySession.state==='SELECTING_SOURCE';
   $('captureStop').disabled=!overlaySession.stream;
@@ -2388,9 +2438,9 @@ function renderCaptureCapability(){
   if(c.mobileUnsupported){ el.textContent='この端末では画面取込を利用できません。通常のDuo Interpreterは利用できます。'; return; }
   el.textContent='画面取込 '+(c.displayMedia?'対応':'非対応')+' / HTTPS '+(c.secure?'OK':'必須')+
     ' / 全画面 '+(c.fullscreen?'対応':'非対応')+' / 出力先分離 '+(c.mediaSink?'対応':'非対応')+
-    '（音声Track STT・TTS出力分離はPhase 2）'+
+    ' / 共有Track直接STT '+(c.speechTrackInput==='candidate'?'候補':'非対応')+
     (overlaySession.sourceInfo && !overlaySession.sourceInfo.audio
-      ? ' / 共有音声なし：既存マイク・外部STT APIを利用可能。VB-CABLE UIはPhase 2。'
+      ? ' / 共有音声なし：VB-CABLEまたは外部STT APIを選択できます。'
       : '')+' / 取込映像は表示専用です。外部アプリのボタン操作は元ウィンドウで行い、Duo内Zoom／PanはPhase 3で追加します。';
 }
 function applyCaptureProfile(){
@@ -3642,6 +3692,7 @@ function ttsEnd(){
   if (ttsActive > 0) return;            // まだ読み上げ中のものが残っている
   S.speaking = false;
   if (typeof setSayBtn === 'function') setSayBtn(null);   // 鳴り終わったら点滅を止める
+  if (!ttsIsBusy()) manualSayKey='';
 }
 /* 読み上げボタンの見た目を更新する。4か所で個別に書いていたのを1つにまとめ、
    状態と表示がずれないようにする。 */
@@ -3895,20 +3946,20 @@ function apiSpeak(text, lang, seat, prosody){
      Web Audioで守れる場合だけ使い、それ以外はWAV一括方式へ安全に落とす。 */
   if (CFG.oaiStream && !ttsIsBusy() && window.ReadableStream){
     var ctx=ttsAudioCtx();
-    if (ctx && ttsCtxCanRoute(ctx)){
+    if (ctx && ttsCtxCanRoute(ctx,seat)){
       if (oaiIsWindows()){
         if (ctx.audioWorklet && window.AudioWorkletNode)
           return apiSpeakStreamWorklet(text,lang,seat,prosody,plan,ctx,key);
         dlog('tts','openai-stream-skip',{why:'AudioWorklet非対応（WAVへ切替）'});
       } else return apiSpeakStream(text,lang,seat,prosody,plan,ctx,key);
     }
-    if (ctx && !ttsCtxCanRoute(ctx)) dlog('tts','openai-stream-skip',{why:'指定出力先をWeb Audioで守れない'});
+    if (ctx && !ttsCtxCanRoute(ctx,seat)) dlog('tts','openai-stream-skip',{why:'指定出力先をWeb Audioで守れない'});
   }
   return apiSpeakBlob(text,lang,seat,prosody,plan,key);
 }
 function apiSpeakBlob(text, lang, seat, prosody, plan, key){
   plan=plan||oaiBuildPlan(lang,prosody); key=key||keyOf('openai');
-  var t0=Date.now(), finish=ttsGuard(text,Math.min(90000,8000+text.length*150));
+  var t0=Date.now(), finish=ttsGuard(text,Math.min(90000,8000+text.length*150),seat);
   var body=oaiSpeechBody(text,seat,'wav',plan);
   oaiLogRequest(body,plan,text,seat,false);
   fetch('https://api.openai.com/v1/audio/speech',{
@@ -4014,7 +4065,7 @@ function pcm16ToFloat32(u8){
 function apiSpeakStreamWorklet(text,lang,seat,prosody,plan,ctx,key){
   var t0=Date.now(),firstMs=0,started=false,underruns=0,receivedSamples=0,networkDone=false;
   var body=oaiSpeechBody(text,seat,'pcm',plan), guardMs=Math.min(120000,12000+text.length*200);
-  var finish=ttsGuard(text,guardMs),myGen=finish.gen,streamDone=false,watchdog=null,node=null,streamGain=null;
+  var finish=ttsGuard(text,guardMs,seat),myGen=finish.gen,streamDone=false,watchdog=null,node=null,streamGain=null;
   var ctrl=null;try{ctrl=new AbortController();}catch(e){}
   var streamEnd=function(why){
     if(streamDone)return;streamDone=true;clearTimeout(watchdog);
@@ -4025,7 +4076,7 @@ function apiSpeakStreamWorklet(text,lang,seat,prosody,plan,ctx,key){
     dlog('tts','stream-play-end',{src:'openai-worklet',why:why||'ended',ms:Date.now()-t0,queued:ttsQueue.length});
     pumpTtsQueue();
   };
-  ttsPlayingNow=true;ttsCurEnd=streamEnd;openaiTtsAbort=ctrl;ensureCtxSink(ctx);oaiLogRequest(body,plan,text,seat,true);
+  ttsPlayingNow=true;ttsCurEnd=streamEnd;openaiTtsAbort=ctrl;ensureCtxSink(ctx,seat);oaiLogRequest(body,plan,text,seat,true);
   watchdog=setTimeout(function(){
     if(streamDone)return;try{if(ctrl)ctrl.abort();}catch(e){}
     dlog('tts','openai-stream-TIMEOUT',{ms:Date.now()-t0,started:started,transport:'audio-worklet'});
@@ -4095,7 +4146,7 @@ function apiSpeakStreamWorklet(text,lang,seat,prosody,plan,ctx,key){
 function apiSpeakStream(text, lang, seat, prosody, plan, ctx, key){
   var t0=Date.now(),firstMs=0,started=false,underruns=0;
   var body=oaiSpeechBody(text,seat,'pcm',plan);
-  var guardMs=Math.min(120000,12000+text.length*200),finish=ttsGuard(text,guardMs),myGen=finish.gen;
+  var guardMs=Math.min(120000,12000+text.length*200),finish=ttsGuard(text,guardMs,seat),myGen=finish.gen;
   var streamDone=false,streamEndTimer=null,streamWatchdog=null,timedOut=false,streamGain=null;
   var streamEnd=function(why){
     if (streamDone) return; streamDone=true;
@@ -4109,7 +4160,7 @@ function apiSpeakStream(text, lang, seat, prosody, plan, ctx, key){
   };
   ttsPlayingNow=true;ttsCurEnd=streamEnd;
   var ctrl=null;try{ctrl=new AbortController();}catch(e){}
-  openaiTtsAbort=ctrl;ensureCtxSink(ctx);oaiLogRequest(body,plan,text,seat,true);
+  openaiTtsAbort=ctrl;ensureCtxSink(ctx,seat);oaiLogRequest(body,plan,text,seat,true);
   var pend=new Uint8Array(0),next=0,minBytes=Math.round(24000*2*0.12),LEAD=Math.max(0.15,ttsPadMs()/1000);
   streamGain=ctx.createGain();streamGain.gain.value=plan.gain;streamGain.connect(ttsGain);
   var endAfterBuffered=function(why){
@@ -4271,7 +4322,7 @@ function foldLongNotes(){
    注意：speechSynthesis（ブラウザ内蔵音声）は経路を変えられない仕様なので、
    ここで効くのは <audio> で鳴らす OpenAI音声 と VOICEVOX だけ。 */
 var OUT_SUPPORTED = (typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype);
-var outDevs = [];
+var outDevs = [], inDevs = [];
 
 /* ブラウザから見えるのは「スピーカー（出力先）」だけで、マイクを作ることはできない。
    会議に流すには、OS側の仮想オーディオケーブルを出力先に選び、
@@ -4280,13 +4331,50 @@ var outDevs = [];
 function isVirtualDev(label){
   return /cable|blackhole|voicemeeter|virtual|loopback|soundflower|vb-audio|vb-cable/i.test(String(label||''));
 }
+function virtualRouteFamily(label){
+  var s=String(label||'').toLowerCase();
+  if (/vb-audio|vb-cable|cable input|cable output/.test(s)) return 'vb-cable';
+  if (/voicemeeter/.test(s)) return 'voicemeeter';
+  if (/blackhole/.test(s)) return 'blackhole';
+  if (/loopback/.test(s)) return 'loopback';
+  if (/soundflower/.test(s)) return 'soundflower';
+  if (/virtual/.test(s)) return s.replace(/\b(input|output|speaker|microphone|mic)\b/g,'').trim();
+  return '';
+}
+function sinkForSeat(seat){
+  var remote=(seat||'A')==='A';
+  return {id:remote?(CFG.outDevRemote||''):(CFG.outDevLocal||''),
+          label:remote?(CFG.outDevRemoteLbl||''):(CFG.outDevLocalLbl||''),
+          target:remote?'相手向け':'自分向け'};
+}
+function ttsLoopRisk(seat){
+  var sink=sinkForSeat(seat),inputs=[];
+  if (CFG.displaySttRoute==='vb' && (CFG.srcA==='display'||CFG.srcB==='display')) inputs.push(CFG.vbDevLbl||'');
+  if ((CFG.srcA==='mic'||CFG.srcB==='mic') && isVirtualDev(CFG.micDevLbl)) inputs.push(CFG.micDevLbl||'');
+  var a=virtualRouteFamily(sink.label);
+  return !!(a&&inputs.some(function(input){var b=virtualRouteFamily(input);return b&&a===b;}));
+}
+function audioRouteWarningText(){
+  var risk=ttsLoopRisk('A')||ttsLoopRisk('B');
+  if(risk) return '<b>⚠ 相手向けTTSとVB-CABLE認識が同じ仮想経路です。</b>'
+    +' 読み上げが自分のSTTへ戻るため、自己認識防止ON時はA→BのTTSを停止します。別の仮想ケーブルかVoicemeeterで経路を分けてください。';
+  if(CFG.displaySttRoute==='direct') return '共有音声TrackをWeb Speechへ直接渡します。Chrome / Edge 135以降が必要です。対応しない場合、マイクへ黙って切り替えず停止して案内します。';
+  if(CFG.displaySttRoute==='vb') return '会議音声をOS側でVB-CABLEへ流し、上で選んだ入力デバイスを認識します。';
+  return '共有音声Trackを、上で選択した外部STT APIへ送ります。';
+}
+function renderAudioRouteWarning(){
+  var risk=ttsLoopRisk('A')||ttsLoopRisk('B');
+  var n=$('audioRouteWarning');if(n){n.innerHTML=audioRouteWarningText();n.style.color=risk?'#ffb3bd':'';}
+  var rn=$('displaySttRouteNote');if(rn)rn.innerHTML=audioRouteWarningText();
+}
 function outNoteText(){
   if (!OUT_SUPPORTED)
     return 'このブラウザは出力先の指定に対応していません（Chrome / Edge のデスクトップ版でご利用ください）。';
   var labeled  = outDevs.some(function(d){ return !!d.label; });
   var hasCable = outDevs.some(function(d){ return isVirtualDev(d.label); });
-  var t = '<b>OpenAI音声</b>と<b>VOICEVOX</b>の読み上げに適用されます。'
-        + 'ブラウザ内蔵音声は仕様上、既定のスピーカーからしか鳴らせません。';
+  var t = '<b>自分向け</b>はBの発言の翻訳をヘッドホン／スピーカーへ、'
+        + '<b>相手向け</b>はAの発言の翻訳を会議用仮想ケーブルへ送ります。'
+        + 'ブラウザ内蔵音声は仕様上、出力先を分けられません。';
   if (!labeled && outDevs.length){
     t += '<br>デバイス名が出ていません。一度「● 開始」でマイクを許可してから 🔄 更新 を押してください。';
     return t;
@@ -4310,29 +4398,25 @@ function outNoteText(){
      + 'また、読み上げが自分の耳にも聞こえなくなります。</small>';
   return t;
 }
-function renderOutDevs(){
-  var sel = $('outDev'); if (!sel) return;
-  sel.disabled = !OUT_SUPPORTED;
-  sel.innerHTML = '';
-  var o0 = document.createElement('option');
-  o0.value = ''; o0.textContent = '既定のスピーカー（変更しない）';
-  sel.appendChild(o0);
-  outDevs.forEach(function(d, i){
-    var o = document.createElement('option');
-    o.value = d.deviceId;
-    var lbl = d.label || ('出力デバイス ' + (i + 1) + '（名称は未取得）');
-    o.textContent = (isVirtualDev(d.label) ? '🎚 ' : '') + lbl;   /* 仮想ケーブルはすぐ見つかるよう印を付ける */
-    sel.appendChild(o);
-  });
-  /* 保存しておいたIDは環境が変わると無効になるので、名前が一致するものに付け替える */
-  var id = CFG.outDev || '';
-  if (id && !outDevs.some(function(d){ return d.deviceId === id; })){
-    var byLabel = CFG.outDevLbl && outDevs.filter(function(d){ return d.label === CFG.outDevLbl; })[0];
-    if (byLabel){ id = byLabel.deviceId; CFG.outDev = id; store.set('di.outdev', id); }
-    else if (outDevs.length){ id = ''; }        /* 一覧は取れたが見つからない＝そのデバイスは無い */
+function renderOneOutDev(id, cfgId, cfgLabel, storeId, storeLabel){
+  var sel=$(id);if(!sel)return;
+  sel.disabled=!OUT_SUPPORTED;sel.innerHTML='';
+  var o0=document.createElement('option');o0.value='';o0.textContent='既定のスピーカー';sel.appendChild(o0);
+  outDevs.forEach(function(d,i){var o=document.createElement('option');o.value=d.deviceId;
+    var lbl=d.label||('出力デバイス '+(i+1)+'（名称は未取得）');o.textContent=(isVirtualDev(d.label)?'🎚 ':'')+lbl;sel.appendChild(o);});
+  var value=CFG[cfgId]||'';
+  if(value&&!outDevs.some(function(d){return d.deviceId===value;})){
+    var byLabel=CFG[cfgLabel]&&outDevs.filter(function(d){return d.label===CFG[cfgLabel];})[0];
+    if(byLabel){value=byLabel.deviceId;CFG[cfgId]=value;store.set(storeId,value);}
+    else if(outDevs.length)value='';
   }
-  sel.value = id;
+  sel.value=value;
+}
+function renderOutDevs(){
+  renderOneOutDev('outDevLocal','outDevLocal','outDevLocalLbl','di.outdev.local','di.outdevl.local');
+  renderOneOutDev('outDevRemote','outDevRemote','outDevRemoteLbl','di.outdev.remote','di.outdevl.remote');
   var n = $('outNote'); if (n) n.innerHTML = outNoteText();
+  renderAudioRouteWarning();
   foldLongNotes();
 }
 function loadOutDevs(){
@@ -4349,34 +4433,74 @@ function loadOutDevs(){
     return [];
   });
 }
-function applySink(announce){
+function renderOneInDev(id,cfgId,cfgLabel,virtualOnly){
+  var sel=$(id);if(!sel)return;sel.innerHTML='';
+  var z=document.createElement('option');z.value='';z.textContent=virtualOnly?'仮想入力を選択':'既定のマイク';sel.appendChild(z);
+  inDevs.forEach(function(d,i){var o=document.createElement('option');o.value=d.deviceId;
+    var lbl=d.label||('入力デバイス '+(i+1)+'（名称は未取得）');o.textContent=(isVirtualDev(d.label)?'🎚 ':'')+lbl;sel.appendChild(o);});
+  var value=CFG[cfgId]||'';
+  if(value&&!inDevs.some(function(d){return d.deviceId===value;})){
+    var byLabel=CFG[cfgLabel]&&inDevs.filter(function(d){return d.label===CFG[cfgLabel];})[0];
+    if(byLabel){value=byLabel.deviceId;CFG[cfgId]=value;}
+    else if(inDevs.length)value='';
+  }
+  sel.value=value;
+}
+function renderInDevs(){
+  renderOneInDev('micDev','micDev','micDevLbl',false);
+  renderOneInDev('vbDev','vbDev','vbDevLbl',true);
+  renderAudioRouteWarning();
+}
+function loadInDevs(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.enumerateDevices){renderInDevs();return Promise.resolve([]);}
+  return navigator.mediaDevices.enumerateDevices().then(function(ds){
+    inDevs=ds.filter(function(d){return d.kind==='audioinput';});renderInDevs();
+    dlog('audio','in-devices',{n:inDevs.length,labeled:inDevs.filter(function(d){return!!d.label;}).length,
+      virtual:inDevs.filter(function(d){return isVirtualDev(d.label);}).length});return inDevs;
+  }).catch(function(err){dlog('audio','in-devices-FAIL',{err:String((err&&err.message)||err).slice(0,120)});renderInDevs();return[];});
+}
+function chooseAudioOutput(seat){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.selectAudioOutput){
+    toast('このブラウザは出力先選択ダイアログに対応していません。一覧から選んでください。');return;
+  }
+  navigator.mediaDevices.selectAudioOutput().then(function(dev){
+    var remote=(seat||'A')==='A';
+    CFG[remote?'outDevRemote':'outDevLocal']=dev.deviceId||'';
+    CFG[remote?'outDevRemoteLbl':'outDevLocalLbl']=dev.label||'';
+    store.set(remote?'di.outdev.remote':'di.outdev.local',dev.deviceId||'');
+    store.set(remote?'di.outdevl.remote':'di.outdevl.local',dev.label||'');
+    return loadOutDevs().then(function(){return applySink(seat,true);});
+  }).catch(function(err){if(err&&err.name!=='NotAllowedError')toast('出力先を選択できませんでした：'+String(err.message||err));});
+}
+function applySink(seat,announce){
   if (!OUT_SUPPORTED) return Promise.resolve(false);
-  var id = CFG.outDev || '', p;
+  var sink=sinkForSeat(seat),id=sink.id||'',p;
   try { p = audioEl.setSinkId(id); } catch(err){ p = Promise.reject(err); }
   if (!p || !p.then) p = Promise.resolve();
   return p.then(function(){
-    dlog('audio','sink-ok',{ dev: CFG.outDevLbl || '(既定)' });
+    dlog('audio','sink-ok',{seat:seat||'A',target:sink.target,dev:sink.label||'(既定)'});
     if (announce){
-      toast('読み上げの出力先を「' + (CFG.outDevLbl || '既定のスピーカー') + '」にしました。'
+      toast(sink.target+'の出力先を「' + (sink.label || '既定のスピーカー') + '」にしました。'
           + (CFG.ttsMode === 'browser' ? '<br>※ ブラウザ内蔵音声はこの設定の対象外です。' : ''), true);
     }
     return true;
   }).catch(function(err){
     var m = String((err && err.message) || err);
     dlog('audio','sink-FAIL',{ err:m.slice(0,140) });
-    CFG.outDev = ''; CFG.outDevLbl = '';
-    store.set('di.outdev',''); store.set('di.outdevl','');
+    if((seat||'A')==='A'){CFG.outDevRemote='';CFG.outDevRemoteLbl='';store.set('di.outdev.remote','');store.set('di.outdevl.remote','');}
+    else{CFG.outDevLocal='';CFG.outDevLocalLbl='';store.set('di.outdev.local','');store.set('di.outdevl.local','');}
     renderOutDevs(); refreshVvUI();
     toast('その出力先には切り替えられませんでした。既定のスピーカーに戻します。<br><small>' + m.slice(0,90) + '</small>');
     return false;
   });
 }
 /* 再生の直前に、指定した出力先が外れていないか確かめる（デバイスの抜き差し対策） */
-function ensureSink(){
-  if (!OUT_SUPPORTED || !CFG.outDev) return;
-  if (audioEl.sinkId === CFG.outDev) return;
-  dlog('audio','sink-reapply',{ now: String(audioEl.sinkId||'').slice(0,8), want: CFG.outDev.slice(0,8) });
-  try { audioEl.setSinkId(CFG.outDev); } catch(e){}
+function ensureSink(seat){
+  var sink=sinkForSeat(seat);
+  if(!OUT_SUPPORTED)return;
+  if(audioEl.sinkId===sink.id)return;
+  dlog('audio','sink-reapply',{seat:seat||'A',now:String(audioEl.sinkId||'').slice(0,8),want:String(sink.id||'').slice(0,8)});
+  try{audioEl.setSinkId(sink.id||'');}catch(e){}
 }
 
 /* ---------------- 日本語専用エンジン共通の下ごしらえ ----------------
@@ -4407,7 +4531,7 @@ function silentWavUrl(ms){
   put(36,'data'); v.setUint32(40, n*2, true);
   return URL.createObjectURL(new Blob([buf], { type:'audio/wav' }));
 }
-function primeOutput(){
+function primeOutput(seat){
   if (CFG.ttsMode === 'off') return;
   /* HTMLAudioElementの無音呼び水はiOSの出力経路維持専用。Windowsでは一部の
      オーディオドライバが無音ストリームの開始自体をビープで通知するため使わない。 */
@@ -4420,8 +4544,9 @@ function primeOutput(){
      発話ごとに呼び水の停止タイマーを更新し、停止済みなら play() し直す。 */
   try{
     if (!primeEl){ primeEl = new Audio(silentWavUrl(400)); primeEl.loop = true; }
-    if (OUT_SUPPORTED && CFG.outDev && primeEl.sinkId !== CFG.outDev){
-      try{ primeEl.setSinkId(CFG.outDev); }catch(e){}
+    var primeSink=sinkForSeat(seat);
+    if (OUT_SUPPORTED && primeEl.sinkId !== (primeSink.id||'')){
+      try{ primeEl.setSinkId(primeSink.id||''); }catch(e){}
     }
     if (primeEl.paused){
       var pr = primeEl.play();
@@ -4583,9 +4708,17 @@ function ttsAudioCtx(){
   return ttsCtx;
 }
 /* 出力先を指定しているときは、こちらの経路にも同じ機器を割り当てる */
-function ensureCtxSink(ctx){
-  if (!CFG.outDev || !ctx.setSinkId) return;
-  try { if (ctx.sinkId !== CFG.outDev) ctx.setSinkId(CFG.outDev); } catch(e){}
+function ensureCtxSink(ctx,seat){
+  var sink=sinkForSeat(seat);
+  if (!ctx.setSinkId) return Promise.resolve(!sink.id);
+  try {
+    if (ctx.sinkId !== (sink.id||'')){
+      var p=ctx.setSinkId(sink.id||'');
+      if(p&&p.then)return p.then(function(){dlog('audio','ctx-sink-ok',{seat:seat||'A',target:sink.target,dev:sink.label||'(既定)'});return true;})
+        .catch(function(err){dlog('audio','ctx-sink-FAIL',{seat:seat||'A',err:String(err.message||err).slice(0,120)});return false;});
+    }
+  } catch(e){return Promise.resolve(false);}
+  return Promise.resolve(true);
 }
 
 function playBlob(blob, finish, tag, opts){
@@ -4602,7 +4735,7 @@ function playBlob(blob, finish, tag, opts){
     return;
   }
   var order = (finish && finish.order != null) ? finish.order : ++ttsOrderSeq;
-  ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:at, gen:g, order:order,
+  ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:at, gen:g, order:order,seat:(opts.seat||(finish&&finish.seat)||'A'),
                   chars:chars,staleMs:staleMs,gain:prosodyClamp(parseFloat(opts.gain)||1,0.5,1.5),
                   playbackRate:prosodyClamp(parseFloat(opts.playbackRate)||1,0.5,2) });
   ttsQueue.sort(function(a,b){ return a.order-b.order; });
@@ -4669,7 +4802,7 @@ function pumpTtsQueue(){
    setSinkId に対応していない環境（Safari・Firefox など）では、その指定を守れない。
    守れないまま鳴らすと、会議に流すつもりの音が既定のスピーカーから出てしまう。
    判定を1か所にまとめ、再生経路を選ぶところすべてで同じ基準を使う。 */
-function ttsCtxCanRoute(ctx){ return !CFG.outDev || !!(ctx && ctx.setSinkId); }
+function ttsCtxCanRoute(ctx,seat){ return !sinkForSeat(seat).id || !!(ctx && ctx.setSinkId); }
 
 /* まず開きっぱなしの経路で試し、使えないときだけ従来の <audio> に落とす */
 function playJob(job, end){
@@ -4680,7 +4813,7 @@ function playJob(job, end){
     return;
   }
   if (!ctx || !job.blob.arrayBuffer){ playViaAudioEl(job, end); return; }
-  if (!ttsCtxCanRoute(ctx)){ playViaAudioEl(job, end); return; }
+  if (!ttsCtxCanRoute(ctx,job.seat)){ playViaAudioEl(job, end); return; }
   var t0 = Date.now();
   job.blob.arrayBuffer()
     .then(function(buf){
@@ -4689,8 +4822,8 @@ function playJob(job, end){
         if (p && p.catch) p.catch(function(){});
       });
     })
+    .then(function(ab){return ensureCtxSink(ctx,job.seat).then(function(){return ab;});})
     .then(function(ab){
-      ensureCtxSink(ctx);
       var srcNode = ctx.createBufferSource(), jobGain = ctx.createGain();
       srcNode.buffer = ab;
       jobGain.gain.value = job.gain || 1;
@@ -4713,15 +4846,15 @@ function playJob(job, end){
       playViaAudioEl(job, end);
     });
 }
-function ensureRateMediaRoute(ctx, gain){
-  if (!ctx || !ttsCtxCanRoute(ctx)) return false;
+function ensureRateMediaRoute(ctx, gain,seat){
+  if (!ctx || !ttsCtxCanRoute(ctx,seat)) return false;
   try{
     if (!ttsRateMediaSrc){
       ttsRateMediaSrc = ctx.createMediaElementSource(rateAudioEl);
       ttsRateGain = ctx.createGain();
       ttsRateMediaSrc.connect(ttsRateGain); ttsRateGain.connect(ttsGain);
     }
-    ensureCtxSink(ctx);
+    ensureCtxSink(ctx,seat);
     ttsRateGain.gain.value = prosodyClamp(gain || 1, 0.5, 1.5);
     waMode = true;
     return true;
@@ -4735,12 +4868,13 @@ function ensureRateMediaRoute(ctx, gain){
 function playViaPitchRate(job, end, ctx){
   var t0=Date.now(), rate=prosodyClamp(job.playbackRate||1,0.5,2);
   padAudioBlob(job.blob, ttsPadMs()).then(function(b){
-    var routed=ensureRateMediaRoute(ctx,job.gain), el=routed?rateAudioEl:rateDirectEl;
+    var routed=ensureRateMediaRoute(ctx,job.gain,job.seat), el=routed?rateAudioEl:rateDirectEl;
     var rateDone=false, rateTimer=0;
     ttsRateElNow=el;
     if (!routed){
-      if (OUT_SUPPORTED && CFG.outDev && el.sinkId!==CFG.outDev){ try{ el.setSinkId(CFG.outDev); }catch(e){} }
-      primeOutput();
+      var sink=sinkForSeat(job.seat);
+      if (OUT_SUPPORTED && el.sinkId!==(sink.id||'')){ try{ el.setSinkId(sink.id||''); }catch(e){} }
+      primeOutput(job.seat);
     }
     try{ el.preservesPitch=true; el.webkitPreservesPitch=true; }catch(e){}
     el.defaultPlaybackRate=rate; el.playbackRate=rate;
@@ -4774,8 +4908,8 @@ function playViaPitchRate(job, end, ctx){
 function playViaAudioEl(job, end){
   var t0 = Date.now();
   padAudioBlob(job.blob, ttsPadMs()).then(function(b){
-    ensureSink();
-    primeOutput();
+    ensureSink(job.seat);
+    primeOutput(job.seat);
     /* HTMLAudioElementは1.0を超えて増幅できない。増幅が必要な場合はWeb Audio経路を使う。 */
     audioEl.volume = prosodyClamp(job.gain || 1, 0, 1);
     if (ttsLastUrl){ try{ URL.revokeObjectURL(ttsLastUrl); }catch(e){} }
@@ -4792,7 +4926,7 @@ function playViaAudioEl(job, end){
     if (pr && pr.catch) pr.catch(function(){ end(); });
   });
 }
-function ttsGuard(text, ms){
+function ttsGuard(text, ms,seat){
   var done = false, tEnd = null;
   var finish = function(){
     if (done) return;
@@ -4802,6 +4936,7 @@ function ttsGuard(text, ms){
   finish.gen = ttsGen;             /* この読み上げを始めた時点の世代を刻む */
   finish.queuedAt = Date.now();     /* 合成時間も含めた実際の遅延を測る */
   finish.textChars = String(text||'').length;
+  finish.seat = seat || 'A';
   ttsRegisterOrder(finish);        /* 合成完了時ではなく受付時の順番を確保する */
   rememberSpoken(text);
   ttsBegin();
@@ -4911,11 +5046,11 @@ function aivisSpeak(text, lang, seat, prosody){
      判定は ttsGuard より前に行う（自分自身を「鳴っている」と数えないため）。 */
   if (CFG.aivisStream && !ttsIsBusy() && window.ReadableStream){
     var sctx = ttsAudioCtx();
-    if (sctx && !ttsCtxCanRoute(sctx)){
+    if (sctx && !ttsCtxCanRoute(sctx,seat)){
       /* 指定した出力先へ流せないので、ストリーミングは諦めて従来方式にする。
          こちらは <audio> なので setSinkId が使え、指定した機器から鳴らせる。 */
       dlog('tts','aivis-stream-skip',{ why:'出力先を指定しているがWeb Audioが対応していない',
-                                       dev:(CFG.outDevLbl || '(名称不明)') });
+                                       dev:(sinkForSeat(seat).label || '(名称不明)') });
     } else if (sctx){
       return aivisSpeakStream(text, lang, seat, prosody);
     }
@@ -4924,7 +5059,7 @@ function aivisSpeak(text, lang, seat, prosody){
 }
 function aivisSpeakBlob(text, lang, seat, prosody){
   seat = seat || 'A';
-  var t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150));
+  var t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150),seat);
   var body = aivisBody(text, seat, 'mp3',prosody), uuid = body.model_uuid;
   logProsodyMap(body._prosodyMap,{effectiveRate:body.speaking_rate==null?1:body.speaking_rate,
     effectiveDynamics:body.tempo_dynamics==null?1:body.tempo_dynamics,effectiveVolume:body.volume==null?1:body.volume});
@@ -4999,7 +5134,7 @@ function aivisSpeakStream(text, lang, seat, prosody){
   logProsodyMap(body._prosodyMap,{effectiveRate:body.speaking_rate==null?1:body.speaking_rate,
     effectiveDynamics:body.tempo_dynamics==null?1:body.tempo_dynamics,effectiveVolume:body.volume==null?1:body.volume,stream:true});
   var guardMs = Math.min(120000, 12000 + text.length * 200);
-  var finish = ttsGuard(text, guardMs);
+  var finish = ttsGuard(text, guardMs,seat);
   var myGen = finish.gen;
   /* 受信完了ではなく、AudioContext に並べた最後のPCMが鳴り終わるまで再生ロックを保持する。
      これが無いと、その間に生成されたBlob方式の次発話が割り込み、2つの声が重なる。 */
@@ -5018,7 +5153,7 @@ function aivisSpeakStream(text, lang, seat, prosody){
   ttsCurEnd = streamEnd;
   var ctrl = null; try { ctrl = new AbortController(); } catch(e){}
   aivisAbort = ctrl;
-  ensureCtxSink(ctx);
+  ensureCtxSink(ctx,seat);
 
   var head = null, pend = new Uint8Array(0), next = 0, minBytes = 0;
   var LEAD = Math.max(0.15, ttsPadMs() / 1000);
@@ -5790,7 +5925,7 @@ function xaiSpeak(text, lang, seat, prosody){
   if (!key)
     return ttsFallback(text, lang, '未設定',
       'xAI のAPIキーが未設定です。⚙→音声 でご確認ください。', 'xaiWarned');
-  var t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150));
+  var t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150),seat);
   var lc = xaiTtsLang(lang), plan=xaiBuildPlan(lang,prosody), styled=xaiStyledText(text,plan);
   var body={text:styled.text,voice_id:xaiVoiceId(seat),language:lc,speed:plan.rate};
   dlog('tts','xai-request',{chars:text.length,seat:seat||'A',lang:lang,sent:lc,voice:body.voice_id,
@@ -5826,7 +5961,7 @@ function elSpeak(text, lang, seat, prosody){
   if (!key || !vid)
     return ttsFallback(text, lang, '未設定',
       'ElevenLabs のAPIキーまたは声が未設定です。⚙→音声 でご確認ください。', 'elWarned');
-  var t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150));
+  var t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150),seat);
   var plan=elBuildPlan(lang,prosody), styled=elStyledText(text,plan);
   dlog('tts','eleven-request',{chars:text.length,seat:seat||'A',lang:lang,model:CFG.elModel,
     desiredSpeed:plan.desiredRate,apiSpeed:plan.apiSpeed,playbackRate:plan.playbackRate,
@@ -5929,7 +6064,7 @@ function lvvSpeakerId(seat){ return seatPick(seat || 'A', CFG.lvvSpeakerB, CFG.l
 function lvvSpeak(text, lang, seat){
   if (lang !== 'ja') return ttsFallback(text, lang, '日本語以外');
   var base = lvvBase(), sp = encodeURIComponent(lvvSpeakerId(seat)), t0 = Date.now();
-  var finish = ttsGuard(text, Math.min(90000, 10000 + text.length * 200));
+  var finish = ttsGuard(text, Math.min(90000, 10000 + text.length * 200),seat);
   fetch(base + '/audio_query?text=' + encodeURIComponent(text) + '&speaker=' + sp, { method:'POST' })
     .then(function(r){ if (!r.ok) throw new Error('audio_query ' + r.status); return r.json(); })
     .then(function(q){
@@ -6383,7 +6518,7 @@ function vvPlayReady(job){
     vvCompletePlayback(job,'stopped');
   };
   ttsCurEnd=job.stopPlayback;
-  ensureSink(); primeOutput();
+  ensureSink(job.seat); primeOutput(job.seat);
   audioEl.onended=function(){ if (!ended){ ended=true; vvCompletePlayback(job,'ended'); } };
   audioEl.onwaiting=function(){
     if (!started || ended) return;
@@ -6539,12 +6674,13 @@ function ttsPlanText(){
   var t = 'いまの設定：' + rows.map(function(r){
             return r.who + 'の発言の' + what + '（' + L(r.lang).name + '）';
           }).join(' と ') + ' を <b>' + ttsModeLabel(CFG.ttsMode) + '</b> で読み上げます。';
-  if (CFG.outDev && CFG.ttsMode === 'browser'){
-    t += '<br>⚠ 出力先に「' + (CFG.outDevLbl || '別のデバイス') + '」を指定していますが、'
+  var hasSplitSink=!!(CFG.outDevLocal||CFG.outDevRemote);
+  if (hasSplitSink && CFG.ttsMode === 'browser'){
+    t += '<br>⚠ 出力先を分けていますが、'
        + 'ブラウザ内蔵音声は出力先を変えられません。既定のスピーカーから鳴ります。';
     warn = true;
-  } else if (CFG.outDev){
-    t += '<br>出力先：<b>' + (CFG.outDevLbl || '指定したデバイス') + '</b>';
+  } else if (hasSplitSink){
+    t += '<br>自分向け：<b>'+(CFG.outDevLocalLbl||'既定')+'</b>／相手向け：<b>'+(CFG.outDevRemoteLbl||'既定')+'</b>';
   }
   if (CFG.ttsMode === 'openai'){
     var missO=ttsSetupMissing();
@@ -6769,13 +6905,14 @@ function refreshVvUI(){
 /* ---------------- 手動読み上げの停止と、鳴っている間の目印 ----------------
    押したのに何も起きないように見える・止め方が無い、という不満をまとめて解消する。
    どのエンジンでも必ず ttsBegin/ttsEnd を通るので、点滅の解除はそこに寄せている。 */
-var sayBtnNow = null;
-function setSayBtn(btn){
+var sayBtnNow = null, sayBtnNowKey = '', manualSayKey = '';
+function setSayBtn(btn,key){
   if (sayBtnNow && sayBtnNow !== btn){
     sayBtnNow.classList.remove('on','playing');
     sayBtnNow.title = 'この文を読み上げる';
   }
   sayBtnNow = btn || null;
+  sayBtnNowKey = btn ? String(key || btn.getAttribute('data-say-key') || '') : '';
   if (sayBtnNow){
     sayBtnNow.classList.add('on','playing');
     sayBtnNow.title = 'もう一度押すと読み上げを止めます';
@@ -6807,6 +6944,7 @@ function stopSpeaking(why){
   ttsPlayingNow = false;
   ttsActive = 0; S.speaking = false;
   setSayBtn(null);
+  manualSayKey='';
   if (had) dlog('tts','stop',{ why: why || '手動', gen: ttsGen });
   return had;
 }
@@ -6820,19 +6958,25 @@ function whoLabel(){
 }
 /* ボタンから明示的に読み上げる。自動読み上げの設定（OFF・読み上げ対象）に
    関係なく鳴らす ―― 押したのだから鳴らす、が期待される動作のため。 */
-function speakManual(text, lang, btn, seat, prosody){
+function speakManual(text, lang, btn, seat, prosody,sayKey){
   /* 鳴っている最中に同じボタンを押したら「止める」。トグルとして使えるようにする */
-  if (btn && btn === sayBtnNow){
+  sayKey=String(sayKey||(btn&&btn.getAttribute('data-say-key'))||'');
+  if (btn && ttsIsBusy() && ((btn === sayBtnNow) || (sayKey && (sayKey === sayBtnNowKey || sayKey === manualSayKey)))){
     stopSpeaking('同じボタンを再度押した');
     return;
   }
   if (!text){ toast('読み上げる文がありません'); return; }
   seat = (seat === 'B') ? 'B' : 'A';
+  if(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(seat)){
+    dlog('tts','skip',{why:'同じ仮想経路への自己認識防止',seat:seat});
+    toast('この読み上げは、同じVB-CABLE経路へ戻って自己認識されるため停止しました。出力経路を分けるか、自己認識防止をOFFにしてください。');return;
+  }
   dlog('tts','manual',{ lang: lang, chars: text.length, mode: CFG.ttsMode, seat: seat });
   // 押した直後に鳴ってほしいので、再生中のものは止めてこちらを優先する
   stopSpeaking('別の文を読み上げ');
-  primeOutput();
-  setSayBtn(btn);
+  manualSayKey=sayKey;
+  primeOutput(seat);
+  setSayBtn(btn,sayKey);
   if (CFG.ttsMode === 'openai') apiSpeak(text, lang, seat, prosody);
   else if (CFG.ttsMode === 'voicevox') vvSpeak(text, lang, seat,prosody);
   else if (CFG.ttsMode === 'aivis')    aivisSpeak(text, lang, seat,prosody);
@@ -6852,6 +6996,9 @@ function speak(e){
   var sayText = useSrc ? e.srcText : e.dstText;
   var sayLang = useSrc ? e.srcLang : e.dstLang;
   if (!sayText){ dlog('tts','skip',{ why: useSrc ? '原文が空' : '訳文が空' }); return; }
+  if(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat)){
+    dlog('tts','skip',{why:'同じ仮想経路への自己認識防止',seat:e.seat});return;
+  }
   if ((CFG.ttsWho === 'B2A' && e.seat !== 'B') || (CFG.ttsWho === 'A2B' && e.seat !== 'A')){
     ttsSkipStreak++;
     dlog('tts','skip',{ why:'読み上げ対象=' + CFG.ttsWho, seat:e.seat, streak:ttsSkipStreak });
@@ -6864,7 +7011,7 @@ function speak(e){
   }
   ttsSkipStreak = 0;
   ttsAudioCtx();          // 出力経路を先に開いておく（頭切れ対策）
-  primeOutput();          // Web Audio が使えない環境向けの保険
+  primeOutput(e.seat);          // Web Audio が使えない環境向けの保険
   // 溜まりすぎた場合は、再生中のものを止めるのではなく新しい方を見送る
   if (ttsActive >= TTS_MAX_PENDING){
     dlog('tts','skip',{ why:'読み上げが溜まっているため見送り', queued: ttsActive, limit:TTS_MAX_PENDING });
@@ -6894,13 +7041,14 @@ function ensureMic(){
   if (micStream && micStream.active) return Promise.resolve(micStream);
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
     return Promise.reject(new Error('このブラウザはマイク入力に対応していません'));
-  return navigator.mediaDevices.getUserMedia({
-    audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true }
-  }).then(function(st){
+  var a={echoCancellation:true,noiseSuppression:true,autoGainControl:true};
+  if(CFG.micDev)a.deviceId={exact:CFG.micDev};
+  return navigator.mediaDevices.getUserMedia({audio:a}).then(function(st){
     micStream = st;
     // 実際にどのマイクが使われ、ノイズ抑制が本当に効いているかを記録する
     try{
       var tr = st.getAudioTracks()[0], s = tr.getSettings ? tr.getSettings() : {};
+      CFG.micDevLbl=tr.label||CFG.micDevLbl||'';store.set('di.indevl.mic',CFG.micDevLbl);
       dlog('mic','acquired',{ label: tr.label || '(no label)', deviceId: (s.deviceId||'').slice(0,8),
         sampleRate: s.sampleRate, channels: s.channelCount,
         echoCancellation: s.echoCancellation, noiseSuppression: s.noiseSuppression, autoGainControl: s.autoGainControl });
@@ -6909,6 +7057,16 @@ function ensureMic(){
   }).catch(function(err){
     dlog('mic','FAIL',{ err: String(err && (err.name+': '+err.message) || err) });
     throw err;
+  });
+}
+function openInputDevice(deviceId,virtual){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return Promise.reject(new Error('このブラウザは音声入力に対応していません'));
+  var a={echoCancellation:!virtual,noiseSuppression:!virtual,autoGainControl:!virtual};
+  if(deviceId)a.deviceId={exact:deviceId};
+  return navigator.mediaDevices.getUserMedia({audio:a}).then(function(st){
+    var tr=st.getAudioTracks()[0],s=tr&&tr.getSettings?tr.getSettings():{};
+    dlog('audio','route-input',{kind:virtual?'virtual':'microphone',label:(tr&&tr.label)||'(no label)',deviceId:String(s.deviceId||'').slice(0,8)});
+    return st;
   });
 }
 function setLevel(rms){
@@ -7140,6 +7298,87 @@ function buildRec(){
 }
 function killRec(){ recRun=false; restarting=false; if(rec){ try{ rec.onend=null; rec.stop(); }catch(e){} rec=null; } itmEntry=null; }
 
+/* Chrome 135+ の SpeechRecognition.start(audioTrack) 専用エンジン。
+   既定マイクへフォールバックすると別音声を誤認識するため、Trackが使えない場合は
+   明示的に停止する。再起動時も必ず同一Trackを渡す。 */
+function WebSpeechTrackEngine(seat,track,opts){
+  this.seat=seat;this.track=track;this.opts=opts||{};this.rec=null;this.dead=false;
+  this.interim=null;this.restarts=0;this.errs=0;this.startAt=0;
+}
+WebSpeechTrackEngine.prototype.start=function(){
+  if(!SR)throw new Error('Web Speech API非対応です');
+  if(!this.track||this.track.kind!=='audio'||this.track.readyState!=='live')throw new Error('有効な共有音声Trackがありません');
+  if(!this.build())throw new Error('SpeechRecognition.start(audioTrack)を開始できませんでした');
+  return true;
+};
+WebSpeechTrackEngine.prototype.startSameTrack=function(){
+  if(this.dead)return false;
+  if(!this.track||this.track.readyState!=='live'){this.fail('共有音声Trackが終了しました');return false;}
+  this.startAt=Date.now();
+  try{
+    this.rec.start(this.track);
+    dlog('stt','track-start',{seat:this.seat,trackId:String(this.track.id||'').slice(0,8),restart:this.restarts,
+      chrome:overlayChromeMajor(),sameTrack:true});
+    return true;
+  }catch(err){
+    this.fail('このブラウザは共有音声Trackの直接認識に対応していません',err);
+    return false;
+  }
+};
+WebSpeechTrackEngine.prototype.fail=function(message,err){
+  if(this.dead)return;this.dead=true;
+  dlog('stt','track-FAIL',{seat:this.seat,err:String((err&&err.message)||err||message).slice(0,160),fallback:false});
+  try{if(this.rec){this.rec.onend=null;this.rec.abort();}}catch(e){}
+  if(this.interim){removeEntry(this.interim);this.interim=null;}
+  toast(message+'。マイクへは自動切替しません。⚙→音声で「VB-CABLE入力」または「外部API」を選んでください。');
+};
+WebSpeechTrackEngine.prototype.build=function(){
+  var self=this,r=new SR();this.rec=r;
+  r.lang=L(langOf(this.seat)).sr;r.continuous=true;r.interimResults=true;r.maxAlternatives=1;
+  r.onresult=function(ev){
+    var itm='',fin=[];
+    for(var i=ev.resultIndex;i<ev.results.length;i++){
+      var rr=ev.results[i],txt=String((rr[0]&&rr[0].transcript)||'');
+      if(rr.isFinal)fin.push(txt);else itm+=txt;
+    }
+    if(CFG.interimOn&&itm.trim()){
+      if(!self.interim)self.interim=addEntry(self.seat,itm.trim(),true);
+      else{self.interim.srcText=itm.trim();render(self.interim);}
+    }
+    fin.forEach(function(raw){
+      var text=String(raw||'').trim();if(!text)return;
+      if(!hasSpeechContent(text)){dlog('stt','noise-drop',{source:'display-track',seat:self.seat,text:text.slice(0,30)});return;}
+      if(isEcho(text)){dlog('stt','echo-drop',{source:'display-track',seat:self.seat,text:text.slice(0,60)});if(self.interim){removeEntry(self.interim);self.interim=null;}return;}
+      text=punctuateTranscript(text,langOf(self.seat));
+      var e;
+      if(self.interim){e=self.interim;self.interim=null;e.interim=false;e.srcText=text;}
+      else e=addEntry(self.seat,text,false);
+      self.errs=0;
+      dlog('stt','result',{provider:'webspeech-track',seat:self.seat,lang:r.lang,chars:text.length,text:text.slice(0,120)});
+      render(e);speakSrcNow(e);translate(e);
+    });
+  };
+  r.onerror=function(ev){var code=(ev&&ev.error)||'';
+    if(code==='no-speech'||code==='aborted')return;
+    self.errs++;dlog('stt','track-ERROR',{seat:self.seat,err:code,count:self.errs});
+    if(code==='not-allowed'||code==='service-not-allowed'||code==='audio-capture')self.fail('共有音声Trackを直接認識できませんでした：'+code);
+  };
+  r.onend=function(){
+    if(self.dead)return;self.restarts++;
+    var wait=Math.min(3000,120+self.errs*350);
+    dlog('stt','track-restart',{seat:self.seat,restart:self.restarts,waitMs:wait,sameTrack:true});
+    setTimeout(function(){if(!self.dead)self.startSameTrack();},wait);
+  };
+  return this.startSameTrack();
+};
+WebSpeechTrackEngine.prototype.stop=function(){
+  if(this.dead)return;this.dead=true;
+  try{if(this.rec){this.rec.onend=null;this.rec.abort();}}catch(e){}
+  if(this.interim){removeEntry(this.interim);this.interim=null;}
+  if(this.opts.ownsStream&&this.opts.stream)try{this.opts.stream.getTracks().forEach(function(t){t.stop();});}catch(e){}
+  this.rec=null;
+};
+
 /* 旧・定期切替タイマーは廃止（再起動＝許可ポップアップの原因だったため） */
 function scheduleAlt(){ clearTimeout(altTimer); }
 function flipSeat(){
@@ -7254,8 +7493,9 @@ StreamEngine.prototype.stop = function(){
   this.dead = true;
   clearInterval(this.timer);
   if (this.rec){ this.rec._send=false; try{ this.rec.stop(); }catch(e){} }
-  // 共有マイクは stopAll() でまとめて解放するのでここでは止めない
-  if (this.stream && !this.opts.isMic) this.stream.getTracks().forEach(function(t){ t.stop(); });
+  // 共有マイクとオーバーレイ共有Trackは所有者側で解放する。
+  if (this.stream && this.opts.ownsStream !== false && !this.opts.isMic)
+    this.stream.getTracks().forEach(function(t){ t.stop(); });
   if (this.prosody){ this.prosody.stop(); this.prosody=null; }
   if (this.ac){ try{ this.ac.close(); }catch(e){} }
   if (this.opts.meter) setLevel(0);
@@ -7602,6 +7842,34 @@ RealtimeEngine.prototype.stop = function(){
    ========================================================================= */
 var engines = [];
 
+function stopEnginesForTrack(track,why){
+  if(!track||!engines||!engines.length)return;
+  var keep=[];
+  engines.forEach(function(e){
+    var hit=e&&e.track===track;
+    if(!hit&&e&&e.stream&&e.stream.getAudioTracks)hit=e.stream.getAudioTracks().indexOf(track)>=0;
+    if(hit){try{e.stop();}catch(_){}dlog('audio','route-stop',{why:why||'Track終了',engine:e.constructor&&e.constructor.name||'engine'});}
+    else keep.push(e);
+  });
+  engines=keep;
+}
+function getDisplayAudioForStt(){
+  var existing=overlaySession.activeAudioTrack();
+  if(existing){
+    dlog('audio','display-reuse',{trackId:String(existing.id||'').slice(0,8),route:CFG.displaySttRoute});
+    return Promise.resolve({track:existing,stream:new MediaStream([existing]),ownsStream:false,fromOverlay:true});
+  }
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia)
+    return Promise.reject(new Error('このブラウザは画面音声の取得に対応していません'));
+  return navigator.mediaDevices.getDisplayMedia({video:true,audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})
+    .then(function(st){
+      var track=st.getAudioTracks()[0];
+      if(!track){st.getTracks().forEach(function(t){t.stop();});throw new Error('音声Trackがありません。「音声も共有」をONにしてください');}
+      st.getVideoTracks().forEach(function(t){t.stop();});
+      return {track:track,stream:new MediaStream([track]),ownsStream:true,fromOverlay:false};
+    });
+}
+
 function startAll(){
   if (CFG.srcA==='off' && CFG.srcB==='off'){ toast('音声入力元がどちらも「使わない」になっています'); return; }
   var p = PROVIDERS[CFG.provider];
@@ -7707,28 +7975,39 @@ function startAll(){
     }
   }
 
-  // タブ／システム音声側
+  // タブ／システム音声側（Phase 2：直接Track / VB-CABLE / 外部API）
   var dispSeat = (CFG.srcA==='display') ? 'A' : ((CFG.srcB==='display') ? 'B' : null);
   if (dispSeat){
-    if (CFG.sttProvider === 'webspeech'){
-      toast('タブ／システム音声を使うには、⚙→音声 で API 側の音声認識（OpenAI / Groq / Gemini）を選んでください。');
-    } else if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
-      toast('このブラウザはタブ音声のキャプチャに対応していません（Chrome / Edge のデスクトップ版が必要）');
-    } else {
+    var route=CFG.displaySttRoute||'direct';
+    if(route==='direct'){
       jobs.push(
-        navigator.mediaDevices.getDisplayMedia({ video:true, audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false } })
-        .then(function(st){
-          if (!st.getAudioTracks().length){
-            st.getTracks().forEach(function(t){t.stop();});
-            toast('音声トラックがありません。共有ダイアログで<b>「タブの音声も共有」</b>を必ずONにしてください。');
-            return;
-          }
-          st.getVideoTracks().forEach(function(t){ t.stop(); });  // 映像は不要
-          var eng = new StreamEngine(dispSeat, st, { isMic:false, meter:false });
-          engines.push(eng); eng.start();
-          toast('相手側の音声キャプチャを開始しました', true);
-        }).catch(function(err){ toast('画面／タブ音声を取得できません: '+err.message); })
+        getDisplayAudioForStt().then(function(info){
+          var eng=new WebSpeechTrackEngine(dispSeat,info.track,{ownsStream:info.ownsStream,stream:info.stream});
+          engines.push(eng);eng.start();
+          toast('共有音声Trackの直接Web Speech認識を開始しました',true);
+        }).catch(function(err){
+          dlog('stt','track-FAIL',{seat:dispSeat,err:String(err.message||err),fallback:false});
+          toast('共有音声の直接認識を開始できません：'+String(err.message||err)+'<br>VB-CABLEまたは外部APIを選んでください。');
+        })
       );
+    }else if(route==='vb'){
+      if(!CFG.vbDev){toast('⚙→音声でVB-CABLE入力デバイスを選んでください。');}
+      else jobs.push(openInputDevice(CFG.vbDev,true).then(function(st){
+        var tr=st.getAudioTracks()[0];CFG.vbDevLbl=(tr&&tr.label)||CFG.vbDevLbl||'';store.set('di.indevl.vb',CFG.vbDevLbl);
+        if(!isVirtualDev(CFG.vbDevLbl))toast('選択した入力は仮想オーディオとして判定できません。経路を確認してください。');
+        var eng;
+        if(CFG.sttProvider==='webspeech')eng=new WebSpeechTrackEngine(dispSeat,tr,{ownsStream:true,stream:st});
+        else eng=new StreamEngine(dispSeat,st,{isMic:false,meter:false,ownsStream:true});
+        engines.push(eng);eng.start();renderAudioRouteWarning();
+        toast('VB-CABLE入力の認識を開始しました',true);
+      }).catch(function(err){toast('VB-CABLE入力を開始できません：'+String(err.message||err));}));
+    }else if(CFG.sttProvider==='webspeech'){
+      toast('外部API経路を使うには、音声認識でOpenAI / xAI / Groq / Geminiを選んでください。');
+    }else{
+      jobs.push(getDisplayAudioForStt().then(function(info){
+        var eng=new StreamEngine(dispSeat,info.stream,{isMic:false,meter:false,ownsStream:info.ownsStream});
+        engines.push(eng);eng.start();toast('共有音声を外部STT APIへ送信します',true);
+      }).catch(function(err){toast('画面／タブ音声を取得できません：'+String(err.message||err));}));
     }
   }
 
@@ -7942,7 +8221,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.34.0 Phase 1</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.35.0 Phase 2</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -8312,6 +8591,8 @@ function applyCfg(){
   $('camModel').value = CFG.camModel;
   $('ctx').value = CFG.ctx;
   $('sttProvider').value = CFG.sttProvider;
+  $('displaySttRoute').value = CFG.displaySttRoute;
+  $('preventSelfRecognition').checked = !!CFG.preventSelfRecognition;
   $('ttsMode').value = CFG.ttsMode;
   $('ttsWho').value = CFG.ttsWho;
   $('voiceA').value = CFG.voiceA;
@@ -8364,6 +8645,7 @@ function applyCfg(){
   glRender();
   layout();
   updateProsodyStatus();
+  renderAudioRouteWarning();
 }
 
 /* --- タブ --- */
@@ -8961,26 +9243,39 @@ function elSetManualVoice(seat, value){
 }
 $('elVoiceId').onchange=function(){ elSetManualVoice('A', this.value); };
 $('elVoiceIdB').onchange=function(){ elSetManualVoice('B', this.value); };
-$('outDev').onchange = function(){
-  var sel = this, id = sel.value;
-  /* 表示名には🎚などの目印を付けているので、保存には元のラベルを使う
-     （次回起動時にIDが変わっていても、名前で同じデバイスを探せるようにするため） */
-  var dev = outDevs.filter(function(d){ return d.deviceId === id; })[0];
-  CFG.outDev = id;
-  CFG.outDevLbl = id ? ((dev && dev.label) || sel.options[sel.selectedIndex].textContent || '') : '';
-  store.set('di.outdev', CFG.outDev); store.set('di.outdevl', CFG.outDevLbl);
-  applySink(true).then(refreshVvUI);
-};
+function bindOutDev(id,seat,cfgId,cfgLbl,keyId,keyLbl){
+  $(id).onchange=function(){var sel=this,value=sel.value,dev=outDevs.filter(function(d){return d.deviceId===value;})[0];
+    CFG[cfgId]=value;CFG[cfgLbl]=value?((dev&&dev.label)||sel.options[sel.selectedIndex].textContent||''):'';
+    store.set(keyId,CFG[cfgId]);store.set(keyLbl,CFG[cfgLbl]);renderAudioRouteWarning();applySink(seat,true).then(refreshVvUI);};
+}
+bindOutDev('outDevLocal','B','outDevLocal','outDevLocalLbl','di.outdev.local','di.outdevl.local');
+bindOutDev('outDevRemote','A','outDevRemote','outDevRemoteLbl','di.outdev.remote','di.outdevl.remote');
+$('outChooseLocal').onclick=function(){chooseAudioOutput('B');};
+$('outChooseRemote').onclick=function(){chooseAudioOutput('A');};
 $('outRefresh').onclick = function(){
   loadOutDevs().then(function(ds){
     if (ds.length) toast('出力デバイスを ' + ds.length + ' 件見つけました。', true);
     else toast('出力デバイスを取得できませんでした。ブラウザの対応状況をご確認ください。');
   });
 };
-loadOutDevs().then(function(){ if (CFG.outDev) applySink(false); });
+function bindInDev(id,cfgId,cfgLbl,keyId,keyLbl){
+  $(id).onchange=function(){var value=this.value,dev=inDevs.filter(function(d){return d.deviceId===value;})[0];
+    if(S.running)stopAll();releaseMic();CFG[cfgId]=value;CFG[cfgLbl]=value?((dev&&dev.label)||this.options[this.selectedIndex].textContent||''):'';
+    store.set(keyId,value);store.set(keyLbl,CFG[cfgLbl]);renderAudioRouteWarning();};
+}
+bindInDev('micDev','micDev','micDevLbl','di.indev.mic','di.indevl.mic');
+bindInDev('vbDev','vbDev','vbDevLbl','di.indev.vb','di.indevl.vb');
+$('displaySttRoute').onchange=function(){if(S.running)stopAll();CFG.displaySttRoute=this.value;store.set('di.audio.displayRoute',this.value);renderAudioRouteWarning();};
+$('preventSelfRecognition').onchange=function(){CFG.preventSelfRecognition=this.checked;store.set('di.audio.preventLoop',this.checked?'1':'0');renderAudioRouteWarning();};
+$('inRefresh').onclick=function(){loadInDevs().then(function(ds){toast(ds.length?'入力デバイスを '+ds.length+' 件見つけました。':'入力デバイスを取得できませんでした。',!!ds.length);});};
+loadOutDevs().then(function(){
+  if(CFG.outDevLocal)applySink('B',false);
+  if(CFG.outDevRemote)applySink('A',false);
+});
+loadInDevs();
 foldLongNotes();
 if (navigator.mediaDevices && navigator.mediaDevices.addEventListener){
-  navigator.mediaDevices.addEventListener('devicechange', function(){ loadOutDevs(); });
+  navigator.mediaDevices.addEventListener('devicechange', function(){ loadOutDevs();loadInDevs(); });
 }
 simple('nameA','di.na','nameA');
 simple('nameB','di.nb','nameB');
@@ -9043,7 +9338,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.34.0 Phase 1');
+  out.push('- バージョン: Duo Interpreter v1.35.0 Phase 2');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -9077,6 +9372,11 @@ function diagText(devices){
   }
   [['翻訳プロバイダ', CFG.provider], ['翻訳モデル', CFG.model],
    ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel], ['句読点の自動補完', CFG.sttPunct ? 'ON' : 'OFF'],
+   ['共有音声STT経路', CFG.displaySttRoute],
+   ['共有Track直接Web Speech候補', overlayCapabilities().speechTrackInput],
+   ['通常マイク入力', CFG.micDevLbl || (CFG.micDev ? '(名称不明)' : '既定')],
+   ['VB-CABLE入力', CFG.vbDevLbl || (CFG.vbDev ? '(名称不明)' : '(未選択)')],
+   ['TTS自己認識防止', CFG.preventSelfRecognition ? 'ON' : 'OFF'],
    ['リアルタイム翻訳方向', rtNativeAudio ? realtimeDirectionLabel(CFG.rtDirection) : '(未使用)'],
    ['読み上げ', rtNativeAudio ? 'gpt-realtime-translate 内蔵音声（自動再生）' : CFG.ttsMode],
    ['読み上げモデル', rtNativeAudio ? 'gpt-realtime-translate' : diagTtsModel()],
@@ -9114,13 +9414,15 @@ function diagText(devices){
    ['鳴り始めの無音', rtNativeAudio ? '(外部TTS設定は未使用)' : (CFG.ttsPad + ' ms')],
    ['読み上げ待ち上限', rtNativeAudio ? '(外部TTS設定は未使用)' : ttsQueueWaitLabel()],
    ['再生経路', rtNativeAudio ? 'WebRTCリモート音声' : (waMode ? 'Web Audio（開きっぱなし）' : '<audio>')],
-   ['出力先の指定を守れるか', rtNativeAudio ? '(外部TTSの出力先設定は未使用)' : (!CFG.outDev ? '(既定なので指定なし)'
-      : (ttsCtx ? (ttsCtxCanRoute(ttsCtx) ? 'Web Audio でも守れる' : 'Web Audio では守れない → <audio> に回す')
+   ['出力先の指定を守れるか', rtNativeAudio ? '(外部TTSの出力先設定は未使用)' : (!(CFG.outDevLocal||CFG.outDevRemote) ? '(既定なので指定なし)'
+      : (ttsCtx ? (ttsCtxCanRoute(ttsCtx,'A')&&ttsCtxCanRoute(ttsCtx,'B') ? 'Web Audio でも守れる' : '一部を<audio>に回す')
                 : '(再生経路が未使用のため不明)'))],
    ['再生経路の状態', rtNativeAudio ? (engines.length ? engines.length + '接続' : '(未接続)') : (ttsCtx ? (ttsCtx.state + ' / ' + ttsCtx.sampleRate + 'Hz') : '(未使用)')],
    ['読み上げの設定不足', rtNativeAudio ? 'なし（モデル内蔵音声）' : (ttsSetupMissing() || 'なし')],
    ['ローカルエンジンURL', !rtNativeAudio && CFG.ttsMode === 'localvv' ? CFG.lvvBase : '(未使用)'],
-   ['読み上げの出力先', rtNativeAudio ? 'ブラウザの既定出力（WebRTC）' : (OUT_SUPPORTED ? (CFG.outDevLbl || (CFG.outDev ? '(名称不明)' : '既定')) : '(このブラウザは非対応)')],
+   ['読み上げ出力 自分向け(B→A)', rtNativeAudio ? 'ブラウザの既定出力（WebRTC）' : (OUT_SUPPORTED ? (CFG.outDevLocalLbl || (CFG.outDevLocal ? '(名称不明)' : '既定')) : '(このブラウザは非対応)')],
+   ['読み上げ出力 相手向け(A→B)', rtNativeAudio ? 'ブラウザの既定出力（WebRTC）' : (OUT_SUPPORTED ? (CFG.outDevRemoteLbl || (CFG.outDevRemote ? '(名称不明)' : '既定')) : '(このブラウザは非対応)')],
+   ['TTS自己認識リスク', ttsLoopRisk('A') ? 'あり（同じ仮想経路）' : '検出なし'],
    ['言語A / B', CFG.langA + ' / ' + CFG.langB],
    ['入力元A / B', CFG.srcA + ' / ' + CFG.srcB],
    ['言語切替', S.autoMode ? 'AUTO' : '手動'], ['認識中の席', S.listenSeat],
