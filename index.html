@@ -133,8 +133,8 @@
   /* アイコンだけのボタンは、絵文字の字幅の差で横幅がバラつくため固定幅にそろえる。
      操作バーの段数が増えないよう、余白は最小限にしている。 */
   .cbtn.icon{width:35px;padding:9px 0;justify-content:center}
-  /* PCでは外枠寸法を変えず、アイコンだけを拡大する。 */
-  @media (min-width:900px){
+  /* PC・横長タブレットでは、バーが2段に折り返される幅でも外枠寸法と大アイコンを維持する。 */
+  @media (min-width:701px){
     #bar .cbtn.icon{width:35px;height:36px;min-height:36px;padding:0}
     #ttsToggle .ic,#kbdBtn .bar-icon,#camBtn .bar-icon,#clearBtn .bar-icon,#cog .bar-icon{
       display:block;font-size:28px;line-height:1
@@ -564,7 +564,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260902-v13210-overlay1.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260902-v13210-overlay1.4</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -574,7 +574,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260902-v13210-overlay1.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.32.10 Phase 1</span><span class="build-id">Build: 20260902-v13210-overlay1.4</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1338,7 +1338,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260902-v13210-overlay1.3';
+var APP_BUILD = '20260902-v13210-overlay1.4';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -2257,6 +2257,8 @@ var OverlaySession = {
     $('captureOverlay').setAttribute('aria-hidden','false');
     $('capturePlaceholder').hidden=!!this.stream;
     $('ovlBtn').classList.add('on');
+    $('ovlBtn').title='オーバーレイを終了';
+    $('ovlBtn').setAttribute('aria-label','オーバーレイを終了');
     applyCaptureProfile(); renderOverlayRail(); renderCaptureCapability();
     overlayWakeToolbar(); overlayWakeMainControls();
     if (autoStart && !this.stream) this.start();
@@ -2268,6 +2270,8 @@ var OverlaySession = {
     $('captureOverlay').setAttribute('aria-hidden','true');
     $('captureSettings').classList.remove('on');
     $('ovlBtn').classList.remove('on');
+    $('ovlBtn').title='画面取込オーバーレイ';
+    $('ovlBtn').setAttribute('aria-label','画面取込オーバーレイ');
     document.body.classList.remove('capture-mode','capture-controls-on');
     clearTimeout(overlayControlsTimer);
     if (this.ownsFullscreen && document.fullscreenElement){
@@ -8359,7 +8363,10 @@ $('camFlip').onclick  = function(){
   camStart();
 };
 $('kbdBtn').onclick     = function(){ txtOpen(); };
-$('ovlBtn').onclick     = function(){ openCaptureOverlay(true); };
+$('ovlBtn').onclick     = function(){
+  if (overlaySession.opened) overlaySession.close();
+  else openCaptureOverlay(true);
+};
 $('ovCapOpen').onclick  = function(){ openDrawer(false); openCaptureOverlay(true); };
 $('captureStart').onclick = function(){ overlaySession.start(); };
 $('captureStop').onclick  = function(){ overlaySession.stopSource(false); $('capturePlaceholder').hidden=false; };
