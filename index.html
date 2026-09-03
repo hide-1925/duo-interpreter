@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.35.0 Phase 2 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.35.2 Phase 2 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -279,7 +279,7 @@
   #captureNotice.on{opacity:1;transform:translate(-50%,0)}
   #captureRail{
     --rail-w:28vw;position:absolute;z-index:3;display:flex;flex-direction:column;gap:8px;
-    pointer-events:none;max-height:calc(100% - 94px);overflow:hidden
+    pointer-events:auto;max-height:calc(100% - 94px);overflow:hidden;touch-action:pan-y
   }
   #captureRail.right{right:16px;top:78px;bottom:16px;width:var(--rail-w);justify-content:flex-end}
   #captureRail.left{left:16px;top:78px;bottom:16px;width:var(--rail-w);justify-content:flex-end}
@@ -295,8 +295,9 @@
   .capture-caption{
     width:100%;max-width:var(--item-w,100%);align-self:flex-end;padding:10px 13px;border-radius:12px;
     border-left:4px solid var(--cap-seat);background:var(--cap-bg);overflow-wrap:anywhere;
-    animation:cap-in .16s ease-out
+    animation:cap-in .16s ease-out;cursor:grab;user-select:none
   }
+  #captureRail.dragging,#captureRail.dragging .capture-caption{cursor:grabbing}
   #captureRail.bottom .capture-caption{align-self:center}
   .capture-caption.square{border-radius:0}
   .capture-caption .cap-meta{font-size:10.5px;font-weight:800;color:var(--cap-seat);margin-bottom:3px;letter-spacing:.02em}
@@ -306,12 +307,6 @@
   .capture-caption.outline .cap-main,.capture-caption.outline .cap-src{-webkit-text-stroke:.6px rgba(0,0,0,.95);paint-order:stroke fill}
   .capture-caption.interim{opacity:.66;border-left-style:dashed}
   @keyframes cap-in{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
-  #captureRailHandle{
-    display:none;pointer-events:auto;align-self:flex-start;border:1px solid rgba(255,255,255,.2);border-radius:999px;
-    background:rgba(11,14,20,.82);color:var(--txt);padding:5px 10px;font-size:11px;font-weight:800;cursor:grab;touch-action:none
-  }
-  #captureRail.free #captureRailHandle{display:block}
-  #captureRailHandle:active{cursor:grabbing}
   #captureSettings{
     position:absolute;z-index:7;right:12px;top:70px;bottom:12px;width:min(360px,calc(100vw - 24px));overflow-y:auto;
     display:none;padding:13px;border:1px solid rgba(255,255,255,.14);border-radius:16px;
@@ -382,6 +377,11 @@
   .pane{flex:1;overflow-y:auto;padding:18px;display:none;flex-direction:column;gap:16px}
   .pane.on{display:flex}
   .field{display:flex;flex-direction:column;gap:6px}
+  .tts-section{margin-top:2.6em}
+  #ttsProviderHost{display:flex;flex-direction:column;gap:10px}
+  #ttsProviderHost>.field{gap:6px}
+  .tts-target-field{display:flex;flex-direction:column;gap:6px}
+  .tts-target-field>label{font-size:11.5px;color:var(--dim);font-weight:800;letter-spacing:.05em}
   .field > label{font-size:11.5px;color:var(--dim);font-weight:800;letter-spacing:.05em}
   .field small{font-size:11px;color:var(--dim);line-height:1.65}
   /* 長い説明は既定でたたむ。小さなボタンで開閉する */
@@ -434,6 +434,13 @@
   .tunerow{display:grid;grid-template-columns:7.5em 1fr;gap:10px;align-items:center;margin:8px 0}
   .tunerow > span{font-size:12px;color:var(--dim)}
   .tunerow > select{min-width:0}
+  .compact-tuning{display:flex;flex-direction:column;gap:0}
+  .compact-tuning .tunerow{margin:0;padding:2px 0}
+  .compact-tuning .prosodybox{margin-top:4px}
+  .aivis-character-grid{align-items:flex-start;flex-wrap:nowrap}
+  .aivis-character-grid>.seatpick{flex:1 1 0}
+  .out-inactive{opacity:.62}
+  .out-inactive select,.out-inactive button{cursor:not-allowed}
   .keychk{font-size:11.5px;line-height:1.5;margin-top:2px;color:var(--dim);word-break:break-word}
   .keychk.ok{color:#6ee7a8}
   .keychk.ng{color:#ffb4a2}
@@ -582,7 +589,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.35.0 Phase 2</span><span class="build-id">Build: 20260902-v1350-audio2.0</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.35.2 Phase 2</span><span class="build-id">Build: 20260903-v1352-settings2.2</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -592,7 +599,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.35.0 Phase 2</span><span class="build-id">Build: 20260902-v1350-audio2.0</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.35.2 Phase 2</span><span class="build-id">Build: 20260903-v1352-settings2.2</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -602,8 +609,7 @@
     <video id="captureVideo" playsinline muted autoplay></video>
     <div id="capturePlaceholder"><div><b>画面取込オーバーレイ</b><span id="capturePlaceholderText">「画面取込」を押し、資料のタブ・ウィンドウ・画面を選択してください。</span></div></div>
 
-    <div id="captureRail" class="right" tabindex="0" aria-label="オーバーレイ字幕履歴">
-      <button id="captureRailHandle" type="button" title="ドラッグして字幕レールを移動">↕ 字幕を移動</button>
+    <div id="captureRail" class="right" tabindex="0" aria-label="オーバーレイ字幕履歴（字幕欄をドラッグして移動）">
       <div id="captureRailItems"></div>
     </div>
 
@@ -830,6 +836,7 @@
   <div class="pane" id="p2">
     <div class="field">
       <label>音声認識（STT）</label>
+      <div class="sublabel">サービス</div>
       <select id="sttProvider">
         <option value="webspeech">🆓 ブラウザ内蔵 Web Speech API（無料・低遅延 / Chrome・Edge）</option>
         <option value="realtime">⚡ リアルタイム同時通訳（gpt-realtime-translate / OpenAI）</option>
@@ -838,12 +845,21 @@
         <option value="groq">Groq Whisper（高速・安価）</option>
         <option value="gemini">Google Gemini（音声理解）</option>
       </select>
+      <div class="sublabel" id="sttModelLabel">モデル</div>
       <div class="row" style="margin-top:4px">
         <select id="sttModel" style="flex:1"></select>
         <button class="btn ghost" id="fetchSttModels" title="このアカウントで使える音声認識モデル一覧を取得">🔄 更新</button>
       </div>
       <input type="text" id="sttModelCustom" placeholder="モデル名を直接入力" style="display:none">
       <small id="sttModelNote"></small>
+      <div class="field" id="sttKeyField">
+        <label>APIキー（音声認識用・翻訳と別プロバイダの場合）</label>
+        <div class="keyline">
+          <input type="password" id="sttKey" placeholder="空欄なら翻訳プロバイダのキーを使用" autocomplete="off">
+          <button class="btn ghost" id="chkStt" title="実際に使う前に、このキーで通るかどうかを確かめます">🔍 確認</button>
+        </div>
+        <div class="keyrow"><span class="keychk" id="chkSttMsg"></span></div>
+      </div>
       <label class="switch"><input type="checkbox" id="sttPunct"> 句読点を自動補完する</label>
       <small>API型STTには、内容を変えず自然な句読点を付けるよう指示します。ブラウザ内蔵STTは単語時刻を返さないため、誤挿入を避けて文末の「。／？／.／?」だけを補完します。</small>
       <small id="xaiSttNote" style="display:none">xAI の音声認識はモデルを選ぶ必要がありません。
@@ -877,15 +893,6 @@
       </div>
     </div>
 
-    <div class="field">
-      <label>APIキー（音声認識用・翻訳と別プロバイダの場合）</label>
-      <div class="keyline">
-        <input type="password" id="sttKey" placeholder="空欄なら翻訳プロバイダのキーを使用" autocomplete="off">
-        <button class="btn ghost" id="chkStt" title="実際に使う前に、このキーで通るかどうかを確かめます">🔍 確認</button>
-      </div>
-      <div class="keyrow"><span class="keychk" id="chkSttMsg"></span></div>
-    </div>
-
     <div class="hr"></div>
 
     <div class="field">
@@ -900,7 +907,7 @@
           <select id="displaySttRoute" style="flex:1">
             <option value="direct">🆓 直接Web Speech（Chrome 135+・共有音声Track）</option>
             <option value="vb">🔌 VB-CABLE入力（互換性重視）</option>
-            <option value="api">🎯 外部API（設定中のOpenAI / Groq / Gemini等）</option>
+            <option value="api">⚙ API 外部API（設定中のOpenAI / Groq / Gemini等）</option>
           </select>
         </div>
         <small id="displaySttRouteNote"></small>
@@ -943,7 +950,7 @@
 
     <div class="hr"></div>
 
-    <div class="field">
+    <div class="field tts-section">
       <label>読み上げ（TTS）</label>
       <div class="note" id="rtTtsNotice" style="display:none" data-fold="off">
         <b>⚡ リアルタイム同時通訳では外部TTSを使用しません</b><br>
@@ -951,6 +958,7 @@
         読み上げ方式・読み上げ対象・原文読み上げ・声・外部TTSの出力先設定は、このモードでは適用されません。
       </div>
       <div id="ttsSettings">
+      <div class="sublabel">サービス</div>
       <select id="ttsMode">
         <option value="off">なし</option>
         <option value="browser">🆓 ブラウザ内蔵音声（無料・即時）</option>
@@ -961,25 +969,32 @@
         <option value="aivis">Aivis Cloud API（高品質・低遅延・日本語のみ）</option>
         <option value="localvv">🖥 ローカルエンジン（AivisSpeech / VOICEVOX・日本語のみ）</option>
       </select>
-      <select id="ttsWho">
-        <option value="all">両方の訳を読み上げる</option>
-        <option value="B2A">相手(B)の発言だけ読み上げる（推奨）</option>
-        <option value="A2B">自分(A)の発言だけ読み上げる</option>
-      </select>
+      <div id="ttsProviderHost"></div>
+      <div class="tts-target-field" id="ttsWhoField">
+        <label>読上げ対象</label>
+        <select id="ttsWho">
+          <option value="all">両方の訳を読み上げる</option>
+          <option value="B2A">相手(B)の発言だけ読み上げる（推奨）</option>
+          <option value="A2B">自分(A)の発言だけ読み上げる</option>
+        </select>
+      </div>
       <!-- 声とモデルの指定は OpenAI 音声だけが使う。他のエンジンでは一切参照しないので、
            選んでいないときは丸ごと隠す（設定に見えて効かない項目を残さない）。 -->
       <div id="oaiOnly">
+        <div class="sublabel">モデル</div>
+        <select id="ttsModel"></select>
+        <input type="text" id="ttsModelCustom" placeholder="モデル名を直接入力" style="display:none">
+        <div class="sublabel">APIキー</div>
         <div class="keyline">
           <input type="password" id="oaiTtsKey" placeholder="OpenAI APIキー（翻訳設定と共通）" autocomplete="off">
         </div>
+        <div class="tts-target-anchor"></div>
         <div class="row" id="oaiVoices">
           <label class="seatpick seatA"><span>自分(A)の発言</span>
           <select id="voiceA"><option value="alloy">alloy</option><option value="nova">nova</option><option value="shimmer">shimmer</option><option value="ash">ash</option><option value="onyx">onyx</option><option value="fable">fable</option><option value="sage">sage</option><option value="coral">coral</option><option value="echo">echo</option><option value="ballad">ballad</option><option value="verse">verse</option><option value="marin">marin</option><option value="cedar">cedar</option></select></label>
           <label class="seatpick seatB"><span>相手(B)の発言</span>
           <select id="voiceB"><option value="ash">ash</option><option value="onyx">onyx</option><option value="fable">fable</option><option value="alloy">alloy</option><option value="nova">nova</option><option value="shimmer">shimmer</option><option value="sage">sage</option><option value="coral">coral</option><option value="echo">echo</option><option value="ballad">ballad</option><option value="verse">verse</option><option value="marin">marin</option><option value="cedar">cedar</option></select></label>
         </div>
-        <select id="ttsModel"></select>
-        <input type="text" id="ttsModelCustom" placeholder="モデル名を直接入力" style="display:none">
         <details class="adv" id="oaiAdv">
           <summary>OpenAI 話し方の調整</summary>
           <div class="tunerow"><span>話速</span><select id="oaiRate"><option value="-2">かなり遅い（0.75倍）</option><option value="-1">遅い（0.88倍）</option><option value="0">標準（1.00倍）</option><option value="1">速い（1.15倍）</option><option value="2">かなり速い（1.35倍）</option><option value="3">高速（1.50倍）</option><option value="4">最高速（1.80倍）</option></select></div>
@@ -994,6 +1009,7 @@
         </details>
       </div>
       <div id="browserOnly" style="display:none">
+        <div class="tts-target-anchor"></div>
         <details class="adv" id="browserAdv">
           <summary>ブラウザ内蔵音声 話し方の調整</summary>
           <div class="tunerow"><span>話速</span><select id="browserRate"><option value="-2">かなり遅い（0.75倍）</option><option value="-1">遅い（0.88倍）</option><option value="0">標準（1.00倍）</option><option value="1">速い（1.15倍）</option><option value="2">かなり速い（1.30倍）</option><option value="3">高速（1.40倍）</option><option value="4">最高速（1.50倍）</option></select></div>
@@ -1051,17 +1067,20 @@
 
     <div class="field" id="elField" style="display:none">
       <label>🗣 ElevenLabs</label>
-      <div class="keyline">
-        <input type="password" id="elKey" placeholder="ElevenLabs APIキー" autocomplete="off">
-        <button class="btn ghost" id="chkEl" title="キーと Voices（read）権限を確かめます">🔍 確認</button>
-      </div>
-      <div class="keyrow"><span class="keychk" id="chkElMsg"></span></div>
+      <div class="sublabel">モデル</div>
       <select id="elModel">
         <option value="eleven_flash_v2_5">Flash v2.5（最速・32言語・おすすめ）</option>
         <option value="eleven_multilingual_v2">Multilingual v2（高品質・29言語・やや遅い）</option>
         <option value="eleven_turbo_v2_5">Turbo v2.5（旧世代）</option>
         <option value="eleven_flash_v2">Flash v2（最速・英語のみ）</option>
       </select>
+      <div class="sublabel">APIキー</div>
+      <div class="keyline">
+        <input type="password" id="elKey" placeholder="ElevenLabs APIキー" autocomplete="off">
+        <button class="btn ghost" id="chkEl" title="キーと Voices（read）権限を確かめます">🔍 確認</button>
+      </div>
+      <div class="keyrow"><span class="keychk" id="chkElMsg"></span></div>
+      <div class="tts-target-anchor"></div>
       <div class="row">
         <label class="seatpick seatA main"><span>自分(A)の発言</span>
         <select id="elVoice"></select>
@@ -1072,19 +1091,23 @@
         <button class="btn ghost" id="elFetch" title="アカウントの声一覧を取得" style="align-self:flex-end">🔄 声を取得</button>
         <button class="btn ghost" id="elTest" title="選択中の声と Text to Speech 権限を、短い読み上げで確認（数文字分のクレジットを使用）" style="align-self:flex-end">🔊 TTSテスト</button>
       </div>
-      <label>話し方の調整</label>
-      <div class="tunerow"><span>話速</span><select id="elRate"><option value="-2">かなり遅い（0.75倍）</option><option value="-1">遅い（0.88倍）</option><option value="0">標準（1.00倍）</option><option value="1">速い（1.15倍）</option><option value="2">かなり速い（1.20倍）</option><option value="3">高速（1.50倍）</option><option value="4">最高速（1.80倍）</option></select></div>
-      <div class="tunerow"><span>感情幅</span><select id="elEmotion"><option value="-2">かなり抑制</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">強い</option><option value="2">非常に強い</option></select></div>
-      <div class="tunerow"><span>抑揚強調</span><select id="elIntonation"><option value="-2">かなり平坦</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">豊か</option><option value="2">非常に豊か</option></select></div>
-      <div class="tunerow"><span>緩急</span><select id="elDynamics"><option value="-2">一定</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">動的</option><option value="2">非常に動的</option></select></div>
-      <div class="tunerow"><span>文中の間</span><select id="elPause"><option value="-2">かなり短い</option><option value="-1">短い</option><option value="0">標準</option><option value="1">長い</option><option value="2">非常に長い</option></select></div>
-      <div class="tunerow"><span>音量</span><select id="elVolume"><option value="-2">かなり小さい</option><option value="-1">小さい</option><option value="0">標準</option><option value="1">大きい</option><option value="2">かなり大きい</option></select></div>
-      <details class="prosodybox">
-        <summary>声の再現度・話者強調を調整</summary>
-        <div class="tunerow"><span>声の再現度</span><select id="elSimilarity"><option value="-2">低い</option><option value="-1">やや低い</option><option value="0">標準</option><option value="1">高い</option><option value="2">非常に高い</option></select></div>
-        <label class="check"><input type="checkbox" id="elSpeakerBoost"> 話者強調（元の声へ近づける・わずかに遅延増）</label>
+      <details class="adv" id="elAdv">
+        <summary>ElevenLabs 話し方の調整</summary>
+        <div class="compact-tuning">
+          <div class="tunerow"><span>話速</span><select id="elRate"><option value="-2">かなり遅い（0.75倍）</option><option value="-1">遅い（0.88倍）</option><option value="0">標準（1.00倍）</option><option value="1">速い（1.15倍）</option><option value="2">かなり速い（1.20倍）</option><option value="3">高速（1.50倍）</option><option value="4">最高速（1.80倍）</option></select></div>
+          <div class="tunerow"><span>感情幅</span><select id="elEmotion"><option value="-2">かなり抑制</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">強い</option><option value="2">非常に強い</option></select></div>
+          <div class="tunerow"><span>抑揚強調</span><select id="elIntonation"><option value="-2">かなり平坦</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">豊か</option><option value="2">非常に豊か</option></select></div>
+          <div class="tunerow"><span>緩急</span><select id="elDynamics"><option value="-2">一定</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">動的</option><option value="2">非常に動的</option></select></div>
+          <div class="tunerow"><span>文中の間</span><select id="elPause"><option value="-2">かなり短い</option><option value="-1">短い</option><option value="0">標準</option><option value="1">長い</option><option value="2">非常に長い</option></select></div>
+          <div class="tunerow"><span>音量</span><select id="elVolume"><option value="-2">かなり小さい</option><option value="-1">小さい</option><option value="0">標準</option><option value="1">大きい</option><option value="2">かなり大きい</option></select></div>
+          <details class="prosodybox">
+            <summary>声の再現度・話者強調を調整</summary>
+            <div class="tunerow"><span>声の再現度</span><select id="elSimilarity"><option value="-2">低い</option><option value="-1">やや低い</option><option value="0">標準</option><option value="1">高い</option><option value="2">非常に高い</option></select></div>
+            <label class="check"><input type="checkbox" id="elSpeakerBoost"> 話者強調（元の声へ近づける・わずかに遅延増）</label>
+          </details>
+          <small>話速1.20倍まではElevenLabs APIで生成します。1.50／1.80倍はAPI側を1.20倍にし、残りをブラウザのピッチ保持再生で加速します。感情幅は<code>stability</code>、抑揚・緩急は<code>style</code>等で近似するため、声素材とモデルによって効き方が変わります。</small>
+        </div>
       </details>
-      <small>話速1.20倍まではElevenLabs APIで生成します。1.50／1.80倍はAPI側を1.20倍にし、残りをブラウザのピッチ保持再生で加速します。感情幅は<code>stability</code>、抑揚・緩急は<code>style</code>等で近似するため、声素材とモデルによって効き方が変わります。</small>
       <small><b>自分の声で読み上げたい場合はこれです。</b>
       <a href="https://elevenlabs.io/app/voice-lab" target="_blank" rel="noopener noreferrer">ElevenLabs の Voice Lab</a>
       で <b>Instant Voice Cloning</b> を選び、2分未満の自分の録音をアップロードすると、すぐに自分の声が作れます（学習の待ち時間はありません）。
@@ -1098,12 +1121,14 @@
     </div>
 
     <div class="field" id="xaiField" style="display:none">
-      <label>🤖 xAI Grok Voice</label>
+      <label>xAI Grok Voice</label>
+      <div class="sublabel">APIキー</div>
       <div class="keyline">
         <input type="password" id="xaiTtsKey" placeholder="xAI APIキー（翻訳で入力済みなら共通）" autocomplete="off">
         <button class="btn ghost" id="chkXaiTts" title="キーが有効かどうかを確かめます">🔍 確認</button>
       </div>
       <div class="keyrow"><span class="keychk" id="chkXaiTtsMsg"></span></div>
+      <div class="tts-target-anchor"></div>
       <div class="row">
         <label class="seatpick seatA main"><span>自分(A)の発言</span>
         <select id="xaiVoice"></select></label>
@@ -1129,9 +1154,11 @@
 
     <div class="field" id="aivisField" style="display:none">
       <label>🎙 Aivis Cloud API</label>
+      <div class="sublabel">APIキー</div>
       <input type="password" id="aivisKey" placeholder="Aivis Cloud API キー" autocomplete="off">
+      <div class="tts-target-anchor"></div>
       <div class="sublabel">キャラ（モデル）</div>
-      <div class="row">
+      <div class="row aivis-character-grid">
         <label class="seatpick seatA main"><span>自分(A)の発言</span>
         <div class="uuidrow">
           <select id="aivisModel"></select>
@@ -1141,8 +1168,6 @@
           <input type="text" id="aivisModelCustom" placeholder="モデル UUID" autocomplete="off">
           <input type="text" id="aivisName" class="mname" placeholder="キャラ名" autocomplete="off">
         </div></label>
-      </div>
-      <div class="row">
         <label class="seatpick seatB"><span>相手(B)の発言</span>
         <div class="uuidrow">
           <select id="aivisModelB"></select>
@@ -1153,17 +1178,9 @@
           <input type="text" id="aivisNameB" class="mname" placeholder="キャラ名" autocomplete="off">
         </div></label>
       </div>
-      <details class="adv" id="aivisMore">
-        <summary>その他のキャラ（「にせ」以降）</summary>
-        <div class="row">
-          <label class="seatpick seatA main"><span>自分(A)の発言</span>
-          <select id="aivisModelMore"></select></label>
-          <label class="seatpick seatB"><span>相手(B)の発言</span>
-          <select id="aivisModelMoreB"></select></label>
-        </div>
-      </details>
+      <button class="btn ghost" id="aivisShowAll" type="button">その他のキャラを表示</button>
       <small id="uuidHelp">よく使うキャラは名前で選べます。「↗」でそのモデルの AivisHub ページを開けます。<br>
-      「にせ」以降のキャラは「<b>その他のキャラ</b>」を開くと選べます。
+      「<b>その他のキャラを表示</b>」を押すと、同じプルダウンへ「にせ」以降の候補を追加します。
       一覧に無いモデル（自分で作ったモデルを含む）は「<b>── その他（モデル UUID を貼り付け）──</b>」を選ぶと入力欄が出ます。
       貼り付けるのは AivisHub のモデルページ →「<b>詳細情報</b>」→「<b>モデル UUID</b>」の値です。
       同じ画面の「<b>話者 UUID</b>」ではありません（モデルページのURL末尾と同じ値です）。<br>
@@ -1231,11 +1248,13 @@
 
     <div class="field" id="lvvField" style="display:none">
       <label>🖥 ローカルの音声合成エンジン</label>
+      <div class="sublabel">接続先</div>
       <div class="keyline">
         <input type="text" id="lvvBase" placeholder="http://127.0.0.1:10101" autocomplete="off">
         <button class="btn ghost" id="chkLvv" title="エンジンに接続できるかを確かめます">🔍 確認</button>
       </div>
       <div class="keyrow"><span class="keychk" id="chkLvvMsg"></span></div>
+      <div class="tts-target-anchor"></div>
       <div class="row">
         <label class="seatpick seatA main"><span>自分(A)の発言</span>
         <select id="lvvSpeaker"></select></label>
@@ -1252,6 +1271,13 @@
 
     <div class="field" id="vvField" style="display:none">
       <label>🫛 VOICEVOX WEB版 API（お遊び機能）</label>
+      <div class="sublabel">APIキー</div>
+      <div class="keyline">
+        <input type="password" id="vvKey" placeholder="WEB版VOICEVOX APIキー" autocomplete="off">
+        <button class="btn ghost" id="chkVv" title="キーの有効性とポイント残量を確かめます">🔍 確認</button>
+      </div>
+      <div class="keyrow"><span class="keychk" id="chkVvMsg"></span></div>
+      <div class="tts-target-anchor"></div>
       <div class="row">
         <label class="seatpick seatA"><span>自分(A)の発言</span>
         <select id="vvSpeakerA"></select></label>
@@ -1259,11 +1285,6 @@
         <select id="vvSpeaker"></select></label>
         <button class="btn ghost" id="vvSpeakerFetch" title="TTS Questから現在のキャラ・スタイル一覧を取得" style="align-self:flex-end">🔄 一覧更新</button>
       </div>
-      <div class="keyline">
-        <input type="password" id="vvKey" placeholder="WEB版VOICEVOX APIキー" autocomplete="off">
-        <button class="btn ghost" id="chkVv" title="キーの有効性とポイント残量を確かめます">🔍 確認</button>
-      </div>
-      <div class="keyrow"><span class="keychk" id="chkVvMsg"></span></div>
       <details class="adv" id="vvAdv">
         <summary>話し方の調整</summary>
         <label class="sl"><span>話速</span>
@@ -1391,7 +1412,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260902-v1350-audio2.0';
+var APP_BUILD = '20260903-v1352-settings2.2';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -2270,6 +2291,62 @@ async function overlayApplyResolution(track){
   }
 }
 
+var overlayAudioProbe=null, overlayAudioProbeTimer=0;
+function overlayStopAudioProbe(){
+  clearTimeout(overlayAudioProbeTimer); overlayAudioProbeTimer=0;
+  if(!overlayAudioProbe)return;
+  try{overlayAudioProbe.source.disconnect();}catch(e){}
+  try{overlayAudioProbe.analyser.disconnect();}catch(e){}
+  try{overlayAudioProbe.gain.disconnect();}catch(e){}
+  try{overlayAudioProbe.ctx.close();}catch(e){}
+  overlayAudioProbe=null;
+}
+function overlayStartAudioProbe(track){
+  overlayStopAudioProbe();
+  var AC=window.AudioContext||window.webkitAudioContext;
+  if(!track||!AC){
+    if(track){
+      overlaySession.sourceInfo.audio=true;
+      overlaySession.transition('AUDIO_TRACK_READY','共有音声Trackを取得（音量判定はこのブラウザで利用できません）');
+    }
+    return;
+  }
+  try{
+    var ctx=new AC(), source=ctx.createMediaStreamSource(new MediaStream([track])), analyser=ctx.createAnalyser(), gain=ctx.createGain();
+    analyser.fftSize=1024; gain.gain.value=0; source.connect(analyser); analyser.connect(gain); gain.connect(ctx.destination);
+    if(ctx.state!=='running'){var rp=ctx.resume();if(rp&&rp.catch)rp.catch(function(){});}
+    var data=new Float32Array(analyser.fftSize),startedAt=Date.now(),decided=false,maxRms=0;
+    overlayAudioProbe={ctx:ctx,source:source,analyser:analyser,gain:gain,track:track};
+    var check=function(){
+      if(!overlayAudioProbe||overlayAudioProbe.track!==track||track.readyState!=='live')return;
+      var rms=0;
+      try{
+        analyser.getFloatTimeDomainData(data);
+        for(var i=0;i<data.length;i++)rms+=data[i]*data[i];
+        rms=Math.sqrt(rms/data.length); maxRms=Math.max(maxRms,rms);
+      }catch(e){}
+      if(rms>=0.0005){
+        overlaySession.sourceInfo.audio=true; overlaySession.sourceInfo.audioDetected=true;
+        overlaySession.transition('AUDIO_TRACK_READY','映像＋共有音声を検出（直接Web Speech／外部APIで利用できます）');
+        dlog('overlay','audio-detected',{rms:+rms.toFixed(5),afterMs:Date.now()-startedAt});
+        overlayStopAudioProbe(); return;
+      }
+      if(!decided&&Date.now()-startedAt>=1400){
+        decided=true; overlaySession.sourceInfo.audio=false; overlaySession.sourceInfo.audioDetected=false;
+        overlaySession.transition('VIDEO_ONLY','共有音声を検出できません。音声共有をONにするか、VB-CABLE／外部STT APIを利用してください');
+        dlog('overlay','audio-silent',{probeMs:Date.now()-startedAt,maxRms:+maxRms.toFixed(5),muted:!!track.muted});
+      }
+      overlayAudioProbeTimer=setTimeout(check,250);
+    };
+    check();
+  }catch(err){
+    overlayStopAudioProbe();
+    overlaySession.sourceInfo.audio=true;
+    overlaySession.transition('AUDIO_TRACK_READY','共有音声Trackを取得（音量判定を開始できませんでした）');
+    dlog('overlay','audio-probe-FAIL',{err:String((err&&err.message)||err).slice(0,120)});
+  }
+}
+
 var OverlaySession = {
   state:'IDLE', stream:null, videoTrack:null, audioTrack:null, opened:false,
   stopping:false, lastError:'', sourceInfo:null, ownsFullscreen:false,
@@ -2309,22 +2386,26 @@ var OverlaySession = {
       var settings = video.getSettings ? video.getSettings() : {};
       this.sourceInfo = {
         surface:settings.displaySurface || 'unknown', width:settings.width || 0,
-        height:settings.height || 0, frameRate:settings.frameRate || 0, audio:!!audio
+        height:settings.height || 0, frameRate:settings.frameRate || 0,
+        audio:!audio?false:null, audioTrack:!!audio, audioDetected:!audio?false:null
       };
       var self = this;
       video.onended = function(){ self.sourceEnded('共有元から画面共有が終了されました'); };
       if (audio) audio.onended = function(){
         stopEnginesForTrack(audio,'共有音声Track終了');
-        self.audioTrack = null; self.sourceInfo.audio = false;
+        overlayStopAudioProbe();
+        self.audioTrack = null;
+        if(self.sourceInfo){self.sourceInfo.audio=false;self.sourceInfo.audioTrack=false;self.sourceInfo.audioDetected=false;}
         self.transition('VIDEO_ONLY','共有音声Trackが終了しました。映像表示は継続しています');
       };
       var el = $('captureVideo');
       el.srcObject = stream;
       try { await el.play(); } catch(playErr){ dlog('overlay','video-play-FAIL',{err:String(playErr)}); }
       $('capturePlaceholder').hidden = true;
-      this.transition(audio ? 'AUDIO_TRACK_READY' : 'VIDEO_ONLY',
-        audio ? '映像＋共有音声を取得（直接Web Speech／外部APIで利用できます）'
+      this.transition(audio ? 'AUDIO_CHECKING' : 'VIDEO_ONLY',
+        audio ? '共有音声Trackを確認しています'
               : '共有音声は取得されていません。音声共有をONにするか、VB-CABLE／外部STT APIを利用してください');
+      if(audio)overlayStartAudioProbe(audio);
       overlayWakeToolbar();
       dlog('overlay','capture-ok',this.sourceInfo);
     } catch(err){
@@ -2342,6 +2423,7 @@ var OverlaySession = {
   stopSource:function(quiet){
     if (this.stopping) return;
     this.stopping = true;
+    overlayStopAudioProbe();
     var audio=this.audioTrack;
     if(audio)stopEnginesForTrack(audio,'画面取込停止');
     var tracks = this.stream && this.stream.getTracks ? this.stream.getTracks() : [];
@@ -2370,6 +2452,7 @@ var OverlaySession = {
     syncFontControlTitles();
     applyCaptureProfile(); renderOverlayRail(); renderCaptureCapability();
     overlayWakeToolbar(); overlayWakeMainControls();
+    showCaptureNotice('字幕を移動する場合は、字幕欄をドラッグしてください。',3600);
     if (autoStart && !this.stream) this.start();
   },
   close:function(){
@@ -2411,7 +2494,7 @@ var OverlayAudioRoutes = {
 
 function updateCaptureStatus(detail){
   var el=$('captureState'); if (!el) return;
-  var labels={IDLE:'停止中',SELECTING_SOURCE:'選択中',CAPTURING_VIDEO:'接続中',VIDEO_ONLY:'映像のみ',AUDIO_TRACK_READY:'映像＋音声',SOURCE_ENDED:'共有終了',ERROR:'エラー'};
+  var labels={IDLE:'停止中',SELECTING_SOURCE:'選択中',CAPTURING_VIDEO:'接続中',AUDIO_CHECKING:'音声確認中',VIDEO_ONLY:'映像のみ',AUDIO_TRACK_READY:'映像＋音声',SOURCE_ENDED:'共有終了',ERROR:'エラー'};
   var stateLabel=labels[overlaySession.state]||overlaySession.state;
   if(overlaySession.sourceInfo&&overlaySession.sourceInfo.width&&overlaySession.sourceInfo.height){
     stateLabel+=' · '+overlaySession.sourceInfo.width+'×'+overlaySession.sourceInfo.height;
@@ -2439,7 +2522,7 @@ function renderCaptureCapability(){
   el.textContent='画面取込 '+(c.displayMedia?'対応':'非対応')+' / HTTPS '+(c.secure?'OK':'必須')+
     ' / 全画面 '+(c.fullscreen?'対応':'非対応')+' / 出力先分離 '+(c.mediaSink?'対応':'非対応')+
     ' / 共有Track直接STT '+(c.speechTrackInput==='candidate'?'候補':'非対応')+
-    (overlaySession.sourceInfo && !overlaySession.sourceInfo.audio
+    (overlaySession.sourceInfo && overlaySession.sourceInfo.audio===false
       ? ' / 共有音声なし：VB-CABLEまたは外部STT APIを選択できます。'
       : '')+' / 取込映像は表示専用です。外部アプリのボタン操作は元ウィンドウで行い、Duo内Zoom／PanはPhase 3で追加します。';
 }
@@ -2516,10 +2599,10 @@ function overlayTopEdge(ev){
   overlayPointerY=ev.clientY;
   if(overlaySession.opened && overlayPointerY<=96) overlayWakeToolbar();
 }
-function showCaptureNotice(message){
+function showCaptureNotice(message,duration){
   var el=$('captureNotice'); if(!el||!overlaySession.opened||!message)return;
   el.textContent=message; el.classList.add('on'); clearTimeout(overlayNoticeTimer);
-  overlayNoticeTimer=setTimeout(function(){ el.classList.remove('on'); },5200);
+  overlayNoticeTimer=setTimeout(function(){ el.classList.remove('on'); },Math.max(1200,Number(duration)||5200));
 }
 function overlayWakeMainControls(){
   if(!overlaySession.opened) return;
@@ -3627,6 +3710,23 @@ var ttsRateMediaSrc = null, ttsRateGain = null, ttsRateElNow = null;
    認識結果は読み上げ中も一切捨てない。自分の読み上げを拾ってしまった分だけ、
    内容を照合して除外する（isEcho）。S.speaking は状態表示と保険用に残す。  */
 var ttsActive = 0, ttsWarned = false, ttsSilentFails = 0;
+/* 自動読み上げでも会話カードIDを保持する。これにより生成中・再生中・カード再描画後の
+   どの時点でも、同じカードのボタンを再度押せば再生成せず停止できる。 */
+var ttsDispatchSayKey='', ttsBusySayKeys={};
+function withTtsSayKey(key,fn){
+  var prev=ttsDispatchSayKey; ttsDispatchSayKey=String(key||'');
+  try{return fn();}finally{ttsDispatchSayKey=prev;}
+}
+function ttsSayKeyBegin(key){
+  key=String(key||ttsDispatchSayKey||'');
+  if(key)ttsBusySayKeys[key]=(ttsBusySayKeys[key]||0)+1;
+  return key;
+}
+function ttsSayKeyEnd(key){
+  key=String(key||''); if(!key||!ttsBusySayKeys[key])return;
+  ttsBusySayKeys[key]--; if(ttsBusySayKeys[key]<=0)delete ttsBusySayKeys[key];
+}
+function ttsSayKeyBusy(key){return !!ttsBusySayKeys[String(key||'')];}
 
 /* 読み上げ中でも音声認識の結果は絶対に捨てない（取りこぼしが最も困るため）。
    代わりに「自分が読み上げた文章をマイクが拾ってしまった分」だけを、
@@ -3683,16 +3783,23 @@ function isEcho(text){
    （騒がしい場所で第三者の声を拾うたびにブツ切りになるのを防ぐため） */
 var TTS_CUT_AFTER_MS = 6000, ttsPlayStart = 0;
 
-function ttsBegin(){
+function ttsBegin(sayKey){
   ttsActive++;
   S.speaking = true;      // 認識は止めない・結果も捨てない。状態の目印としてだけ使う
+  sayKey=ttsSayKeyBegin(sayKey);
+  if(sayKey){
+    var btns=document.querySelectorAll('.saybtn[data-say-key]');
+    for(var i=0;i<btns.length;i++)if(btns[i].getAttribute('data-say-key')===sayKey){setSayBtn(btns[i],sayKey);break;}
+  }
+  return sayKey;
 }
-function ttsEnd(){
+function ttsEnd(sayKey){
+  ttsSayKeyEnd(sayKey);
   ttsActive = Math.max(0, ttsActive - 1);
   if (ttsActive > 0) return;            // まだ読み上げ中のものが残っている
   S.speaking = false;
   if (typeof setSayBtn === 'function') setSayBtn(null);   // 鳴り終わったら点滅を止める
-  if (!ttsIsBusy()) manualSayKey='';
+  if (!ttsIsBusy()){ manualSayKey=''; ttsBusySayKeys={}; }
 }
 /* 読み上げボタンの見た目を更新する。4か所で個別に書いていたのを1つにまとめ、
    状態と表示がずれないようにする。 */
@@ -3756,7 +3863,7 @@ function browserSpeak(text, tag, prosody, onFinish){
     if (onFinish) try{ onFinish('unsupported'); }catch(e){}
     return;
   }
-  var done = false, started = false, tStart = null, tEnd = null, t0 = Date.now();
+  var done = false, started = false, tStart = null, tEnd = null, t0 = Date.now(), sayKey=String(ttsDispatchSayKey||'');
   var pmap=prosodyMapForTts(prosody,tag,'browser');
   var finish = function(why){
     if (done) return; done = true;
@@ -3767,7 +3874,7 @@ function browserSpeak(text, tag, prosody, onFinish){
     // ttsPlayStart はここでクリアしない。別の読み上げが再生中の場合に、
     // 先に終わったほうが再生時刻を消してしまい判定を狂わせるため。
     // 次の onstart で必ず上書きされ、未再生時は再生中判定で弾かれる。
-    ttsEnd();
+    ttsEnd(sayKey);
     if (onFinish) try{ onFinish(why || 'ended'); }catch(e){}
   };
   try{
@@ -3800,7 +3907,7 @@ function browserSpeak(text, tag, prosody, onFinish){
       if (err !== 'interrupted' && err !== 'canceled') ttsFailNotice('読み上げを再生できませんでした（' + err + '）');
       finish('error:' + err);
     };
-    ttsBegin();
+    ttsBegin(sayKey);
     speechSynthesis.speak(u);
     // 監視1：鳴り始めない環境では何も起きずに終わるので、短めに打ち切る。
     tStart = setTimeout(function(){
@@ -4398,9 +4505,21 @@ function outNoteText(){
      + 'また、読み上げが自分の耳にも聞こえなくなります。</small>';
   return t;
 }
-function renderOneOutDev(id, cfgId, cfgLabel, storeId, storeLabel){
+function outputSeatEnabled(seat){
+  return CFG.ttsMode!=='off' && CFG.sttProvider!=='realtime' && seatUsed(seat);
+}
+function renderOneOutDev(id, cfgId, cfgLabel, storeId, storeLabel, seat, buttonId){
   var sel=$(id);if(!sel)return;
-  sel.disabled=!OUT_SUPPORTED;sel.innerHTML='';
+  var active=outputSeatEnabled(seat), btn=$(buttonId), row=sel.parentNode;
+  sel.disabled=!OUT_SUPPORTED||!active;sel.innerHTML='';
+  if(btn)btn.disabled=!OUT_SUPPORTED||!active;
+  if(row)row.classList.toggle('out-inactive',!active);
+  if(!active){
+    var off=document.createElement('option');off.value='';off.textContent='読上げなし';sel.appendChild(off);
+    sel.setAttribute('aria-label','読上げなし');
+    return;
+  }
+  sel.removeAttribute('aria-label');
   var o0=document.createElement('option');o0.value='';o0.textContent='既定のスピーカー';sel.appendChild(o0);
   outDevs.forEach(function(d,i){var o=document.createElement('option');o.value=d.deviceId;
     var lbl=d.label||('出力デバイス '+(i+1)+'（名称は未取得）');o.textContent=(isVirtualDev(d.label)?'🎚 ':'')+lbl;sel.appendChild(o);});
@@ -4413,8 +4532,8 @@ function renderOneOutDev(id, cfgId, cfgLabel, storeId, storeLabel){
   sel.value=value;
 }
 function renderOutDevs(){
-  renderOneOutDev('outDevLocal','outDevLocal','outDevLocalLbl','di.outdev.local','di.outdevl.local');
-  renderOneOutDev('outDevRemote','outDevRemote','outDevRemoteLbl','di.outdev.remote','di.outdevl.remote');
+  renderOneOutDev('outDevLocal','outDevLocal','outDevLocalLbl','di.outdev.local','di.outdevl.local','B','outChooseLocal');
+  renderOneOutDev('outDevRemote','outDevRemote','outDevRemoteLbl','di.outdev.remote','di.outdevl.remote','A','outChooseRemote');
   var n = $('outNote'); if (n) n.innerHTML = outNoteText();
   renderAudioRouteWarning();
   foldLongNotes();
@@ -4927,19 +5046,20 @@ function playViaAudioEl(job, end){
   });
 }
 function ttsGuard(text, ms,seat){
-  var done = false, tEnd = null;
+  var done = false, tEnd = null, sayKey=String(ttsDispatchSayKey||'');
   var finish = function(){
     if (done) return;
-    done = true; finish.done = true; clearTimeout(tEnd); ttsReleaseOrder(finish); ttsEnd();
+    done = true; finish.done = true; clearTimeout(tEnd); ttsReleaseOrder(finish); ttsEnd(sayKey);
   };
   finish.done = false;
   finish.gen = ttsGen;             /* この読み上げを始めた時点の世代を刻む */
   finish.queuedAt = Date.now();     /* 合成時間も含めた実際の遅延を測る */
   finish.textChars = String(text||'').length;
   finish.seat = seat || 'A';
+  finish.sayKey = sayKey;
   ttsRegisterOrder(finish);        /* 合成完了時ではなく受付時の順番を確保する */
   rememberSpoken(text);
-  ttsBegin();
+  ttsBegin(sayKey);
   tEnd = setTimeout(finish, ms);
   return finish;
 }
@@ -5286,8 +5406,8 @@ var AIVIS_MODELS = [
   { n:'かりん(現実20代女子AIボイチェン@リアボVC公式モデル)', u:'18972473-ca36-4e06-a33a-5cc14adba0c4' }
 ];
 var AIVIS_CUSTOM = '\u0000other';       /* UUIDを直接入力する項目 */
-var AIVIS_MORE = '\u0000more';          /* 折りたたみ側のキャラを表す項目 */
-var AIVIS_PRIMARY_COUNT = 5;             /* 「桜音」までを常時表示。「にせ」以降は折りたたむ */
+var AIVIS_PRIMARY_COUNT = 5;             /* 「桜音」までを常時表示 */
+var aivisAllShown = false;               /* ボタンを押すと同じselectへ残りを追加 */
 /* 一覧にあるモデルは名前を最初から知っている状態にしておく。保存はしないので、
    取得や手入力があればそちらが必ず勝つ。 */
 var AIVIS_KNOWN = (function(){
@@ -5295,20 +5415,18 @@ var AIVIS_KNOWN = (function(){
 })();
 /* 席ごとのモデル選択を組み立てる。B席は空欄＝自分(A)と同じ、を先頭に置く */
 function aivisFillModels(sel, isA){
-  if (!sel || sel.options.length) return;
+  if (!sel) return;
+  var mode = aivisAllShown ? 'all' : 'primary';
+  if (sel.getAttribute('data-model-range') === mode && sel.options.length) return;
+  sel.innerHTML = '';
   var add = function(v, t){
     var o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o);
   };
   if (!isA) add('', inheritedVoiceLabel());
-  AIVIS_MODELS.slice(0, AIVIS_PRIMARY_COUNT).forEach(function(x){ add(x.u, x.n); });
-  add(AIVIS_MORE, '▼ その他のキャラ（「にせ」以降）');
+  AIVIS_MODELS.slice(0, aivisAllShown ? AIVIS_MODELS.length : AIVIS_PRIMARY_COUNT)
+    .forEach(function(x){ add(x.u, x.n); });
   add(AIVIS_CUSTOM, '── その他（モデル UUID を貼り付け）──');
-}
-function aivisFillMoreModels(sel){
-  if (!sel || sel.options.length) return;
-  AIVIS_MODELS.slice(AIVIS_PRIMARY_COUNT).forEach(function(x){
-    var o = document.createElement('option'); o.value = x.u; o.textContent = x.n; sel.appendChild(o);
-  });
+  sel.setAttribute('data-model-range', mode);
 }
 /* 「その他」を選んでいる席。UUIDが空でも入力欄を開いたままにするために要る */
 var AIVIS_OTHER = { A:false, B:false };
@@ -5320,25 +5438,19 @@ function aivisSyncModel(seat){
   var cst  = $(isA ? 'aivisModelCustom' : 'aivisModelBCustom');
   var name = $(isA ? 'aivisName' : 'aivisNameB');
   var link = $(isA ? 'aivisHub' : 'aivisHubB');
-  var more = $(isA ? 'aivisModelMore' : 'aivisModelMoreB');
-  var moreBox = $('aivisMore');
   if (!sel) return;
+  var uuid = String((isA ? CFG.aivisModel : CFG.aivisModelB) || '').trim();
+  var modelIndex = -1;
+  for (var ai=0; ai<AIVIS_MODELS.length; ai++) if (AIVIS_MODELS[ai].u === uuid){ modelIndex=ai; break; }
+  /* 保存済みの追加キャラは切替時に消さず、そのキャラを含む完全一覧へ自動展開する。 */
+  if (modelIndex >= AIVIS_PRIMARY_COUNT) aivisAllShown = true;
   aivisFillModels(sel, isA);
   if (!isA && sel.options.length && sel.options[0].value==='') sel.options[0].textContent=inheritedVoiceLabel();
-  aivisFillMoreModels(more);
-  var uuid = String((isA ? CFG.aivisModel : CFG.aivisModelB) || '').trim();
   /* 一覧に無いUUIDが入っているなら当然「その他」。
      空でも、利用者が「その他」を選んだ直後なら入力欄を閉じない。 */
   var known = !AIVIS_OTHER[seat] && ((uuid === '') || !!AIVIS_KNOWN[uuid]);
-  var moreKnown = false;
-  for (var mi=AIVIS_PRIMARY_COUNT; mi<AIVIS_MODELS.length; mi++){
-    if (AIVIS_MODELS[mi].u === uuid){ moreKnown = true; break; }
-  }
   if (uuid && AIVIS_KNOWN[uuid]) AIVIS_OTHER[seat] = false;
-  sel.value = moreKnown ? AIVIS_MORE : (known ? uuid : AIVIS_CUSTOM);
-  if (more && moreKnown) more.value = uuid;
-  /* 保存済みの折りたたみ側モデルを使っている場合だけ自動で開く。通常は閉じたまま */
-  if (moreBox && moreKnown) moreBox.open = true;
+  sel.value = known ? uuid : AIVIS_CUSTOM;
   if (row) row.style.display = known ? 'none' : '';
   if (cst && cst !== document.activeElement) cst.value = known ? '' : uuid;
   if (name && name !== document.activeElement) name.value = aivisNameOf(uuid);
@@ -5346,6 +5458,8 @@ function aivisSyncModel(seat){
     link.href = uuid ? (AIVIS_HUB + encodeURIComponent(uuid)) : AIVIS_HUB;
     link.style.visibility = uuid ? '' : 'hidden';
   }
+  var showAll=$('aivisShowAll');
+  if(showAll){showAll.style.display=aivisAllShown?'none':'';showAll.disabled=aivisAllShown;}
 }
 function aivisNameOf(uuid){
   uuid = String(uuid || '').trim();
@@ -6414,7 +6528,7 @@ function vvFinishJob(job){
   clearTimeout(job.preloadTimer); clearInterval(job.bufferGuard);
   vvReleaseSynth(job); vvRemoveController(job.ctrl);
   try{ if (job.ctrl) job.ctrl.abort(); }catch(e){}
-  ttsEnd();
+  ttsEnd(job.sayKey);
 }
 function vvAbortAll(){
   vvControllers.slice().forEach(function(c){ try{ c.abort(); }catch(e){} });
@@ -6625,9 +6739,10 @@ function vvSpeak(text, lang, seat, prosody){
   logProsodyMap(effective.map,{effectiveRate:effective.speed,effectivePitch:effective.pitch,
     effectiveIntonation:effective.intonation,appliedRate:true,appliedPitch:false,appliedIntonation:false});
   rememberSpoken(text);
-  ttsBegin();
+  var sayKey=String(ttsDispatchSayKey||'');
+  ttsBegin(sayKey);
   var ctrl=new AbortController(), job={text:text,lang:lang,seat:seat||'A',prosody:prosody,effective:effective,
-    tweaks:tweaks,manualTweaks:manualTweaks,at:Date.now(),gen:ttsGen,ctrl:ctrl,state:'waiting',done:false};
+    tweaks:tweaks,manualTweaks:manualTweaks,at:Date.now(),gen:ttsGen,ctrl:ctrl,state:'waiting',done:false,sayKey:sayKey};
   vvJobs.push(job); vvControllers.push(ctrl);
   job.watchdog=setTimeout(function(){
     if (job.done) return;
@@ -6674,13 +6789,18 @@ function ttsPlanText(){
   var t = 'いまの設定：' + rows.map(function(r){
             return r.who + 'の発言の' + what + '（' + L(r.lang).name + '）';
           }).join(' と ') + ' を <b>' + ttsModeLabel(CFG.ttsMode) + '</b> で読み上げます。';
-  var hasSplitSink=!!(CFG.outDevLocal||CFG.outDevRemote);
+  var hasLocalSink=seatUsed('B')&&!!CFG.outDevLocal;
+  var hasRemoteSink=seatUsed('A')&&!!CFG.outDevRemote;
+  var hasSplitSink=!!(hasLocalSink||hasRemoteSink);
   if (hasSplitSink && CFG.ttsMode === 'browser'){
     t += '<br>⚠ 出力先を分けていますが、'
        + 'ブラウザ内蔵音声は出力先を変えられません。既定のスピーカーから鳴ります。';
     warn = true;
   } else if (hasSplitSink){
-    t += '<br>自分向け：<b>'+(CFG.outDevLocalLbl||'既定')+'</b>／相手向け：<b>'+(CFG.outDevRemoteLbl||'既定')+'</b>';
+    var sinks=[];
+    if(seatUsed('B'))sinks.push('自分向け：<b>'+(CFG.outDevLocalLbl||'既定')+'</b>');
+    if(seatUsed('A'))sinks.push('相手向け：<b>'+(CFG.outDevRemoteLbl||'既定')+'</b>');
+    t += '<br>'+sinks.join('／');
   }
   if (CFG.ttsMode === 'openai'){
     var missO=ttsSetupMissing();
@@ -6760,8 +6880,25 @@ function ttsSeatVoices(){
   };
   return f('A') + ' / ' + f('B');
 }
+/* TTSサービスを切り替えても主要項目の順番を変えない。
+   各サービス固有パネルを同じホストへ置き、読上げ対象だけをAPIキーと声の間へ移す。 */
+function placeTtsProviderUI(){
+  var host=$('ttsProviderHost'), who=$('ttsWhoField');
+  if(!host||!who)return;
+  var ids=['oaiOnly','browserOnly','elField','xaiField','aivisField','lvvField','vvField'];
+  ids.forEach(function(id){var el=$(id);if(el&&el.parentNode!==host)host.appendChild(el);});
+  var map={openai:'oaiOnly',browser:'browserOnly',eleven:'elField',xai:'xaiField',aivis:'aivisField',localvv:'lvvField',voicevox:'vvField'};
+  var active=$(map[CFG.ttsMode]||'');
+  who.style.display=(!active||CFG.ttsMode==='off')?'none':'';
+  if(active){
+    host.appendChild(active); /* 非表示パネルの位置に関係なく、表示中パネルは常に同じ場所 */
+    var anchor=active.querySelector('.tts-target-anchor');
+    if(anchor)anchor.parentNode.insertBefore(who,anchor.nextSibling);
+  }else if(who.parentNode!==host){host.appendChild(who);}
+}
 function refreshVvUI(){
   var isRT = (CFG.sttProvider === 'realtime');
+  placeTtsProviderUI();
   var ts = $('ttsSettings');  if (ts) ts.style.display = isRT ? 'none' : '';
   var tn = $('rtTtsNotice');  if (tn) tn.style.display = isRT ? '' : 'none';
   var of = $('outField');      if (of) of.style.display = isRT ? 'none' : '';
@@ -6769,7 +6906,8 @@ function refreshVvUI(){
   if (af){
     af.style.display = (!isRT && CFG.ttsMode === 'aivis') ? '' : 'none';
     var ak = $('aivisKey');   if (ak && ak !== document.activeElement) ak.value = KEYS['aivis'] || '';
-    aivisSyncModel('B'); aivisSyncModel('A');
+    aivisSyncModel('A'); aivisSyncModel('B');
+    if(aivisAllShown)aivisSyncModel('A'); /* Bだけ追加キャラでもA側へ完全一覧を反映 */
     aivisAdvSync();
     var asx = $('aivisStream'); if (asx) asx.checked = !!CFG.aivisStream;
     [['aivisStyle', CFG.aivisStyle], ['aivisStyleB', CFG.aivisStyleB]].forEach(function(pair){
@@ -6943,6 +7081,7 @@ function stopSpeaking(why){
   if (end){ try{ end(); }catch(e){} }
   ttsPlayingNow = false;
   ttsActive = 0; S.speaking = false;
+  ttsBusySayKeys={};
   setSayBtn(null);
   manualSayKey='';
   if (had) dlog('tts','stop',{ why: why || '手動', gen: ttsGen });
@@ -6961,7 +7100,7 @@ function whoLabel(){
 function speakManual(text, lang, btn, seat, prosody,sayKey){
   /* 鳴っている最中に同じボタンを押したら「止める」。トグルとして使えるようにする */
   sayKey=String(sayKey||(btn&&btn.getAttribute('data-say-key'))||'');
-  if (btn && ttsIsBusy() && ((btn === sayBtnNow) || (sayKey && (sayKey === sayBtnNowKey || sayKey === manualSayKey)))){
+  if (btn && ttsIsBusy() && ((btn === sayBtnNow) || (sayKey && (sayKey === sayBtnNowKey || sayKey === manualSayKey || ttsSayKeyBusy(sayKey))))){
     stopSpeaking('同じボタンを再度押した');
     return;
   }
@@ -6977,13 +7116,15 @@ function speakManual(text, lang, btn, seat, prosody,sayKey){
   manualSayKey=sayKey;
   primeOutput(seat);
   setSayBtn(btn,sayKey);
-  if (CFG.ttsMode === 'openai') apiSpeak(text, lang, seat, prosody);
-  else if (CFG.ttsMode === 'voicevox') vvSpeak(text, lang, seat,prosody);
-  else if (CFG.ttsMode === 'aivis')    aivisSpeak(text, lang, seat,prosody);
-  else if (CFG.ttsMode === 'eleven')   elSpeak(text, lang, seat,prosody);
-  else if (CFG.ttsMode === 'xai')      xaiSpeak(text, lang, seat,prosody);
-  else if (CFG.ttsMode === 'localvv')  lvvSpeak(text, lang, seat);
-  else browserSpeak(text, L(lang).tts,prosody);
+  withTtsSayKey(sayKey,function(){
+    if (CFG.ttsMode === 'openai') apiSpeak(text, lang, seat, prosody);
+    else if (CFG.ttsMode === 'voicevox') vvSpeak(text, lang, seat,prosody);
+    else if (CFG.ttsMode === 'aivis')    aivisSpeak(text, lang, seat,prosody);
+    else if (CFG.ttsMode === 'eleven')   elSpeak(text, lang, seat,prosody);
+    else if (CFG.ttsMode === 'xai')      xaiSpeak(text, lang, seat,prosody);
+    else if (CFG.ttsMode === 'localvv')  lvvSpeak(text, lang, seat);
+    else browserSpeak(text, L(lang).tts,prosody);
+  });
 }
 
 /* 原文読み上げモードでは、翻訳を待たず認識できた時点で読み上げる。
@@ -7017,13 +7158,16 @@ function speak(e){
     dlog('tts','skip',{ why:'読み上げが溜まっているため見送り', queued: ttsActive, limit:TTS_MAX_PENDING });
     return;
   }
-  if (CFG.ttsMode === 'browser') browserSpeak(sayText, L(sayLang).tts,e.prosody);
-  else if (CFG.ttsMode === 'voicevox') vvSpeak(sayText, sayLang, e.seat,e.prosody);
-  else if (CFG.ttsMode === 'aivis')    aivisSpeak(sayText, sayLang, e.seat,e.prosody);
-  else if (CFG.ttsMode === 'eleven')   elSpeak(sayText, sayLang, e.seat,e.prosody);
-  else if (CFG.ttsMode === 'xai')      xaiSpeak(sayText, sayLang, e.seat,e.prosody);
-  else if (CFG.ttsMode === 'localvv')  lvvSpeak(sayText, sayLang, e.seat);
-  else apiSpeak(sayText, sayLang, e.seat, e.prosody);
+  var viewer=useSrc?e.seat:(e.seat==='A'?'B':'A'), autoSayKey=e.id+':'+viewer;
+  withTtsSayKey(autoSayKey,function(){
+    if (CFG.ttsMode === 'browser') browserSpeak(sayText, L(sayLang).tts,e.prosody);
+    else if (CFG.ttsMode === 'voicevox') vvSpeak(sayText, sayLang, e.seat,e.prosody);
+    else if (CFG.ttsMode === 'aivis')    aivisSpeak(sayText, sayLang, e.seat,e.prosody);
+    else if (CFG.ttsMode === 'eleven')   elSpeak(sayText, sayLang, e.seat,e.prosody);
+    else if (CFG.ttsMode === 'xai')      xaiSpeak(sayText, sayLang, e.seat,e.prosody);
+    else if (CFG.ttsMode === 'localvv')  lvvSpeak(sayText, sayLang, e.seat);
+    else apiSpeak(sayText, sayLang, e.seat, e.prosody);
+  });
 }
 
 /* =========================================================================
@@ -8221,7 +8365,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.35.0 Phase 2</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.35.2 Phase 2</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -8571,6 +8715,7 @@ function refreshProviderUI(){
   var noModel = isRT || (CFG.sttProvider === 'xai');
   $('realtimeNote').style.display = isRT ? '' : 'none';
   $('rtDirField').style.display   = isRT ? '' : 'none';
+  $('sttModelLabel').style.display= noModel ? 'none' : '';
   $('sttModel').style.display     = noModel ? 'none' : '';
   $('sttModelNote').style.display = noModel ? 'none' : '';
   /* たたまれている説明は、開閉ボタンも一緒に出し入れする。
@@ -8791,13 +8936,28 @@ $('bar').addEventListener('pointerenter',overlayWakeMainControls,{passive:true})
 $('bar').addEventListener('pointermove',overlayWakeMainControls,{passive:true});
 $('bar').addEventListener('click',overlayWakeMainControls);
 $('txtbar').addEventListener('pointerenter',overlayWakeMainControls,{passive:true});
-$('captureRailHandle').addEventListener('pointerdown',function(ev){
-  if(CFG.ovCapLayout!=='free') return;
-  ev.preventDefault(); this.setPointerCapture(ev.pointerId);
-  var r=$('captureRail').getBoundingClientRect(); overlayDrag={pointerId:ev.pointerId,dx:ev.clientX-r.left,dy:ev.clientY-r.top};
+$('captureRail').addEventListener('pointerdown',function(ev){
+  if(ev.button!==0)return;
+  /* 履歴保持中の指操作は縦スクロールを優先。マウス／ペン、または固定件数表示では
+     字幕欄そのものをドラッグして自由配置へ切り替える。 */
+  if(ev.pointerType==='touch'&&this.classList.contains('history-scroll'))return;
+  var r=this.getBoundingClientRect();
+  if(this.classList.contains('history-scroll')&&ev.clientX>=r.right-14)return;
+  ev.preventDefault(); try{this.setPointerCapture(ev.pointerId);}catch(e){}
+  overlayDrag={pointerId:ev.pointerId,startX:ev.clientX,startY:ev.clientY,dx:ev.clientX-r.left,dy:ev.clientY-r.top,
+    left:r.left,top:r.top,started:false};
 });
 document.addEventListener('pointermove',function(ev){
   if(!overlayDrag||overlayDrag.pointerId!==ev.pointerId)return;
+  if(!overlayDrag.started){
+    if(Math.hypot(ev.clientX-overlayDrag.startX,ev.clientY-overlayDrag.startY)<5)return;
+    overlayDrag.started=true;
+    CFG.ovCapLayout='free';
+    CFG.ovCapX=String(overlayDrag.left/window.innerWidth*100);
+    CFG.ovCapY=String(overlayDrag.top/window.innerHeight*100);
+    var layoutSel=$('ovCapLayout');if(layoutSel)layoutSel.value='free';
+    $('captureRail').classList.add('dragging'); applyCaptureProfile();
+  }
   var rail=$('captureRail'), rw=rail.offsetWidth/window.innerWidth*100;
   CFG.ovCapX=String(Math.max(1,Math.min(99-rw,(ev.clientX-overlayDrag.dx)/window.innerWidth*100)));
   CFG.ovCapY=String(Math.max(6,Math.min(88,(ev.clientY-overlayDrag.dy)/window.innerHeight*100)));
@@ -8805,7 +8965,8 @@ document.addEventListener('pointermove',function(ev){
 });
 document.addEventListener('pointerup',function(ev){
   if(!overlayDrag||overlayDrag.pointerId!==ev.pointerId)return;
-  overlayDrag=null; saveCaptureProfile();
+  var moved=overlayDrag.started; overlayDrag=null; $('captureRail').classList.remove('dragging');
+  if(moved)saveCaptureProfile();
 });
 $('captureVideo').addEventListener('dblclick',captureFullscreen);
 document.addEventListener('fullscreenchange',function(){
@@ -9008,6 +9169,7 @@ function simple(id, key, prop, isCheck){
       if (v === 'aivis') aivisNameLater();
     }
     if (prop==='vvSpeaker' || prop==='vvSpeakerA' || prop==='ttsWho' || prop==='ttsSrc') refreshVvUI();
+    if (prop==='ttsMode' || prop==='ttsWho') renderOutDevs();
     if (/^oai/.test(prop)){
       dlog('tts','openai-config',{prop:prop,value:prop==='oaiStyle'?(String(v||'').trim()?'設定あり':'なし'):v});
       refreshVvUI();
@@ -9113,26 +9275,19 @@ function aivisSetModel(seat, uuid){
   refreshVvUI(); aivisNameLater();
 }
 $('aivisModel').onchange = function(){
-  if (this.value === AIVIS_MORE){
-    var box=$('aivisMore'), more=$('aivisModelMore'); if (box) box.open=true;
-    if (more && more.value) aivisSetModel('A', more.value);
-    return;
-  }
   /* 「その他」を選んだ直後は、まだUUIDが無い状態を正とする（入力欄はこのあと開く） */
   AIVIS_OTHER.A = (this.value === AIVIS_CUSTOM);
   aivisSetModel('A', AIVIS_OTHER.A ? ($('aivisModelCustom').value || '') : this.value);
 };
 $('aivisModelB').onchange = function(){
-  if (this.value === AIVIS_MORE){
-    var box=$('aivisMore'), more=$('aivisModelMoreB'); if (box) box.open=true;
-    if (more && more.value) aivisSetModel('B', more.value);
-    return;
-  }
   AIVIS_OTHER.B = (this.value === AIVIS_CUSTOM);
   aivisSetModel('B', AIVIS_OTHER.B ? ($('aivisModelBCustom').value || '') : this.value);
 };
-$('aivisModelMore').onchange = function(){ AIVIS_OTHER.A=false; aivisSetModel('A', this.value); };
-$('aivisModelMoreB').onchange = function(){ AIVIS_OTHER.B=false; aivisSetModel('B', this.value); };
+$('aivisShowAll').onclick = function(){
+  aivisAllShown=true;
+  ['aivisModel','aivisModelB'].forEach(function(id){var s=$(id);if(s)s.removeAttribute('data-model-range');});
+  aivisSyncModel('A'); aivisSyncModel('B');
+};
 $('aivisModelCustom').oninput  = function(){ aivisSetModel('A', this.value); };
 $('aivisModelBCustom').oninput = function(){ aivisSetModel('B', this.value); };
 $('aivisName').oninput  = function(){ aivisNameSet(CFG.aivisModel,  this.value); refreshVvUI(); };
@@ -9338,7 +9493,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.35.0 Phase 2');
+  out.push('- バージョン: Duo Interpreter v1.35.2 Phase 2');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -9444,7 +9599,7 @@ function diagText(devices){
    ['翻訳スタイル', CFG.tone], ['VADしきい値', CFG.vad],
    ['表示', CFG.focus + (CFG.swap?' / 入替':'') + (CFG.flipTop?' / 反転':'')],
    ['画面取込オーバーレイ', overlaySession.opened
-      ? (overlaySession.state+' / '+(overlaySession.sourceInfo ? (overlaySession.sourceInfo.surface+' / '+(overlaySession.sourceInfo.audio?'映像＋音声':'映像のみ')+
+      ? (overlaySession.state+' / '+(overlaySession.sourceInfo ? (overlaySession.sourceInfo.surface+' / '+(overlaySession.sourceInfo.audio===true?'映像＋音声':(overlaySession.sourceInfo.audioTrack?'映像のみ（音声Trackあり・信号未検出）':'映像のみ'))+
           (overlaySession.sourceInfo.width&&overlaySession.sourceInfo.height?' / '+overlaySession.sourceInfo.width+'×'+overlaySession.sourceInfo.height:'')+
           (overlaySession.sourceInfo.frameRate?' / '+Math.round(overlaySession.sourceInfo.frameRate)+'fps':'')) : '共有元なし'))
       : '閉じています'],
