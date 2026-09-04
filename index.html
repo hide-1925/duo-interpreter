@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.35.2 Phase 2 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.35.3 Phase 2 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -378,8 +378,23 @@
   .pane.on{display:flex}
   .field{display:flex;flex-direction:column;gap:6px}
   .tts-section{margin-top:2.6em}
-  #ttsProviderHost{display:flex;flex-direction:column;gap:10px}
-  #ttsProviderHost>.field{gap:6px}
+  #ttsProviderHost{display:flex;flex-direction:column;gap:0}
+  #oaiOnly,#browserOnly{display:block}
+  /* v1.35.2のOpenAI TTSと同じ密度。小見出しの6px/-2pxだけで間隔を作り、
+     Flexのgapを重ねない。翻訳・STT・TTSのプロバイダ設定へ共通適用する。 */
+  .provider-stack{display:flex;flex-direction:column;gap:0}
+  .provider-stack .field,#ttsProviderHost>.field{gap:0}
+  .provider-stack .field>label:not(.switch),#ttsProviderHost>.field>label:not(.switch),
+  .provider-stack .tts-target-field>label,#ttsProviderHost .tts-target-field>label{
+    margin:6px 0 -2px;
+  }
+  .key-save{margin-top:-2px;line-height:1.35}
+  .field-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .field-head>label{font-size:11.5px;color:var(--dim);font-weight:800;letter-spacing:.05em}
+  .field-head>.btn{flex:0 0 auto;padding:6px 10px}
+  .tts-stream-field{display:flex;flex-direction:column;gap:3px}
+  .tts-stream-field.locked{opacity:.72}
+  .tts-stream-field small{line-height:1.4}
   .tts-target-field{display:flex;flex-direction:column;gap:6px}
   .tts-target-field>label{font-size:11.5px;color:var(--dim);font-weight:800;letter-spacing:.05em}
   .field > label{font-size:11.5px;color:var(--dim);font-weight:800;letter-spacing:.05em}
@@ -450,6 +465,7 @@
   .keyline>.btn{flex:0 0 auto}
   .keyrow{display:flex;gap:8px;align-items:center;margin-top:4px}
   .keyrow .btn{flex:0 0 auto}
+  .keyrow:has(>.keychk:only-child:empty){display:none}
   .row.wrap{flex-wrap:wrap}
   .switch{display:flex;align-items:center;gap:9px;font-size:13.5px;cursor:pointer}
   .switch input{width:17px;height:17px;accent-color:var(--a);flex:0 0 auto}
@@ -589,7 +605,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.35.2 Phase 2</span><span class="build-id">Build: 20260903-v1352-settings2.2</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.35.3 Phase 2</span><span class="build-id">Build: 20260904-v1353-settings2.4</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -599,7 +615,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.35.2 Phase 2</span><span class="build-id">Build: 20260903-v1352-settings2.2</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.35.3 Phase 2</span><span class="build-id">Build: 20260904-v1353-settings2.4</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -747,16 +763,17 @@
 <aside id="drawer">
   <header><h2>設定 / Settings</h2><a class="headlink" id="readmeLink" href="https://github.com/hide-1925/duo-interpreter#readme" target="_blank" rel="noopener noreferrer" title="使い方・設定の説明（GitHub）">📖 README</a><a class="headlink quiet" id="donateLink" href="https://note.com/hide_1925/n/n45b6a8cdf861" target="_blank" rel="noopener noreferrer" title="開発を応援する（note）">☕<span>Donate</span></a><button class="cbtn icon" id="closeDrawer">✕</button></header>
   <div class="tabs">
-    <button data-tab="p1" class="on">翻訳・API</button>
+    <button data-tab="p1" class="on">翻訳</button>
     <button data-tab="p2">音声</button>
     <button data-tab="p3">用語集</button>
     <button data-tab="p4">表示・記録</button>
   </div>
 
-  <!-- ===== タブ1: 翻訳・API ===== -->
+  <!-- ===== タブ1: 翻訳 ===== -->
   <div class="pane on" id="p1">
+    <div class="provider-stack">
     <div class="field">
-      <label>翻訳プロバイダ</label>
+      <label>AIプロバイダ</label>
       <select id="provider">
         <option value="free">🆓 無料モード（APIキー不要 / Google翻訳ウェブ版）</option>
         <option value="openai">OpenAI</option>
@@ -771,25 +788,6 @@
         <option value="custom">カスタム / ローカル（Ollama・LM Studio・vLLM）</option>
       </select>
       <small id="provNote"></small>
-    </div>
-
-    <div class="field" id="keyField">
-      <label>API Key</label>
-      <div class="keyline">
-        <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
-        <button class="btn ghost" id="chkTrans" title="実際に使う前に、このキーで通るかどうかを確かめます">🔍 確認</button>
-      </div>
-      <div class="keyrow">
-        <span class="keychk" id="chkTransMsg"></span>
-      </div>
-      <label class="switch"><input type="checkbox" id="remember" checked> このブラウザに保存する</label>
-    </div>
-
-    <div class="field" id="baseField" style="display:none">
-      <label>Base URL（OpenAI互換エンドポイント）</label>
-      <input type="text" id="baseUrl" placeholder="http://localhost:11434/v1">
-      <small>Ollama: http://localhost:11434/v1 ／ LM Studio: http://localhost:1234/v1<br>
-      ローカルは <code>OLLAMA_ORIGINS=*</code> 等でCORS許可が必要です。</small>
     </div>
 
     <div class="field">
@@ -808,6 +806,24 @@
       <input type="text" id="camModel" placeholder="gpt-4o-mini">
       <small>📷ボタンで使う、画像を読めるモデルです（例：gpt-4o-mini / gpt-5.6 など）。
       Gemini を選んでいる場合は上の翻訳モデルがそのまま使われます。</small>
+    </div>
+
+    <div class="field" id="keyField">
+      <label>APIキー</label>
+      <div class="keyline">
+        <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off">
+        <button class="btn ghost" id="chkTrans" title="実際に使う前に、このキーで通るかどうかを確かめます">🔍 確認</button>
+      </div>
+      <div class="keyrow"><span class="keychk" id="chkTransMsg"></span></div>
+      <label class="switch key-save"><input type="checkbox" id="rememberTrans" checked> このブラウザに保存する</label>
+    </div>
+
+    <div class="field" id="baseField" style="display:none">
+      <label>Base URL（OpenAI互換エンドポイント）</label>
+      <input type="text" id="baseUrl" placeholder="http://localhost:11434/v1">
+      <small>Ollama: http://localhost:11434/v1 ／ LM Studio: http://localhost:1234/v1<br>
+      ローカルは <code>OLLAMA_ORIGINS=*</code> 等でCORS許可が必要です。</small>
+    </div>
     </div>
 
     <div class="field">
@@ -836,6 +852,7 @@
   <div class="pane" id="p2">
     <div class="field">
       <label>音声認識（STT）</label>
+      <div class="provider-stack">
       <div class="sublabel">サービス</div>
       <select id="sttProvider">
         <option value="webspeech">🆓 ブラウザ内蔵 Web Speech API（無料・低遅延 / Chrome・Edge）</option>
@@ -846,19 +863,21 @@
         <option value="gemini">Google Gemini（音声理解）</option>
       </select>
       <div class="sublabel" id="sttModelLabel">モデル</div>
-      <div class="row" style="margin-top:4px">
+      <div class="row">
         <select id="sttModel" style="flex:1"></select>
         <button class="btn ghost" id="fetchSttModels" title="このアカウントで使える音声認識モデル一覧を取得">🔄 更新</button>
       </div>
       <input type="text" id="sttModelCustom" placeholder="モデル名を直接入力" style="display:none">
       <small id="sttModelNote"></small>
       <div class="field" id="sttKeyField">
-        <label>APIキー（音声認識用・翻訳と別プロバイダの場合）</label>
+        <label>APIキー（翻訳と別プロバイダの場合）</label>
         <div class="keyline">
           <input type="password" id="sttKey" placeholder="空欄なら翻訳プロバイダのキーを使用" autocomplete="off">
           <button class="btn ghost" id="chkStt" title="実際に使う前に、このキーで通るかどうかを確かめます">🔍 確認</button>
         </div>
         <div class="keyrow"><span class="keychk" id="chkSttMsg"></span></div>
+        <label class="switch key-save"><input type="checkbox" id="rememberStt" checked> このブラウザに保存する</label>
+      </div>
       </div>
       <label class="switch"><input type="checkbox" id="sttPunct"> 句読点を自動補完する</label>
       <small>API型STTには、内容を変えず自然な句読点を付けるよう指示します。ブラウザ内蔵STTは単語時刻を返さないため、誤挿入を避けて文末の「。／？／.／?」だけを補完します。</small>
@@ -880,7 +899,7 @@
         ・訳文の音声は自動で読み上げられます（TTS設定は使いません）<br>
         ・翻訳プロバイダの設定（モデル・用語集・背景）は<b>使われません</b><br>
         ・料金は音声1分あたり $0.034 程度（従量課金）<br>
-        ・OpenAI の APIキーが必要です（⚙→翻訳・API で OpenAI を選び、キーを入力）
+        ・OpenAI の APIキーが必要です（⚙→翻訳 で OpenAI を選び、キーを入力）
       </div>
       <div class="field" id="rtDirField" style="display:none">
         <label>訳す方向</label>
@@ -958,6 +977,7 @@
         読み上げ方式・読み上げ対象・原文読み上げ・声・外部TTSの出力先設定は、このモードでは適用されません。
       </div>
       <div id="ttsSettings">
+      <div class="provider-stack">
       <div class="sublabel">サービス</div>
       <select id="ttsMode">
         <option value="off">なし</option>
@@ -970,6 +990,7 @@
         <option value="localvv">🖥 ローカルエンジン（AivisSpeech / VOICEVOX・日本語のみ）</option>
       </select>
       <div id="ttsProviderHost"></div>
+      </div>
       <div class="tts-target-field" id="ttsWhoField">
         <label>読上げ対象</label>
         <select id="ttsWho">
@@ -977,6 +998,13 @@
           <option value="B2A">相手(B)の発言だけ読み上げる（推奨）</option>
           <option value="A2B">自分(A)の発言だけ読み上げる</option>
         </select>
+      </div>
+      <div id="ttsRememberField" style="display:none">
+        <label class="switch key-save"><input type="checkbox" id="rememberTts" checked> このブラウザに保存する</label>
+      </div>
+      <div class="tts-stream-field" id="ttsStreamField">
+        <label class="switch"><input type="checkbox" id="ttsStream"> ストリーミング再生</label>
+        <small id="ttsStreamStatus"></small>
       </div>
       <!-- 声とモデルの指定は OpenAI 音声だけが使う。他のエンジンでは一切参照しないので、
            選んでいないときは丸ごと隠す（設定に見えて効かない項目を残さない）。 -->
@@ -986,8 +1014,9 @@
         <input type="text" id="ttsModelCustom" placeholder="モデル名を直接入力" style="display:none">
         <div class="sublabel">APIキー</div>
         <div class="keyline">
-          <input type="password" id="oaiTtsKey" placeholder="OpenAI APIキー（翻訳設定と共通）" autocomplete="off">
+          <input type="password" id="oaiTtsKey" placeholder="OpenAI APIキー（空欄なら翻訳欄のキーを使用）" autocomplete="off">
         </div>
+        <div class="tts-remember-anchor"></div>
         <div class="tts-target-anchor"></div>
         <div class="row" id="oaiVoices">
           <label class="seatpick seatA"><span>自分(A)の発言</span>
@@ -995,6 +1024,7 @@
           <label class="seatpick seatB"><span>相手(B)の発言</span>
           <select id="voiceB"><option value="ash">ash</option><option value="onyx">onyx</option><option value="fable">fable</option><option value="alloy">alloy</option><option value="nova">nova</option><option value="shimmer">shimmer</option><option value="sage">sage</option><option value="coral">coral</option><option value="echo">echo</option><option value="ballad">ballad</option><option value="verse">verse</option><option value="marin">marin</option><option value="cedar">cedar</option></select></label>
         </div>
+        <div class="tts-stream-anchor"></div>
         <details class="adv" id="oaiAdv">
           <summary>OpenAI 話し方の調整</summary>
           <div class="tunerow"><span>話速</span><select id="oaiRate"><option value="-2">かなり遅い（0.75倍）</option><option value="-1">遅い（0.88倍）</option><option value="0">標準（1.00倍）</option><option value="1">速い（1.15倍）</option><option value="2">かなり速い（1.35倍）</option><option value="3">高速（1.50倍）</option><option value="4">最高速（1.80倍）</option></select></div>
@@ -1003,13 +1033,13 @@
           <div class="tunerow"><span>緩急</span><select id="oaiDynamics"><option value="-2">一定</option><option value="-1">控えめ</option><option value="0">標準</option><option value="1">動的</option><option value="2">非常に動的</option></select></div>
           <div class="tunerow"><span>文中の間</span><select id="oaiPause"><option value="-2">かなり短い</option><option value="-1">短い</option><option value="0">標準</option><option value="1">長い</option><option value="2">非常に長い</option></select></div>
           <div class="tunerow"><span>音量</span><select id="oaiVolume"><option value="-2">かなり小さい</option><option value="-1">小さい</option><option value="0">標準</option><option value="1">大きい</option><option value="2">かなり大きい</option></select></div>
-          <label class="switch"><input type="checkbox" id="oaiStream" checked> <span id="oaiStreamLabel">PCMストリーミング再生（低遅延）</span></label>
           <textarea id="oaiStyle" maxlength="500" placeholder="追加の話し方（任意）&#10;例：落ち着いた専門家として、簡潔かつ自信を持って話す。"></textarea>
           <small id="oaiStyleNote" data-fold="off"><code>gpt-4o-mini-tts</code>では、話速をAPIの数値<code>speed</code>、音量をWeb Audioで反映し、感情・抑揚・緩急・間は発話ごとの強い指示文で反映します。旧<code>tts-1</code>系では話し方指示は適用されません。</small>
         </details>
       </div>
       <div id="browserOnly" style="display:none">
         <div class="tts-target-anchor"></div>
+        <div class="tts-stream-anchor"></div>
         <details class="adv" id="browserAdv">
           <summary>ブラウザ内蔵音声 話し方の調整</summary>
           <div class="tunerow"><span>話速</span><select id="browserRate"><option value="-2">かなり遅い（0.75倍）</option><option value="-1">遅い（0.88倍）</option><option value="0">標準（1.00倍）</option><option value="1">速い（1.15倍）</option><option value="2">かなり速い（1.30倍）</option><option value="3">高速（1.40倍）</option><option value="4">最高速（1.50倍）</option></select></div>
@@ -1048,7 +1078,10 @@
     </div>
 
     <div class="field" id="outField">
-      <label>読み上げの出力先デバイス</label>
+      <div class="field-head">
+        <label>読み上げの出力先デバイス</label>
+        <button class="btn ghost" id="outRefresh" title="出力デバイスの一覧を取り直す">🔄 更新</button>
+      </div>
       <div class="row">
         <span style="font-size:11.5px;color:var(--dim);width:104px;flex:0 0 auto">自分向け<br><small>B→A</small></span>
         <select id="outDevLocal" style="flex:1"></select>
@@ -1059,14 +1092,10 @@
         <select id="outDevRemote" style="flex:1"></select>
         <button class="btn ghost" id="outChooseRemote" title="ブラウザの出力先選択を開く">選択</button>
       </div>
-      <div class="row" style="margin-top:4px;justify-content:flex-end">
-        <button class="btn ghost" id="outRefresh" title="出力デバイスの一覧を取り直す">🔄 更新</button>
-      </div>
       <small id="outNote"></small>
     </div>
 
     <div class="field" id="elField" style="display:none">
-      <label>🗣 ElevenLabs</label>
       <div class="sublabel">モデル</div>
       <select id="elModel">
         <option value="eleven_flash_v2_5">Flash v2.5（最速・32言語・おすすめ）</option>
@@ -1080,6 +1109,7 @@
         <button class="btn ghost" id="chkEl" title="キーと Voices（read）権限を確かめます">🔍 確認</button>
       </div>
       <div class="keyrow"><span class="keychk" id="chkElMsg"></span></div>
+      <div class="tts-remember-anchor"></div>
       <div class="tts-target-anchor"></div>
       <div class="row">
         <label class="seatpick seatA main"><span>自分(A)の発言</span>
@@ -1091,6 +1121,7 @@
         <button class="btn ghost" id="elFetch" title="アカウントの声一覧を取得" style="align-self:flex-end">🔄 声を取得</button>
         <button class="btn ghost" id="elTest" title="選択中の声と Text to Speech 権限を、短い読み上げで確認（数文字分のクレジットを使用）" style="align-self:flex-end">🔊 TTSテスト</button>
       </div>
+      <div class="tts-stream-anchor"></div>
       <details class="adv" id="elAdv">
         <summary>ElevenLabs 話し方の調整</summary>
         <div class="compact-tuning">
@@ -1121,13 +1152,13 @@
     </div>
 
     <div class="field" id="xaiField" style="display:none">
-      <label>xAI Grok Voice</label>
       <div class="sublabel">APIキー</div>
       <div class="keyline">
         <input type="password" id="xaiTtsKey" placeholder="xAI APIキー（翻訳で入力済みなら共通）" autocomplete="off">
         <button class="btn ghost" id="chkXaiTts" title="キーが有効かどうかを確かめます">🔍 確認</button>
       </div>
       <div class="keyrow"><span class="keychk" id="chkXaiTtsMsg"></span></div>
+      <div class="tts-remember-anchor"></div>
       <div class="tts-target-anchor"></div>
       <div class="row">
         <label class="seatpick seatA main"><span>自分(A)の発言</span>
@@ -1135,6 +1166,7 @@
         <label class="seatpick seatB"><span>相手(B)の発言</span>
         <select id="xaiVoiceB"></select></label>
       </div>
+      <div class="tts-stream-anchor"></div>
       <details class="adv" id="xaiAdv">
         <summary>xAI 話し方の調整</summary>
         <div class="tunerow"><span>話速</span><select id="xaiRate"><option value="-2">かなり遅い（0.75倍）</option><option value="-1">遅い（0.88倍）</option><option value="0">標準（1.00倍）</option><option value="1">速い（1.15倍）</option><option value="2">かなり速い（1.30倍）</option><option value="3">高速（1.40倍）</option><option value="4">最高速（1.50倍）</option></select></div>
@@ -1153,9 +1185,9 @@
     </div>
 
     <div class="field" id="aivisField" style="display:none">
-      <label>🎙 Aivis Cloud API</label>
       <div class="sublabel">APIキー</div>
       <input type="password" id="aivisKey" placeholder="Aivis Cloud API キー" autocomplete="off">
+      <div class="tts-remember-anchor"></div>
       <div class="tts-target-anchor"></div>
       <div class="sublabel">キャラ（モデル）</div>
       <div class="row aivis-character-grid">
@@ -1179,6 +1211,7 @@
         </div></label>
       </div>
       <button class="btn ghost" id="aivisShowAll" type="button">その他のキャラを表示</button>
+      <div class="tts-stream-anchor"></div>
       <small id="uuidHelp">よく使うキャラは名前で選べます。「↗」でそのモデルの AivisHub ページを開けます。<br>
       「<b>その他のキャラを表示</b>」を押すと、同じプルダウンへ「にせ」以降の候補を追加します。
       一覧に無いモデル（自分で作ったモデルを含む）は「<b>── その他（モデル UUID を貼り付け）──</b>」を選ぶと入力欄が出ます。
@@ -1215,7 +1248,6 @@
           <span class="keychk" id="aivisAdvMsg"></span>
         </div>
       </details>
-      <label class="switch"><input type="checkbox" id="aivisStream"> ストリーミング再生（生成を待たずに鳴らし始める）</label>
       <div class="keyrow">
         <button class="btn ghost" id="chkAivis" title="いまの設定で短い音声を1回生成して、そのまま鳴らします">🔍 確認して試聴</button>
         <span class="keychk" id="chkAivisMsg"></span>
@@ -1247,7 +1279,6 @@
     </div>
 
     <div class="field" id="lvvField" style="display:none">
-      <label>🖥 ローカルの音声合成エンジン</label>
       <div class="sublabel">接続先</div>
       <div class="keyline">
         <input type="text" id="lvvBase" placeholder="http://127.0.0.1:10101" autocomplete="off">
@@ -1262,6 +1293,7 @@
         <select id="lvvSpeakerB"></select></label>
         <button class="btn ghost" id="lvvFetch" title="エンジンから話者一覧を取得" style="align-self:flex-end">🔄 話者取得</button>
       </div>
+      <div class="tts-stream-anchor"></div>
       <small>PCで動かしている <a href="https://aivis-project.com/" target="_blank" rel="noopener noreferrer">AivisSpeech</a>（既定 <code>http://127.0.0.1:10101</code>）や
       <a href="https://voicevox.hiroshiba.jp/" target="_blank" rel="noopener noreferrer">VOICEVOX</a>（既定 <code>http://127.0.0.1:50021</code>）に接続します。API互換なのでどちらでも動きます。無料・回数制限なしです。<br>
       <b>エンジンは CORS を許可して起動してください。</b>（例：<code>run.exe --cors_policy_mode all</code>）<br>
@@ -1270,13 +1302,13 @@
     </div>
 
     <div class="field" id="vvField" style="display:none">
-      <label>🫛 VOICEVOX WEB版 API（お遊び機能）</label>
       <div class="sublabel">APIキー</div>
       <div class="keyline">
         <input type="password" id="vvKey" placeholder="WEB版VOICEVOX APIキー" autocomplete="off">
         <button class="btn ghost" id="chkVv" title="キーの有効性とポイント残量を確かめます">🔍 確認</button>
       </div>
       <div class="keyrow"><span class="keychk" id="chkVvMsg"></span></div>
+      <div class="tts-remember-anchor"></div>
       <div class="tts-target-anchor"></div>
       <div class="row">
         <label class="seatpick seatA"><span>自分(A)の発言</span>
@@ -1285,6 +1317,7 @@
         <select id="vvSpeaker"></select></label>
         <button class="btn ghost" id="vvSpeakerFetch" title="TTS Questから現在のキャラ・スタイル一覧を取得" style="align-self:flex-end">🔄 一覧更新</button>
       </div>
+      <div class="tts-stream-anchor"></div>
       <details class="adv" id="vvAdv">
         <summary>話し方の調整</summary>
         <label class="sl"><span>話速</span>
@@ -1412,7 +1445,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260903-v1352-settings2.2';
+var APP_BUILD = '20260904-v1353-settings2.4';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -1558,6 +1591,32 @@ function realtimeDirectionLabel(v){
 var CFG = {};
 var KEYS = {};   // provider -> apikey
 
+/* APIキーの保存可否を翻訳・STT・TTSで分離する。実行中の値はKEYSへ残し、
+   チェックを外した区分だけをブラウザ保存から削除する。 */
+var KEY_SCOPES = {
+  trans:{flag:'rememberTrans', store:'di.keys.trans'},
+  stt:{flag:'rememberStt', store:'di.keys.stt'},
+  tts:{flag:'rememberTts', store:'di.keys.tts'}
+};
+function apiKeyScope(k){
+  if (/^stt:/.test(k)) return 'stt';
+  if (/^tts:/.test(k) || k === 'aivis' || k === 'voicevox' || k === 'eleven') return 'tts';
+  return 'trans';
+}
+function readKeyMap(storageKey){
+  try { return JSON.parse(store.get(storageKey,'{}')) || {}; } catch(e){ return {}; }
+}
+function keyMapFor(scope){
+  var out={};
+  Object.keys(KEYS).forEach(function(k){ if(apiKeyScope(k)===scope && KEYS[k]) out[k]=KEYS[k]; });
+  return out;
+}
+function mergeKeyMap(dst,src,scope){
+  Object.keys(src||{}).forEach(function(k){
+    if(apiKeyScope(k)===scope && !dst[k]) dst[k]=src[k];
+  });
+}
+
 function loadCfg(){
   CFG = {
     provider:  pref('di.prov','provider','free'),
@@ -1688,7 +1747,9 @@ function loadCfg(){
     micDevLbl: store.get('di.indevl.mic',''),
     vbDev:     store.get('di.indev.vb',''),
     vbDevLbl:  store.get('di.indevl.vb',''),
-    remember:  store.get('di.remember','1') === '1',
+    rememberTrans:store.get('di.remember.trans',store.get('di.remember','1')) === '1',
+    rememberStt:  store.get('di.remember.stt',store.get('di.remember','1')) === '1',
+    rememberTts:  store.get('di.remember.tts',store.get('di.remember','1')) === '1',
     glossary:  []
   };
   // 用語集
@@ -1697,9 +1758,18 @@ function loadCfg(){
   else if (EMBED.glossary) CFG.glossary = EMBED.glossary.slice();
   if (!CFG.glossary.length) CFG.glossary = [];
 
-  // APIキー
-  try { KEYS = JSON.parse(store.get('di.keys','{}')) || {}; } catch(e){ KEYS = {}; }
+  // APIキー。旧di.keysは初回だけ3区分へ安全に移行する。
+  var legacyRaw=store.get('di.keys',null), legacy=legacyRaw===null?{}:readKeyMap('di.keys');
+  KEYS={};
+  Object.keys(KEY_SCOPES).forEach(function(scope){
+    var spec=KEY_SCOPES[scope];
+    if(CFG[spec.flag]){
+      var scopedRaw=store.get(spec.store,null);
+      mergeKeyMap(KEYS,scopedRaw===null?legacy:readKeyMap(spec.store),scope);
+    }else store.del(spec.store);
+  });
   if (EMBED.keys) for (var k in EMBED.keys) if (!KEYS[k]) KEYS[k] = EMBED.keys[k];
+  if(legacyRaw!==null){ saveKeys(); store.del('di.keys'); store.del('di.remember'); }
   if (!CFG.model)    CFG.model    = defaultModel(CFG.provider);
   if (!CFG.sttModel) CFG.sttModel = defaultSttModel(CFG.sttProvider);
   if (!CFG.ttsModel) CFG.ttsModel = TTS_MODELS[0].id;
@@ -1707,7 +1777,19 @@ function loadCfg(){
 function firstId(list){ var a = normList(list); return a.length ? a[0].id : ''; }
 function defaultModel(p){ var P = PROVIDERS[p]; return P ? firstId(P.models) : ''; }
 function defaultSttModel(p){ return firstId(STT_MODELS[p]); }
-function saveKeys(){ if (CFG.remember) store.set('di.keys', JSON.stringify(KEYS)); }
+function saveKeys(){
+  Object.keys(KEY_SCOPES).forEach(function(scope){
+    var spec=KEY_SCOPES[scope];
+    if(CFG[spec.flag]) store.set(spec.store,JSON.stringify(keyMapFor(scope)));
+  });
+}
+function setKeyRemember(scope,on){
+  var spec=KEY_SCOPES[scope]; if(!spec)return;
+  CFG[spec.flag]=!!on;
+  store.set('di.remember.'+scope,on?'1':'0');
+  if(on) store.set(spec.store,JSON.stringify(keyMapFor(scope)));
+  else store.del(spec.store);
+}
 function saveGloss(){ store.set('di.gloss', JSON.stringify(CFG.glossary)); }
 
 /* ---------------- 状態 ---------------- */
@@ -1873,7 +1955,7 @@ function camProvider(){
 function camOpen(){
   if (!camSupported()){ toast('このブラウザはカメラに対応していません'); return; }
   if (!camProvider()){
-    toast('カメラ翻訳には画像を読めるAIが必要です。<br>⚙→翻訳・API で <b>OpenAI</b> や <b>Gemini</b> を選び、APIキーを設定してください。');
+    toast('カメラ翻訳には画像を読めるAIが必要です。<br>⚙→翻訳 で <b>OpenAI</b> や <b>Gemini</b> を選び、APIキーを設定してください。');
     return;
   }
   $('cam').classList.add('on');
@@ -2701,6 +2783,7 @@ function onFeedScroll(srcId, dstId){
 function keyOf(prov){ return (KEYS[prov]||'').trim(); }
 function transKey(){ return keyOf(CFG.provider); }
 function sttKey(){ return (KEYS['stt:'+CFG.sttProvider]||'').trim() || keyOf(CFG.sttProvider) || transKey(); }
+function openaiTtsKey(){ return (KEYS['tts:openai'] || KEYS['openai'] || '').trim(); }
 
 /* ---------------- 翻訳 ---------------- */
 function glossaryPrompt(){
@@ -2752,7 +2835,7 @@ function translate(e){
     var m = String(err.message||err);
     dlog('translate','FAIL',{ prov:CFG.provider, model:CFG.model, from:from, to:to, ms:Date.now()-t0, err:m.slice(0,200) });
     if (/model/i.test(m) && /(not found|does not exist|must provide|invalid)/i.test(m))
-      toast('モデル名が正しくない可能性があります。⚙→翻訳・API のモデル欄にある「🔄 更新」を押して選び直してください。<br><small>' + m.slice(0,140) + '</small>');
+      toast('モデル名が正しくない可能性があります。⚙→翻訳 のモデル欄にある「🔄 更新」を押して選び直してください。<br><small>' + m.slice(0,140) + '</small>');
     else toast('翻訳失敗: ' + m);
   });
 }
@@ -4045,7 +4128,7 @@ function oaiLogRequest(body, plan, text, seat, stream){
 function oaiIsWindows(){ return /Windows/i.test(String(navigator.userAgent||'')); }
 function oaiPcmStreamAllowed(){ return !oaiIsWindows() || !!window.AudioWorkletNode; }
 function apiSpeak(text, lang, seat, prosody){
-  var key=keyOf('openai');
+  var key=openaiTtsKey();
   if (!key){ toast('OpenAI音声にはOpenAIのAPIキーが必要です'); return; }
   seat=seat||'A';
   var plan=oaiBuildPlan(lang,prosody);
@@ -4065,7 +4148,7 @@ function apiSpeak(text, lang, seat, prosody){
   return apiSpeakBlob(text,lang,seat,prosody,plan,key);
 }
 function apiSpeakBlob(text, lang, seat, prosody, plan, key){
-  plan=plan||oaiBuildPlan(lang,prosody); key=key||keyOf('openai');
+  plan=plan||oaiBuildPlan(lang,prosody); key=key||openaiTtsKey();
   var t0=Date.now(), finish=ttsGuard(text,Math.min(90000,8000+text.length*150),seat);
   var body=oaiSpeechBody(text,seat,'wav',plan);
   oaiLogRequest(body,plan,text,seat,false);
@@ -6767,7 +6850,7 @@ function ttsPlanRows(){
 }
 /* 選んだエンジンを実際に鳴らせる状態かどうか。足りない設定を文章で返す */
 function ttsSetupMissing(){
-  if (CFG.ttsMode === 'openai' && !keyOf('openai')) return 'OpenAIのAPIキーが未設定です。';
+  if (CFG.ttsMode === 'openai' && !openaiTtsKey()) return 'OpenAIのAPIキーが未設定です。';
   if (CFG.ttsMode === 'voicevox' && !vvKey())  return 'VOICEVOXのAPIキーが未設定です。';
   if (CFG.ttsMode === 'aivis'){
     if (!aivisKey())                    return 'Aivis Cloud API のキーが未設定です。';
@@ -6880,21 +6963,60 @@ function ttsSeatVoices(){
   };
   return f('A') + ' / ' + f('B');
 }
+function ttsStreamCapability(mode){
+  if(mode==='openai'){
+    var ok=!!window.ReadableStream&&oaiPcmStreamAllowed();
+    return ok
+      ? {kind:'select',checked:!!CFG.oaiStream,text:'ON／OFFを選択できます（PCM低遅延再生）。'}
+      : {kind:'off',checked:false,text:'常時OFF（この環境はPCM連続再生に対応していません）。'};
+  }
+  if(mode==='aivis'){
+    return window.ReadableStream
+      ? {kind:'select',checked:!!CFG.aivisStream,text:'ON／OFFを選択できます（混雑時は一括再生へ自動切替）。'}
+      : {kind:'off',checked:false,text:'常時OFF（この環境はストリーム受信に対応していません）。'};
+  }
+  if(mode==='browser') return {kind:'on',checked:true,text:'常時ON（ブラウザが音声を逐次再生します）。'};
+  if(mode==='voicevox') return {kind:'on',checked:true,text:'常時ON（配信音声を順次読み込みながら再生します）。'};
+  if(mode==='eleven') return {kind:'off',checked:false,text:'常時OFF（現在の実装は音声を一括生成してから再生します）。'};
+  if(mode==='xai') return {kind:'off',checked:false,text:'常時OFF（現在の実装は音声を一括生成してから再生します）。'};
+  if(mode==='localvv') return {kind:'off',checked:false,text:'常時OFF（現在の実装は音声を一括生成してから再生します）。'};
+  return {kind:'off',checked:false,text:'常時OFF（読み上げなし）。'};
+}
+function refreshTtsStreamUI(){
+  var field=$('ttsStreamField'), box=$('ttsStream'), status=$('ttsStreamStatus');
+  if(!field||!box||!status)return;
+  var cap=ttsStreamCapability(CFG.ttsMode);
+  box.checked=!!cap.checked;
+  box.disabled=cap.kind!=='select';
+  field.classList.toggle('locked',cap.kind!=='select');
+  status.textContent=cap.text;
+}
 /* TTSサービスを切り替えても主要項目の順番を変えない。
-   各サービス固有パネルを同じホストへ置き、読上げ対象だけをAPIキーと声の間へ移す。 */
+   各サービス固有パネルを同じホストへ置き、共通項目を所定のアンカーへ移す。 */
 function placeTtsProviderUI(){
-  var host=$('ttsProviderHost'), who=$('ttsWhoField');
-  if(!host||!who)return;
+  var host=$('ttsProviderHost'), who=$('ttsWhoField'), remember=$('ttsRememberField'), stream=$('ttsStreamField');
+  if(!host||!who||!remember||!stream)return;
   var ids=['oaiOnly','browserOnly','elField','xaiField','aivisField','lvvField','vvField'];
   ids.forEach(function(id){var el=$(id);if(el&&el.parentNode!==host)host.appendChild(el);});
+  [who,remember,stream].forEach(function(el){if(el.parentNode!==host)host.appendChild(el);});
   var map={openai:'oaiOnly',browser:'browserOnly',eleven:'elField',xai:'xaiField',aivis:'aivisField',localvv:'lvvField',voicevox:'vvField'};
   var active=$(map[CFG.ttsMode]||'');
   who.style.display=(!active||CFG.ttsMode==='off')?'none':'';
+  remember.style.display='none';
   if(active){
     host.appendChild(active); /* 非表示パネルの位置に関係なく、表示中パネルは常に同じ場所 */
     var anchor=active.querySelector('.tts-target-anchor');
     if(anchor)anchor.parentNode.insertBefore(who,anchor.nextSibling);
-  }else if(who.parentNode!==host){host.appendChild(who);}
+    var rememberAnchor=active.querySelector('.tts-remember-anchor');
+    if(rememberAnchor){
+      remember.style.display='';
+      rememberAnchor.parentNode.insertBefore(remember,rememberAnchor.nextSibling);
+    }
+    var streamAnchor=active.querySelector('.tts-stream-anchor');
+    if(streamAnchor)streamAnchor.parentNode.insertBefore(stream,streamAnchor.nextSibling);
+    else host.appendChild(stream);
+  }else host.appendChild(stream);
+  refreshTtsStreamUI();
 }
 function refreshVvUI(){
   var isRT = (CFG.sttProvider === 'realtime');
@@ -6909,7 +7031,6 @@ function refreshVvUI(){
     aivisSyncModel('A'); aivisSyncModel('B');
     if(aivisAllShown)aivisSyncModel('A'); /* Bだけ追加キャラでもA側へ完全一覧を反映 */
     aivisAdvSync();
-    var asx = $('aivisStream'); if (asx) asx.checked = !!CFG.aivisStream;
     [['aivisStyle', CFG.aivisStyle], ['aivisStyleB', CFG.aivisStyleB]].forEach(function(pair){
       var sl = $(pair[0]); if (!sl || sl.options.length) return;   /* 取得前でも選択済みの値は残す */
       var z = document.createElement('option'); z.value = ''; z.textContent = '既定（ノーマル）';
@@ -6928,16 +7049,10 @@ function refreshVvUI(){
   var oo = $('oaiOnly');
   if (oo) oo.style.display = (!isRT && CFG.ttsMode === 'openai') ? '' : 'none';
   if (oo){
-    var ok=$('oaiTtsKey'); if(ok&&ok!==document.activeElement) ok.value=KEYS['openai']||'';
+    var ok=$('oaiTtsKey'); if(ok&&ok!==document.activeElement) ok.value=KEYS['tts:openai']||'';
     var instructable=oaiInstructionsSupported(CFG.ttsModel), ids=['oaiEmotion','oaiIntonation','oaiDynamics','oaiPause','oaiStyle'];
     ids.forEach(function(id){ var el=$(id); if(el) el.disabled=!instructable; });
     var orate=$('oaiRate'); if(orate) orate.disabled=false; /* speedは旧tts-1系でもAPI対応 */
-    var pcmAllowed=oaiPcmStreamAllowed(), os=$('oaiStream');
-    if(os){ os.checked=!!CFG.oaiStream&&pcmAllowed; os.disabled=!pcmAllowed; }
-    var osl=$('oaiStreamLabel');
-    if(osl) osl.textContent=pcmAllowed
-      ? (oaiIsWindows()?'PCMストリーミング再生（AudioWorklet連続再生）':'PCMストリーミング再生（低遅延）')
-      : 'PCMストリーミング停止中（AudioWorklet非対応・WAV再生）';
     var on=$('oaiStyleNote');
     if(on) on.innerHTML=instructable
       ? '<code>gpt-4o-mini-tts</code>へ、話速はAPIの数値<code>speed</code>、音量はWeb Audioで反映し、感情・抑揚・緩急・間は段階別の強い指示文として送ります。'
@@ -7020,6 +7135,7 @@ function refreshVvUI(){
   if (!f){ applySeatCols(); return; }
   f.style.display = (!isRT && CFG.ttsMode === 'voicevox') ? '' : 'none';
   var k = $('vvKey'); if (k && k !== document.activeElement) k.value = KEYS['voicevox'] || '';
+  refreshTtsStreamUI();
   var sel = $('vvSpeaker'), selA = $('vvSpeakerA');
   if (sel && !sel.options.length) vvFillSpeakerSelect(sel,CFG.vvSpeaker||'3');
   if (selA && !selA.options.length) vvFillSpeakerSelect(selA,CFG.vvSpeakerA||'2');
@@ -8017,7 +8133,7 @@ function getDisplayAudioForStt(){
 function startAll(){
   if (CFG.srcA==='off' && CFG.srcB==='off'){ toast('音声入力元がどちらも「使わない」になっています'); return; }
   var p = PROVIDERS[CFG.provider];
-  if (p.key && !transKey()){ toast('APIキーを設定してください（⚙ → 翻訳・API）'); openDrawer(true); return; }
+  if (p.key && !transKey()){ toast('APIキーを設定してください（⚙ → 翻訳）'); openDrawer(true); return; }
   if (p.baseEditable && !CFG.baseUrl){ toast('Base URL を入力してください'); openDrawer(true); return; }
 
   sessionGen++;
@@ -8036,7 +8152,7 @@ function startAll(){
   // ---- リアルタイム同時通訳モード（gpt-realtime-translate）----
   if (CFG.sttProvider === 'realtime'){
     if (!(keyOf('openai') || transKey())){
-      toast('リアルタイムモードには OpenAI の APIキーが必要です（⚙→翻訳・API）');
+      toast('リアルタイムモードには OpenAI の APIキーが必要です（⚙→翻訳）');
       stopAll(); openDrawer(true); return;
     }
     jobs.push(
@@ -8365,7 +8481,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.35.2 Phase 2</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.35.3 Phase 2</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -8749,7 +8865,6 @@ function applyCfg(){
   $('oaiPause').value = String(CFG.oaiPause);
   $('oaiVolume').value = String(CFG.oaiVolume);
   $('oaiStyle').value = CFG.oaiStyle || '';
-  $('oaiStream').checked = !!CFG.oaiStream;
   $('browserRate').value = String(CFG.browserRate);
   $('browserPitch').value = String(CFG.browserPitch);
   $('browserVolume').value = String(CFG.browserVolume);
@@ -8782,7 +8897,9 @@ function applyCfg(){
   $('ttsSrc').checked = CFG.ttsSrc;
   $('ttsPad').value = String(CFG.ttsPad);
   $('ttsStale').value = String(CFG.ttsStale);
-  $('remember').checked = CFG.remember;
+  $('rememberTrans').checked = CFG.rememberTrans;
+  $('rememberStt').checked = CFG.rememberStt;
+  $('rememberTts').checked = CFG.rememberTts;
   $('nameA').value = CFG.nameA;
   $('nameB').value = CFG.nameB;
   document.documentElement.style.setProperty('--fs', CFG.fsize+'px');
@@ -9126,10 +9243,9 @@ $('sttProvider').onchange = function(){
   autoFetchSttModels();
   if (S.running){ stopAll(); setTimeout(startAll, 400); }
 };
-$('remember').onchange = function(){
-  CFG.remember = this.checked; store.set('di.remember', this.checked?'1':'0');
-  if (this.checked) saveKeys(); else store.del('di.keys');
-};
+$('rememberTrans').onchange = function(){ setKeyRemember('trans',this.checked); };
+$('rememberStt').onchange   = function(){ setKeyRemember('stt',this.checked); };
+$('rememberTts').onchange   = function(){ setKeyRemember('tts',this.checked); };
 
 function simple(id, key, prop, isCheck){
   $(id).onchange = function(){
@@ -9198,7 +9314,7 @@ simple('ttsWho','di.ttsw','ttsWho');
 simple('rtDirection','di.rtdirection','rtDirection');
 simple('voiceA','di.va','voiceA');
 simple('voiceB','di.vb','voiceB');
-$('oaiTtsKey').oninput=function(){KEYS['openai']=this.value.trim();saveKeys();openaiTtsWarned=false;refreshVvUI();};
+$('oaiTtsKey').oninput=function(){KEYS['tts:openai']=this.value.trim();saveKeys();openaiTtsWarned=false;refreshVvUI();};
 simple('oaiRate','di.oairt','oaiRate');
 simple('oaiEmotion','di.oaiem','oaiEmotion');
 simple('oaiIntonation','di.oaiin','oaiIntonation');
@@ -9206,7 +9322,6 @@ simple('oaiDynamics','di.oaidy','oaiDynamics');
 simple('oaiPause','di.oaipa','oaiPause');
 simple('oaiVolume','di.oaivo','oaiVolume');
 simple('oaiStyle','di.oaistyle','oaiStyle');
-simple('oaiStream','di.oaistream','oaiStream',true);
 simple('browserRate','di.brrt','browserRate');
 simple('browserPitch','di.brpt','browserPitch');
 simple('browserVolume','di.brvo','browserVolume');
@@ -9324,7 +9439,14 @@ $('aivisStyleB').onchange = function(){
   CFG.aivisStyleB = this.value; store.set('di.aista', CFG.aivisStyleB);
   aivisSyncSpeaker(this); refreshVvUI();
 };
-simple('aivisStream','di.aistr','aivisStream',true);
+$('ttsStream').onchange=function(){
+  if(CFG.ttsMode==='openai'){
+    CFG.oaiStream=this.checked; store.set('di.oaistream',this.checked?'1':'0');
+  }else if(CFG.ttsMode==='aivis'){
+    CFG.aivisStream=this.checked; store.set('di.aistr',this.checked?'1':'0');
+  }
+  refreshTtsStreamUI(); refreshVvUI();
+};
 AIVIS_SLIDERS.forEach(function(s){
   var el = $(s.id); if (!el) return;
   el.oninput = function(){
@@ -9493,7 +9615,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.35.2 Phase 2');
+  out.push('- バージョン: Duo Interpreter v1.35.3 Phase 2');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -9537,9 +9659,7 @@ function diagText(devices){
    ['読み上げモデル', rtNativeAudio ? 'gpt-realtime-translate' : diagTtsModel()],
    ['読み上げ対象', rtNativeAudio ? '訳す方向に従う' : CFG.ttsWho],
    ['声 A / B', rtNativeAudio ? '(外部TTS設定は未使用)' : ttsSeatVoices()],
-   ['OpenAI PCMストリーミング', !rtNativeAudio && CFG.ttsMode === 'openai'
-      ? (CFG.oaiStream ? (oaiPcmStreamAllowed() ? (oaiIsWindows()?'ON（AudioWorklet連続再生）':'ON')
-                                                : '自動OFF（AudioWorklet非対応・WAV使用）') : 'OFF') : '(未使用)'],
+   ['TTSストリーミング', rtNativeAudio ? '(外部TTS設定は未使用)' : ttsStreamCapability(CFG.ttsMode).text],
    ['OpenAI 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'openai' ? oaiManualTweaks() : '(未使用)'],
    ['OpenAI API speed', !rtNativeAudio && CFG.ttsMode === 'openai'
       ? String(OAI_RATE_FACTORS[oaiRateLevel(CFG.oaiRate)+2]) : '(未使用)'],
@@ -9554,7 +9674,6 @@ function diagText(devices){
    ['xAI 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'xai' ? xaiManualTweaks() : '(未使用)'],
    ['xAI API speed', !rtNativeAudio && CFG.ttsMode === 'xai'
       ? String(XAI_RATE_FACTORS[xaiRateLevel(CFG.xaiRate)+2]) : '(未使用)'],
-   ['Aivisストリーミング', !rtNativeAudio && CFG.ttsMode === 'aivis' ? (CFG.aivisStream ? 'ON' : 'OFF') : '(未使用)'],
    ['Aivisスタイル A / B', !rtNativeAudio && CFG.ttsMode === 'aivis'
       ? ((CFG.aivisStyleB === '' ? '既定' : CFG.aivisStyleB) + ' / ' + (CFG.aivisStyle === '' ? '既定' : CFG.aivisStyle)
          + (CFG.aivisSpk || CFG.aivisSpkB ? '（話者指定あり）' : ''))
@@ -9608,7 +9727,8 @@ function diagText(devices){
       (OverlayAudioRoutes.ttsOutput('A').split?'ON':'Phase 2')],
    ['オーバーレイ字幕設定', CFG.ovCapLayout+' / '+CFG.ovCapItems+'件 / '+(CFG.ovCapHold==='0'?'保持':'保持'+CFG.ovCapHold+'秒')+' / 文字'+CFG.ovCapFont+'px / 行間'+CFG.ovCapLine],
    ['用語集', (CFG.glossary||[]).length + ' 件'],
-   ['コンテキスト', (CFG.ctx||'').length + ' 文字']
+   ['コンテキスト', (CFG.ctx||'').length + ' 文字'],
+   ['APIキーのブラウザ保存', '翻訳='+(CFG.rememberTrans?'ON':'OFF')+' / STT='+(CFG.rememberStt?'ON':'OFF')+' / TTS='+(CFG.rememberTts?'ON':'OFF')]
   ].forEach(function(r){ out.push('| ' + cell(r[0]) + ' | ' + cell(r[1]) + ' |'); });
   var ks = Object.keys(KEYS||{}).filter(function(k){ return String(KEYS[k]||'').trim(); });
   out.push('| APIキー設定済み | ' + (ks.length ? cell(ks.join(', ')) : 'なし') + ' |');
