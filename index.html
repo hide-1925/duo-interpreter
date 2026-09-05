@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.36.3 Phase 3 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.36.4 Phase 3 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -638,7 +638,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.3 Phase 3</span><span class="build-id">Build: 20260905-v1363-live3.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.4 Phase 3</span><span class="build-id">Build: 20260905-v1364-live3.4</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -648,7 +648,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.3 Phase 3</span><span class="build-id">Build: 20260905-v1363-live3.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.4 Phase 3</span><span class="build-id">Build: 20260905-v1364-live3.4</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1518,7 +1518,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260905-v1363-live3.3';
+var APP_BUILD = '20260905-v1364-live3.4';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -8289,6 +8289,10 @@ function RealtimeTranscriptionEngine(seat,stream,opts){
   this.seat=seat||null;this.stream=stream;this.opts=opts||{};this.pc=null;this.dc=null;
   this.dead=false;this.closing=false;this.items={};this.startedAt=0;this.session=sessionGen;
   this.aborters=[];this.openTimer=null;this.connectStage='idle';
+  /* gpt-live-transcribe は1つの item_id を長時間更新し続けることがある。
+     サーバーの completed だけに依存せず、端末側で発話境界を判断する。 */
+  this.boundaryTimer=null;this.boundaryAc=null;this.boundaryAn=null;this.boundaryBuf=null;
+  this.lastVoiceAt=0;this.lastRms=0;this.fallbackItemId='live-active';
 }
 RealtimeTranscriptionEngine.prototype.config=function(){
   var langs=[];
@@ -8340,6 +8344,7 @@ RealtimeTranscriptionEngine.prototype.request=function(stage,url,opts,timeoutMs,
 };
 RealtimeTranscriptionEngine.prototype.closeConnection=function(){
   this.closing=true;if(this.openTimer){clearTimeout(this.openTimer);this.openTimer=null;}
+  this.stopBoundaryMonitor();
   this.aborters.splice(0).forEach(function(ctl){try{ctl.abort();}catch(e){}});
   try{if(this.dc)this.dc.close();}catch(e){}try{if(this.pc)this.pc.close();}catch(e){}
   this.dc=null;this.pc=null;
@@ -8375,7 +8380,8 @@ RealtimeTranscriptionEngine.prototype.connect=function(secret,track){
   dc.onmessage=function(ev){self.onEvent(ev);};
   dc.onopen=function(){
     if(self.dead||self.closing)return;opened=true;if(self.openTimer){clearTimeout(self.openTimer);self.openTimer=null;}
-    self.connectStage='open';dlog('stt','live-open',{model:'gpt-live-transcribe',ms:Date.now()-self.startedAt,transport:'webrtc'});openResolve();
+    self.connectStage='open';self.startBoundaryMonitor();
+    dlog('stt','live-open',{model:'gpt-live-transcribe',ms:Date.now()-self.startedAt,transport:'webrtc'});openResolve();
   };
   dc.onerror=function(){
     if(self.dead||self.closing||opened)return;var e=new Error('Realtime DataChannelを開けませんでした');e.liveStage='datachannel';openReject(e);
@@ -8411,26 +8417,121 @@ RealtimeTranscriptionEngine.prototype.connect=function(secret,track){
   });
 };
 RealtimeTranscriptionEngine.prototype.item=function(id){
-  id=id||('live-'+Date.now());var x=this.items[id];if(x)return x;
-  var seat=this.seat||S.listenSeat||'A',entry=addEntry(seat,'',true);x=this.items[id]={entry:entry,text:'',created:Date.now()};return x;
+  id=id||this.fallbackItemId;var x=this.items[id];if(x)return x;
+  x=this.items[id]={id:id,entry:null,text:'',allText:'',committedText:'',created:Date.now(),
+    segmentStarted:0,lastDeltaAt:0,deltaCount:0,segmentNo:0};
+  return x;
+};
+RealtimeTranscriptionEngine.prototype.ensureEntry=function(x){
+  if(x.entry)return x.entry;
+  var seat=this.seat||S.listenSeat||'A';x.entry=addEntry(seat,'',true);x.segmentStarted=Date.now();x.deltaCount=0;
+  return x.entry;
+};
+/* 文章末尾だけを見る軽量な文脈境界判定。
+   strong: 文末記号、likely: 終止表現、continuing: 接続表現、neutral: 判定不能。
+   STT本文は変更せず、確定を早めるか待つかだけに使う。 */
+RealtimeTranscriptionEngine.prototype.boundaryContext=function(text,lang){
+  var s=String(text||'').trim(),tail=s.replace(/[\"'」』）】〕〉》\]]+$/,'').trim();
+  if(!tail)return 'neutral';
+  if(/[。！？!?…]|\.(?:\s*)$/.test(tail.slice(-2)))return 'strong';
+  if(/^ja(?:-|$)/i.test(lang||'')){
+    if(/(?:けど|けれど|けれども|ので|のに|から|ながら|つつ|たり|て|で|が|と|なら|また|そして|しかし|つまり|例えば|たとえば|えっと|その|この|あの)$/.test(tail))return 'continuing';
+    if(/(?:です|ます|でした|ました|ません|でしょう|だ|だった|である|と思う|と思います|ください|ありがとう|ございます|ですね|ですよ|だね|だよ|かな|なのか|ですか|ますか)$/.test(tail))return 'likely';
+  }else{
+    if(/\b(?:and|but|because|so|if|when|while|although|though|that|which|to|of|for|with|or|then)$/i.test(tail))return 'continuing';
+  }
+  return 'neutral';
+};
+RealtimeTranscriptionEngine.prototype.boundaryPolicy=function(kind){
+  if(kind==='strong'||kind==='likely')return {idle:650,silence:650,hard:1250};
+  if(kind==='continuing')return {idle:1500,silence:1500,hard:3000};
+  return {idle:950,silence:1000,hard:1900};
+};
+RealtimeTranscriptionEngine.prototype.startBoundaryMonitor=function(){
+  var self=this;if(this.boundaryTimer)return;
+  this.lastVoiceAt=Date.now();
+  try{
+    this.boundaryAc=new (window.AudioContext||window.webkitAudioContext)();
+    this.boundaryAn=this.boundaryAc.createAnalyser();this.boundaryAn.fftSize=512;
+    this.boundaryAc.createMediaStreamSource(this.stream).connect(this.boundaryAn);
+    this.boundaryBuf=new Uint8Array(this.boundaryAn.frequencyBinCount);
+    if(this.boundaryAc.state==='suspended'){
+      var rp=this.boundaryAc.resume();if(rp&&rp.catch)rp.catch(function(){});
+    }
+  }catch(err){
+    this.boundaryAc=null;this.boundaryAn=null;this.boundaryBuf=null;
+    dlog('stt','live-boundary-audio-FAIL',{err:String((err&&err.message)||err).slice(0,120)});
+  }
+  dlog('stt','live-boundary-start',{mode:this.boundaryAn?'context+audio+delta':'context+delta',threshold:+(CFG.vad/1000).toFixed(4)});
+  this.boundaryTimer=setInterval(function(){self.checkBoundaries();},80);
+};
+RealtimeTranscriptionEngine.prototype.stopBoundaryMonitor=function(){
+  if(this.boundaryTimer){clearInterval(this.boundaryTimer);this.boundaryTimer=null;}
+  if(this.boundaryAc){try{this.boundaryAc.close();}catch(e){}}
+  this.boundaryAc=null;this.boundaryAn=null;this.boundaryBuf=null;
+};
+RealtimeTranscriptionEngine.prototype.checkBoundaries=function(){
+  if(this.dead||this.closing||!S.running)return;var now=Date.now(),rms=0;
+  if(this.boundaryAn&&this.boundaryBuf){
+    this.boundaryAn.getByteTimeDomainData(this.boundaryBuf);var sum=0;
+    for(var i=0;i<this.boundaryBuf.length;i++){var v=(this.boundaryBuf[i]-128)/128;sum+=v*v;}
+    rms=Math.sqrt(sum/this.boundaryBuf.length);this.lastRms=rms;
+    if(rms>CFG.vad/1000)this.lastVoiceAt=now;
+  }
+  var self=this;
+  Object.keys(this.items).forEach(function(id){
+    var x=self.items[id];if(!x||!x.entry||!String(x.text||'').trim()||!x.lastDeltaAt)return;
+    var idle=now-x.lastDeltaAt,silence=now-self.lastVoiceAt,kind=self.boundaryContext(x.text,langOf(x.entry.seat));
+    var p=self.boundaryPolicy(kind),audioQuiet=!self.boundaryAn||silence>=p.silence;
+    var reason='';
+    if(idle>=p.hard)reason='delta-timeout';
+    else if(idle>=p.idle&&audioQuiet)reason=(kind==='strong'||kind==='likely')?'context-complete':'audio-pause';
+    else if((now-x.segmentStarted)>=30000&&idle>=650)reason='max-duration';
+    if(reason)self.finalizeSegment(id,x,reason,{context:kind,idleMs:idle,silenceMs:self.boundaryAn?silence:null,rms:rms});
+  });
+};
+RealtimeTranscriptionEngine.prototype.finalizeSegment=function(id,x,reason,meta){
+  if(!x||!x.entry)return false;var text=String(x.text||'').trim(),holder=x.entry;
+  x.entry=null;x.text='';x.segmentStarted=0;x.segmentNo++;x.committedText+=text;
+  if(this.dead||!S.running||this.session!==sessionGen){removeEntry(holder);dlog('stt','stale-result-drop',{provider:'openai-live',item:id});return false;}
+  var lang=langOf(holder.seat),raw=text;text=punctuateTranscript(text,lang);
+  if(!text||!hasSpeechContent(text)||isEcho(text)){removeEntry(holder);dlog('stt','live-drop',{item:id,chars:text.length,reason:reason});return false;}
+  if((S.autoMode&&micSeats().length>1)||!this.seat){
+    var g=guessSeatFromText(text);holder.seat=g;holder.srcLang=langOf(g);holder.dstLang=langOf(g==='A'?'B':'A');S.listenSeat=g;updateStatus();lang=holder.srcLang;
+  }
+  holder.srcText=text;holder.interim=false;render(holder);
+  if(CFG.prosodyOn&&this.opts.isMic)attachProsody(holder,micProsodySnapshot(text,true));
+  meta=meta||{};
+  dlog('stt','live-boundary',{item:id,segment:x.segmentNo,reason:reason,context:meta.context||this.boundaryContext(raw,lang),chars:text.length,
+    idleMs:meta.idleMs==null?null:Math.round(meta.idleMs),silenceMs:meta.silenceMs==null?null:Math.round(meta.silenceMs)});
+  dlog('stt','live-result',{provider:'openai',model:'gpt-live-transcribe',transport:'webrtc',seat:holder.seat,lang:lang,item:id,segment:x.segmentNo,chars:text.length,punctuated:text!==raw,boundary:reason});
+  speakSrcNow(holder);translate(holder);return true;
 };
 RealtimeTranscriptionEngine.prototype.onEvent=function(ev){
-  var e;try{e=JSON.parse(ev.data);}catch(_){return;}var t=e.type||'',id=e.item_id||e.id||'';
+  var e;try{e=JSON.parse(ev.data);}catch(_){return;}var t=e.type||'',id=e.item_id||e.id||this.fallbackItemId;
   if(t==='conversation.item.input_audio_transcription.delta'||t==='input_audio_transcription.delta'){
-    var x=this.item(id);x.text+=e.delta||'';x.entry.srcText=x.text;render(x.entry);return;
+    var delta=String(e.delta||'');if(!delta)return;
+    var x=this.item(id),entry=this.ensureEntry(x);x.text+=delta;x.allText+=delta;x.lastDeltaAt=Date.now();x.deltaCount++;
+    entry.srcText=x.text;render(entry);
+    if(x.deltaCount===1)dlog('stt','live-delta',{item:id,segment:x.segmentNo+1,chars:delta.length,context:this.boundaryContext(x.text,langOf(entry.seat))});
+    return;
   }
   if(t==='conversation.item.input_audio_transcription.completed'||t==='input_audio_transcription.completed'){
-    var y=this.item(id),text=String(e.transcript||y.text||'').trim(),holder=y.entry;delete this.items[id];
-    if(this.dead||!S.running||this.session!==sessionGen){removeEntry(holder);dlog('stt','stale-result-drop',{provider:'openai-live',item:id});return;}
-    var lang=langOf(holder.seat),raw=text;text=punctuateTranscript(text,lang);
-    if(!text||!hasSpeechContent(text)||isEcho(text)){removeEntry(holder);dlog('stt','live-drop',{item:id,chars:text.length});return;}
-    if((S.autoMode&&micSeats().length>1)||!this.seat){
-      var g=guessSeatFromText(text);holder.seat=g;holder.srcLang=langOf(g);holder.dstLang=langOf(g==='A'?'B':'A');S.listenSeat=g;updateStatus();lang=holder.srcLang;
+    var y=this.item(id),serverText=String(e.transcript||'');
+    /* completed が全履歴を返す場合、すでにローカル確定した部分を再翻訳しない。
+       delta未受信でcompletedだけ来た場合と、末尾だけ増えた場合のみ補完する。 */
+    if(serverText&&serverText.indexOf(y.allText)===0&&serverText.length>y.allText.length){
+      var tail=serverText.slice(y.allText.length);y.text+=tail;y.allText=serverText;y.lastDeltaAt=Date.now();
+      var completedEntry=this.ensureEntry(y);completedEntry.srcText=y.text;render(completedEntry);
+    }else if(serverText&&!y.allText&&!y.text){
+      y.text=serverText;y.allText=serverText;y.lastDeltaAt=Date.now();
+      var onlyEntry=this.ensureEntry(y);onlyEntry.srcText=y.text;render(onlyEntry);
+    }else if(serverText&&serverText!==y.allText){
+      dlog('stt','live-reconcile',{item:id,serverChars:serverText.length,deltaChars:y.allText.length,action:'keep-local-segments'});
     }
-    holder.srcText=text;holder.interim=false;render(holder);
-    if(CFG.prosodyOn&&this.opts.isMic)attachProsody(holder,micProsodySnapshot(text,true));
-    dlog('stt','live-result',{provider:'openai',model:'gpt-live-transcribe',transport:'webrtc',seat:holder.seat,lang:lang,item:id,chars:text.length,punctuated:text!==raw});
-    speakSrcNow(holder);translate(holder);return;
+    if(y.entry)this.finalizeSegment(id,y,'server-completed',{context:this.boundaryContext(y.text,langOf(y.entry.seat)),idleMs:0,silenceMs:null});
+    else dlog('stt','live-completed',{item:id,chars:serverText.length,pending:0});
+    delete this.items[id];return;
   }
   if(t==='error'||e.error){
     var msg=(e.error&&e.error.message)||e.message||'Realtime音声認識エラー';
@@ -8438,7 +8539,7 @@ RealtimeTranscriptionEngine.prototype.onEvent=function(ev){
   }
 };
 RealtimeTranscriptionEngine.prototype.stop=function(){
-  this.dead=true;this.closeConnection();
+  this.dead=true;this.stopBoundaryMonitor();this.closeConnection();
   Object.keys(this.items).forEach(function(k){removeEntry(this.items[k].entry);},this);this.items={};
   if(this.opts.ownsStream&&this.stream)try{this.stream.getTracks().forEach(function(t){t.stop();});}catch(e){}
   dlog('stt','live-stop',{model:'gpt-live-transcribe',stage:this.connectStage});
@@ -9002,7 +9103,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.36.3 Phase 3</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.36.4 Phase 3</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -10208,7 +10309,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.36.3 Phase 3');
+  out.push('- バージョン: Duo Interpreter v1.36.4 Phase 3');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -10254,6 +10355,7 @@ function diagText(devices){
   [['翻訳プロバイダ', CFG.provider], ['翻訳モデル', CFG.model],
    ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel], ['句読点の自動補完', CFG.sttPunct ? 'ON' : 'OFF'],
    ['有効なSTT通信方式', diagSttTransport()],
+   ['gpt-live発話確定', isLiveTranscribe() ? '文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）' : '(未使用)'],
    ['共有音声STT経路', CFG.displaySttRoute],
    ['共有Track直接Web Speech候補', overlayCapabilities().speechTrackInput],
    ['通常マイク入力', CFG.micDevLbl || (CFG.micDev ? '(名称不明)' : '既定')],
