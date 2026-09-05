@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.36.2 Phase 3 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.36.3 Phase 3 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -638,7 +638,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.2 Phase 3</span><span class="build-id">Build: 20260905-v1362-live3.2</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.3 Phase 3</span><span class="build-id">Build: 20260905-v1363-live3.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -648,7 +648,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.2 Phase 3</span><span class="build-id">Build: 20260905-v1362-live3.2</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.3 Phase 3</span><span class="build-id">Build: 20260905-v1363-live3.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1518,7 +1518,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260905-v1362-live3.2';
+var APP_BUILD = '20260905-v1363-live3.3';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -8296,12 +8296,11 @@ RealtimeTranscriptionEngine.prototype.config=function(){
   else langs=[langOf(this.seat||S.listenSeat||'A')];
   langs=langs.map(function(x){return String(x||'').toLowerCase().split('-')[0];});
   langs=langs.filter(function(x,i,a){return x&&a.indexOf(x)===i;});
-  /* delay は gpt-realtime-whisper 専用。gpt-live-transcribeへ送ると
-     client_secrets作成が400になるため付与しない。1言語時はlanguage、
-     AUTO等で複数候補がある場合だけlanguagesを使う。 */
-  var tr={model:'gpt-live-transcribe'};
-  if(langs.length===1)tr.language=langs[0];
-  else if(langs.length>1)tr.languages=langs;
+  /* gpt-live-transcribeは連続ストリーミング型。専用仕様に合わせて
+     languageではなくlanguagesを使い、delayで部分結果の遅延を指定する。
+     Turn Detectionは非対応なので下のsession設定でnull固定とする。 */
+  var tr={model:'gpt-live-transcribe',delay:'low'};
+  if(langs.length)tr.languages=langs;
   var hints=[];
   if(CFG.sttPunct)hints.push('Transcribe verbatim with natural punctuation. Do not add, omit, paraphrase, or translate words.');
   if(CFG.ctx)hints.push(String(CFG.ctx).slice(0,600));
@@ -8309,7 +8308,7 @@ RealtimeTranscriptionEngine.prototype.config=function(){
   var kw=CFG.glossary.slice(0,60).map(function(r){return String(r.s||'').trim();})
     .filter(function(x){return x&&x.length<=50&&!/[<>\r\n]/.test(x);});
   if(kw.length)tr.keywords=kw;
-  return {type:'transcription',audio:{input:{transcription:tr,turn_detection:{type:'server_vad',prefix_padding_ms:300,silence_duration_ms:700}}}};
+  return {type:'transcription',audio:{input:{transcription:tr,turn_detection:null}}};
 };
 RealtimeTranscriptionEngine.prototype.cancelError=function(){
   var e=new Error('Realtime音声認識の接続を停止しました');e.cancelled=true;e.liveStage=this.connectStage;return e;
@@ -9003,7 +9002,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.36.2 Phase 3</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.36.3 Phase 3</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -10209,7 +10208,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.36.2 Phase 3');
+  out.push('- バージョン: Duo Interpreter v1.36.3 Phase 3');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
