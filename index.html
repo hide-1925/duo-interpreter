@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.37.0 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.37.1 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -314,19 +314,28 @@
   #captureNotice.on{opacity:1;transform:translate(-50%,0)}
   #captureRail{
     --rail-w:28vw;position:absolute;z-index:3;display:flex;flex-direction:column;gap:8px;
-    pointer-events:auto;max-height:calc(100% - 94px);overflow:hidden;touch-action:pan-y
+    pointer-events:auto;max-height:calc(100% - 94px);overflow:visible;touch-action:pan-y
   }
-  #captureRail.right{right:16px;top:78px;bottom:16px;width:var(--rail-w);justify-content:flex-end}
-  #captureRail.left{left:16px;top:78px;bottom:16px;width:var(--rail-w);justify-content:flex-end}
-  #captureRail.bottom{left:10%;right:10%;bottom:18px;max-height:42%;width:auto;justify-content:flex-end;align-items:center}
-  #captureRail.free{left:var(--rail-x,68%);top:var(--rail-y,18%);width:var(--rail-w);max-height:72%}
-  #captureRailItems{display:flex;flex-direction:column;gap:8px;width:100%;justify-content:flex-end;min-height:0}
-  #captureRail.history-scroll{overflow-y:auto;overscroll-behavior:contain;pointer-events:auto;touch-action:pan-y;scrollbar-gutter:stable;justify-content:flex-start}
-  #captureRail.history-scroll #captureRailItems{justify-content:flex-start;min-height:min-content;flex:0 0 auto}
+  #captureRail.right{right:16px;top:78px;width:var(--rail-w);height:var(--rail-h);justify-content:flex-end}
+  #captureRail.left{left:16px;top:78px;width:var(--rail-w);height:var(--rail-h);justify-content:flex-end}
+  #captureRail.bottom{left:50%;right:auto;bottom:18px;width:var(--rail-w);height:var(--rail-h);max-height:calc(100vh - 26px);transform:translateX(-50%);justify-content:flex-end;align-items:center}
+  #captureRail.free{left:var(--rail-x,68%);top:var(--rail-y,18%);width:var(--rail-w);height:var(--rail-h,55vh);max-height:calc(100vh - var(--rail-y,18vh) - 8px)}
+  #captureRailItems{display:flex;flex-direction:column;gap:8px;width:100%;max-height:100%;justify-content:flex-end;min-height:0;overflow:hidden}
+  #captureRail.history-scroll{pointer-events:auto;touch-action:pan-y;justify-content:flex-start}
+  #captureRail.history-scroll #captureRailItems{justify-content:flex-start;min-height:0;flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;scrollbar-gutter:stable}
   #captureRail.history-scroll .capture-caption{pointer-events:none}
-  #captureRail.history-scroll::-webkit-scrollbar{width:9px}
-  #captureRail.history-scroll::-webkit-scrollbar-thumb{background:rgba(190,207,230,.38);border-radius:999px}
+  #captureRail.history-scroll #captureRailItems::-webkit-scrollbar{width:9px}
+  #captureRail.history-scroll #captureRailItems::-webkit-scrollbar-thumb{background:rgba(190,207,230,.38);border-radius:999px}
   #captureRail.bottom #captureRailItems{max-width:100%;align-items:center}
+  .capture-rail-resize{display:none;position:absolute;z-index:8;touch-action:none;user-select:none}
+  #captureOverlay.mode-locked .capture-rail-resize{display:none!important}
+  #captureRail.left .capture-rail-resize.e,#captureRail.free .capture-rail-resize.e,#captureRail.bottom .capture-rail-resize.e{display:block;right:-7px;top:14px;bottom:14px;width:14px;cursor:ew-resize}
+  #captureRail.right .capture-rail-resize.w{display:block;left:-7px;top:14px;bottom:14px;width:14px;cursor:ew-resize}
+  #captureRail.left .capture-rail-resize.s,#captureRail.right .capture-rail-resize.s,#captureRail.free .capture-rail-resize.s{display:block;left:14px;right:14px;bottom:-7px;height:14px;cursor:ns-resize}
+  #captureRail.bottom .capture-rail-resize.n{display:block;left:14px;right:14px;top:-7px;height:14px;cursor:ns-resize}
+  #captureRail.left .capture-rail-resize.se,#captureRail.free .capture-rail-resize.se{display:block;right:-8px;bottom:-8px;width:20px;height:20px;border-right:3px solid rgba(255,255,255,.72);border-bottom:3px solid rgba(255,255,255,.72);border-radius:0 0 5px 0;cursor:nwse-resize}
+  #captureRail.right .capture-rail-resize.sw{display:block;left:-8px;bottom:-8px;width:20px;height:20px;border-left:3px solid rgba(255,255,255,.72);border-bottom:3px solid rgba(255,255,255,.72);border-radius:0 0 0 5px;cursor:nesw-resize}
+  #captureRail.bottom .capture-rail-resize.ne{display:block;right:-8px;top:-8px;width:20px;height:20px;border-right:3px solid rgba(255,255,255,.72);border-top:3px solid rgba(255,255,255,.72);border-radius:0 5px 0 0;cursor:nesw-resize}
   .capture-caption{
     width:100%;max-width:var(--item-w,100%);align-self:flex-end;padding:10px 13px;border-radius:12px;
     border-left:4px solid var(--cap-seat);background:var(--cap-bg);overflow-wrap:anywhere;
@@ -360,8 +369,7 @@
   #captureCapability b{color:var(--txt)}
   @media(max-width:700px){
     #captureTop{left:7px;right:7px;top:7px}
-    #captureRail.right,#captureRail.left{width:min(46vw,330px);top:72px}
-    #captureRail.bottom{left:3%;right:3%}
+    #captureRail.right,#captureRail.left{top:72px}
   }
   @media(max-width:1050px){
     #captureState{order:3;flex-basis:100%}
@@ -644,7 +652,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.0 Phase 4</span><span class="build-id">Build: 20260905-v1370-phase4.0</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.1 Phase 4</span><span class="build-id">Build: 20260905-v1371-phase4.1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -654,7 +662,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.0 Phase 4</span><span class="build-id">Build: 20260905-v1370-phase4.0</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.1 Phase 4</span><span class="build-id">Build: 20260905-v1371-phase4.1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -669,6 +677,13 @@
 
     <div id="captureRail" class="right" tabindex="0" aria-label="オーバーレイ字幕履歴（字幕欄をドラッグして移動）">
       <div id="captureRailItems"></div>
+      <div class="capture-rail-resize e" data-rail-resize="e" title="ドラッグして字幕欄の幅を変更" aria-label="字幕欄の幅を変更"></div>
+      <div class="capture-rail-resize w" data-rail-resize="w" title="ドラッグして字幕欄の幅を変更" aria-label="字幕欄の幅を変更"></div>
+      <div class="capture-rail-resize n" data-rail-resize="n" title="ドラッグして字幕欄の高さを変更" aria-label="字幕欄の高さを変更"></div>
+      <div class="capture-rail-resize s" data-rail-resize="s" title="ドラッグして字幕欄の高さを変更" aria-label="字幕欄の高さを変更"></div>
+      <div class="capture-rail-resize se" data-rail-resize="se" title="ドラッグして字幕欄の縦横サイズを変更" aria-label="字幕欄の縦横サイズを変更"></div>
+      <div class="capture-rail-resize sw" data-rail-resize="sw" title="ドラッグして字幕欄の縦横サイズを変更" aria-label="字幕欄の縦横サイズを変更"></div>
+      <div class="capture-rail-resize ne" data-rail-resize="ne" title="ドラッグして字幕欄の縦横サイズを変更" aria-label="字幕欄の縦横サイズを変更"></div>
     </div>
 
     <div id="captureTop">
@@ -1533,7 +1548,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260905-v1370-phase4.0';
+var APP_BUILD = '20260905-v1371-phase4.1';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -1777,6 +1792,11 @@ function loadCfg(){
     ovCapRound: pref('di.overlay.round','ovCapRound','1')+'' === '1',
     ovCapX:     pref('di.overlay.x','ovCapX','68'),
     ovCapY:     pref('di.overlay.y','ovCapY','18'),
+    ovCapFreeWidth:pref('di.overlay.freeWidth','ovCapFreeWidth','28'),
+    ovCapFreeHeight:pref('di.overlay.freeHeight','ovCapFreeHeight','55'),
+    ovCapSideHeight:pref('di.overlay.sideHeight','ovCapSideHeight','80'),
+    ovCapBottomWidth:pref('di.overlay.bottomWidth','ovCapBottomWidth','80'),
+    ovCapBottomHeight:pref('di.overlay.bottomHeight','ovCapBottomHeight','42'),
     ovInteraction:pref('di.overlay.interaction','ovInteraction','locked'),
     vvSpeaker: pref('di.vvsp','vvSpeaker','3'),
     /* 既存の設定はそのまま「相手(B)」として使い続ける。
@@ -2930,7 +2950,7 @@ var OverlaySession = {
 };
 var overlaySession = OverlaySession, overlayRailTimer=0, overlayToolbarTimer=0,
     overlayControlsTimer=0, overlayNoticeTimer=0, overlayStateHideTimer=0,
-    overlayPointerY=Infinity, overlayDrag=null;
+    overlayPointerY=Infinity, overlayDrag=null, overlayResize=null;
 
 function updatePhase4Controls(){
   var sw=$('captureSwitch'),wheel=$('captureForwardWheel'),caps=overlayCapabilities();
@@ -3002,7 +3022,12 @@ function renderCaptureCapability(){
 function applyCaptureProfile(){
   var root=$('captureOverlay'), rail=$('captureRail'); if(!root||!rail) return;
   ['right','left','bottom','free'].forEach(function(v){ rail.classList.toggle(v,CFG.ovCapLayout===v); });
-  rail.style.setProperty('--rail-w',overlayNum(CFG.ovCapWidth,28,18,60)+'vw');
+  var free=CFG.ovCapLayout==='free';
+  var bottom=CFG.ovCapLayout==='bottom';
+  var railW=overlayNum(free?CFG.ovCapFreeWidth:(bottom?CFG.ovCapBottomWidth:CFG.ovCapWidth),bottom?80:28,12,96);
+  var railH=overlayNum(free?CFG.ovCapFreeHeight:(bottom?CFG.ovCapBottomHeight:CFG.ovCapSideHeight),bottom?42:80,12,88);
+  rail.style.setProperty('--rail-w',railW+'vw');
+  rail.style.setProperty('--rail-h',railH+'vh');
   root.style.setProperty('--cap-fs',overlayNum(CFG.ovCapFont,26,12,64)+'px');
   root.style.setProperty('--cap-lh',overlayNum(CFG.ovCapLine,1.35,1,2));
   root.style.setProperty('--item-w',overlayNum(CFG.ovCapItemWidth,100,35,100)+'%');
@@ -3013,9 +3038,11 @@ function applyCaptureProfile(){
   rail.classList.toggle('with-shadow',!!CFG.ovCapShadow);
   rail.classList.toggle('with-outline',!!CFG.ovCapOutline);
   rail.classList.toggle('with-round',!!CFG.ovCapRound);
-  if(CFG.ovCapLayout==='free'){
-    rail.style.setProperty('--rail-x',overlayNum(CFG.ovCapX,68,1,90)+'vw');
-    rail.style.setProperty('--rail-y',overlayNum(CFG.ovCapY,18,5,85)+'vh');
+  if(free){
+    var x=overlayNum(CFG.ovCapX,68,1,Math.max(1,99-railW));
+    var y=overlayNum(CFG.ovCapY,18,5,Math.max(5,99-railH));
+    rail.style.setProperty('--rail-x',x+'vw');
+    rail.style.setProperty('--rail-y',y+'vh');
   } else { rail.style.left=''; rail.style.top=''; }
 }
 function overlayEntryAt(e){
@@ -3027,7 +3054,7 @@ function renderOverlayRail(){
   clearTimeout(overlayRailTimer);
   var now=Date.now(), hold=overlayNum(CFG.ovCapHold,18,0,180)*1000;
   var max=Math.round(overlayNum(CFG.ovCapItems,4,1,12));
-  var stayAtBottom=!hold && (host.scrollHeight-host.scrollTop-host.clientHeight<36);
+  var stayAtBottom=!hold && (rail.scrollHeight-rail.scrollTop-rail.clientHeight<36);
   host.classList.toggle('history-scroll',!hold);
   var available=S.entries.filter(function(e){ return e.srcText && (!hold || now-overlayEntryAt(e)<=hold); });
   var rows=hold ? available.slice(-max) : available;
@@ -3053,7 +3080,7 @@ function renderOverlayRail(){
     var empty=document.createElement('div'); empty.className='capture-caption capture-caption-empty';
     empty.textContent=translationDisabled()?'文字起こしがここに表示されます':'認識・翻訳された字幕がここに表示されます'; rail.appendChild(empty);
   }
-  if(!hold && stayAtBottom) requestAnimationFrame(function(){ host.scrollTop=host.scrollHeight; });
+  if(!hold && stayAtBottom) requestAnimationFrame(function(){ rail.scrollTop=rail.scrollHeight; });
   if(hold && S.entries.length) overlayRailTimer=setTimeout(renderOverlayRail,1000);
 }
 function overlayWakeToolbar(){
@@ -3111,17 +3138,37 @@ function captureFullscreen(){
   }
 }
 function resetCaptureProfile(){
-  var d={ovCapLayout:'right',ovCapWidth:'28',ovCapResolution:'native',ovCapTextA:'#FFFFFF',ovCapTextB:'#A7E8FF',ovCapSrcA:'#D4E8DE',ovCapSrcB:'#E7D3DA',ovCapBg:'#000000',ovCapTextOpacity:'92',ovCapBgOpacity:'35',ovCapFont:'26',ovCapLine:'1.35',ovCapItemWidth:'100',ovCapItems:'4',ovCapHold:'18',ovCapShadow:true,ovCapOutline:false,ovCapRound:true,ovCapX:'68',ovCapY:'18',ovInteraction:'locked'};
+  var d={ovCapLayout:'right',ovCapWidth:'28',ovCapResolution:'native',ovCapTextA:'#FFFFFF',ovCapTextB:'#A7E8FF',ovCapSrcA:'#D4E8DE',ovCapSrcB:'#E7D3DA',ovCapBg:'#000000',ovCapTextOpacity:'92',ovCapBgOpacity:'35',ovCapFont:'26',ovCapLine:'1.35',ovCapItemWidth:'100',ovCapItems:'4',ovCapHold:'18',ovCapShadow:true,ovCapOutline:false,ovCapRound:true,ovCapX:'68',ovCapY:'18',ovCapFreeWidth:'28',ovCapFreeHeight:'55',ovCapSideHeight:'80',ovCapBottomWidth:'80',ovCapBottomHeight:'42',ovInteraction:'locked'};
   Object.keys(d).forEach(function(k){ CFG[k]=d[k]; }); saveCaptureProfile(); applyCaptureControls(); applyCaptureProfile(); renderOverlayRail();
   OverlayStage.setMode('locked');
 }
 function saveCaptureProfile(){
-  var keys={ovCapLayout:'layout',ovCapWidth:'width',ovCapResolution:'resolution',ovCapTextA:'textA',ovCapTextB:'textB',ovCapSrcA:'srcA',ovCapSrcB:'srcB',ovCapBg:'bg',ovCapTextOpacity:'textOpacity',ovCapBgOpacity:'bgOpacity',ovCapFont:'font',ovCapLine:'line',ovCapItemWidth:'itemWidth',ovCapItems:'items',ovCapHold:'hold',ovCapShadow:'shadow',ovCapOutline:'outline',ovCapRound:'round',ovCapX:'x',ovCapY:'y',ovInteraction:'interaction'};
+  var keys={ovCapLayout:'layout',ovCapWidth:'width',ovCapResolution:'resolution',ovCapTextA:'textA',ovCapTextB:'textB',ovCapSrcA:'srcA',ovCapSrcB:'srcB',ovCapBg:'bg',ovCapTextOpacity:'textOpacity',ovCapBgOpacity:'bgOpacity',ovCapFont:'font',ovCapLine:'line',ovCapItemWidth:'itemWidth',ovCapItems:'items',ovCapHold:'hold',ovCapShadow:'shadow',ovCapOutline:'outline',ovCapRound:'round',ovCapX:'x',ovCapY:'y',ovCapFreeWidth:'freeWidth',ovCapFreeHeight:'freeHeight',ovCapSideHeight:'sideHeight',ovCapBottomWidth:'bottomWidth',ovCapBottomHeight:'bottomHeight',ovInteraction:'interaction'};
   Object.keys(keys).forEach(function(k){ store.set('di.overlay.'+keys[k],typeof CFG[k]==='boolean'?(CFG[k]?'1':'0'):CFG[k]); });
 }
+function currentCaptureRailWidth(){
+  if(CFG.ovCapLayout==='free')return CFG.ovCapFreeWidth;
+  if(CFG.ovCapLayout==='bottom')return CFG.ovCapBottomWidth;
+  return CFG.ovCapWidth;
+}
+function currentCaptureRailHeight(){
+  if(CFG.ovCapLayout==='free')return CFG.ovCapFreeHeight;
+  if(CFG.ovCapLayout==='bottom')return CFG.ovCapBottomHeight;
+  return CFG.ovCapSideHeight;
+}
+function syncCaptureWidthControl(){
+  var sel=$('ovCapWidth');if(!sel)return;
+  Array.from(sel.querySelectorAll('option[data-resized]')).forEach(function(o){o.remove();});
+  var n=overlayNum(currentCaptureRailWidth(),28,12,96),value=String(Math.round(n*10)/10);
+  if(!Array.from(sel.options).some(function(o){return o.value===value;})){
+    var opt=document.createElement('option');opt.value=value;opt.textContent=value+'%（ドラッグ調整）';opt.setAttribute('data-resized','1');sel.appendChild(opt);
+  }
+  sel.value=value;
+}
 function applyCaptureControls(){
-  var ids=['ovCapLayout','ovCapWidth','ovCapResolution','ovCapTextA','ovCapTextB','ovCapSrcA','ovCapSrcB','ovCapBg','ovCapTextOpacity','ovCapBgOpacity','ovCapFont','ovCapLine','ovCapItemWidth','ovCapItems','ovCapHold'];
+  var ids=['ovCapLayout','ovCapResolution','ovCapTextA','ovCapTextB','ovCapSrcA','ovCapSrcB','ovCapBg','ovCapTextOpacity','ovCapBgOpacity','ovCapFont','ovCapLine','ovCapItemWidth','ovCapItems','ovCapHold'];
   ids.forEach(function(id){ if($(id)) $(id).value=CFG[id]; });
+  syncCaptureWidthControl();
   ['ovCapShadow','ovCapOutline','ovCapRound'].forEach(function(id){ if($(id)) $(id).checked=!!CFG[id]; });
 }
 
@@ -9211,7 +9258,10 @@ function exportHtml(){
     ovCapFont:CFG.ovCapFont, ovCapLine:CFG.ovCapLine, ovCapItemWidth:CFG.ovCapItemWidth,
     ovCapItems:CFG.ovCapItems, ovCapHold:CFG.ovCapHold,
     ovCapShadow:CFG.ovCapShadow?'1':'0', ovCapOutline:CFG.ovCapOutline?'1':'0', ovCapRound:CFG.ovCapRound?'1':'0',
-    ovCapX:CFG.ovCapX, ovCapY:CFG.ovCapY, ovInteraction:CFG.ovInteraction,
+    ovCapX:CFG.ovCapX, ovCapY:CFG.ovCapY, ovCapFreeWidth:CFG.ovCapFreeWidth,
+    ovCapFreeHeight:CFG.ovCapFreeHeight, ovCapSideHeight:CFG.ovCapSideHeight,
+    ovCapBottomWidth:CFG.ovCapBottomWidth, ovCapBottomHeight:CFG.ovCapBottomHeight,
+    ovInteraction:CFG.ovInteraction,
     ttsPad: CFG.ttsPad, aivisModel: CFG.aivisModel, aivisModelB: CFG.aivisModelB, lvvBase: CFG.lvvBase,
     ttsStale: CFG.ttsStale,
     aivisStyle: CFG.aivisStyle, aivisStyleB: CFG.aivisStyleB, aivisRate: CFG.aivisRate,
@@ -9237,7 +9287,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.37.0 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.37.1 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -9797,7 +9847,12 @@ $('captureZoomOut').onclick=function(){OverlayStage.zoomStep(-1);};
 $('captureZoomIn').onclick=function(){OverlayStage.zoomStep(1);};
 $('annotationUndo').onclick=function(){OverlayStage.undo();};
 $('annotationRedo').onclick=function(){OverlayStage.redo();};
-$('annotationClear').onclick=function(){if(OverlayStage.annotations.length&&window.confirm('この画面の注釈をすべて消去しますか？'))OverlayStage.clear(true);};
+$('annotationClear').onclick=function(){
+  if(!OverlayStage.annotations.length)return;
+  OverlayStage.clear(true);
+  showCaptureNotice('注釈を全消去しました。↶で元に戻せます。',1800);
+  dlog('overlay','annotation-clear',{undoAvailable:true});
+};
 $('annotationSavePng').onclick=function(){OverlayStage.savePng();};
 $('annotationSaveJson').onclick=function(){OverlayStage.saveJson();};
 $('annotationLoadJson').onclick=function(){$('annotationJsonFile').value='';$('annotationJsonFile').click();};
@@ -9815,7 +9870,13 @@ OverlayStage.selectTool('pen');OverlayStage.updateHistory();
 $('ovCapReset').onclick = resetCaptureProfile;
 ['ovCapLayout','ovCapWidth','ovCapResolution','ovCapTextA','ovCapTextB','ovCapSrcA','ovCapSrcB','ovCapBg','ovCapTextOpacity','ovCapBgOpacity','ovCapFont','ovCapLine','ovCapItemWidth','ovCapItems','ovCapHold'].forEach(function(id){
   $(id).addEventListener('input',function(){
-    CFG[id]=this.value; saveCaptureProfile(); applyCaptureProfile(); renderOverlayRail();
+    if(id==='ovCapWidth'){
+      if(CFG.ovCapLayout==='free')CFG.ovCapFreeWidth=this.value;
+      else if(CFG.ovCapLayout==='bottom')CFG.ovCapBottomWidth=this.value;
+      else CFG.ovCapWidth=this.value;
+    }else CFG[id]=this.value;
+    saveCaptureProfile(); applyCaptureProfile(); renderOverlayRail();
+    if(id==='ovCapLayout')syncCaptureWidthControl();
     if(id==='ovCapResolution'&&overlaySession.stream) showCaptureNotice('取込解像度は次回の「画面取込」から反映されます。');
   });
 });
@@ -9826,13 +9887,14 @@ $('captureOverlay').addEventListener('pointermove',function(ev){ overlayTopEdge(
 $('captureOverlay').addEventListener('pointerleave',function(){ overlayPointerY=Infinity; },{passive:true});
 $('captureRail').addEventListener('wheel',function(ev){
   if(!this.classList.contains('history-scroll')) return;
-  var max=this.scrollHeight-this.clientHeight; if(max<=0) return;
+  var scroller=$('captureRailItems');
+  var max=scroller.scrollHeight-scroller.clientHeight; if(max<=0) return;
   var delta=ev.deltaY;
   if(ev.deltaMode===1) delta*=18;
-  else if(ev.deltaMode===2) delta*=this.clientHeight;
-  var before=this.scrollTop;
-  this.scrollTop=Math.max(0,Math.min(max,before+delta));
-  if(this.scrollTop!==before){ ev.preventDefault(); ev.stopPropagation(); }
+  else if(ev.deltaMode===2) delta*=scroller.clientHeight;
+  var before=scroller.scrollTop;
+  scroller.scrollTop=Math.max(0,Math.min(max,before+delta));
+  if(scroller.scrollTop!==before){ ev.preventDefault(); ev.stopPropagation(); }
 },{passive:false});
 $('captureOverlay').addEventListener('pointerdown',function(ev){
   overlayTopEdge(ev); overlayBottomEdge(ev);
@@ -9845,8 +9907,20 @@ $('bar').addEventListener('pointerenter',overlayWakeMainControls,{passive:true})
 $('bar').addEventListener('pointermove',overlayWakeMainControls,{passive:true});
 $('bar').addEventListener('click',overlayWakeMainControls);
 $('txtbar').addEventListener('pointerenter',overlayWakeMainControls,{passive:true});
+document.querySelectorAll('[data-rail-resize]').forEach(function(handle){
+  handle.addEventListener('pointerdown',function(ev){
+    if(ev.button!==0||OverlayStage.mode==='locked')return;
+    ev.preventDefault();ev.stopPropagation();
+    var rail=$('captureRail'),r=rail.getBoundingClientRect();
+    overlayResize={pointerId:ev.pointerId,axis:this.getAttribute('data-rail-resize')||'se',
+      layout:CFG.ovCapLayout,startX:ev.clientX,startY:ev.clientY,width:r.width,height:r.height,left:r.left,top:r.top};
+    rail.classList.add('resizing');
+    try{this.setPointerCapture(ev.pointerId);}catch(e){}
+  });
+});
 $('captureRail').addEventListener('pointerdown',function(ev){
   if(ev.button!==0)return;
+  if(ev.target.closest('[data-rail-resize]'))return;
   /* 履歴保持中の指操作は縦スクロールを優先。マウス／ペン、または固定件数表示では
      字幕欄そのものをドラッグして自由配置へ切り替える。 */
   if(ev.pointerType==='touch'&&this.classList.contains('history-scroll'))return;
@@ -9854,9 +9928,30 @@ $('captureRail').addEventListener('pointerdown',function(ev){
   if(this.classList.contains('history-scroll')&&ev.clientX>=r.right-14)return;
   ev.preventDefault(); try{this.setPointerCapture(ev.pointerId);}catch(e){}
   overlayDrag={pointerId:ev.pointerId,startX:ev.clientX,startY:ev.clientY,dx:ev.clientX-r.left,dy:ev.clientY-r.top,
-    left:r.left,top:r.top,started:false};
+    left:r.left,top:r.top,width:r.width,height:r.height,layout:CFG.ovCapLayout,started:false};
 });
 document.addEventListener('pointermove',function(ev){
+  if(overlayResize&&overlayResize.pointerId===ev.pointerId){
+    ev.preventDefault();
+    var axis=overlayResize.axis,layout=overlayResize.layout;
+    var dx=ev.clientX-overlayResize.startX,dy=ev.clientY-overlayResize.startY;
+    var maxW=Math.max(140,layout==='free'?window.innerWidth-overlayResize.left-8:window.innerWidth-24);
+    var maxH=Math.max(96,layout==='bottom'?window.innerHeight-26:window.innerHeight-overlayResize.top-8);
+    if(axis.indexOf('e')>=0||axis.indexOf('w')>=0){
+      var width=Math.max(140,Math.min(maxW,overlayResize.width+(axis.indexOf('w')>=0?-dx:dx)));
+      if(layout==='free')CFG.ovCapFreeWidth=String(width/window.innerWidth*100);
+      else if(layout==='bottom')CFG.ovCapBottomWidth=String(width/window.innerWidth*100);
+      else CFG.ovCapWidth=String(width/window.innerWidth*100);
+    }
+    if(axis.indexOf('s')>=0||axis.indexOf('n')>=0){
+      var height=Math.max(96,Math.min(maxH,overlayResize.height+(axis.indexOf('n')>=0?-dy:dy)));
+      if(layout==='free')CFG.ovCapFreeHeight=String(height/window.innerHeight*100);
+      else if(layout==='bottom')CFG.ovCapBottomHeight=String(height/window.innerHeight*100);
+      else CFG.ovCapSideHeight=String(height/window.innerHeight*100);
+    }
+    applyCaptureProfile();
+    return;
+  }
   if(!overlayDrag||overlayDrag.pointerId!==ev.pointerId)return;
   if(!overlayDrag.started){
     if(Math.hypot(ev.clientX-overlayDrag.startX,ev.clientY-overlayDrag.startY)<5)return;
@@ -9864,18 +9959,34 @@ document.addEventListener('pointermove',function(ev){
     CFG.ovCapLayout='free';
     CFG.ovCapX=String(overlayDrag.left/window.innerWidth*100);
     CFG.ovCapY=String(overlayDrag.top/window.innerHeight*100);
+    if(overlayDrag.layout!=='free'){
+      CFG.ovCapFreeWidth=String(overlayDrag.width/window.innerWidth*100);
+      CFG.ovCapFreeHeight=String(Math.max(96,overlayDrag.height)/window.innerHeight*100);
+    }
     var layoutSel=$('ovCapLayout');if(layoutSel)layoutSel.value='free';
     $('captureRail').classList.add('dragging'); applyCaptureProfile();
   }
-  var rail=$('captureRail'), rw=rail.offsetWidth/window.innerWidth*100;
+  var rail=$('captureRail'), rw=rail.offsetWidth/window.innerWidth*100, rh=rail.offsetHeight/window.innerHeight*100;
   CFG.ovCapX=String(Math.max(1,Math.min(99-rw,(ev.clientX-overlayDrag.dx)/window.innerWidth*100)));
-  CFG.ovCapY=String(Math.max(6,Math.min(88,(ev.clientY-overlayDrag.dy)/window.innerHeight*100)));
+  CFG.ovCapY=String(Math.max(5,Math.min(99-rh,(ev.clientY-overlayDrag.dy)/window.innerHeight*100)));
   applyCaptureProfile();
 });
 document.addEventListener('pointerup',function(ev){
+  if(overlayResize&&overlayResize.pointerId===ev.pointerId){
+    overlayResize=null;$('captureRail').classList.remove('resizing');saveCaptureProfile();syncCaptureWidthControl();
+    showCaptureNotice('字幕欄のサイズを保存しました。',1400);return;
+  }
   if(!overlayDrag||overlayDrag.pointerId!==ev.pointerId)return;
   var moved=overlayDrag.started; overlayDrag=null; $('captureRail').classList.remove('dragging');
   if(moved)saveCaptureProfile();
+});
+document.addEventListener('pointercancel',function(ev){
+  if(overlayResize&&overlayResize.pointerId===ev.pointerId){
+    overlayResize=null;$('captureRail').classList.remove('resizing');saveCaptureProfile();syncCaptureWidthControl();
+  }
+  if(overlayDrag&&overlayDrag.pointerId===ev.pointerId){
+    var moved=overlayDrag.started;overlayDrag=null;$('captureRail').classList.remove('dragging');if(moved)saveCaptureProfile();
+  }
 });
 $('captureVideo').addEventListener('dblclick',captureFullscreen);
 document.addEventListener('fullscreenchange',function(){
@@ -10467,7 +10578,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.37.0 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.37.1 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -10595,7 +10706,7 @@ function diagText(devices){
    ['オーバーレイ操作', OverlayStage.mode+' / '+OverlayStage.view+' / '+Math.round(OverlayStage.zoom*100)+'% / 注釈'+OverlayStage.annotations.length+'件 / 元タブ操作='+(overlaySession.forwardWheelOn?'ON':'OFF')],
    ['オーバーレイ音声境界', OverlayAudioRoutes.sttInput().kind+' / TTS sink分離='+
       (OverlayAudioRoutes.ttsOutput('A').split?'ON':'Phase 2')],
-   ['オーバーレイ字幕設定', CFG.ovCapLayout+' / '+CFG.ovCapItems+'件 / '+(CFG.ovCapHold==='0'?'保持':'保持'+CFG.ovCapHold+'秒')+' / 文字'+CFG.ovCapFont+'px / 行間'+CFG.ovCapLine],
+   ['オーバーレイ字幕設定', CFG.ovCapLayout+' / '+Math.round(overlayNum(currentCaptureRailWidth(),28,12,96)*10)/10+'%×'+Math.round(overlayNum(currentCaptureRailHeight(),55,12,88)*10)/10+'vh / '+CFG.ovCapItems+'件 / '+(CFG.ovCapHold==='0'?'保持':'保持'+CFG.ovCapHold+'秒')+' / 文字'+CFG.ovCapFont+'px / 行間'+CFG.ovCapLine],
    ['用語集', (CFG.glossary||[]).length + ' 件'],
    ['コンテキスト', (CFG.ctx||'').length + ' 文字'],
    ['APIキーのブラウザ保存', '翻訳='+(CFG.rememberTrans?'ON':'OFF')+' / STT='+(CFG.rememberStt?'ON':'OFF')+' / TTS='+(CFG.rememberTts?'ON':'OFF')]
