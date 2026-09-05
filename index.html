@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.37.3 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.37.4 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -652,7 +652,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.3 Phase 4</span><span class="build-id">Build: 20260905-v1373-keysync4.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.4 Phase 4</span><span class="build-id">Build: 20260905-v1374-tts4.4</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -662,7 +662,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.3 Phase 4</span><span class="build-id">Build: 20260905-v1373-keysync4.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.4 Phase 4</span><span class="build-id">Build: 20260905-v1374-tts4.4</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1551,7 +1551,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260905-v1373-keysync4.3';
+var APP_BUILD = '20260905-v1374-tts4.4';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -5293,8 +5293,8 @@ function ttsOldestPendingOrder(){
   });
   return min;
 }
-/* 長文1件だけで20秒以上になるため、固定8秒では正常な次発話まで必ず落ちる。
-   既定は文章長に応じて20～45秒。ユーザー指定時は全TTSの共通上限として使い、
+/* 合成監視と再生待ちは別時計で扱う。合成完了前の通信停止は ttsGuard が検出し、
+   合成済み音声はここで定めた20～45秒を「キューへ入った時点」から待てる。
    時間破棄を止めても6件以上たまる場合だけ新規を見送る。 */
 var TTS_QUEUE_MIN_WAIT_MS = 20000, TTS_QUEUE_MAX_WAIT_MS = 45000, TTS_MAX_PENDING = 6;
 function ttsQueueWaitLimit(chars){
@@ -5311,6 +5311,12 @@ function ttsQueueWaitLabel(){
   var v=String((CFG&&CFG.ttsStale)!=null?CFG.ttsStale:'auto');
   return v==='auto'?'自動（文章長に応じて20～45秒）'
        : v==='0'?'時間では破棄しない（最大6件）':v+'秒（最大6件）';
+}
+/* 再生開始後は文章長から十分長い独立Watchdogを置く。通常は各再生経路の
+   onended が先に終了させ、ブラウザが終了通知を返さない場合だけ作動する。 */
+function ttsPlaybackWatchdogLimit(chars){
+  var n=Math.max(0,parseInt(chars,10)||0);
+  return Math.min(180000,Math.max(30000,12000+n*600));
 }
 /* 停止のために覚えておくもの。
    ttsCurEnd … 再生中の後始末。<audio> は止めても終了イベントが来ないので手で呼ぶ
@@ -5428,7 +5434,8 @@ function playBlob(blob, finish, tag, opts){
   /* 世代は finish に刻んである（＝読み上げを始めた時点のもの）。
      通信の往復中に停止を押された場合、ここで世代が古くなり捨てられる。 */
   var g = (finish && finish.gen != null) ? finish.gen : ttsGen;
-  var at = (finish && finish.queuedAt) ? finish.queuedAt : Date.now();
+  var requestAt = (finish && finish.queuedAt) ? finish.queuedAt : Date.now();
+  var readyAt = Date.now();
   var chars=(finish&&finish.textChars)||0, staleMs=ttsQueueWaitLimit(chars);
   opts = opts || {};
   /* guardの期限後や停止後に遅れて届いた音声は、順番列へ戻さない。 */
@@ -5438,12 +5445,25 @@ function playBlob(blob, finish, tag, opts){
     return;
   }
   var order = (finish && finish.order != null) ? finish.order : ++ttsOrderSeq;
-  ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:at, gen:g, order:order,seat:(opts.seat||(finish&&finish.seat)||'A'),
+  ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:readyAt, requestAt:requestAt, gen:g, order:order,seat:(opts.seat||(finish&&finish.seat)||'A'),
                   chars:chars,staleMs:staleMs,gain:prosodyClamp(parseFloat(opts.gain)||1,0.5,1.5),
                   playbackRate:prosodyClamp(parseFloat(opts.playbackRate)||1,0.5,2) });
   ttsQueue.sort(function(a,b){ return a.order-b.order; });
+  /* API合成は完了した。ここからは短文用の合成Watchdogではなく、設定画面に表示した
+     キュー待機上限だけを適用する。正常な短文が長文再生中に失効するのを防ぐ。 */
+  if (finish && finish.armPhase){
+    finish.armPhase('queue',staleMs,function(){
+      var idx=-1;
+      for(var qi=0;qi<ttsQueue.length;qi++) if(ttsQueue[qi].order===order){idx=qi;break;}
+      if(idx>=0) ttsQueue.splice(idx,1);
+      dlog('tts','drop',{src:tag||'',why:'再生待ちが文章長別の許容時間を超えた',
+        order:order,ageMs:Date.now()-readyAt,limitMs:staleMs,chars:chars});
+      finish();
+      pumpTtsQueue();
+    });
+  }
   if (ttsPlayingNow) dlog('tts','queue-wait',{ src:tag||'', n:ttsQueue.length, chars:chars,
-    order:order,waitLimitMs:staleMs,why:'前の音声を再生中' });
+    order:order,waitLimitMs:staleMs,synthMs:readyAt-requestAt,why:'前の音声を再生中' });
   pumpTtsQueue();
 }
 function clearTtsQueue(){
@@ -5488,10 +5508,11 @@ function pumpTtsQueue(){
     pumpTtsQueue();
     return;
   }
-  var done = false;
+  var done = false, playbackTimer = 0;
   ttsPlayingNow = true;
   var end = function(){
     if (done) return; done = true;
+    clearTimeout(playbackTimer);
     ttsPlayingNow = false;
     if (ttsCurEnd === end) ttsCurEnd = null;
     waSrc = null;
@@ -5499,6 +5520,15 @@ function pumpTtsQueue(){
     pumpTtsQueue();
   };
   ttsCurEnd = end;
+  /* キュー待機時計を止め、再生終了通知欠落専用の時計へ切り替える。 */
+  if(job.finish&&job.finish.holdPhase) job.finish.holdPhase('playback');
+  var playbackLimit=ttsPlaybackWatchdogLimit(job.chars);
+  playbackTimer=setTimeout(function(){
+    dlog('tts','playback-timeout',{src:job.tag,order:job.order,limitMs:playbackLimit,chars:job.chars});
+    try{audioEl.pause();rateAudioEl.pause();rateDirectEl.pause();}catch(e){}
+    if(waSrc){try{waSrc.stop(0);}catch(e){}waSrc=null;}
+    end();
+  },playbackLimit);
   playJob(job, end);
 }
 /* 出力先（仮想オーディオケーブル等）を指定しているとき、Web Audio 側が
@@ -5630,10 +5660,29 @@ function playViaAudioEl(job, end){
   });
 }
 function ttsGuard(text, ms,seat){
-  var done = false, tEnd = null, sayKey=String(ttsDispatchSayKey||'');
+  var done = false, tEnd = null, phase = '', sayKey=String(ttsDispatchSayKey||'');
   var finish = function(){
     if (done) return;
     done = true; finish.done = true; clearTimeout(tEnd); ttsReleaseOrder(finish); ttsEnd(sayKey);
+  };
+  /* phaseごとに時計を張り替える。finish自体は読み上げ要求全体の終了処理なので、
+     合成が終わっただけでは呼ばない。 */
+  finish.armPhase = function(nextPhase, timeoutMs, onTimeout){
+    if(done) return;
+    clearTimeout(tEnd); tEnd=null;
+    phase=String(nextPhase||''); finish.phase=phase;
+    var wait=Math.max(0,parseInt(timeoutMs,10)||0);
+    if(!wait) return;
+    tEnd=setTimeout(function(){
+      if(done)return;
+      dlog('tts','guard-timeout',{phase:phase,order:finish.order||null,chars:finish.textChars,limitMs:wait});
+      if(onTimeout){try{onTimeout();}catch(e){finish();}}else finish();
+    },wait);
+  };
+  finish.holdPhase = function(nextPhase){
+    if(done)return;
+    clearTimeout(tEnd);tEnd=null;
+    phase=String(nextPhase||'');finish.phase=phase;
   };
   finish.done = false;
   finish.gen = ttsGen;             /* この読み上げを始めた時点の世代を刻む */
@@ -5644,7 +5693,7 @@ function ttsGuard(text, ms,seat){
   ttsRegisterOrder(finish);        /* 合成完了時ではなく受付時の順番を確保する */
   rememberSpoken(text);
   ttsBegin(sayKey);
-  tEnd = setTimeout(finish, ms);
+  finish.armPhase('synthesis',ms);
   return finish;
 }
 
@@ -9368,7 +9417,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.37.3 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.37.4 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -10674,7 +10723,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.37.3 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.37.4 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
