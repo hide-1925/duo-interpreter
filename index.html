@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.35.3 Phase 2 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.36.0 Phase 3 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -245,7 +245,13 @@
   #captureOverlay{position:fixed;inset:0;z-index:90;display:none;background:#05070a;color:var(--txt);overflow:hidden}
   #captureOverlay.on{display:block}
   #captureStage{position:absolute;inset:0;background:#05070a;overflow:hidden;touch-action:none}
-  #captureVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#05070a}
+  #captureContent{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform;background:#05070a}
+  #captureVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;background:#05070a;pointer-events:none}
+  #annotationCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;touch-action:none}
+  #captureOverlay.mode-annotate #annotationCanvas{pointer-events:auto;cursor:crosshair}
+  #captureOverlay.mode-navigate #captureStage{cursor:grab}
+  #captureOverlay.mode-navigate.pan-active #captureStage{cursor:grabbing}
+  #captureOverlay.mode-locked #captureRail,#captureOverlay.mode-locked #annotationCanvas{pointer-events:none!important}
   #capturePlaceholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px;color:var(--dim);font-size:15px;line-height:1.7}
   #capturePlaceholder b{display:block;color:var(--txt);font-size:20px;margin-bottom:7px}
   #capturePlaceholder[hidden]{display:none}
@@ -269,6 +275,28 @@
   #captureStop.capture-active{border-color:var(--b);color:var(--b);background:rgba(221,136,164,.17)}
   #captureStop.capture-active:hover{background:rgba(221,136,164,.25)}
   #captureStop:disabled{opacity:.45;cursor:default}
+  #captureModeGroup,#captureZoomGroup{display:flex;align-items:center;gap:4px}
+  #captureModeGroup .cbtn,#captureZoomGroup .cbtn{min-height:34px;padding:5px 8px}
+  #captureModeGroup .cbtn.active{border-color:var(--a);color:var(--a);background:rgba(61,220,151,.13)}
+  #captureModeGroup .cbtn.locked{border-color:var(--b);color:var(--b);background:rgba(221,136,164,.16)}
+  #captureZoomValue{width:54px;text-align:center;color:var(--txt);font-size:11px;font-variant-numeric:tabular-nums}
+  #capturePalette{
+    position:absolute;z-index:6;left:12px;top:92px;width:196px;display:none;padding:8px;
+    border:1px solid rgba(255,255,255,.15);border-radius:14px;background:rgba(11,14,20,.89);
+    backdrop-filter:blur(9px);box-shadow:0 7px 24px rgba(0,0,0,.42)
+  }
+  #captureOverlay.mode-annotate #capturePalette{display:block}
+  #capturePaletteHandle{cursor:grab;text-align:center;color:var(--dim);font-size:11px;font-weight:800;padding:2px 0 7px;user-select:none}
+  #capturePalette.dragging #capturePaletteHandle{cursor:grabbing}
+  .annotation-tools{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+  .annotation-tools button{min-width:0;height:34px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--txt);cursor:pointer;font-size:15px}
+  .annotation-tools button.active{border-color:var(--a);color:var(--a);background:rgba(61,220,151,.13)}
+  .annotation-controls{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}
+  .annotation-controls label{font-size:10px;color:var(--dim);font-weight:700}
+  .annotation-controls input,.annotation-controls select{display:block;width:100%;height:33px;margin-top:3px;padding:3px 6px}
+  .annotation-history{display:flex;gap:5px;margin-top:7px}
+  .annotation-history button{flex:1;min-width:0;height:33px;padding:4px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--txt);cursor:pointer}
+  .annotation-history button:disabled{opacity:.4;cursor:default}
   #captureNotice{
     position:absolute;z-index:6;left:50%;top:78px;max-width:min(760px,calc(100vw - 28px));
     transform:translate(-50%,-7px);opacity:0;pointer-events:none;
@@ -327,6 +355,10 @@
     #captureTop{left:7px;right:7px;top:7px}
     #captureRail.right,#captureRail.left{width:min(46vw,330px);top:72px}
     #captureRail.bottom{left:3%;right:3%}
+  }
+  @media(max-width:1050px){
+    #captureState{order:3;flex-basis:100%}
+    #captureTop{padding-bottom:7px}
   }
   @media(prefers-reduced-motion:reduce){.capture-caption{animation:none}}
   @media (max-width:480px){
@@ -605,7 +637,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.35.3 Phase 2</span><span class="build-id">Build: 20260904-v1353-settings2.4</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.0 Phase 3</span><span class="build-id">Build: 20260905-v1360-phase3.0</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -615,14 +647,17 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.35.3 Phase 2</span><span class="build-id">Build: 20260904-v1353-settings2.4</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.0 Phase 3</span><span class="build-id">Build: 20260905-v1360-phase3.0</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
 <!-- 画面取込オーバーレイ。外部ウィンドウの背面透過ではなく、取得映像をDuo内へ表示する。 -->
 <div id="captureOverlay" aria-hidden="true">
   <div id="captureStage">
-    <video id="captureVideo" playsinline muted autoplay></video>
+    <div id="captureContent">
+      <video id="captureVideo" playsinline muted autoplay></video>
+      <canvas id="annotationCanvas" aria-label="画面注釈"></canvas>
+    </div>
     <div id="capturePlaceholder"><div><b>画面取込オーバーレイ</b><span id="capturePlaceholderText">「画面取込」を押し、資料のタブ・ウィンドウ・画面を選択してください。</span></div></div>
 
     <div id="captureRail" class="right" tabindex="0" aria-label="オーバーレイ字幕履歴（字幕欄をドラッグして移動）">
@@ -633,11 +668,48 @@
       <button class="cbtn" id="captureStart"><span class="capture-start-icon" aria-hidden="true"></span><span>画面取込</span></button>
       <button class="cbtn" id="captureStop" disabled>■ 取込停止</button>
       <span id="captureState">待機中</span>
+      <div id="captureModeGroup" aria-label="操作モード">
+        <button class="cbtn" id="captureModeNavigate" title="ナビゲーション（Space＋ドラッグ）">移動</button>
+        <button class="cbtn" id="captureModeAnnotate" title="注釈モード（A）">注釈</button>
+        <button class="cbtn" id="captureModeLock" title="ロック／解除（L）">ロック</button>
+      </div>
+      <div id="captureZoomGroup" aria-label="表示倍率">
+        <button class="cbtn" id="captureFit" title="全体を表示（0）">Fit</button>
+        <button class="cbtn" id="captureWidthFit" title="幅に合わせる">幅</button>
+        <button class="cbtn" id="captureActual" title="100%表示（1）">100%</button>
+        <button class="cbtn" id="captureZoomOut" title="縮小">−</button>
+        <span id="captureZoomValue">Fit</span>
+        <button class="cbtn" id="captureZoomIn" title="拡大">＋</button>
+      </div>
       <button class="cbtn icon" id="captureFull" style="margin-left:auto" title="全画面表示">⛶</button>
       <button class="cbtn icon" id="captureSettingsBtn" title="字幕表示設定">⚙</button>
       <button class="cbtn icon" id="captureClose" title="画面取込オーバーレイを閉じる">✕</button>
     </div>
     <div id="captureNotice" role="status" aria-live="polite"></div>
+
+    <aside id="capturePalette" aria-label="注釈ツール">
+      <div id="capturePaletteHandle">⋮⋮ 注釈ツール（ドラッグで移動）</div>
+      <div class="annotation-tools">
+        <button data-ann-tool="pen" title="ペン">✎</button>
+        <button data-ann-tool="highlight" title="蛍光ペン">▰</button>
+        <button data-ann-tool="line" title="直線">╱</button>
+        <button data-ann-tool="arrow" title="矢印">➜</button>
+        <button data-ann-tool="rect" title="矩形">□</button>
+        <button data-ann-tool="ellipse" title="楕円">○</button>
+        <button data-ann-tool="text" title="テキスト">T</button>
+        <button data-ann-tool="eraser" title="消しゴム">⌫</button>
+      </div>
+      <div class="annotation-controls">
+        <label>色<input type="color" id="annotationColor" value="#ff365f"></label>
+        <label>太さ<select id="annotationWidth"><option value="2">細い</option><option value="4" selected>標準</option><option value="8">太い</option><option value="14">極太</option></select></label>
+        <label>透明度<select id="annotationOpacity"><option value="0.25">25%</option><option value="0.5">50%</option><option value="0.75">75%</option><option value="1" selected>100%</option></select></label>
+      </div>
+      <div class="annotation-history">
+        <button id="annotationUndo" title="元に戻す（Ctrl+Z）">↶</button>
+        <button id="annotationRedo" title="やり直す（Ctrl+Y）">↷</button>
+        <button id="annotationClear" title="注釈を全消去">全消去</button>
+      </div>
+    </aside>
 
     <aside id="captureSettings" aria-label="画面取込オーバーレイ設定">
       <h3>字幕レール設定</h3>
@@ -1396,7 +1468,7 @@
       <label>画面取込オーバーレイ（PC）</label>
       <button class="btn primary" id="ovCapOpen">🖥 画面を取り込んで字幕を重ねる</button>
       <small>PDF、PowerPoint、Teams、Zoom、ブラウザ資料などをDuo内へ取り込み、画面端へコメント形式の字幕を表示します。ブラウザ自体を透明にする旧方式、クロマキー、AutoHotkeyは使用しません。<br>
-      Phase 2では共有音声の直接Web Speech／VB-CABLE／外部APIと、方向別TTS出力に対応しています。Zoom・Pan・注釈はPhase 3で追加します。iPhone／iPadでは通常モードをお使いください。</small>
+      Phase 3ではZoom・Pan・注釈、操作ロックに対応しています。共有音声の直接Web Speech／VB-CABLE／外部APIと方向別TTS出力も引き続き利用できます。iPhone／iPadでは通常モードをお使いください。</small>
       <label class="switch"><input type="checkbox" id="syncScroll" checked> A/Bの会話ログのスクロールを連動させる</label>
     </div>
     <div class="field">
@@ -1445,7 +1517,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260904-v1353-settings2.4';
+var APP_BUILD = '20260905-v1360-phase3.0';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -1526,6 +1598,7 @@ var PROVIDERS = {
 var STT_MODELS = {
   openai:[
     {id:'gpt-4o-mini-transcribe', note:'安価・高速（おすすめ）'},
+    {id:'gpt-live-transcribe',    note:'Realtime WebRTC・低遅延'},
     {id:'gpt-transcribe',         note:'最新・高精度'},
     {id:'gpt-4o-transcribe',      note:'標準グレード'},
     {id:'gpt-4o-transcribe-diarize', note:'話者分離あり（話者ラベルを取得。会話カードは録音区間ごとに統合表示）'},
@@ -1686,6 +1759,7 @@ function loadCfg(){
     ovCapRound: pref('di.overlay.round','ovCapRound','1')+'' === '1',
     ovCapX:     pref('di.overlay.x','ovCapX','68'),
     ovCapY:     pref('di.overlay.y','ovCapY','18'),
+    ovInteraction:pref('di.overlay.interaction','ovInteraction','locked'),
     vvSpeaker: pref('di.vvsp','vvSpeaker','3'),
     /* 既存の設定はそのまま「相手(B)」として使い続ける。
        既定の読み上げ対象が B2A（相手のみ）なので、こう対応させれば
@@ -2305,7 +2379,7 @@ function fitSafeBottom(){
   dlog('layout','safe-bottom',{ inner:window.innerHeight, screen:screenH, covered:covered, sab:Math.round(v) });
 }
 
-/* ---------------- 画面取込オーバーレイ（Phase 0-2） ----------------
+/* ---------------- 画面取込オーバーレイ（Phase 0-3） ----------------
    透明ブラウザ化ではなく、getDisplayMedia() で選択した画面を Duo 内に表示し、
    その上へ独立した字幕レールを重ねる。Phase 2では共有音声TrackもSTTへ接続する。 */
 function overlayCapabilities(){
@@ -2342,6 +2416,159 @@ function overlayNum(v, fallback, min, max){
   var n = parseFloat(v); if (!isFinite(n)) n = fallback;
   return Math.max(min, Math.min(max, n));
 }
+
+/* ---------------- Phase 3: Zoom / Pan / 注釈 / ロック ----------------
+   映像とCanvasを同じcontentRootへ入れ、1つのCSS transformで動かす。
+   注釈点は映像に対する0～1の正規化座標で保持するため、リサイズ後も追従する。 */
+var OverlayStage = {
+  mode:'locked', view:'fit', zoom:1, panX:0, panY:0, sourceW:1920, sourceH:1080,
+  annotations:[], undoStack:[], redoStack:[], draft:null, tool:'pen', spaceDown:false,
+  pan:null, pinch:null, pointers:{}, paletteDrag:null,
+  sourceSize:function(){
+    var v=$('captureVideo'), s=overlaySession&&overlaySession.sourceInfo;
+    var w=(s&&s.width)||(v&&v.videoWidth)||this.sourceW||1920;
+    var h=(s&&s.height)||(v&&v.videoHeight)||this.sourceH||1080;
+    return {w:Math.max(1,w),h:Math.max(1,h)};
+  },
+  resetSource:function(w,h){
+    this.sourceW=Math.max(1,Number(w)||1920);this.sourceH=Math.max(1,Number(h)||1080);
+    this.clear(false);this.view='fit';this.layout(true);
+  },
+  layout:function(reframe){
+    var stage=$('captureStage'), root=$('captureContent'), canvas=$('annotationCanvas');
+    if(!stage||!root||!canvas)return;
+    var s=this.sourceSize();this.sourceW=s.w;this.sourceH=s.h;
+    root.style.width=s.w+'px';root.style.height=s.h+'px';
+    if(canvas.width!==Math.round(s.w)||canvas.height!==Math.round(s.h)){
+      canvas.width=Math.round(s.w);canvas.height=Math.round(s.h);
+    }
+    if(reframe||this.view==='fit'||this.view==='width')this.frame(this.view==='width'?'width':'fit',false);
+    else this.apply();
+    this.render();
+  },
+  frame:function(kind,announce){
+    var stage=$('captureStage');if(!stage)return;
+    var sw=Math.max(1,stage.clientWidth),sh=Math.max(1,stage.clientHeight),w=this.sourceW,h=this.sourceH;
+    this.view=kind;
+    if(kind==='actual')this.zoom=1;
+    else if(kind==='width')this.zoom=sw/w;
+    else this.zoom=Math.min(sw/w,sh/h);
+    this.panX=(sw-w*this.zoom)/2;this.panY=(sh-h*this.zoom)/2;
+    this.apply();
+    if(announce)showCaptureNotice(kind==='actual'?'100%表示':(kind==='width'?'幅に合わせました':'全体を表示しました'),1800);
+  },
+  apply:function(){
+    var root=$('captureContent'),out=$('captureZoomValue');if(!root)return;
+    root.style.transform='translate3d('+this.panX+'px,'+this.panY+'px,0) scale('+this.zoom+')';
+    if(out)out.textContent=Math.max(1,Math.round(this.zoom*100))+'%';
+  },
+  clampPan:function(){
+    var stage=$('captureStage');if(!stage)return;
+    var sw=stage.clientWidth,sh=stage.clientHeight,w=this.sourceW*this.zoom,h=this.sourceH*this.zoom,edge=48;
+    this.panX=Math.min(sw-edge,Math.max(edge-w,this.panX));
+    this.panY=Math.min(sh-edge,Math.max(edge-h,this.panY));
+  },
+  zoomAt:function(next,x,y){
+    var stage=$('captureStage');if(!stage)return;
+    next=Math.max(.5,Math.min(4,next));
+    var r=stage.getBoundingClientRect(),px=(x==null?r.left+r.width/2:x)-r.left,py=(y==null?r.top+r.height/2:y)-r.top;
+    var wx=(px-this.panX)/this.zoom,wy=(py-this.panY)/this.zoom;
+    this.panX=px-wx*next;this.panY=py-wy*next;this.zoom=next;this.view='custom';
+    this.clampPan();this.apply();
+  },
+  zoomStep:function(dir,x,y){this.zoomAt(this.zoom*(dir>0?1.2:1/1.2),x,y);},
+  setMode:function(mode,save){
+    if(['navigate','annotate','locked'].indexOf(mode)<0)mode='locked';
+    this.mode=mode;var root=$('captureOverlay');if(root){
+      root.classList.remove('mode-navigate','mode-annotate','mode-locked');root.classList.add('mode-'+mode);
+    }
+    [['captureModeNavigate','navigate'],['captureModeAnnotate','annotate'],['captureModeLock','locked']].forEach(function(x){
+      var b=$(x[0]);if(!b)return;b.classList.toggle('active',mode===x[1]);b.classList.toggle('locked',mode==='locked'&&x[1]==='locked');
+    });
+    if(save!==false){CFG.ovInteraction=mode;store.set('di.overlay.interaction',mode);}
+    this.draft=null;this.pan=null;this.pinch=null;this.pointers={};this.render();
+    dlog('overlay','interaction',{mode:mode});
+  },
+  selectTool:function(tool){
+    this.tool=tool;document.querySelectorAll('[data-ann-tool]').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-ann-tool')===tool);});
+  },
+  point:function(ev){
+    var r=$('captureContent').getBoundingClientRect();
+    return {u:Math.max(0,Math.min(1,(ev.clientX-r.left)/Math.max(1,r.width))),v:Math.max(0,Math.min(1,(ev.clientY-r.top)/Math.max(1,r.height)))};
+  },
+  style:function(){
+    var op=overlayNum($('annotationOpacity').value,1,.05,1);
+    if(this.tool==='highlight')op=Math.min(op,.35);
+    var rect=$('captureContent').getBoundingClientRect(),px=overlayNum($('annotationWidth').value,4,1,30);
+    return {color:$('annotationColor').value||'#ff365f',opacity:op,width:px/Math.max(1,Math.min(rect.width,rect.height))};
+  },
+  snapshot:function(){
+    this.undoStack.push(JSON.stringify(this.annotations));if(this.undoStack.length>100)this.undoStack.shift();this.redoStack=[];
+  },
+  restore:function(raw){try{this.annotations=JSON.parse(raw)||[];}catch(e){this.annotations=[];}this.render();this.updateHistory();},
+  undo:function(){if(!this.undoStack.length)return;this.redoStack.push(JSON.stringify(this.annotations));this.restore(this.undoStack.pop());},
+  redo:function(){if(!this.redoStack.length)return;this.undoStack.push(JSON.stringify(this.annotations));this.restore(this.redoStack.pop());},
+  clear:function(record){
+    if(record!==false&&this.annotations.length)this.snapshot();
+    this.annotations=[];this.draft=null;if(record===false){this.undoStack=[];this.redoStack=[];}this.render();this.updateHistory();
+  },
+  updateHistory:function(){
+    if($('annotationUndo'))$('annotationUndo').disabled=!this.undoStack.length;
+    if($('annotationRedo'))$('annotationRedo').disabled=!this.redoStack.length;
+    if($('annotationClear'))$('annotationClear').disabled=!this.annotations.length;
+  },
+  renderOne:function(ctx,a){
+    var w=this.sourceW,h=this.sourceH,pts=a.points||[],s=a.style||{},lw=Math.max(1,(s.width||.003)*Math.min(w,h));
+    ctx.save();ctx.globalAlpha=s.opacity==null?1:s.opacity;ctx.strokeStyle=s.color||'#ff365f';ctx.fillStyle=s.color||'#ff365f';ctx.lineWidth=lw;ctx.lineCap='round';ctx.lineJoin='round';
+    if((a.type==='pen'||a.type==='highlight')&&pts.length){
+      ctx.beginPath();ctx.moveTo(pts[0].u*w,pts[0].v*h);for(var i=1;i<pts.length;i++)ctx.lineTo(pts[i].u*w,pts[i].v*h);ctx.stroke();
+    }else if(pts.length>=2){
+      var p=pts[0],q=pts[pts.length-1],x=p.u*w,y=p.v*h,x2=q.u*w,y2=q.v*h;
+      if(a.type==='line'||a.type==='arrow'){
+        ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x2,y2);ctx.stroke();
+        if(a.type==='arrow'){
+          var ang=Math.atan2(y2-y,x2-x),sz=Math.max(lw*3,12);
+          ctx.beginPath();ctx.moveTo(x2,y2);ctx.lineTo(x2-sz*Math.cos(ang-.48),y2-sz*Math.sin(ang-.48));ctx.moveTo(x2,y2);ctx.lineTo(x2-sz*Math.cos(ang+.48),y2-sz*Math.sin(ang+.48));ctx.stroke();
+        }
+      }else if(a.type==='rect'){ctx.strokeRect(Math.min(x,x2),Math.min(y,y2),Math.abs(x2-x),Math.abs(y2-y));}
+      else if(a.type==='ellipse'){
+        ctx.beginPath();ctx.ellipse((x+x2)/2,(y+y2)/2,Math.abs(x2-x)/2,Math.abs(y2-y)/2,0,0,Math.PI*2);ctx.stroke();
+      }
+    }else if(a.type==='text'&&pts.length){
+      ctx.font='700 '+Math.max(16,(a.font||.035)*h)+'px sans-serif';ctx.textBaseline='top';ctx.fillText(a.text||'',pts[0].u*w,pts[0].v*h);
+    }
+    ctx.restore();
+  },
+  render:function(){
+    var c=$('annotationCanvas');if(!c)return;var ctx=c.getContext('2d');ctx.clearRect(0,0,c.width,c.height);
+    for(var i=0;i<this.annotations.length;i++)this.renderOne(ctx,this.annotations[i]);if(this.draft)this.renderOne(ctx,this.draft);this.updateHistory();
+  },
+  hit:function(p){
+    var best=-1,dist=Infinity;
+    this.annotations.forEach(function(a,i){
+      var ps=a.points||[];ps.forEach(function(q){var d=Math.hypot(q.u-p.u,q.v-p.v);if(d<dist){dist=d;best=i;}});
+      if(ps.length>=2){var u0=Math.min(ps[0].u,ps[ps.length-1].u),u1=Math.max(ps[0].u,ps[ps.length-1].u),v0=Math.min(ps[0].v,ps[ps.length-1].v),v1=Math.max(ps[0].v,ps[ps.length-1].v);if(p.u>=u0-.015&&p.u<=u1+.015&&p.v>=v0-.015&&p.v<=v1+.015){dist=0;best=i;}}
+    });
+    return dist<.06?best:-1;
+  },
+  annotationDown:function(ev){
+    if(this.spaceDown||this.mode!=='annotate'||!overlaySession.stream||ev.button!==0)return;ev.preventDefault();var p=this.point(ev),tool=this.tool;
+    try{$('annotationCanvas').setPointerCapture(ev.pointerId);}catch(e){}
+    if(tool==='eraser'){var i=this.hit(p);if(i>=0){this.snapshot();this.annotations.splice(i,1);this.render();}return;}
+    if(tool==='text'){
+      var text=window.prompt('注釈テキストを入力してください','');if(text){this.snapshot();var s=this.style();this.annotations.push({type:'text',points:[p],style:s,font:Math.max(.025,s.width*7),text:text});this.render();}return;
+    }
+    this.draft={type:tool,points:[p],style:this.style(),pointerId:ev.pointerId};
+  },
+  annotationMove:function(ev){
+    if(!this.draft||this.draft.pointerId!==ev.pointerId)return;ev.preventDefault();var p=this.point(ev);
+    if(this.draft.type==='pen'||this.draft.type==='highlight')this.draft.points.push(p);else this.draft.points[1]=p;this.render();
+  },
+  annotationUp:function(ev){
+    if(!this.draft||this.draft.pointerId!==ev.pointerId)return;var d=this.draft;this.draft=null;
+    if(d.points.length>1){delete d.pointerId;this.snapshot();this.annotations.push(d);}this.render();
+  }
+};
 
 function overlayResolutionProfile(value){
   var key=String(value||'native');
@@ -2483,6 +2710,7 @@ var OverlaySession = {
       var el = $('captureVideo');
       el.srcObject = stream;
       try { await el.play(); } catch(playErr){ dlog('overlay','video-play-FAIL',{err:String(playErr)}); }
+      OverlayStage.resetSource(settings.width||el.videoWidth||1920,settings.height||el.videoHeight||1080);
       $('capturePlaceholder').hidden = true;
       this.transition(audio ? 'AUDIO_CHECKING' : 'VIDEO_ONLY',
         audio ? '共有音声Trackを確認しています'
@@ -2512,6 +2740,7 @@ var OverlaySession = {
     tracks.forEach(function(t){ t.onended=null; try{t.stop();}catch(e){} });
     this.stream=null; this.videoTrack=null; this.audioTrack=null; this.sourceInfo=null;
     var el=$('captureVideo'); if (el){ try{el.pause();}catch(e){} el.srcObject=null; }
+    OverlayStage.clear(false);OverlayStage.view='fit';OverlayStage.layout(true);
     this.stopping=false;
     if (!quiet) this.transition('IDLE','画面共有を停止しました');
   },
@@ -2533,6 +2762,7 @@ var OverlaySession = {
     $('ovlBtn').setAttribute('aria-label','オーバーレイを終了');
     syncFontControlTitles();
     applyCaptureProfile(); renderOverlayRail(); renderCaptureCapability();
+    OverlayStage.setMode(CFG.ovInteraction||'locked',false);OverlayStage.layout(true);
     overlayWakeToolbar(); overlayWakeMainControls();
     showCaptureNotice('字幕を移動する場合は、字幕欄をドラッグしてください。',3600);
     if (autoStart && !this.stream) this.start();
@@ -2545,6 +2775,7 @@ var OverlaySession = {
     $('captureOverlay').setAttribute('aria-hidden','true');
     $('captureSettings').classList.remove('on');
     $('captureNotice').classList.remove('on');
+    OverlayStage.clear(false);OverlayStage.setMode('locked',false);
     $('ovlBtn').classList.remove('on');
     $('ovlBtn').title='画面取込オーバーレイ';
     $('ovlBtn').setAttribute('aria-label','画面取込オーバーレイ');
@@ -2606,7 +2837,7 @@ function renderCaptureCapability(){
     ' / 共有Track直接STT '+(c.speechTrackInput==='candidate'?'候補':'非対応')+
     (overlaySession.sourceInfo && overlaySession.sourceInfo.audio===false
       ? ' / 共有音声なし：VB-CABLEまたは外部STT APIを選択できます。'
-      : '')+' / 取込映像は表示専用です。外部アプリのボタン操作は元ウィンドウで行い、Duo内Zoom／PanはPhase 3で追加します。';
+      : '')+' / Duo内Zoom・Pan・注釈に対応。取込映像は表示専用のため、外部アプリのボタン操作は元ウィンドウで行ってください。';
 }
 function applyCaptureProfile(){
   var root=$('captureOverlay'), rail=$('captureRail'); if(!root||!rail) return;
@@ -2717,11 +2948,12 @@ function captureFullscreen(){
   }
 }
 function resetCaptureProfile(){
-  var d={ovCapLayout:'right',ovCapWidth:'28',ovCapResolution:'native',ovCapTextA:'#FFFFFF',ovCapTextB:'#A7E8FF',ovCapSrcA:'#D4E8DE',ovCapSrcB:'#E7D3DA',ovCapBg:'#000000',ovCapTextOpacity:'92',ovCapBgOpacity:'35',ovCapFont:'26',ovCapLine:'1.35',ovCapItemWidth:'100',ovCapItems:'4',ovCapHold:'18',ovCapShadow:true,ovCapOutline:false,ovCapRound:true,ovCapX:'68',ovCapY:'18'};
+  var d={ovCapLayout:'right',ovCapWidth:'28',ovCapResolution:'native',ovCapTextA:'#FFFFFF',ovCapTextB:'#A7E8FF',ovCapSrcA:'#D4E8DE',ovCapSrcB:'#E7D3DA',ovCapBg:'#000000',ovCapTextOpacity:'92',ovCapBgOpacity:'35',ovCapFont:'26',ovCapLine:'1.35',ovCapItemWidth:'100',ovCapItems:'4',ovCapHold:'18',ovCapShadow:true,ovCapOutline:false,ovCapRound:true,ovCapX:'68',ovCapY:'18',ovInteraction:'locked'};
   Object.keys(d).forEach(function(k){ CFG[k]=d[k]; }); saveCaptureProfile(); applyCaptureControls(); applyCaptureProfile(); renderOverlayRail();
+  OverlayStage.setMode('locked');
 }
 function saveCaptureProfile(){
-  var keys={ovCapLayout:'layout',ovCapWidth:'width',ovCapResolution:'resolution',ovCapTextA:'textA',ovCapTextB:'textB',ovCapSrcA:'srcA',ovCapSrcB:'srcB',ovCapBg:'bg',ovCapTextOpacity:'textOpacity',ovCapBgOpacity:'bgOpacity',ovCapFont:'font',ovCapLine:'line',ovCapItemWidth:'itemWidth',ovCapItems:'items',ovCapHold:'hold',ovCapShadow:'shadow',ovCapOutline:'outline',ovCapRound:'round',ovCapX:'x',ovCapY:'y'};
+  var keys={ovCapLayout:'layout',ovCapWidth:'width',ovCapResolution:'resolution',ovCapTextA:'textA',ovCapTextB:'textB',ovCapSrcA:'srcA',ovCapSrcB:'srcB',ovCapBg:'bg',ovCapTextOpacity:'textOpacity',ovCapBgOpacity:'bgOpacity',ovCapFont:'font',ovCapLine:'line',ovCapItemWidth:'itemWidth',ovCapItems:'items',ovCapHold:'hold',ovCapShadow:'shadow',ovCapOutline:'outline',ovCapRound:'round',ovCapX:'x',ovCapY:'y',ovInteraction:'interaction'};
   Object.keys(keys).forEach(function(k){ store.set('di.overlay.'+keys[k],typeof CFG[k]==='boolean'?(CFG[k]?'1':'0'):CFG[k]); });
 }
 function applyCaptureControls(){
@@ -3068,6 +3300,16 @@ function verifySttKey(){
         if (r.ok) return 'このキーでリアルタイム同時通訳を開始できます。';
         return r.text().then(function(t){ throw new Error('HTTP ' + r.status + ' ' + t.slice(0,160)); });
       });
+    if (isLiveTranscribe()){
+      var probe=new RealtimeTranscriptionEngine(S.listenSeat||'A',null,{});
+      return fetch('https://api.openai.com/v1/realtime/client_secrets',{
+        method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+        body:JSON.stringify({session:probe.config()})
+      }).then(function(r){
+        if(r.ok)return 'このキーでgpt-live-transcribeのRealtime WebRTC接続を開始できます。';
+        return r.text().then(function(t){throw new Error('HTTP '+r.status+' '+t.slice(0,180));});
+      });
+    }
     if (prov === 'gemini')
       return probeLLM('gemini', PROVIDERS.gemini.base, key, 'Gemini');
     return probeLLM('oai', (STT_BASE[prov] || PROVIDERS.openai.base), key, prov);
@@ -3090,9 +3332,11 @@ function verifyAivisKey(){
       headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + key },
       body: JSON.stringify(body)
     }).then(function(r){
-      if (!r.ok) return r.text().then(function(t){ throw new Error('HTTP ' + r.status + ' ' + t.slice(0,160)); });
-      return r.blob();
-    }).then(function(b){
+      var meta=aivisBillingMeta(r);aivisLogBilling(meta,'key-test');
+      if (!r.ok) return r.text().then(function(t){ throw aivisHttpError(r,t); });
+      return r.blob().then(function(b){return {blob:b,billing:meta};});
+    }).then(function(result){
+      var b=result.blob,billing=result.billing||{};
       stopSpeaking('試聴の前に止める');
       ttsAudioCtx(); primeOutput();
       playBlob(b, ttsGuard(AIVIS_TEST_LINE, 30000), 'aivis-test');
@@ -3102,6 +3346,7 @@ function verifyAivisKey(){
            + (body.speaker_uuid ? ' / 話者指定あり' : '')
            + (body.speaking_rate ? ' / ' + body.speaking_rate + '倍' : '')
            + ' / ' + Math.round(b.size/1024) + 'KB）。'
+           +(billing.mode?'<br>課金モード：<b>'+escapeHtml(billing.mode)+'</b>':'')
            + '<br>思った声と違うときは Style ID を変えて、もう一度押してください。';
     });
   }, 'モデル UUID が見つかりません。AivisHub のモデルページからコピーし直してください。');
@@ -4548,7 +4793,9 @@ function audioRouteWarningText(){
   var risk=ttsLoopRisk('A')||ttsLoopRisk('B');
   if(risk) return '<b>⚠ 相手向けTTSとVB-CABLE認識が同じ仮想経路です。</b>'
     +' 読み上げが自分のSTTへ戻るため、自己認識防止ON時はA→BのTTSを停止します。別の仮想ケーブルかVoicemeeterで経路を分けてください。';
-  if(CFG.displaySttRoute==='direct') return '共有音声TrackをWeb Speechへ直接渡します。Chrome / Edge 135以降が必要です。対応しない場合、マイクへ黙って切り替えず停止して案内します。';
+  if(CFG.displaySttRoute==='direct') return '共有音声TrackをWeb Speechへ直接渡します。Chrome / Edge 135以降が必要です。'
+    +(isLiveTranscribe()?' <b>※ 選択中のgpt-live-transcribeはこの経路では使われず、Web Speechで認識します。</b> 外部API経路を選ぶとRealtime WebRTCを使います。':'')
+    +' 対応しない場合、マイクへ黙って切り替えず停止して案内します。';
   if(CFG.displaySttRoute==='vb') return '会議音声をOS側でVB-CABLEへ流し、上で選んだ入力デバイスを認識します。';
   return '共有音声Trackを、上で選択した外部STT APIへ送ります。';
 }
@@ -5181,7 +5428,40 @@ function applySeatCols(){
 /* ---------------- Aivis Cloud API（HTTPS・キー方式） ---------------- */
 var AIVIS_URL = 'https://api.aivis-project.com/v1/tts/synthesize';
 var aivisWarned = false;
+var AIVIS_LAST_BILLING = null;
 function aivisKey(){ return (KEYS['aivis'] || '').trim(); }
+function aivisBillingMeta(r){
+  var h=function(n){try{return r&&r.headers?r.headers.get(n)||'':'';}catch(e){return'';}};
+  return {
+    mode:h('X-Aivis-Billing-Mode'),
+    creditsUsed:h('X-Aivis-Credits-Used'),
+    creditsRemaining:h('X-Aivis-Credits-Remaining'),
+    rateLimit:h('X-RateLimit-Limit')||h('X-Aivis-RateLimit-Limit'),
+    rateRemaining:h('X-RateLimit-Remaining')||h('X-Aivis-RateLimit-Remaining')
+  };
+}
+function aivisLogBilling(meta,where){
+  if(!meta)return;
+  if(meta.mode||meta.creditsUsed||meta.creditsRemaining||meta.rateLimit||meta.rateRemaining){
+    AIVIS_LAST_BILLING=meta;
+    dlog('tts','aivis-billing',{where:where||'synthesize',mode:meta.mode||'(headerなし)',creditsUsed:meta.creditsUsed||'',creditsRemaining:meta.creditsRemaining||'',rateLimit:meta.rateLimit||'',rateRemaining:meta.rateRemaining||''});
+  }
+}
+function aivisHttpError(r,raw){
+  var meta=aivisBillingMeta(r),body=String(raw||'').slice(0,220),msg=String(r.status)+' '+body;
+  if(r.status===402){
+    msg='402 Aivisのクレジット残高が不足しています。Aivisプレミアム利用中の場合は、'
+      +'ダッシュボードで「サブスクリプション」を課金モードに選んだAPIキーを作成／選択し、DuoのAivis APIキーを差し替えてください。'
+      +'追加使用量を使っている場合はクレジット残高も確認してください。';
+  }
+  var e=new Error(msg);e.status=r.status;e.aivisBilling=meta;e.aivisRaw=body;return e;
+}
+function aivisFailureHint(err){
+  var m=String((err&&err.message)||err);
+  if(err&&err.status===402)return m;
+  if(/failed to fetch|networkerror|load failed/i.test(m))return 'Aivis Cloud API に接続できませんでした（ブラウザから直接呼べない可能性があります）。';
+  return 'Aivis Cloud API でエラーが返りました（'+m.slice(0,110)+'）。';
+}
 function aivisModelFor(seat){ return seatPick(seat, CFG.aivisModelB, CFG.aivisModel); }
 /* スタイルIDはモデルごとに意味が変わる（同じ「1」でも別モデルでは別の演技）。
    そのため B席が自前のモデルを持つときは、B席のスタイルだけを見る。
@@ -5272,7 +5552,8 @@ function aivisSpeakBlob(text, lang, seat, prosody){
     headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + aivisKey() },
     body: JSON.stringify(body)
   }).then(function(r){
-    if (!r.ok) return r.text().then(function(x){ throw new Error(r.status + ' ' + String(x).slice(0,120)); });
+    var meta=aivisBillingMeta(r);aivisLogBilling(meta,'blob');
+    if (!r.ok) return r.text().then(function(x){ throw aivisHttpError(r,x); });
     return r.blob();
   }).then(function(b){
     dlog('tts','aivis-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size, seat:seat||'A', model:uuid.slice(0,8), style:(st===''?'既定':st), tweaks:aivisBodyTweaks(body) });
@@ -5281,9 +5562,8 @@ function aivisSpeakBlob(text, lang, seat, prosody){
     var m = String((err && err.message) || err);
     dlog('tts','aivis-FAIL',{ err:m.slice(0,140), ms:Date.now()-t0 });
     finish();
-    var hint = /failed to fetch|networkerror|load failed/i.test(m)
-      ? 'Aivis Cloud API に接続できませんでした（ブラウザから直接呼べない可能性があります）。'
-      : 'Aivis Cloud API でエラーが返りました（' + m.slice(0,70) + '）。';
+    if(err&&err.aivisBilling)aivisLogBilling(err.aivisBilling,'blob-error');
+    var hint=aivisFailureHint(err);
     ttsFallback(text, lang, 'API失敗', hint, 'aivisWarned',prosody);
   });
 }
@@ -5408,7 +5688,8 @@ function aivisSpeakStream(text, lang, seat, prosody){
     headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + aivisKey() },
     body: JSON.stringify(body)
   }).then(function(r){
-    if (!r.ok) return r.text().then(function(x){ throw new Error(r.status + ' ' + String(x).slice(0,140)); });
+    var meta=aivisBillingMeta(r);aivisLogBilling(meta,'stream');
+    if (!r.ok) return r.text().then(function(x){ throw aivisHttpError(r,x); });
     if (!r.body || !r.body.getReader) throw new Error('ストリーミング非対応');
     var reader = r.body.getReader();
     var pump = function(){
@@ -5446,11 +5727,13 @@ function aivisSpeakStream(text, lang, seat, prosody){
     if (timedOut) return;
     if (myGen !== ttsGen || /abort/i.test(m)){ streamEnd('stopped'); return; }
     dlog('tts','aivis-stream-FAIL',{ err:m.slice(0,140), ms:Date.now()-t0, started:started, style:stLog });
+    if(err&&err.aivisBilling)aivisLogBilling(err.aivisBilling,'stream-error');
     if (started){ endAfterBuffered('failed'); return; }
     streamEnd('failed');
     /* まだ音が出ていなければ、確実な従来方式でやり直す。
        途中まで鳴っている場合にやり直すと二重に聞こえるので、そこでは諦める。 */
-    if (!started) aivisSpeakBlob(text, lang, seat, prosody);
+    if (!started && !(err&&err.status>=400&&err.status<500)) aivisSpeakBlob(text, lang, seat, prosody);
+    else if(!started) ttsFallback(text,lang,'API失敗',aivisFailureHint(err),'aivisWarned',prosody);
   });
 }
 
@@ -7899,6 +8182,8 @@ function sttCall(blob, lang){
     mdl = defaultSttModel(p) || 'gpt-4o-mini-transcribe';
     CFG.sttModel = mdl; store.set('di.sttm', mdl);
   }
+  if(p==='openai'&&/^gpt-live-transcribe(?:$|-)/.test(mdl))
+    return Promise.reject(new Error('gpt-live-transcribe はRealtime WebRTC専用です。録音ファイルAPIでは利用できません'));
   var ext = blob.type.indexOf('mp4')>=0 ? 'mp4' : (blob.type.indexOf('ogg')>=0 ? 'ogg' : 'webm');
   var fd = new FormData();
   fd.append('file', blob, 'seg.'+ext);
@@ -7955,6 +8240,94 @@ function blobToB64(b){
     fr.onerror = rej; fr.readAsDataURL(b);
   });
 }
+
+function isLiveTranscribe(){
+  return CFG.sttProvider==='openai'&&/^gpt-live-transcribe(?:$|-)/.test(String(CFG.sttModel||'').trim());
+}
+
+/* OpenAI gpt-live-transcribe専用のRealtime WebRTC経路。
+   録音Blobを/audio/transcriptionsへ送るモデルではないため、入力Trackをそのまま接続する。 */
+function RealtimeTranscriptionEngine(seat,stream,opts){
+  this.seat=seat||null;this.stream=stream;this.opts=opts||{};this.pc=null;this.dc=null;
+  this.dead=false;this.items={};this.startedAt=0;this.session=sessionGen;
+}
+RealtimeTranscriptionEngine.prototype.config=function(){
+  var langs=[];
+  if(S.autoMode&&micSeats().length>1)langs=[CFG.langA,CFG.langB];
+  else langs=[langOf(this.seat||S.listenSeat||'A')];
+  langs=langs.map(function(x){return String(x||'').toLowerCase().split('-')[0];});
+  langs=langs.filter(function(x,i,a){return x&&a.indexOf(x)===i;});
+  var tr={model:'gpt-live-transcribe',delay:'low'};
+  if(langs.length)tr.languages=langs;
+  var hints=[];
+  if(CFG.sttPunct)hints.push('Transcribe verbatim with natural punctuation. Do not add, omit, paraphrase, or translate words.');
+  if(CFG.ctx)hints.push(String(CFG.ctx).slice(0,600));
+  if(hints.length)tr.prompt=hints.join('\n');
+  var kw=CFG.glossary.slice(0,60).map(function(r){return String(r.s||'').trim();})
+    .filter(function(x){return x&&x.length<=50&&!/[<>\r\n]/.test(x);});
+  if(kw.length)tr.keywords=kw;
+  return {type:'transcription',audio:{input:{transcription:tr,turn_detection:{type:'server_vad',prefix_padding_ms:300,silence_duration_ms:700}}}};
+};
+RealtimeTranscriptionEngine.prototype.start=function(){
+  var self=this,key=sttKey();if(!key)return Promise.reject(new Error('OpenAIの音声認識用APIキーが未設定です'));
+  var track=this.stream&&this.stream.getAudioTracks&&this.stream.getAudioTracks()[0];
+  if(!track||track.readyState!=='live')return Promise.reject(new Error('有効な音声Trackがありません'));
+  this.startedAt=Date.now();var sessionCfg=this.config();
+  dlog('stt','live-connect',{model:'gpt-live-transcribe',seat:this.seat||'auto',transport:'webrtc',languages:sessionCfg.audio.input.transcription.languages||[]});
+  return fetch('https://api.openai.com/v1/realtime/client_secrets',{
+    method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({session:sessionCfg})
+  }).then(chk).then(function(j){
+    var secret=j.value||(j.client_secret&&j.client_secret.value);if(!secret)throw new Error('Realtimeクライアントシークレットを取得できませんでした');
+    return self.connect(secret,track);
+  });
+};
+RealtimeTranscriptionEngine.prototype.connect=function(secret,track){
+  var self=this,pc=new RTCPeerConnection();this.pc=pc;pc.addTrack(track,this.stream);
+  var dc=pc.createDataChannel('oai-events');this.dc=dc;
+  dc.onmessage=function(ev){self.onEvent(ev);};
+  dc.onopen=function(){dlog('stt','live-open',{model:'gpt-live-transcribe',ms:Date.now()-self.startedAt,transport:'webrtc'});};
+  pc.onconnectionstatechange=function(){
+    if(self.dead)return;dlog('stt','live-state',{state:pc.connectionState});
+    if(pc.connectionState==='failed'||pc.connectionState==='disconnected')toast('Realtime音声認識の接続が切れました。停止して開始し直してください。');
+  };
+  return pc.createOffer().then(function(o){return pc.setLocalDescription(o).then(function(){return o;});}).then(function(o){
+    return fetch('https://api.openai.com/v1/realtime/calls',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/sdp'},body:o.sdp});
+  }).then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error('Realtime WebRTC接続失敗 '+r.status+': '+t.slice(0,180));});return r.text();})
+    .then(function(sdp){return pc.setRemoteDescription({type:'answer',sdp:sdp});});
+};
+RealtimeTranscriptionEngine.prototype.item=function(id){
+  id=id||('live-'+Date.now());var x=this.items[id];if(x)return x;
+  var seat=this.seat||S.listenSeat||'A',entry=addEntry(seat,'',true);x=this.items[id]={entry:entry,text:'',created:Date.now()};return x;
+};
+RealtimeTranscriptionEngine.prototype.onEvent=function(ev){
+  var e;try{e=JSON.parse(ev.data);}catch(_){return;}var t=e.type||'',id=e.item_id||e.id||'';
+  if(t==='conversation.item.input_audio_transcription.delta'||t==='input_audio_transcription.delta'){
+    var x=this.item(id);x.text+=e.delta||'';x.entry.srcText=x.text;render(x.entry);return;
+  }
+  if(t==='conversation.item.input_audio_transcription.completed'||t==='input_audio_transcription.completed'){
+    var y=this.item(id),text=String(e.transcript||y.text||'').trim(),holder=y.entry;delete this.items[id];
+    if(this.dead||!S.running||this.session!==sessionGen){removeEntry(holder);dlog('stt','stale-result-drop',{provider:'openai-live',item:id});return;}
+    var lang=langOf(holder.seat),raw=text;text=punctuateTranscript(text,lang);
+    if(!text||!hasSpeechContent(text)||isEcho(text)){removeEntry(holder);dlog('stt','live-drop',{item:id,chars:text.length});return;}
+    if((S.autoMode&&micSeats().length>1)||!this.seat){
+      var g=guessSeatFromText(text);holder.seat=g;holder.srcLang=langOf(g);holder.dstLang=langOf(g==='A'?'B':'A');S.listenSeat=g;updateStatus();lang=holder.srcLang;
+    }
+    holder.srcText=text;holder.interim=false;render(holder);
+    if(CFG.prosodyOn&&this.opts.isMic)attachProsody(holder,micProsodySnapshot(text,true));
+    dlog('stt','live-result',{provider:'openai',model:'gpt-live-transcribe',transport:'webrtc',seat:holder.seat,lang:lang,item:id,chars:text.length,punctuated:text!==raw});
+    speakSrcNow(holder);translate(holder);return;
+  }
+  if(t==='error'||e.error){
+    var msg=(e.error&&e.error.message)||e.message||'Realtime音声認識エラー';
+    dlog('stt','live-FAIL',{model:'gpt-live-transcribe',err:String(msg).slice(0,200)});toast('Realtime音声認識失敗: '+msg);
+  }
+};
+RealtimeTranscriptionEngine.prototype.stop=function(){
+  this.dead=true;try{if(this.dc)this.dc.close();}catch(e){}try{if(this.pc)this.pc.close();}catch(e){}
+  Object.keys(this.items).forEach(function(k){removeEntry(this.items[k].entry);},this);this.items={};
+  if(this.opts.ownsStream&&this.stream)try{this.stream.getTracks().forEach(function(t){t.stop();});}catch(e){}
+  this.dc=null;this.pc=null;dlog('stt','live-stop',{model:'gpt-live-transcribe'});
+};
 
 /* =========================================================================
    C) リアルタイム同時通訳エンジン（gpt-realtime-translate / WebRTC）
@@ -8211,6 +8584,19 @@ function startAll(){
             stopAll();
           })
       );
+    } else if (isLiveTranscribe()) {
+      jobs.push(
+        ensureMic().then(function(st){
+          var seat=ms.length>1?null:ms[0];
+          var live=new RealtimeTranscriptionEngine(seat,st,{isMic:true,ownsStream:false});
+          engines.push(live);
+          return live.start();
+        }).then(function(){toast('OpenAI Realtime音声認識を開始しました',true);})
+          .catch(function(err){
+            dlog('stt','live-start-FAIL',{source:'mic',err:String(err.message||err).slice(0,200)});
+            toast('Realtime音声認識を開始できません：'+String(err.message||err));stopAll();
+          })
+      );
     } else {
       jobs.push(
         ensureMic()
@@ -8244,7 +8630,9 @@ function startAll(){
         getDisplayAudioForStt().then(function(info){
           var eng=new WebSpeechTrackEngine(dispSeat,info.track,{ownsStream:info.ownsStream,stream:info.stream});
           engines.push(eng);eng.start();
-          toast('共有音声Trackの直接Web Speech認識を開始しました',true);
+          dlog('stt','transport-override',{selectedModel:CFG.sttModel,effective:'webspeech-track',reason:'共有音声STT経路=direct'});
+          toast('共有音声Trackの直接Web Speech認識を開始しました'
+            +(isLiveTranscribe()?'<br>※ gpt-live-transcribeを使う場合は、⚙→音声→共有音声の認識経路を「外部API」にしてください。':''),true);
         }).catch(function(err){
           dlog('stt','track-FAIL',{seat:dispSeat,err:String(err.message||err),fallback:false});
           toast('共有音声の直接認識を開始できません：'+String(err.message||err)+'<br>VB-CABLEまたは外部APIを選んでください。');
@@ -8256,16 +8644,25 @@ function startAll(){
         var tr=st.getAudioTracks()[0];CFG.vbDevLbl=(tr&&tr.label)||CFG.vbDevLbl||'';store.set('di.indevl.vb',CFG.vbDevLbl);
         if(!isVirtualDev(CFG.vbDevLbl))toast('選択した入力は仮想オーディオとして判定できません。経路を確認してください。');
         var eng;
-        if(CFG.sttProvider==='webspeech')eng=new WebSpeechTrackEngine(dispSeat,tr,{ownsStream:true,stream:st});
-        else eng=new StreamEngine(dispSeat,st,{isMic:false,meter:false,ownsStream:true});
-        engines.push(eng);eng.start();renderAudioRouteWarning();
-        toast('VB-CABLE入力の認識を開始しました',true);
+        if(CFG.sttProvider==='webspeech'){eng=new WebSpeechTrackEngine(dispSeat,tr,{ownsStream:true,stream:st});engines.push(eng);eng.start();}
+        else if(isLiveTranscribe()){
+          eng=new RealtimeTranscriptionEngine(dispSeat,st,{isMic:false,ownsStream:true});engines.push(eng);
+          return eng.start().then(function(){renderAudioRouteWarning();toast('VB-CABLE入力の認識を開始しました（Realtime WebRTC）',true);});
+        }
+        else{eng=new StreamEngine(dispSeat,st,{isMic:false,meter:false,ownsStream:true});engines.push(eng);eng.start();}
+        renderAudioRouteWarning();
+        toast('VB-CABLE入力の認識を開始しました'+(isLiveTranscribe()?'（Realtime WebRTC）':''),true);
       }).catch(function(err){toast('VB-CABLE入力を開始できません：'+String(err.message||err));}));
     }else if(CFG.sttProvider==='webspeech'){
       toast('外部API経路を使うには、音声認識でOpenAI / xAI / Groq / Geminiを選んでください。');
     }else{
       jobs.push(getDisplayAudioForStt().then(function(info){
-        var eng=new StreamEngine(dispSeat,info.stream,{isMic:false,meter:false,ownsStream:info.ownsStream});
+        var eng;
+        if(isLiveTranscribe()){
+          eng=new RealtimeTranscriptionEngine(dispSeat,info.stream,{isMic:false,ownsStream:info.ownsStream});
+          engines.push(eng);return eng.start().then(function(){toast('共有音声をOpenAI Realtime WebRTCで認識します',true);});
+        }
+        eng=new StreamEngine(dispSeat,info.stream,{isMic:false,meter:false,ownsStream:info.ownsStream});
         engines.push(eng);eng.start();toast('共有音声を外部STT APIへ送信します',true);
       }).catch(function(err){toast('画面／タブ音声を取得できません：'+String(err.message||err));}));
     }
@@ -8288,7 +8685,7 @@ function startVU(){
   try{
     var ac = new (window.AudioContext||window.webkitAudioContext)();
     var an = ac.createAnalyser();
-    var sharedProsody = CFG.prosodyOn && (CFG.sttProvider==='webspeech' || CFG.sttProvider==='realtime');
+    var sharedProsody = CFG.prosodyOn && (CFG.sttProvider==='webspeech' || CFG.sttProvider==='realtime' || isLiveTranscribe());
     an.fftSize = sharedProsody ? 2048 : 1024;
     ac.createMediaStreamSource(micStream).connect(an);
     if (sharedProsody) micProsody = new ProsodyAnalyzer(an,ac.sampleRate,'microphone:'+CFG.sttProvider);
@@ -8455,7 +8852,7 @@ function exportHtml(){
     ovCapFont:CFG.ovCapFont, ovCapLine:CFG.ovCapLine, ovCapItemWidth:CFG.ovCapItemWidth,
     ovCapItems:CFG.ovCapItems, ovCapHold:CFG.ovCapHold,
     ovCapShadow:CFG.ovCapShadow?'1':'0', ovCapOutline:CFG.ovCapOutline?'1':'0', ovCapRound:CFG.ovCapRound?'1':'0',
-    ovCapX:CFG.ovCapX, ovCapY:CFG.ovCapY,
+    ovCapX:CFG.ovCapX, ovCapY:CFG.ovCapY, ovInteraction:CFG.ovInteraction,
     ttsPad: CFG.ttsPad, aivisModel: CFG.aivisModel, aivisModelB: CFG.aivisModelB, lvvBase: CFG.lvvBase,
     ttsStale: CFG.ttsStale,
     aivisStyle: CFG.aivisStyle, aivisStyleB: CFG.aivisStyleB, aivisRate: CFG.aivisRate,
@@ -8481,7 +8878,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.35.3 Phase 2</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.36.0 Phase 3</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -9020,6 +9417,19 @@ $('captureStop').onclick  = function(){ overlaySession.stopSource(false); $('cap
 $('captureClose').onclick = function(){ overlaySession.close(); };
 $('captureFull').onclick  = captureFullscreen;
 $('captureSettingsBtn').onclick = function(){ $('captureSettings').classList.toggle('on'); overlayWakeToolbar(); };
+$('captureModeNavigate').onclick=function(){OverlayStage.setMode('navigate');};
+$('captureModeAnnotate').onclick=function(){OverlayStage.setMode('annotate');};
+$('captureModeLock').onclick=function(){OverlayStage.setMode(OverlayStage.mode==='locked'?'navigate':'locked');};
+$('captureFit').onclick=function(){OverlayStage.frame('fit',true);};
+$('captureWidthFit').onclick=function(){OverlayStage.frame('width',true);};
+$('captureActual').onclick=function(){OverlayStage.frame('actual',true);};
+$('captureZoomOut').onclick=function(){OverlayStage.zoomStep(-1);};
+$('captureZoomIn').onclick=function(){OverlayStage.zoomStep(1);};
+$('annotationUndo').onclick=function(){OverlayStage.undo();};
+$('annotationRedo').onclick=function(){OverlayStage.redo();};
+$('annotationClear').onclick=function(){if(OverlayStage.annotations.length&&window.confirm('この画面の注釈をすべて消去しますか？'))OverlayStage.clear(true);};
+document.querySelectorAll('[data-ann-tool]').forEach(function(b){b.onclick=function(){OverlayStage.selectTool(this.getAttribute('data-ann-tool'));};});
+OverlayStage.selectTool('pen');OverlayStage.updateHistory();
 $('ovCapReset').onclick = resetCaptureProfile;
 ['ovCapLayout','ovCapWidth','ovCapResolution','ovCapTextA','ovCapTextB','ovCapSrcA','ovCapSrcB','ovCapBg','ovCapTextOpacity','ovCapBgOpacity','ovCapFont','ovCapLine','ovCapItemWidth','ovCapItems','ovCapHold'].forEach(function(id){
   $(id).addEventListener('input',function(){
@@ -9092,6 +9502,57 @@ document.addEventListener('fullscreenchange',function(){
 });
 $('captureStage').addEventListener('contextmenu',function(ev){ if(overlaySession.opened) ev.preventDefault(); });
 $('captureOverlay').addEventListener('dragstart',function(ev){ ev.preventDefault(); });
+$('annotationCanvas').addEventListener('pointerdown',function(ev){OverlayStage.annotationDown(ev);});
+$('annotationCanvas').addEventListener('pointermove',function(ev){OverlayStage.annotationMove(ev);});
+$('annotationCanvas').addEventListener('pointerup',function(ev){OverlayStage.annotationUp(ev);});
+$('annotationCanvas').addEventListener('pointercancel',function(ev){OverlayStage.annotationUp(ev);});
+$('captureStage').addEventListener('wheel',function(ev){
+  if(!overlaySession.opened||!ev.ctrlKey)return;
+  ev.preventDefault();OverlayStage.zoomStep(ev.deltaY<0?1:-1,ev.clientX,ev.clientY);
+},{passive:false});
+$('captureStage').addEventListener('pointerdown',function(ev){
+  var canPan=OverlayStage.mode==='navigate'||(OverlayStage.mode==='annotate'&&(OverlayStage.spaceDown||ev.button===1));
+  if(!canPan||ev.target.closest('#captureTop,#captureRail,#capturePalette,#captureSettings'))return;
+  if(ev.button!==0&&ev.button!==1)return;ev.preventDefault();
+  OverlayStage.pointers[ev.pointerId]={x:ev.clientX,y:ev.clientY};
+  try{this.setPointerCapture(ev.pointerId);}catch(e){}
+  var ids=Object.keys(OverlayStage.pointers);
+  if(ids.length>=2){
+    var a=OverlayStage.pointers[ids[0]],b=OverlayStage.pointers[ids[1]];
+    OverlayStage.pinch={dist:Math.hypot(b.x-a.x,b.y-a.y),zoom:OverlayStage.zoom,cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};OverlayStage.pan=null;
+  }else OverlayStage.pan={id:ev.pointerId,x:ev.clientX,y:ev.clientY,px:OverlayStage.panX,py:OverlayStage.panY};
+  $('captureOverlay').classList.add('pan-active');
+});
+$('captureStage').addEventListener('pointermove',function(ev){
+  if(!OverlayStage.pointers[ev.pointerId])return;
+  OverlayStage.pointers[ev.pointerId]={x:ev.clientX,y:ev.clientY};var ids=Object.keys(OverlayStage.pointers);
+  if(OverlayStage.pinch&&ids.length>=2){
+    var a=OverlayStage.pointers[ids[0]],b=OverlayStage.pointers[ids[1]],d=Math.max(1,Math.hypot(b.x-a.x,b.y-a.y));
+    OverlayStage.zoomAt(OverlayStage.pinch.zoom*d/Math.max(1,OverlayStage.pinch.dist),(a.x+b.x)/2,(a.y+b.y)/2);
+  }else if(OverlayStage.pan&&OverlayStage.pan.id===ev.pointerId){
+    OverlayStage.panX=OverlayStage.pan.px+ev.clientX-OverlayStage.pan.x;OverlayStage.panY=OverlayStage.pan.py+ev.clientY-OverlayStage.pan.y;
+    OverlayStage.view='custom';OverlayStage.clampPan();OverlayStage.apply();
+  }
+});
+function overlayStagePointerEnd(ev){
+  delete OverlayStage.pointers[ev.pointerId];
+  if(OverlayStage.pan&&OverlayStage.pan.id===ev.pointerId)OverlayStage.pan=null;
+  if(Object.keys(OverlayStage.pointers).length<2)OverlayStage.pinch=null;
+  if(!Object.keys(OverlayStage.pointers).length)$('captureOverlay').classList.remove('pan-active');
+}
+$('captureStage').addEventListener('pointerup',overlayStagePointerEnd);
+$('captureStage').addEventListener('pointercancel',overlayStagePointerEnd);
+$('capturePaletteHandle').addEventListener('pointerdown',function(ev){
+  if(ev.button!==0)return;ev.preventDefault();var r=$('capturePalette').getBoundingClientRect();
+  OverlayStage.paletteDrag={id:ev.pointerId,dx:ev.clientX-r.left,dy:ev.clientY-r.top};$('capturePalette').classList.add('dragging');
+  try{this.setPointerCapture(ev.pointerId);}catch(e){}
+});
+document.addEventListener('pointermove',function(ev){
+  var d=OverlayStage.paletteDrag;if(!d||d.id!==ev.pointerId)return;var p=$('capturePalette');
+  p.style.left=Math.max(4,Math.min(window.innerWidth-p.offsetWidth-4,ev.clientX-d.dx))+'px';
+  p.style.top=Math.max(64,Math.min(window.innerHeight-p.offsetHeight-4,ev.clientY-d.dy))+'px';
+});
+document.addEventListener('pointerup',function(ev){if(OverlayStage.paletteDrag&&OverlayStage.paletteDrag.id===ev.pointerId){OverlayStage.paletteDrag=null;$('capturePalette').classList.remove('dragging');}});
 $('txtClose').onclick   = function(){ txtOpen(false); };
 $('txtSend').onclick    = txtSubmit;
 $('txtSeatBtn').onclick = function(){
@@ -9108,6 +9569,7 @@ setTxtSeatMode(store.get('di.txtseat','auto'));
 
 fitSafeBottom();
 window.addEventListener('resize', fitSafeBottom);
+window.addEventListener('resize',function(){if(overlaySession.opened)OverlayStage.layout(false);});
 window.addEventListener('orientationchange', function(){ setTimeout(fitSafeBottom, 300); });
 
 $('feedA').addEventListener('scroll', function(){ onFeedScroll('feedA','feedB'); }, { passive:true });
@@ -9268,7 +9730,14 @@ function simple(id, key, prop, isCheck){
       }
     }
     if (prop==='echoGuard') dlog('stt','echo-guard',{on:!!v});
-    if (prop==='sttPunct') dlog('stt','punctuation',{on:!!v,webspeech:'terminal-only'});
+    if (prop==='sttPunct'){
+      dlog('stt','punctuation',{on:!!v,localTerminal:true,apiPrompt:CFG.sttProvider!=='webspeech'});
+      /* Realtimeは開始時のsession設定へ指示を埋め込むため、途中変更時だけ接続を張り直す。 */
+      if(S.running&&isLiveTranscribe()){
+        stopAll();setTimeout(startAll,300);
+        toast('句読点設定をRealtime音声認識へ反映するため、接続を張り直します。',true);
+      }
+    }
     if (prop==='rtDirection'){
       dlog('realtime','direction',{from:old,to:v,label:realtimeDirectionLabel(v)});
       if (S.running){
@@ -9615,7 +10084,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.35.3 Phase 2');
+  out.push('- バージョン: Duo Interpreter v1.36.0 Phase 3');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -9647,8 +10116,20 @@ function diagText(devices){
     if (CFG.ttsMode==='localvv') return '(ローカルエンジン)';
     return '(不明)';
   }
+  function diagSttTransport(){
+    if(CFG.sttProvider==='realtime')return 'OpenAI Realtime WebRTC（同時通訳）';
+    var routes=[];
+    if(CFG.srcA==='mic'||CFG.srcB==='mic')routes.push(isLiveTranscribe()?'マイク=Realtime WebRTC':(CFG.sttProvider==='webspeech'?'マイク=Web Speech':'マイク=録音分割REST'));
+    if(CFG.srcA==='display'||CFG.srcB==='display'){
+      if(CFG.displaySttRoute==='direct')routes.push('共有音声=Web Speech Track（選択モデルは未使用）');
+      else if(CFG.displaySttRoute==='vb')routes.push('共有音声=VB-CABLE '+(isLiveTranscribe()?'Realtime WebRTC':(CFG.sttProvider==='webspeech'?'Web Speech Track':'録音分割REST')));
+      else routes.push('共有音声='+(isLiveTranscribe()?'Realtime WebRTC':'録音分割REST'));
+    }
+    return routes.join(' / ')||'(入力なし)';
+  }
   [['翻訳プロバイダ', CFG.provider], ['翻訳モデル', CFG.model],
    ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel], ['句読点の自動補完', CFG.sttPunct ? 'ON' : 'OFF'],
+   ['有効なSTT通信方式', diagSttTransport()],
    ['共有音声STT経路', CFG.displaySttRoute],
    ['共有Track直接Web Speech候補', overlayCapabilities().speechTrackInput],
    ['通常マイク入力', CFG.micDevLbl || (CFG.micDev ? '(名称不明)' : '既定')],
@@ -9682,6 +10163,10 @@ function diagText(devices){
       ? ((aivisNameOf(aivisModelFor('A')) || '(未設定)') + ' / ' + (aivisNameOf(aivisModelFor('B')) || '(未設定)'))
       : '(未使用)'],
    ['Aivis 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'aivis' ? aivisTweaks() : '(未使用)'],
+   ['Aivis課金モード（直近応答）', !rtNativeAudio && CFG.ttsMode === 'aivis'
+      ? (AIVIS_LAST_BILLING ? ((AIVIS_LAST_BILLING.mode||'(headerなし)')
+         +(AIVIS_LAST_BILLING.creditsRemaining?' / 残クレジット '+AIVIS_LAST_BILLING.creditsRemaining:'')
+         +(AIVIS_LAST_BILLING.rateRemaining?' / 残リクエスト '+AIVIS_LAST_BILLING.rateRemaining:'')) : '(まだAivis応答なし)') : '(未使用)'],
    ['VOICEVOX 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'voicevox' ? vvTweaks() : '(未使用)'],
    ['VOICEVOX処理', !rtNativeAudio && CFG.ttsMode === 'voicevox' ? '最大4件並列合成（429時は現在'+vvSynthLimit+'件へ自動抑制） / 発話順に1件ずつ再生 / 最大6件保持 / 8秒超は破棄 / 高速再生は先読み保護' : '(未使用)'],
    ['原文読み上げ', rtNativeAudio ? '(外部TTS設定は未使用)' : (CFG.ttsSrc ? 'ON' : 'OFF')],
@@ -9723,6 +10208,7 @@ function diagText(devices){
           (overlaySession.sourceInfo.frameRate?' / '+Math.round(overlaySession.sourceInfo.frameRate)+'fps':'')) : '共有元なし'))
       : '閉じています'],
    ['画面取込解像度', overlayResolutionProfile(CFG.ovCapResolution).label+'（取込時の希望上限）'],
+   ['オーバーレイ操作', OverlayStage.mode+' / '+OverlayStage.view+' / '+Math.round(OverlayStage.zoom*100)+'% / 注釈'+OverlayStage.annotations.length+'件'],
    ['オーバーレイ音声境界', OverlayAudioRoutes.sttInput().kind+' / TTS sink分離='+
       (OverlayAudioRoutes.ttsOutput('A').split?'ON':'Phase 2')],
    ['オーバーレイ字幕設定', CFG.ovCapLayout+' / '+CFG.ovCapItems+'件 / '+(CFG.ovCapHold==='0'?'保持':'保持'+CFG.ovCapHold+'秒')+' / 文字'+CFG.ovCapFont+'px / 行間'+CFG.ovCapLine],
@@ -9850,15 +10336,25 @@ $('dlMin').onclick = function(){ download('minutes-'+stamp()+'.txt', $('minBody'
 /* キーボード */
 document.addEventListener('keydown', function(e){
   var t = e.target.tagName;
-  if (overlaySession.opened && e.key==='Escape'){
-    e.preventDefault();
-    if ($('captureSettings').classList.contains('on')) $('captureSettings').classList.remove('on');
-    else if (overlaySession.ownsFullscreen && document.fullscreenElement){
-      overlaySession.ownsFullscreen=false;
-      var xp=document.exitFullscreen(); if(xp&&xp.catch) xp.catch(function(){});
+  if(overlaySession.opened && t!=='INPUT'&&t!=='TEXTAREA'&&t!=='SELECT'){
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?OverlayStage.redo():OverlayStage.undo();return;}
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();OverlayStage.redo();return;}
+    if(e.key==='a'||e.key==='A'){e.preventDefault();OverlayStage.setMode(OverlayStage.mode==='annotate'?'navigate':'annotate');return;}
+    if(e.key==='l'||e.key==='L'){e.preventDefault();OverlayStage.setMode(OverlayStage.mode==='locked'?'navigate':'locked');return;}
+    if(e.key==='0'){e.preventDefault();OverlayStage.frame('fit',true);return;}
+    if(e.key==='1'){e.preventDefault();OverlayStage.frame('actual',true);return;}
+    if(e.key==='+'||e.key==='='){e.preventDefault();OverlayStage.zoomStep(1);return;}
+    if(e.key==='-'){e.preventDefault();OverlayStage.zoomStep(-1);return;}
+    if(e.code==='Space'){e.preventDefault();OverlayStage.spaceDown=true;return;}
+    if(e.key==='Escape'){
+      e.preventDefault();
+      if($('captureSettings').classList.contains('on'))$('captureSettings').classList.remove('on');
+      else if(OverlayStage.mode!=='navigate')OverlayStage.setMode('navigate');
+      else if(overlaySession.ownsFullscreen&&document.fullscreenElement){
+        overlaySession.ownsFullscreen=false;var xp=document.exitFullscreen();if(xp&&xp.catch)xp.catch(function(){});
+      }else overlaySession.close();
+      return;
     }
-    else overlaySession.close();
-    return;
   }
   if (t==='INPUT' || t==='TEXTAREA' || t==='SELECT') return;
   if (e.code==='Space'){ e.preventDefault(); S.running ? stopAll() : startAll(); }
@@ -9869,6 +10365,7 @@ document.addEventListener('keydown', function(e){
   else if (e.key==='0'){ setMode(true); }
   else if (e.key==='Tab'){ e.preventDefault(); toggleListen(); }
 });
+document.addEventListener('keyup',function(e){if(e.code==='Space')OverlayStage.spaceDown=false;});
 window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); camStop(); overlaySession.stopSource(true); });
 
 /* 初期化 */
