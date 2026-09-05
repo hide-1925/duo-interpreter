@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.37.2 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.37.3 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -652,7 +652,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.2 Phase 4</span><span class="build-id">Build: 20260905-v1372-audio4.2</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.3 Phase 4</span><span class="build-id">Build: 20260905-v1373-keysync4.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -662,7 +662,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.2 Phase 4</span><span class="build-id">Build: 20260905-v1372-audio4.2</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.3 Phase 4</span><span class="build-id">Build: 20260905-v1373-keysync4.3</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1551,7 +1551,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260905-v1372-audio4.2';
+var APP_BUILD = '20260905-v1373-keysync4.3';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -3574,7 +3574,9 @@ function verifySttKey(){
 var AIVIS_TEST_LINE = 'こんにちは。読み上げのテストです。';
 function verifyAivisKey(){
   return keyChkRun('chkAivis', 'chkAivisMsg', 'Aivis Cloud API', function(){
-    var key = aivisKey();
+    /* Safari/PWA の自動入力・貼り付けは input イベントを発火しない場合がある。
+       確認ボタンでは保存値ではなく、画面に現在見えている値を必ず採用する。 */
+    var key = aivisKey(true);
     if (!key) return Promise.reject(new Error('APIキーが未入力です'));
     var seat = seatUsed('B') ? 'B' : 'A';
     if (!aivisModelFor(seat)) return Promise.reject(new Error('モデル UUID が未入力です'));
@@ -5681,7 +5683,40 @@ function applySeatCols(){
 var AIVIS_URL = 'https://api.aivis-project.com/v1/tts/synthesize';
 var aivisWarned = false;
 var AIVIS_LAST_BILLING = null;
-function aivisKey(){ return (KEYS['aivis'] || '').trim(); }
+/* Safari/PWA で貼り付け・パスワード自動入力時に input イベントが欠落しても、
+   実際の送信直前には入力欄の現在値を優先する。Bearer 接頭辞、引用符、
+   ゼロ幅文字など、クリップボード経由で混入しやすい装飾だけを除去する。 */
+function normalizeAivisKey(value){
+  var key=String(value||'').replace(/[\u200B-\u200D\u2060\uFEFF]/g,'').trim();
+  key=key.replace(/^Bearer\s+/i,'').trim();
+  if(key.length>=2&&((key.charAt(0)==='"'&&key.charAt(key.length-1)==='"')||
+                    (key.charAt(0)==="'"&&key.charAt(key.length-1)==="'"))){
+    key=key.slice(1,-1).trim();
+  }
+  return key;
+}
+function setAivisKey(value,source){
+  var key=normalizeAivisKey(value);
+  if(String(KEYS['aivis']||'')!==key){
+    KEYS['aivis']=key;
+    saveKeys();
+    dlog('key','aivis-sync',{source:source||'unknown',chars:key.length});
+  }
+  return key;
+}
+function aivisKey(forceField){
+  var current=normalizeAivisKey(KEYS['aivis']||''),field=$('aivisKey');
+  if(field&&(forceField||String(field.value||'').trim()!=='')){
+    var shown=normalizeAivisKey(field.value);
+    if(forceField||shown)current=shown;
+  }
+  return setAivisKey(current,forceField?'verify-field':'send-field');
+}
+function aivisKeyState(){
+  var saved=normalizeAivisKey(KEYS['aivis']||''),field=$('aivisKey');
+  var shown=field?normalizeAivisKey(field.value):saved;
+  return (shown===saved?'入力欄と実行値が同期':'入力欄を次回送信時に優先')+' / '+shown.length+'文字';
+}
 function aivisBillingMeta(r){
   var h=function(n){try{return r&&r.headers?r.headers.get(n)||'':'';}catch(e){return'';}};
   return {
@@ -5701,7 +5736,10 @@ function aivisLogBilling(meta,where){
 }
 function aivisHttpError(r,raw){
   var meta=aivisBillingMeta(r),body=String(raw||'').slice(0,220),msg=String(r.status)+' '+body;
-  if(r.status===402){
+  if(r.status===401){
+    msg='401 Aivis APIキーが認証されませんでした。入力欄の現在値を再同期して送信しました。'
+      +'Aivis公式デモで同じキーが成功する場合は、設定画面でキーを貼り直して「確認」を押してください。';
+  }else if(r.status===402){
     msg='402 Aivisのクレジット残高が不足しています。Aivisプレミアム利用中の場合は、'
       +'ダッシュボードで「サブスクリプション」を課金モードに選んだAPIキーを作成／選択し、DuoのAivis APIキーを差し替えてください。'
       +'追加使用量を使っている場合はクレジット残高も確認してください。';
@@ -9330,7 +9368,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.37.2 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.37.3 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -10372,9 +10410,24 @@ VV_SLIDERS.forEach(function(s){
 });
 $('vvAdvReset').onclick=function(){ vvAdvReset(); };
 $('aivisKey').oninput = function(){
-  KEYS['aivis'] = this.value.trim(); saveKeys();
+  setAivisKey(this.value,'input');
   keyChkShow('chkAivisMsg','','');
   aivisWarned = false; refreshVvUI();
+};
+$('aivisKey').onchange = function(){
+  var key=setAivisKey(this.value,'change');
+  if(this.value!==key)this.value=key;
+  keyChkShow('chkAivisMsg','','');
+  aivisWarned=false;refreshVvUI();
+};
+$('aivisKey').onpaste = function(){
+  var self=this;
+  setTimeout(function(){
+    var key=setAivisKey(self.value,'paste');
+    if(self.value!==key)self.value=key;
+    keyChkShow('chkAivisMsg','','');
+    aivisWarned=false;refreshVvUI();
+  },0);
 };
 /* 貼り付けの途中で毎文字問い合わせないよう、少し待ってから名前を取りにいく */
 var aivisNameTimer = null;
@@ -10621,7 +10674,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.37.2 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.37.3 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -10701,6 +10754,7 @@ function diagText(devices){
       ? ((aivisNameOf(aivisModelFor('A')) || '(未設定)') + ' / ' + (aivisNameOf(aivisModelFor('B')) || '(未設定)'))
       : '(未使用)'],
    ['Aivis 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'aivis' ? aivisTweaks() : '(未使用)'],
+   ['Aivis APIキー同期', !rtNativeAudio && CFG.ttsMode === 'aivis' ? aivisKeyState() : '(未使用)'],
    ['Aivis課金モード（直近応答）', !rtNativeAudio && CFG.ttsMode === 'aivis'
       ? (AIVIS_LAST_BILLING ? ((AIVIS_LAST_BILLING.mode||'(headerなし)')
          +(AIVIS_LAST_BILLING.creditsRemaining?' / 残クレジット '+AIVIS_LAST_BILLING.creditsRemaining:'')
