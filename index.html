@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.36.4 Phase 3 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.37.0 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -276,6 +276,9 @@
   #captureStop.capture-active{border-color:var(--b);color:var(--b);background:rgba(221,136,164,.17)}
   #captureStop.capture-active:hover{background:rgba(221,136,164,.25)}
   #captureStop:disabled{opacity:.45;cursor:default}
+  #captureSwitch{border-color:#8bb8ff;color:#b9d3ff;background:rgba(84,137,220,.13)}
+  #captureForwardWheel.active{border-color:var(--a);color:var(--a);background:rgba(61,220,151,.14)}
+  #captureForwardWheel[hidden],#captureSwitch[hidden]{display:none!important}
   #captureModeGroup,#captureZoomGroup{display:flex;align-items:center;gap:4px}
   #captureModeGroup .cbtn,#captureZoomGroup .cbtn{min-height:34px;padding:5px 8px}
   #captureModeGroup .cbtn.active{border-color:var(--a);color:var(--a);background:rgba(61,220,151,.13)}
@@ -298,6 +301,9 @@
   .annotation-history{display:flex;gap:5px;margin-top:7px}
   .annotation-history button{flex:1;min-width:0;height:33px;padding:4px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--txt);cursor:pointer}
   .annotation-history button:disabled{opacity:.4;cursor:default}
+  .annotation-save{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:7px}
+  .annotation-save button{min-width:0;height:33px;padding:4px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--txt);cursor:pointer;font-size:11px;font-weight:700}
+  .annotation-save button:disabled{opacity:.4;cursor:default}
   #captureNotice{
     position:absolute;z-index:6;left:50%;top:78px;max-width:min(760px,calc(100vw - 28px));
     transform:translate(-50%,-7px);opacity:0;pointer-events:none;
@@ -638,7 +644,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.4 Phase 3</span><span class="build-id">Build: 20260905-v1364-live3.4</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.0 Phase 4</span><span class="build-id">Build: 20260905-v1370-phase4.0</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -648,7 +654,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.4 Phase 3</span><span class="build-id">Build: 20260905-v1364-live3.4</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.0 Phase 4</span><span class="build-id">Build: 20260905-v1370-phase4.0</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -668,6 +674,8 @@
     <div id="captureTop">
       <button class="cbtn" id="captureStart"><span class="capture-start-icon" aria-hidden="true"></span><span>画面取込</span></button>
       <button class="cbtn" id="captureStop" disabled>■ 取込停止</button>
+      <button class="cbtn" id="captureSwitch" hidden title="共有するタブ・ウィンドウ・画面を選び直す">⇄ 取込切替</button>
+      <button class="cbtn" id="captureForwardWheel" hidden title="この画面上のホイール操作を取り込んだブラウザタブへ送る">↕ 元タブ操作</button>
       <span id="captureState">待機中</span>
       <div id="captureModeGroup" aria-label="操作モード">
         <button class="cbtn" id="captureModeNavigate" title="ナビゲーション（Space＋ドラッグ）">移動</button>
@@ -709,6 +717,12 @@
         <button id="annotationUndo" title="元に戻す（Ctrl+Z）">↶</button>
         <button id="annotationRedo" title="やり直す（Ctrl+Y）">↷</button>
         <button id="annotationClear" title="注釈を全消去">全消去</button>
+      </div>
+      <div class="annotation-save">
+        <button id="annotationSavePng" title="現在の取込映像と注釈をPNGで保存">PNG保存</button>
+        <button id="annotationSaveJson" title="注釈を再編集できるJSONで保存">JSON保存</button>
+        <button id="annotationLoadJson" title="保存した注釈JSONを読み込む">JSON読込</button>
+        <input id="annotationJsonFile" type="file" accept="application/json,.json" hidden>
       </div>
     </aside>
 
@@ -845,9 +859,10 @@
   <!-- ===== タブ1: 翻訳 ===== -->
   <div class="pane on" id="p1">
     <div class="provider-stack">
-    <div class="field">
+    <div class="field" id="translationProviderField">
       <label>AIプロバイダ</label>
       <select id="provider">
+        <option value="none">なし（文字起こしのみ）</option>
         <option value="free">🆓 無料モード（APIキー不要 / Google翻訳ウェブ版）</option>
         <option value="openai">OpenAI</option>
         <option value="xai">xAI（Grokモデル）</option>
@@ -863,7 +878,7 @@
       <small id="provNote"></small>
     </div>
 
-    <div class="field">
+    <div class="field" id="translationModelField">
       <label>翻訳モデル</label>
       <div class="row">
         <select id="model" style="flex:1"></select>
@@ -874,7 +889,7 @@
       <small id="modelNote">主要モデル（最新の5.6系）のみ表示しています。APIキーを入力すると、実際に使えるモデル一覧を自動で取得します。</small>
     </div>
 
-    <div class="field">
+    <div class="field" id="translationCameraField">
       <label>カメラ翻訳のモデル</label>
       <input type="text" id="camModel" placeholder="gpt-4o-mini">
       <small>📷ボタンで使う、画像を読めるモデルです（例：gpt-4o-mini / gpt-5.6 など）。
@@ -899,7 +914,7 @@
     </div>
     </div>
 
-    <div class="field">
+    <div class="field" id="translationToneField">
       <label>翻訳スタイル</label>
       <select id="tone">
         <option value="business">ビジネス（丁寧）</option>
@@ -909,7 +924,7 @@
       </select>
     </div>
 
-    <div class="field">
+    <div class="field" id="translationContextField">
       <label>会議の背景 / コンテキスト</label>
       <textarea id="ctx" placeholder="例）当社は自動車部品メーカー。相手はドイツの調達担当。今日は価格改定と納期の打ち合わせ。"></textarea>
       <small>AI翻訳プロバイダ選択時のみ有効です。</small>
@@ -1469,7 +1484,7 @@
       <label>画面取込オーバーレイ（PC）</label>
       <button class="btn primary" id="ovCapOpen">🖥 画面を取り込んで字幕を重ねる</button>
       <small>PDF、PowerPoint、Teams、Zoom、ブラウザ資料などをDuo内へ取り込み、画面端へコメント形式の字幕を表示します。ブラウザ自体を透明にする旧方式、クロマキー、AutoHotkeyは使用しません。<br>
-      Phase 3ではZoom・Pan・注釈、操作ロックに対応しています。共有音声の直接Web Speech／VB-CABLE／外部APIと方向別TTS出力も引き続き利用できます。iPhone／iPadでは通常モードをお使いください。</small>
+      Phase 4では対応ブラウザタブへのホイール転送、取込ソース切替、注釈のPNG／JSON保存に対応しています。非対応環境では既存のZoom・Pan・注釈がそのまま使えます。iPhone／iPadでは通常モードをお使いください。</small>
       <label class="switch"><input type="checkbox" id="syncScroll" checked> A/Bの会話ログのスクロールを連動させる</label>
     </div>
     <div class="field">
@@ -1518,7 +1533,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260905-v1364-live3.4';
+var APP_BUILD = '20260905-v1370-phase4.0';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -1552,6 +1567,8 @@ function L(code){ for (var i=0;i<LANGS.length;i++) if (LANGS[i].c === code) retu
 
 /* ---------------- プロバイダ定義 ---------------- */
 var PROVIDERS = {
+  none:      { label:'なし（文字起こしのみ）', kind:'none', key:false, models:[],
+               note:'STTの確定結果を翻訳せず、そのまま会話ログへ表示します。翻訳APIと訳文TTSは呼び出しません。' },
   free:      { label:'無料モード', kind:'free', key:false,
                note:'Google翻訳のウェブ版エンドポイントを利用します。APIキー・課金は不要ですが、非公式のため混雑時に失敗することがあります（自動でMyMemoryに切替）。用語集とコンテキストは反映されません。' },
   /* 並びは設定画面の選択肢と揃える（xAI は OpenAI の次） */
@@ -1851,6 +1868,7 @@ function loadCfg(){
 }
 function firstId(list){ var a = normList(list); return a.length ? a[0].id : ''; }
 function defaultModel(p){ var P = PROVIDERS[p]; return P ? firstId(P.models) : ''; }
+function translationDisabled(){ return !!(PROVIDERS[CFG.provider] && PROVIDERS[CFG.provider].kind === 'none'); }
 function defaultSttModel(p){ return firstId(STT_MODELS[p]); }
 function saveKeys(){
   Object.keys(KEY_SCOPES).forEach(function(scope){
@@ -1983,19 +2001,22 @@ function paint(feedId, e, viewer){
     feed.appendChild(el);
   }
   var isSelf = (e.seat === viewer);
-  var main = isSelf ? e.srcText : (e.dstText || '…');
-  var sub  = isSelf ? (e.dstText||'') : e.srcText;
+  var noTranslation = translationDisabled() || !!e.translationSkipped;
+  /* 文字起こし専用モードでは原文を両側の主表示へ出す。
+     .main を使うため、翻訳後テキストと同じ文字サイズになる。 */
+  var main = noTranslation ? e.srcText : (isSelf ? e.srcText : (e.dstText || '…'));
+  var sub  = noTranslation ? '' : (isSelf ? (e.dstText||'') : e.srcText);
   // 話者が後から確定した場合にも色分けが追従するよう毎回付け直す
   el.className = 'bubble from-' + e.seat +
-                 (e.dstText ? '' : ' pending') + (e.interim ? ' interim' : '');
+                 (e.dstText || noTranslation ? '' : ' pending') + (e.interim ? ' interim' : '');
   el.querySelector('.whotxt').textContent =
-    seatName(e.seat) + ' · ' + L(e.srcLang).name + ' · ' + e.time + (isSelf ? ' · 原文' : ' · 訳');
+    seatName(e.seat) + ' · ' + L(e.srcLang).name + ' · ' + e.time + (noTranslation ? ' · 文字起こし' : (isSelf ? ' · 原文' : ' · 訳'));
   el.querySelector('.main').textContent = main;
 
   /* このパネルに表示している文を、その言語で読み上げる。
      「今読んでいるものがそのまま鳴る」ので、どちらのパネルでも直感的に使える。 */
   var say = el.querySelector('.saybtn');
-  var sayLang = isSelf ? e.srcLang : e.dstLang;
+  var sayLang = noTranslation ? e.srcLang : (isSelf ? e.srcLang : e.dstLang);
   say.setAttribute('data-say-key',e.id+':'+viewer);
   say.style.display = (main && main !== '…') ? '' : 'none';
   say.onclick = function(ev){
@@ -2021,6 +2042,7 @@ function camSupported(){
 }
 /* 画像を読めるモデルが要るので、無料モードでは使えない */
 function camProvider(){
+  if (translationDisabled()) return null;
   if (CFG.provider === 'gemini' && transKey()) return 'gemini';
   var p = PROVIDERS[CFG.provider];
   if (p && p.kind !== 'free' && p.kind !== 'anthropic' && transKey()) return 'openai';
@@ -2030,7 +2052,9 @@ function camProvider(){
 function camOpen(){
   if (!camSupported()){ toast('このブラウザはカメラに対応していません'); return; }
   if (!camProvider()){
-    toast('カメラ翻訳には画像を読めるAIが必要です。<br>⚙→翻訳 で <b>OpenAI</b> や <b>Gemini</b> を選び、APIキーを設定してください。');
+    toast(translationDisabled()
+      ? '「なし（文字起こしのみ）」ではカメラ翻訳を使用しません。カメラ翻訳を使う場合は翻訳プロバイダを選択してください。'
+      : 'カメラ翻訳には画像を読めるAIが必要です。<br>⚙→翻訳 で <b>OpenAI</b> や <b>Gemini</b> を選び、APIキーを設定してください。');
     return;
   }
   $('cam').classList.add('on');
@@ -2292,7 +2316,7 @@ function txtDetectSeat(text){
   if (txtSeatMode !== 'auto') return Promise.resolve(txtSeatMode);
   if (CFG.langA === CFG.langB) return Promise.resolve('A');
   var r = txtDetectLocal(text);
-  if (r.margin >= 18){
+  if (r.margin >= 18 || translationDisabled()){
     dlog('text','detect',{ by:'local', seat:r.seat, margin:Math.round(r.margin) });
     return Promise.resolve(r.seat);
   }
@@ -2380,7 +2404,7 @@ function fitSafeBottom(){
   dlog('layout','safe-bottom',{ inner:window.innerHeight, screen:screenH, covered:covered, sab:Math.round(v) });
 }
 
-/* ---------------- 画面取込オーバーレイ（Phase 0-3） ----------------
+/* ---------------- 画面取込オーバーレイ（Phase 0-4） ----------------
    透明ブラウザ化ではなく、getDisplayMedia() で選択した画面を Duo 内に表示し、
    その上へ独立した字幕レールを重ねる。Phase 2では共有音声TrackもSTTへ接続する。 */
 function overlayCapabilities(){
@@ -2400,6 +2424,7 @@ function overlayCapabilities(){
     audioContextSink: !!acProto && ('setSinkId' in acProto),
     captureController: typeof CC === 'function',
     forwardWheel: !!(CC && CC.prototype && ('forwardWheel' in CC.prototype)),
+    captureZoom: !!(CC && CC.prototype && ('getSupportedZoomLevels' in CC.prototype)),
     fullscreen: !!(document.fullscreenEnabled && Element.prototype.requestFullscreen)
   };
 }
@@ -2418,7 +2443,7 @@ function overlayNum(v, fallback, min, max){
   return Math.max(min, Math.min(max, n));
 }
 
-/* ---------------- Phase 3: Zoom / Pan / 注釈 / ロック ----------------
+/* ---------------- Phase 3-4: Zoom / Pan / 注釈 / ロック / 保存 ----------------
    映像とCanvasを同じcontentRootへ入れ、1つのCSS transformで動かす。
    注釈点は映像に対する0～1の正規化座標で保持するため、リサイズ後も追従する。 */
 var OverlayStage = {
@@ -2519,6 +2544,8 @@ var OverlayStage = {
     if($('annotationUndo'))$('annotationUndo').disabled=!this.undoStack.length;
     if($('annotationRedo'))$('annotationRedo').disabled=!this.redoStack.length;
     if($('annotationClear'))$('annotationClear').disabled=!this.annotations.length;
+    if($('annotationSaveJson'))$('annotationSaveJson').disabled=!this.annotations.length;
+    if($('annotationSavePng'))$('annotationSavePng').disabled=!overlaySession.stream;
   },
   renderOne:function(ctx,a){
     var w=this.sourceW,h=this.sourceH,pts=a.points||[],s=a.style||{},lw=Math.max(1,(s.width||.003)*Math.min(w,h));
@@ -2570,6 +2597,44 @@ var OverlayStage = {
   annotationUp:function(ev){
     if(!this.draft||this.draft.pointerId!==ev.pointerId)return;var d=this.draft;this.draft=null;
     if(d.points.length>1){delete d.pointerId;this.snapshot();this.annotations.push(d);}this.render();
+  },
+  exportData:function(){
+    return {
+      format:'duo-interpreter-annotations',version:1,createdAt:new Date().toISOString(),
+      source:{width:this.sourceW,height:this.sourceH},annotations:JSON.parse(JSON.stringify(this.annotations))
+    };
+  },
+  saveJson:function(){
+    if(!this.annotations.length){toast('保存する注釈がありません');return;}
+    download('duo-annotations-'+stamp()+'.json',JSON.stringify(this.exportData(),null,2),'application/json;charset=utf-8');
+    dlog('overlay','annotation-save',{format:'json',count:this.annotations.length});
+  },
+  loadJson:function(raw){
+    var data=JSON.parse(raw),list=data&&data.format==='duo-interpreter-annotations'?data.annotations:(Array.isArray(data)?data:null);
+    if(!Array.isArray(list))throw new Error('Duo注釈JSONではありません');
+    var allowed=['pen','highlight','line','arrow','rect','ellipse','text'];
+    var clean=list.filter(function(a){
+      return a&&allowed.indexOf(a.type)>=0&&Array.isArray(a.points)&&a.points.length&&a.points.every(function(p){return p&&isFinite(p.u)&&isFinite(p.v)&&p.u>=0&&p.u<=1&&p.v>=0&&p.v<=1;});
+    }).slice(0,1000);
+    if(list.length&&!clean.length)throw new Error('有効な注釈座標がありません');
+    this.snapshot();this.annotations=clean;this.draft=null;this.render();
+    dlog('overlay','annotation-load',{count:clean.length,sourceCount:list.length});
+    showCaptureNotice('注釈を'+clean.length+'件読み込みました',2200);
+  },
+  savePng:function(){
+    var video=$('captureVideo'),ann=$('annotationCanvas');
+    if(!overlaySession.stream||!video||video.readyState<2){toast('取込映像が表示されてから保存してください');return;}
+    var s=this.sourceSize(),w=Math.round(s.w),h=Math.round(s.h),canvas=document.createElement('canvas');
+    canvas.width=w;canvas.height=h;
+    try{
+      var ctx=canvas.getContext('2d');ctx.drawImage(video,0,0,w,h);ctx.drawImage(ann,0,0,w,h);
+      canvas.toBlob(function(blob){
+        if(!blob){toast('PNGを作成できませんでした');return;}
+        var a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download='duo-overlay-'+stamp()+'.png';a.click();
+        setTimeout(function(){URL.revokeObjectURL(url);},1000);
+        dlog('overlay','annotation-save',{format:'png',count:OverlayStage.annotations.length,width:w,height:h});
+      },'image/png');
+    }catch(err){toast('PNG保存に失敗しました：'+String((err&&err.message)||err));dlog('overlay','annotation-save-FAIL',{format:'png',err:String(err)});}
   }
 };
 
@@ -2675,6 +2740,7 @@ function overlayStartAudioProbe(track){
 
 var OverlaySession = {
   state:'IDLE', stream:null, videoTrack:null, audioTrack:null, opened:false,
+  controller:null, forwardWheelOn:false,
   stopping:false, lastError:'', sourceInfo:null, ownsFullscreen:false,
   transition:function(next, detail){
     this.state = next;
@@ -2682,31 +2748,43 @@ var OverlaySession = {
     renderCaptureCapability();
     dlog('overlay','state',{state:next,detail:detail||'',source:this.sourceInfo});
   },
-  start:async function(){
+  start:async function(replacing){
     var caps = overlayCapabilities();
     if (caps.mobileUnsupported){ toast('iPhone / iPadでは画面取込オーバーレイを利用できません。通常画面はそのまま使えます。'); return; }
     if (!caps.secure){ toast('画面取込にはHTTPSが必要です。'); return; }
     if (!caps.displayMedia){ toast('このブラウザは画面取込に対応していません。'); return; }
-    this.stopSource(true);
+    replacing=!!(replacing&&this.stream);
+    var previousState=this.state;
     $('capturePlaceholder').hidden = false;
     this.lastError = '';
     this.transition('SELECTING_SOURCE','共有する画面またはウィンドウを選択してください');
-    var stream;
+    var stream, controller=null;
     try {
+      if(caps.captureController)controller=new window.CaptureController();
       try {
-        stream = await navigator.mediaDevices.getDisplayMedia({
+        var options={
           video:overlayCaptureVideoConstraint(), audio:true,
           selfBrowserSurface:'exclude', surfaceSwitching:'include'
-        });
+        };
+        if(controller)options.controller=controller;
+        stream = await navigator.mediaDevices.getDisplayMedia(options);
       } catch (firstErr){
         if (!(firstErr && (firstErr.name === 'TypeError' || firstErr.name === 'OverconstrainedError'))) throw firstErr;
-        stream = await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+        controller=caps.captureController?new window.CaptureController():null;
+        var fallbackOptions={video:true,audio:true};if(controller)fallbackOptions.controller=controller;
+        try{stream = await navigator.mediaDevices.getDisplayMedia(fallbackOptions);}
+        catch(secondErr){
+          if(!(controller&&secondErr&&secondErr.name==='TypeError'))throw secondErr;
+          controller=null;stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+        }
       }
       overlayWakeToolbar();
       var video = stream.getVideoTracks()[0];
       if (!video) throw new Error('映像Trackがありません');
       await overlayApplyResolution(video);
       var audio = stream.getAudioTracks()[0] || null;
+      this.stopSource(true);
+      this.controller=controller;this.forwardWheelOn=false;
       this.stream = stream; this.videoTrack = video; this.audioTrack = audio;
       this.transition('CAPTURING_VIDEO','取込映像を接続しています');
       var settings = video.getSettings ? video.getSettings() : {};
@@ -2715,6 +2793,7 @@ var OverlaySession = {
         height:settings.height || 0, frameRate:settings.frameRate || 0,
         audio:!audio?false:null, audioTrack:!!audio, audioDetected:!audio?false:null
       };
+      try{if(this.controller&&this.controller.setFocusBehavior)this.controller.setFocusBehavior('no-focus-change');}catch(e){}
       var self = this;
       video.onended = function(){ self.sourceEnded('共有元から画面共有が終了されました'); };
       if (audio) audio.onended = function(){
@@ -2734,11 +2813,13 @@ var OverlaySession = {
       OverlayStage.resetSource(intrinsic.width,intrinsic.height);
       el.onresize=function(){
         if(!self.stream||!el.videoWidth||!el.videoHeight)return;
-        if(self.sourceInfo){self.sourceInfo.width=el.videoWidth;self.sourceInfo.height=el.videoHeight;}
+        var liveSettings=self.videoTrack&&self.videoTrack.getSettings?self.videoTrack.getSettings():{};
+        if(self.sourceInfo){self.sourceInfo.width=el.videoWidth;self.sourceInfo.height=el.videoHeight;self.sourceInfo.surface=liveSettings.displaySurface||self.sourceInfo.surface;}
         OverlayStage.sourceW=el.videoWidth;OverlayStage.sourceH=el.videoHeight;
         OverlayStage.layout(OverlayStage.view==='fit'||OverlayStage.view==='width');
         dlog('overlay','source-resize',{videoWidth:el.videoWidth,videoHeight:el.videoHeight,view:OverlayStage.view});
         updateCaptureStatus('取込映像のサイズが変わりました');
+        updatePhase4Controls();
       };
       $('capturePlaceholder').hidden = true;
       this.transition(audio ? 'AUDIO_CHECKING' : 'VIDEO_ONLY',
@@ -2747,10 +2828,20 @@ var OverlaySession = {
       if(audio)overlayStartAudioProbe(audio);
       overlayWakeToolbar();
       dlog('overlay','capture-ok',this.sourceInfo);
+      if(replacing){
+        showCaptureNotice('取込対象を切り替えました。注釈は新しい画面用にクリアしました。',3000);
+        if(S.running&&(CFG.srcA==='display'||CFG.srcB==='display')){
+          dlog('overlay','source-restart-stt',{reason:'取込切替'});
+          stopAll();setTimeout(startAll,450);
+        }
+      }
     } catch(err){
       if (stream) stream.getTracks().forEach(function(t){ try{t.stop();}catch(e){} });
       this.lastError = String((err && err.message) || err);
-      if (err && err.name === 'NotAllowedError') this.transition('IDLE','画面共有はキャンセルされました');
+      if (err && err.name === 'NotAllowedError'){
+        this.transition(replacing&&this.stream?previousState:'IDLE',replacing&&this.stream?'取込切替をキャンセルしました':'画面共有はキャンセルされました');
+        $('capturePlaceholder').hidden=!!this.stream;
+      }
       else {
         this.transition('ERROR',this.lastError);
         toast('画面を取り込めませんでした：' + this.lastError);
@@ -2763,14 +2854,16 @@ var OverlaySession = {
     if (this.stopping) return;
     this.stopping = true;
     overlayStopAudioProbe();
+    if(this.controller&&this.forwardWheelOn&&this.controller.forwardWheel){try{this.controller.forwardWheel(null).catch(function(){});}catch(e){}}
     var audio=this.audioTrack;
     if(audio)stopEnginesForTrack(audio,'画面取込停止');
     var tracks = this.stream && this.stream.getTracks ? this.stream.getTracks() : [];
     tracks.forEach(function(t){ t.onended=null; try{t.stop();}catch(e){} });
-    this.stream=null; this.videoTrack=null; this.audioTrack=null; this.sourceInfo=null;
+    this.stream=null; this.videoTrack=null; this.audioTrack=null; this.sourceInfo=null;this.controller=null;this.forwardWheelOn=false;
     var el=$('captureVideo'); if (el){ el.onresize=null;try{el.pause();}catch(e){} el.srcObject=null; }
     OverlayStage.clear(false);OverlayStage.view='fit';OverlayStage.layout(true);
     this.stopping=false;
+    updatePhase4Controls();
     if (!quiet) this.transition('IDLE','画面共有を停止しました');
   },
   sourceEnded:function(message){
@@ -2818,11 +2911,39 @@ var OverlaySession = {
     this.ownsFullscreen=false;
     dlog('overlay','close',null);
   },
+  setForwardWheel:async function(on){
+    if(!this.stream||!this.controller||!this.controller.forwardWheel||!this.sourceInfo||this.sourceInfo.surface!=='browser'){
+      showCaptureNotice('元タブ操作は対応Chromeでブラウザタブを取り込んだ場合だけ利用できます。',3600);return;
+    }
+    try{
+      await this.controller.forwardWheel(on?$('captureStage'):null);
+      this.forwardWheelOn=!!on;updatePhase4Controls();
+      showCaptureNotice(on?'ホイール操作を元のブラウザタブへ送ります。もう一度押すと解除します。':'元タブへのホイール転送を解除しました。',2800);
+      dlog('overlay','forward-wheel',{enabled:this.forwardWheelOn,surface:this.sourceInfo.surface});
+    }catch(err){
+      this.forwardWheelOn=false;updatePhase4Controls();
+      var m=String((err&&err.message)||err);showCaptureNotice('元タブ操作を開始できません：'+m,4200);
+      dlog('overlay','forward-wheel-FAIL',{err:m.slice(0,160)});
+    }
+  },
   activeAudioTrack:function(){ return this.audioTrack && this.audioTrack.readyState === 'live' ? this.audioTrack : null; }
 };
 var overlaySession = OverlaySession, overlayRailTimer=0, overlayToolbarTimer=0,
     overlayControlsTimer=0, overlayNoticeTimer=0, overlayStateHideTimer=0,
     overlayPointerY=Infinity, overlayDrag=null;
+
+function updatePhase4Controls(){
+  var sw=$('captureSwitch'),wheel=$('captureForwardWheel'),caps=overlayCapabilities();
+  if(sw){sw.hidden=!overlaySession.stream;sw.disabled=!overlaySession.stream||overlaySession.state==='SELECTING_SOURCE';}
+  var canWheel=!!(overlaySession.stream&&overlaySession.controller&&caps.forwardWheel&&overlaySession.sourceInfo&&overlaySession.sourceInfo.surface==='browser');
+  if(wheel){
+    wheel.hidden=!canWheel;wheel.disabled=!canWheel;
+    wheel.classList.toggle('active',!!overlaySession.forwardWheelOn);
+    wheel.textContent=overlaySession.forwardWheelOn?'↕ 元タブ操作 ON':'↕ 元タブ操作';
+    wheel.setAttribute('aria-pressed',overlaySession.forwardWheelOn?'true':'false');
+  }
+  if($('annotationSavePng'))$('annotationSavePng').disabled=!overlaySession.stream;
+}
 
 /* Phase 2の入出力境界。 */
 var OverlayAudioRoutes = {
@@ -2858,6 +2979,7 @@ function updateCaptureStatus(detail){
   $('captureStart').disabled=overlaySession.state==='SELECTING_SOURCE';
   $('captureStop').disabled=!overlaySession.stream;
   $('captureStop').classList.toggle('capture-active',!!overlaySession.stream);
+  updatePhase4Controls();
   if(overlaySession.state==='VIDEO_ONLY' && detail) showCaptureNotice(detail);
   var hint=$('capturePlaceholderText');
   if(hint && overlaySession.state==='SOURCE_ENDED') hint.textContent='共有元が終了しました。「画面取込」から再選択できます。';
@@ -2873,7 +2995,9 @@ function renderCaptureCapability(){
     ' / 共有Track直接STT '+(c.speechTrackInput==='candidate'?'候補':'非対応')+
     (overlaySession.sourceInfo && overlaySession.sourceInfo.audio===false
       ? ' / 共有音声なし：VB-CABLEまたは外部STT APIを選択できます。'
-      : '')+' / Duo内Zoom・Pan・注釈に対応。取込映像は表示専用のため、外部アプリのボタン操作は元ウィンドウで行ってください。';
+      : '')+' / 元タブ操作 '+(c.forwardWheel?'対応候補（ブラウザタブ限定）':'非対応')+
+    ' / Phase 4：取込切替・注釈PNG/JSON保存。取込映像は表示専用のため、外部アプリのクリック操作は元ウィンドウで行ってください。';
+  updatePhase4Controls();
 }
 function applyCaptureProfile(){
   var root=$('captureOverlay'), rail=$('captureRail'); if(!root||!rail) return;
@@ -2909,16 +3033,17 @@ function renderOverlayRail(){
   var rows=hold ? available.slice(-max) : available;
   rail.innerHTML='';
   rows.forEach(function(e){
+    var noTranslation=translationDisabled()||!!e.translationSkipped;
     var item=document.createElement('article');
     item.className='capture-caption'+(CFG.ovCapShadow?' shadow':'')+(CFG.ovCapOutline?' outline':'')+(CFG.ovCapRound?'':' square')+(e.interim?' interim':'');
     item.style.setProperty('--cap-seat',e.seat==='A'?CFG.ovCapTextA:CFG.ovCapTextB);
     var who=document.createElement('div'); who.className='cap-meta';
     who.textContent=seatName(e.seat)+' · '+e.time;
     var main=document.createElement('div'); main.className='cap-main';
-    main.textContent=e.dstText||e.srcText;
-    main.style.color=e.dstText?(e.seat==='A'?CFG.ovCapTextA:CFG.ovCapTextB):(e.seat==='A'?CFG.ovCapSrcA:CFG.ovCapSrcB);
+    main.textContent=noTranslation?e.srcText:(e.dstText||e.srcText);
+    main.style.color=(e.dstText||noTranslation)?(e.seat==='A'?CFG.ovCapTextA:CFG.ovCapTextB):(e.seat==='A'?CFG.ovCapSrcA:CFG.ovCapSrcB);
     item.appendChild(who); item.appendChild(main);
-    if(e.dstText){
+    if(e.dstText&&!noTranslation){
       var sub=document.createElement('div'); sub.className='cap-src'; sub.textContent=e.srcText;
       sub.style.color=e.seat==='A'?CFG.ovCapSrcA:CFG.ovCapSrcB; item.appendChild(sub);
     }
@@ -2926,7 +3051,7 @@ function renderOverlayRail(){
   });
   if(!rows.length){
     var empty=document.createElement('div'); empty.className='capture-caption capture-caption-empty';
-    empty.textContent='認識・翻訳された字幕がここに表示されます'; rail.appendChild(empty);
+    empty.textContent=translationDisabled()?'文字起こしがここに表示されます':'認識・翻訳された字幕がここに表示されます'; rail.appendChild(empty);
   }
   if(!hold && stayAtBottom) requestAnimationFrame(function(){ host.scrollTop=host.scrollHeight; });
   if(hold && S.entries.length) overlayRailTimer=setTimeout(renderOverlayRail,1000);
@@ -3089,6 +3214,13 @@ function translate(e){
   var from = e.srcLang, to = e.dstLang, text = e.srcText;
   var p = PROVIDERS[CFG.provider] || PROVIDERS.free;
   var job, t0 = Date.now();
+  if (p.kind === 'none'){
+    e.translationSkipped = true;
+    e.dstText = '';
+    render(e);
+    dlog('translate','skip',{prov:CFG.provider,why:'文字起こしのみ',from:from,chars:text.length});
+    return Promise.resolve('');
+  }
   if (p.kind === 'free')          job = freeTranslate(text, from, to);
   else if (p.kind === 'anthropic') job = anthropicTranslate(text, from, to);
   else if (p.kind === 'gemini')    job = geminiTranslate(text, from, to);
@@ -3313,6 +3445,8 @@ function verifyTransKey(){
   return keyChkRun('chkTrans', 'chkTransMsg', '翻訳API', function(){
     var p = PROVIDERS[CFG.provider];
     if (!p) return Promise.reject(new Error('プロバイダが未選択です'));
+    if (p.kind === 'none')
+      return Promise.resolve('文字起こしのみでは翻訳APIを使用しません。');
     if (p.kind === 'free')
       return Promise.resolve('無料モードはAPIキー不要です。確認は要りません。');
     var key = transKey();
@@ -9103,7 +9237,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.36.4 Phase 3</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.37.0 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -9128,7 +9262,7 @@ function logRows(){
 }
 function genMinutes(){
   var p = PROVIDERS[CFG.provider];
-  if (p.kind === 'free'){ toast('議事録生成にはAIプロバイダ（OpenAI等）の設定が必要です'); return; }
+  if (p.kind === 'none' || p.kind === 'free'){ toast('議事録生成には翻訳用AIプロバイダ（OpenAI等）の設定が必要です'); return; }
   if (p.key && !transKey()){ toast('APIキーを設定してください'); return; }
   var rows = logRows();
   if (!rows.length){ toast('まだ会話がありません'); return; }
@@ -9320,7 +9454,7 @@ function classifyModels(ids){
 
 function fetchModels(silent){
   var p = PROVIDERS[CFG.provider];
-  if (!p || p.kind === 'free'){ if(!silent) toast('無料モードではモデル選択はありません'); return; }
+  if (!p || p.kind === 'none' || p.kind === 'free'){ if(!silent) toast(p&&p.kind==='none'?'文字起こしのみでは翻訳モデルを使用しません':'無料モードではモデル選択はありません'); return; }
   var key = transKey();
   if (p.key && !key){ if(!silent) toast('先にAPIキーを入力してください'); return; }
   if (p.baseEditable && !CFG.baseUrl){ if(!silent) toast('先に Base URL を入力してください'); return; }
@@ -9416,7 +9550,8 @@ function ttsModelsFor(){
 }
 
 function refreshProviderUI(){
-  var p = PROVIDERS[CFG.provider];
+  var p = PROVIDERS[CFG.provider] || PROVIDERS.free;
+  var noTranslation=(p.kind==='none');
   $('provNote').textContent = p.note || '';
   $('keyField').style.display = (p.key || p.baseEditable) ? '' : 'none';
   $('baseField').style.display = p.baseEditable ? '' : 'none';
@@ -9425,8 +9560,12 @@ function refreshProviderUI(){
   $('baseUrl').value = CFG.baseUrl || '';
 
   var isFree = (p.kind === 'free');
-  $('model').disabled = isFree;
-  $('fetchModels').disabled = isFree;
+  $('translationModelField').style.display=noTranslation?'none':'';
+  $('translationCameraField').style.display=noTranslation?'none':'';
+  $('translationToneField').style.display=noTranslation?'none':'';
+  $('translationContextField').style.display=noTranslation?'none':'';
+  $('model').disabled = isFree||noTranslation;
+  $('fetchModels').disabled = isFree||noTranslation;
   renderModelCombo(chatModelsFor(CFG.provider), CFG.model, function(v){
     CFG.model = v; store.set('di.model', v);
   });
@@ -9447,6 +9586,10 @@ function refreshProviderUI(){
   $('sttKey').value = KEYS['stt:'+CFG.sttProvider] || '';
   keyChkShow('chkSttMsg','','');
   refreshTtsBtn();
+  $('camBtn').disabled=noTranslation;
+  $('camBtn').title=noTranslation?'翻訳なしモードではカメラ翻訳を使用しません':'カメラ翻訳';
+  $('txtInput').placeholder=noTranslation?'入力して文字起こしログへ追加':'入力してEnterで翻訳';
+  $('txtSend').title=noTranslation?'文字起こしログへ追加':'翻訳する';
 
   var isRT = (CFG.sttProvider === 'realtime');
   /* xAI の音声認識はモデルを取らないので、モデル欄そのものを出さない */
@@ -9637,8 +9780,10 @@ $('ovlBtn').onclick     = function(){
   else openCaptureOverlay(true);
 };
 $('ovCapOpen').onclick  = function(){ openDrawer(false); openCaptureOverlay(true); };
-$('captureStart').onclick = function(){ overlaySession.start(); };
+$('captureStart').onclick = function(){ overlaySession.start(!!overlaySession.stream); };
 $('captureStop').onclick  = function(){ overlaySession.stopSource(false); $('capturePlaceholder').hidden=false; };
+$('captureSwitch').onclick=function(){overlaySession.start(true);};
+$('captureForwardWheel').onclick=function(){overlaySession.setForwardWheel(!overlaySession.forwardWheelOn);};
 $('captureClose').onclick = function(){ overlaySession.close(); };
 $('captureFull').onclick  = captureFullscreen;
 $('captureSettingsBtn').onclick = function(){ $('captureSettings').classList.toggle('on'); overlayWakeToolbar(); };
@@ -9653,6 +9798,18 @@ $('captureZoomIn').onclick=function(){OverlayStage.zoomStep(1);};
 $('annotationUndo').onclick=function(){OverlayStage.undo();};
 $('annotationRedo').onclick=function(){OverlayStage.redo();};
 $('annotationClear').onclick=function(){if(OverlayStage.annotations.length&&window.confirm('この画面の注釈をすべて消去しますか？'))OverlayStage.clear(true);};
+$('annotationSavePng').onclick=function(){OverlayStage.savePng();};
+$('annotationSaveJson').onclick=function(){OverlayStage.saveJson();};
+$('annotationLoadJson').onclick=function(){$('annotationJsonFile').value='';$('annotationJsonFile').click();};
+$('annotationJsonFile').onchange=function(){
+  var file=this.files&&this.files[0];if(!file)return;
+  var reader=new FileReader();reader.onload=function(){
+    try{
+      if(OverlayStage.annotations.length&&!window.confirm('現在の注釈を読み込んだ内容で置き換えますか？'))return;
+      OverlayStage.loadJson(String(reader.result||''));
+    }catch(err){toast('注釈JSONを読み込めません：'+String((err&&err.message)||err));dlog('overlay','annotation-load-FAIL',{err:String(err).slice(0,160)});}
+  };reader.onerror=function(){toast('注釈JSONを読み込めませんでした');};reader.readAsText(file);
+};
 document.querySelectorAll('[data-ann-tool]').forEach(function(b){b.onclick=function(){OverlayStage.selectTool(this.getAttribute('data-ann-tool'));};});
 OverlayStage.selectTool('pen');OverlayStage.updateHistory();
 $('ovCapReset').onclick = resetCaptureProfile;
@@ -9732,7 +9889,7 @@ $('annotationCanvas').addEventListener('pointermove',function(ev){OverlayStage.a
 $('annotationCanvas').addEventListener('pointerup',function(ev){OverlayStage.annotationUp(ev);});
 $('annotationCanvas').addEventListener('pointercancel',function(ev){OverlayStage.annotationUp(ev);});
 $('captureStage').addEventListener('wheel',function(ev){
-  if(!overlaySession.opened||!ev.ctrlKey)return;
+  if(!overlaySession.opened||overlaySession.forwardWheelOn||!ev.ctrlKey)return;
   ev.preventDefault();OverlayStage.zoomStep(ev.deltaY<0?1:-1,ev.clientX,ev.clientY);
 },{passive:false});
 $('captureStage').addEventListener('pointerdown',function(ev){
@@ -9888,6 +10045,7 @@ $('provider').onchange = function(){
   CFG.provider = this.value; store.set('di.prov', CFG.provider);
   CFG.model = defaultModel(CFG.provider); store.set('di.model', CFG.model);
   refreshProviderUI();
+  S.entries.forEach(function(e){render(e);});
   autoFetchModels();
 };
 var keyTimer = null;
@@ -9898,7 +10056,7 @@ $('apiKey').oninput = function(){
 };
 function autoFetchModels(){
   var p = PROVIDERS[CFG.provider];
-  if (!p || p.kind === 'free') return;
+  if (!p || p.kind === 'none' || p.kind === 'free') return;
   if (p.key && (transKey()||'').length < 15) return;   // キーが入りきっていない
   if (MODEL_CACHE[CFG.provider]) return;               // 取得済み
   fetchModels(true);
@@ -10309,7 +10467,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.36.4 Phase 3');
+  out.push('- バージョン: Duo Interpreter v1.37.0 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -10352,7 +10510,7 @@ function diagText(devices){
     }
     return routes.join(' / ')||'(入力なし)';
   }
-  [['翻訳プロバイダ', CFG.provider], ['翻訳モデル', CFG.model],
+  [['翻訳プロバイダ', CFG.provider], ['翻訳モデル', translationDisabled() ? '(未使用)' : CFG.model],
    ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel], ['句読点の自動補完', CFG.sttPunct ? 'ON' : 'OFF'],
    ['有効なSTT通信方式', diagSttTransport()],
    ['gpt-live発話確定', isLiveTranscribe() ? '文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）' : '(未使用)'],
@@ -10426,7 +10584,7 @@ function diagText(devices){
       : CFG.ttsMode==='voicevox' ? 'VOICEVOX：速度（声高・抑揚は解析のみ）'
       : '解析のみ（現在のTTSは未対応）'],
    ['エコー除外', CFG.echoGuard ? 'ON' : 'OFF'],
-   ['翻訳スタイル', CFG.tone], ['VADしきい値', CFG.vad],
+   ['翻訳スタイル', translationDisabled()?'(未使用)':CFG.tone], ['VADしきい値', CFG.vad],
    ['表示', CFG.focus + (CFG.swap?' / 入替':'') + (CFG.flipTop?' / 反転':'')],
    ['画面取込オーバーレイ', overlaySession.opened
       ? (overlaySession.state+' / '+(overlaySession.sourceInfo ? (overlaySession.sourceInfo.surface+' / '+(overlaySession.sourceInfo.audio===true?'映像＋音声':(overlaySession.sourceInfo.audioTrack?'映像のみ（音声Trackあり・信号未検出）':'映像のみ'))+
@@ -10434,7 +10592,7 @@ function diagText(devices){
           (overlaySession.sourceInfo.frameRate?' / '+Math.round(overlaySession.sourceInfo.frameRate)+'fps':'')) : '共有元なし'))
       : '閉じています'],
    ['画面取込解像度', overlayResolutionProfile(CFG.ovCapResolution).label+'（取込時の希望上限）'],
-   ['オーバーレイ操作', OverlayStage.mode+' / '+OverlayStage.view+' / '+Math.round(OverlayStage.zoom*100)+'% / 注釈'+OverlayStage.annotations.length+'件'],
+   ['オーバーレイ操作', OverlayStage.mode+' / '+OverlayStage.view+' / '+Math.round(OverlayStage.zoom*100)+'% / 注釈'+OverlayStage.annotations.length+'件 / 元タブ操作='+(overlaySession.forwardWheelOn?'ON':'OFF')],
    ['オーバーレイ音声境界', OverlayAudioRoutes.sttInput().kind+' / TTS sink分離='+
       (OverlayAudioRoutes.ttsOutput('A').split?'ON':'Phase 2')],
    ['オーバーレイ字幕設定', CFG.ovCapLayout+' / '+CFG.ovCapItems+'件 / '+(CFG.ovCapHold==='0'?'保持':'保持'+CFG.ovCapHold+'秒')+' / 文字'+CFG.ovCapFont+'px / 行間'+CFG.ovCapLine],
@@ -10501,7 +10659,7 @@ function diagText(devices){
   else {
     rows.forEach(function(e){
       out.push('- `' + e.time + '` **' + seatName(e.seat) + '** (' + L(e.srcLang).name + ') ' + cell(e.srcText));
-      out.push('  - → (' + L(e.dstLang).name + ') ' + cell(e.dstText || '(未翻訳)'));
+      if(!(translationDisabled()||e.translationSkipped))out.push('  - → (' + L(e.dstLang).name + ') ' + cell(e.dstText || '(未翻訳)'));
     });
     out.push('');
   }
@@ -10541,10 +10699,10 @@ $('copyDiag').onclick = function(){
 
 /* ログ */
 $('dlTxt').onclick = function(){
-  var t = '# 通訳ログ ' + new Date().toLocaleString() + '\n\n' +
+  var t = '# '+(translationDisabled()?'文字起こしログ ':'通訳ログ ') + new Date().toLocaleString() + '\n\n' +
     logRows().map(function(e){
-      return '[' + e.time + '] ' + seatName(e.seat) + ' (' + L(e.srcLang).name + ')\n  ' + e.srcText +
-             '\n  → (' + L(e.dstLang).name + ') ' + (e.dstText||'');
+      var source='[' + e.time + '] ' + seatName(e.seat) + ' (' + L(e.srcLang).name + ')\n  ' + e.srcText;
+      return (translationDisabled()||e.translationSkipped)?source:(source+'\n  → (' + L(e.dstLang).name + ') ' + (e.dstText||''));
     }).join('\n\n');
   download('interpret-log-'+stamp()+'.txt', t);
 };
