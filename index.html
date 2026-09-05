@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.37.4 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.37.5 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -365,6 +365,13 @@
   #captureSettings .cap-checks{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}
   #captureSettings .cap-checks label{color:var(--txt);font-size:12px}
   #captureSettings .cap-note{margin:9px 0 0;font-size:10.5px;line-height:1.5;color:var(--dim)}
+  .overlay-settings-main{padding:12px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.025)}
+  .overlay-settings-main>.cap-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+  .overlay-settings-main>.cap-grid label{font-size:11px;color:var(--dim);font-weight:700;letter-spacing:0}
+  .overlay-settings-main>.cap-grid label>select,.overlay-settings-main>.cap-grid label>input:not([type=checkbox]){display:block;width:100%;margin-top:4px}
+  .overlay-settings-main>.cap-grid input[type=color]{height:36px;padding:3px}
+  .overlay-settings-main>.cap-checks{display:flex;gap:14px;flex-wrap:wrap;margin:4px 0}
+  .overlay-settings-main>.cap-checks label{color:var(--txt);font-size:12px;font-weight:700;letter-spacing:0}
   #captureCapability{margin-top:10px;padding:9px;border-radius:10px;background:rgba(255,255,255,.05);font-size:11px;line-height:1.55;color:var(--dim)}
   #captureCapability b{color:var(--txt)}
   @media(max-width:700px){
@@ -652,7 +659,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.4 Phase 4</span><span class="build-id">Build: 20260905-v1374-tts4.4</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.5 Phase 4</span><span class="build-id">Build: 20260906-v1375-overlay-settings</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -662,7 +669,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.4 Phase 4</span><span class="build-id">Build: 20260905-v1374-tts4.4</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.5 Phase 4</span><span class="build-id">Build: 20260906-v1375-overlay-settings</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1505,6 +1512,30 @@
       Phase 4では対応ブラウザタブへのホイール転送、取込ソース切替、注釈のPNG／JSON保存に対応しています。非対応環境では既存のZoom・Pan・注釈がそのまま使えます。iPhone／iPadでは通常モードをお使いください。</small>
       <label class="switch"><input type="checkbox" id="syncScroll" checked> A/Bの会話ログのスクロールを連動させる</label>
     </div>
+
+    <div class="field overlay-settings-main" id="overlaySettingsMain">
+      <label>オーバーレイ設定</label>
+      <small>本体の画面取込オーバーレイで使用する字幕設定です。変更は自動保存されます。</small>
+      <div class="cap-grid">
+        <label>配置<select id="cfgOvCapLayout"><option value="right">右レール</option><option value="left">左レール</option><option value="bottom">下段</option><option value="free">自由配置</option></select></label>
+        <label>レール幅<select id="cfgOvCapWidth"><option value="18">18%</option><option value="22">22%</option><option value="28">28%</option><option value="34">34%</option><option value="40">40%</option></select></label>
+        <label>取込解像度<select id="cfgOvCapResolution"><option value="native">自動（共有元の最大）</option><option value="1080">Full HD（1920×1080・30fps）</option><option value="1440">2K（2560×1440・30fps）</option><option value="2160">4K（3840×2160・15fps）</option></select></label>
+        <label>取込音声<select id="cfgOvCapAudio"><option value="target">対象の音声のみ（推奨）</option><option value="system">システム全体の音声</option><option value="off">音声を取り込まない</option></select></label>
+        <label>Aの訳文色<input type="color" id="cfgOvCapTextA"></label><label>Bの訳文色<input type="color" id="cfgOvCapTextB"></label>
+        <label>Aの原文色<input type="color" id="cfgOvCapSrcA"></label><label>Bの原文色<input type="color" id="cfgOvCapSrcB"></label>
+        <label>背景色<input type="color" id="cfgOvCapBg"></label>
+        <label>文字透明度<select id="cfgOvCapTextOpacity"><option value="30">30%</option><option value="45">45%</option><option value="60">60%</option><option value="75">75%</option><option value="92">92%</option><option value="100">100%</option></select></label>
+        <label>背景透明度<select id="cfgOvCapBgOpacity"><option value="0">透明</option><option value="20">20%</option><option value="35">35%</option><option value="50">50%</option><option value="70">70%</option><option value="90">90%</option></select></label>
+        <label>文字サイズ<select id="cfgOvCapFont"><option value="12">12px</option><option value="14">14px</option><option value="16">16px</option><option value="18">18px</option><option value="20">20px</option><option value="22">22px</option><option value="26">26px</option><option value="30">30px</option><option value="36">36px</option><option value="44">44px</option></select></label>
+        <label>行間<select id="cfgOvCapLine"><option value="1">最小</option><option value="1.08">かなり狭い</option><option value="1.15">狭い</option><option value="1.35">標準</option><option value="1.55">広い</option></select></label>
+        <label>字幕の最大幅<select id="cfgOvCapItemWidth"><option value="60">60%</option><option value="75">75%</option><option value="90">90%</option><option value="100">100%</option></select></label>
+        <label>表示件数<select id="cfgOvCapItems"><option value="2">2件</option><option value="3">3件</option><option value="4">4件</option><option value="6">6件</option><option value="8">8件</option></select></label>
+        <label>保持時間<select id="cfgOvCapHold"><option value="8">8秒</option><option value="12">12秒</option><option value="18">18秒</option><option value="30">30秒</option><option value="60">60秒</option><option value="0">消さない</option></select></label>
+      </div>
+      <div class="cap-checks"><label><input type="checkbox" id="cfgOvCapShadow"> 影</label><label><input type="checkbox" id="cfgOvCapOutline"> 縁取り</label><label><input type="checkbox" id="cfgOvCapRound"> 角丸</label></div>
+      <small>「保持時間」を「消さない」にすると、表示件数を超えた古い字幕だけが入れ替わります。取込解像度と取込音声は次回の画面取込から反映されます。</small>
+      <div class="row wrap"><button class="btn ghost" id="cfgOvCapReset">オーバーレイ設定を既定に戻す</button></div>
+    </div>
     <div class="field">
       <label>名前（表示ラベル）</label>
       <div class="row"><input type="text" id="nameA" placeholder="自分 / Me"><input type="text" id="nameB" placeholder="相手 / Partner"></div>
@@ -1551,7 +1582,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260905-v1374-tts4.4';
+var APP_BUILD = '20260906-v1375-overlay-settings';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -3189,20 +3220,25 @@ function currentCaptureRailHeight(){
   if(CFG.ovCapLayout==='bottom')return CFG.ovCapBottomHeight;
   return CFG.ovCapSideHeight;
 }
+function captureControlElements(id){
+  var mirrorId='cfg'+id.charAt(0).toUpperCase()+id.slice(1);
+  return [$(id),$(mirrorId)].filter(function(el){return !!el;});
+}
 function syncCaptureWidthControl(){
-  var sel=$('ovCapWidth');if(!sel)return;
-  Array.from(sel.querySelectorAll('option[data-resized]')).forEach(function(o){o.remove();});
   var n=overlayNum(currentCaptureRailWidth(),28,12,96),value=String(Math.round(n*10)/10);
-  if(!Array.from(sel.options).some(function(o){return o.value===value;})){
-    var opt=document.createElement('option');opt.value=value;opt.textContent=value+'%（ドラッグ調整）';opt.setAttribute('data-resized','1');sel.appendChild(opt);
-  }
-  sel.value=value;
+  captureControlElements('ovCapWidth').forEach(function(sel){
+    Array.from(sel.querySelectorAll('option[data-resized]')).forEach(function(o){o.remove();});
+    if(!Array.from(sel.options).some(function(o){return o.value===value;})){
+      var opt=document.createElement('option');opt.value=value;opt.textContent=value+'%（ドラッグ調整）';opt.setAttribute('data-resized','1');sel.appendChild(opt);
+    }
+    sel.value=value;
+  });
 }
 function applyCaptureControls(){
   var ids=['ovCapLayout','ovCapResolution','ovCapAudio','ovCapTextA','ovCapTextB','ovCapSrcA','ovCapSrcB','ovCapBg','ovCapTextOpacity','ovCapBgOpacity','ovCapFont','ovCapLine','ovCapItemWidth','ovCapItems','ovCapHold'];
-  ids.forEach(function(id){ if($(id)) $(id).value=CFG[id]; });
+  ids.forEach(function(id){ captureControlElements(id).forEach(function(el){el.value=CFG[id];}); });
   syncCaptureWidthControl();
-  ['ovCapShadow','ovCapOutline','ovCapRound'].forEach(function(id){ if($(id)) $(id).checked=!!CFG[id]; });
+  ['ovCapShadow','ovCapOutline','ovCapRound'].forEach(function(id){ captureControlElements(id).forEach(function(el){el.checked=!!CFG[id];}); });
 }
 
 /* ---------------- A/B会話ログのスクロール連動 ---------------- */
@@ -9417,7 +9453,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.37.4 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.37.5 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -9998,20 +10034,21 @@ $('annotationJsonFile').onchange=function(){
 document.querySelectorAll('[data-ann-tool]').forEach(function(b){b.onclick=function(){OverlayStage.selectTool(this.getAttribute('data-ann-tool'));};});
 OverlayStage.selectTool('pen');OverlayStage.updateHistory();
 $('ovCapReset').onclick = resetCaptureProfile;
+$('cfgOvCapReset').onclick = resetCaptureProfile;
 ['ovCapLayout','ovCapWidth','ovCapResolution','ovCapAudio','ovCapTextA','ovCapTextB','ovCapSrcA','ovCapSrcB','ovCapBg','ovCapTextOpacity','ovCapBgOpacity','ovCapFont','ovCapLine','ovCapItemWidth','ovCapItems','ovCapHold'].forEach(function(id){
-  $(id).addEventListener('input',function(){
-    if(id==='ovCapWidth'){
-      if(CFG.ovCapLayout==='free')CFG.ovCapFreeWidth=this.value;
-      else if(CFG.ovCapLayout==='bottom')CFG.ovCapBottomWidth=this.value;
-      else CFG.ovCapWidth=this.value;
-    }else CFG[id]=this.value;
-    saveCaptureProfile(); applyCaptureProfile(); renderOverlayRail();
-    if(id==='ovCapLayout')syncCaptureWidthControl();
-    if((id==='ovCapResolution'||id==='ovCapAudio')&&overlaySession.stream) showCaptureNotice((id==='ovCapResolution'?'取込解像度':'取込音声')+'は次回の「画面取込」から反映されます。');
+  captureControlElements(id).forEach(function(el){el.addEventListener('input',function(){
+      if(id==='ovCapWidth'){
+        if(CFG.ovCapLayout==='free')CFG.ovCapFreeWidth=this.value;
+        else if(CFG.ovCapLayout==='bottom')CFG.ovCapBottomWidth=this.value;
+        else CFG.ovCapWidth=this.value;
+      }else CFG[id]=this.value;
+      saveCaptureProfile(); applyCaptureProfile(); renderOverlayRail(); applyCaptureControls();
+      if((id==='ovCapResolution'||id==='ovCapAudio')&&overlaySession.stream) showCaptureNotice((id==='ovCapResolution'?'取込解像度':'取込音声')+'は次回の「画面取込」から反映されます。');
+    });
   });
 });
 ['ovCapShadow','ovCapOutline','ovCapRound'].forEach(function(id){
-  $(id).addEventListener('change',function(){ CFG[id]=this.checked; saveCaptureProfile(); applyCaptureProfile(); renderOverlayRail(); });
+  captureControlElements(id).forEach(function(el){el.addEventListener('change',function(){ CFG[id]=this.checked; saveCaptureProfile(); applyCaptureProfile(); renderOverlayRail(); applyCaptureControls(); });});
 });
 $('captureOverlay').addEventListener('pointermove',function(ev){ overlayTopEdge(ev); overlayBottomEdge(ev); },{passive:true});
 $('captureOverlay').addEventListener('pointerleave',function(){ overlayPointerY=Infinity; },{passive:true});
@@ -10723,7 +10760,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.37.4 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.37.5 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
