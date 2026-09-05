@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.36.0 Phase 3 — 多言語 双方向通訳</title>
+<title>Duo Interpreter v1.36.1 Phase 3 — 多言語 双方向通訳</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -246,7 +246,7 @@
   #captureOverlay.on{display:block}
   #captureStage{position:absolute;inset:0;background:#05070a;overflow:hidden;touch-action:none}
   #captureContent{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform;background:#05070a}
-  #captureVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;background:#05070a;pointer-events:none}
+  #captureVideo{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain;background:#05070a;pointer-events:none}
   #annotationCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;touch-action:none}
   #captureOverlay.mode-annotate #annotationCanvas{pointer-events:auto;cursor:crosshair}
   #captureOverlay.mode-navigate #captureStage{cursor:grab}
@@ -263,6 +263,7 @@
   }
   #captureOverlay.toolbar-idle #captureTop{opacity:0;transform:translateY(-10px);pointer-events:none}
   #captureState{font-size:12px;color:var(--dim);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #captureState.transient-hidden{display:none}
   #captureState.ok{color:var(--a)} #captureState.warn{color:var(--warn)} #captureState.err{color:var(--danger)}
   #captureTop .cbtn{padding:7px 11px;font-size:12px}
   #captureTop .cbtn.icon{width:32px;padding:7px 0}
@@ -637,7 +638,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.0 Phase 3</span><span class="build-id">Build: 20260905-v1360-phase3.0</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.1 Phase 3</span><span class="build-id">Build: 20260905-v1361-overlay3.1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -647,7 +648,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.0 Phase 3</span><span class="build-id">Build: 20260905-v1360-phase3.0</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.36.1 Phase 3</span><span class="build-id">Build: 20260905-v1361-overlay3.1</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1517,7 +1518,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260905-v1360-phase3.0';
+var APP_BUILD = '20260905-v1361-overlay3.1';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -2426,8 +2427,10 @@ var OverlayStage = {
   pan:null, pinch:null, pointers:{}, paletteDrag:null,
   sourceSize:function(){
     var v=$('captureVideo'), s=overlaySession&&overlaySession.sourceInfo;
-    var w=(s&&s.width)||(v&&v.videoWidth)||this.sourceW||1920;
-    var h=(s&&s.height)||(v&&v.videoHeight)||this.sourceH||1080;
+    /* getSettings()はDPRや共有面の再構成前の値を返す場合がある。実際にデコードされた
+       videoWidth/videoHeightを優先しないと、object-fit:fillで縦横へ引き伸ばされる。 */
+    var w=(v&&v.videoWidth)||(s&&s.width)||this.sourceW||1920;
+    var h=(v&&v.videoHeight)||(s&&s.height)||this.sourceH||1080;
     return {w:Math.max(1,w),h:Math.max(1,h)};
   },
   resetSource:function(w,h){
@@ -2586,6 +2589,20 @@ function overlayCaptureVideoConstraint(){
   }
   return video;
 }
+function overlayVideoIntrinsicSize(video,fallback){
+  fallback=fallback||{};
+  return new Promise(function(resolve){
+    var done=false,timer=0;
+    var finish=function(){
+      if(done)return;done=true;clearTimeout(timer);
+      ['loadedmetadata','canplay','resize'].forEach(function(n){try{video.removeEventListener(n,finish);}catch(e){}});
+      resolve({width:video.videoWidth||fallback.width||1920,height:video.videoHeight||fallback.height||1080});
+    };
+    if(video.videoWidth&&video.videoHeight){finish();return;}
+    ['loadedmetadata','canplay','resize'].forEach(function(n){video.addEventListener(n,finish,{once:true});});
+    timer=setTimeout(finish,1200);
+  });
+}
 async function overlayApplyResolution(track){
   var p=overlayResolutionProfile(CFG.ovCapResolution);
   if(!track||!p.width||!track.applyConstraints)return;
@@ -2710,7 +2727,19 @@ var OverlaySession = {
       var el = $('captureVideo');
       el.srcObject = stream;
       try { await el.play(); } catch(playErr){ dlog('overlay','video-play-FAIL',{err:String(playErr)}); }
-      OverlayStage.resetSource(settings.width||el.videoWidth||1920,settings.height||el.videoHeight||1080);
+      var intrinsic=await overlayVideoIntrinsicSize(el,settings);
+      this.sourceInfo.width=intrinsic.width;this.sourceInfo.height=intrinsic.height;
+      dlog('overlay','source-size',{trackWidth:settings.width||0,trackHeight:settings.height||0,
+        videoWidth:intrinsic.width,videoHeight:intrinsic.height,ratio:+(intrinsic.width/intrinsic.height).toFixed(5)});
+      OverlayStage.resetSource(intrinsic.width,intrinsic.height);
+      el.onresize=function(){
+        if(!self.stream||!el.videoWidth||!el.videoHeight)return;
+        if(self.sourceInfo){self.sourceInfo.width=el.videoWidth;self.sourceInfo.height=el.videoHeight;}
+        OverlayStage.sourceW=el.videoWidth;OverlayStage.sourceH=el.videoHeight;
+        OverlayStage.layout(OverlayStage.view==='fit'||OverlayStage.view==='width');
+        dlog('overlay','source-resize',{videoWidth:el.videoWidth,videoHeight:el.videoHeight,view:OverlayStage.view});
+        updateCaptureStatus('取込映像のサイズが変わりました');
+      };
       $('capturePlaceholder').hidden = true;
       this.transition(audio ? 'AUDIO_CHECKING' : 'VIDEO_ONLY',
         audio ? '共有音声Trackを確認しています'
@@ -2739,7 +2768,7 @@ var OverlaySession = {
     var tracks = this.stream && this.stream.getTracks ? this.stream.getTracks() : [];
     tracks.forEach(function(t){ t.onended=null; try{t.stop();}catch(e){} });
     this.stream=null; this.videoTrack=null; this.audioTrack=null; this.sourceInfo=null;
-    var el=$('captureVideo'); if (el){ try{el.pause();}catch(e){} el.srcObject=null; }
+    var el=$('captureVideo'); if (el){ el.onresize=null;try{el.pause();}catch(e){} el.srcObject=null; }
     OverlayStage.clear(false);OverlayStage.view='fit';OverlayStage.layout(true);
     this.stopping=false;
     if (!quiet) this.transition('IDLE','画面共有を停止しました');
@@ -2771,6 +2800,7 @@ var OverlaySession = {
     this.stopSource(true); this.opened=false; this.state='IDLE';
     overlayPointerY=Infinity;
     clearTimeout(overlayRailTimer); clearTimeout(overlayToolbarTimer); clearTimeout(overlayNoticeTimer);
+    clearTimeout(overlayStateHideTimer);
     $('captureOverlay').classList.remove('on');
     $('captureOverlay').setAttribute('aria-hidden','true');
     $('captureSettings').classList.remove('on');
@@ -2791,7 +2821,8 @@ var OverlaySession = {
   activeAudioTrack:function(){ return this.audioTrack && this.audioTrack.readyState === 'live' ? this.audioTrack : null; }
 };
 var overlaySession = OverlaySession, overlayRailTimer=0, overlayToolbarTimer=0,
-    overlayControlsTimer=0, overlayNoticeTimer=0, overlayPointerY=Infinity, overlayDrag=null;
+    overlayControlsTimer=0, overlayNoticeTimer=0, overlayStateHideTimer=0,
+    overlayPointerY=Infinity, overlayDrag=null;
 
 /* Phase 2の入出力境界。 */
 var OverlayAudioRoutes = {
@@ -2807,6 +2838,7 @@ var OverlayAudioRoutes = {
 
 function updateCaptureStatus(detail){
   var el=$('captureState'); if (!el) return;
+  clearTimeout(overlayStateHideTimer);el.classList.remove('transient-hidden');
   var labels={IDLE:'停止中',SELECTING_SOURCE:'選択中',CAPTURING_VIDEO:'接続中',AUDIO_CHECKING:'音声確認中',VIDEO_ONLY:'映像のみ',AUDIO_TRACK_READY:'映像＋音声',SOURCE_ENDED:'共有終了',ERROR:'エラー'};
   var stateLabel=labels[overlaySession.state]||overlaySession.state;
   if(overlaySession.sourceInfo&&overlaySession.sourceInfo.width&&overlaySession.sourceInfo.height){
@@ -2819,6 +2851,10 @@ function updateCaptureStatus(detail){
     : overlaySession.state==='AUDIO_TRACK_READY'
       ? '映像Trackと共有音声Trackを取得済みです。音声設定の選択経路で認識できます。'
       : detail||labels[overlaySession.state]||overlaySession.state;
+  /* 安定状態を上部へ常駐させない。状態変化時だけ短時間見せ、詳細は診断ログへ残す。 */
+  if(overlaySession.state==='AUDIO_TRACK_READY'||overlaySession.state==='VIDEO_ONLY'){
+    overlayStateHideTimer=setTimeout(function(){el.classList.add('transient-hidden');},2800);
+  }
   $('captureStart').disabled=overlaySession.state==='SELECTING_SOURCE';
   $('captureStop').disabled=!overlaySession.stream;
   $('captureStop').classList.toggle('capture-active',!!overlaySession.stream);
@@ -2903,7 +2939,9 @@ function overlayWakeToolbar(){
 function overlayMaybeHideToolbar(){
   var root=$('captureOverlay'), top=$('captureTop');
   if(!root||!top||!overlaySession.opened)return;
-  if(overlayPointerY<=96 || top.matches(':hover') || top.matches(':focus-within')){
+  /* カーソルを上端へ置いたままでも常駐させない。動かせば再表示される。
+     設定パネルを開いている間だけは操作中なので維持する。 */
+  if($('captureSettings').classList.contains('on')){
     overlayToolbarTimer=setTimeout(overlayMaybeHideToolbar,900); return;
   }
   root.classList.add('toolbar-idle');
@@ -8878,7 +8916,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.36.0 Phase 3</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.36.1 Phase 3</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -10084,7 +10122,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.36.0 Phase 3');
+  out.push('- バージョン: Duo Interpreter v1.36.1 Phase 3');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
