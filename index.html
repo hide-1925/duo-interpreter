@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.37.5 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.37.6 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -659,7 +659,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.5 Phase 4</span><span class="build-id">Build: 20260906-v1375-overlay-settings</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.6 Phase 4</span><span class="build-id">Build: 20260906-v1376-caption-pip</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -669,7 +669,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.5 Phase 4</span><span class="build-id">Build: 20260906-v1375-overlay-settings</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.6 Phase 4</span><span class="build-id">Build: 20260906-v1376-caption-pip</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -694,6 +694,7 @@
     </div>
 
     <div id="captureTop">
+      <button id="capturePipOpen" class="btn ghost" title="字幕専用の小窓を最前面に表示">字幕小窓</button>
       <button class="cbtn" id="captureStart"><span class="capture-start-icon" aria-hidden="true"></span><span>画面取込</span></button>
       <button class="cbtn" id="captureStop" disabled>■ 取込停止</button>
       <button class="cbtn" id="captureSwitch" hidden title="共有するタブ・ウィンドウ・画面を選び直す">⇄ 取込切替</button>
@@ -772,7 +773,7 @@
           <select id="ovCapTextOpacity"><option value="30">30%</option><option value="45">45%</option><option value="60">60%</option><option value="75">75%</option><option value="92">92%</option><option value="100">100%</option></select>
         </label>
         <label>背景透明度
-          <select id="ovCapBgOpacity"><option value="0">透明</option><option value="20">20%</option><option value="35">35%</option><option value="50">50%</option><option value="70">70%</option><option value="90">90%</option></select>
+          <select id="ovCapBgOpacity"><option value="0">透明</option><option value="20">20%</option><option value="35">35%</option><option value="50">50%</option><option value="70">70%</option><option value="90">90%</option><option value="100">100%</option></select>
         </label>
         <label>文字サイズ
           <select id="ovCapFont"><option value="12">12px</option><option value="14">14px</option><option value="16">16px</option><option value="18">18px</option><option value="20">20px</option><option value="22">22px</option><option value="26">26px</option><option value="30">30px</option><option value="36">36px</option><option value="44">44px</option></select>
@@ -1513,9 +1514,16 @@
       <label class="switch"><input type="checkbox" id="syncScroll" checked> A/Bの会話ログのスクロールを連動させる</label>
     </div>
 
+    <div class="field">
+      <label>字幕小窓（PC）</label>
+      <button class="btn primary" id="captionPipOpen">▣ 字幕を小窓に表示</button>
+      <small id="captionPipNote">別タブの動画や資料を操作しながら、最前面の小窓で字幕を読めます。タイトルバーをドラッグして移動できます。Duo本体は開いたままにしてください。小窓を閉じても認識は続きます。</small>
+      <small>音声入力はこれまでの設定を使います。今までの画面取込オーバーレイで認識している場合は、取込を終了せず小窓を開き、そのまま元の動画タブへ移動してください。小窓の背景は背後のページを透過しません。</small>
+    </div>
+
     <div class="field overlay-settings-main" id="overlaySettingsMain">
       <label>オーバーレイ設定</label>
-      <small>本体の画面取込オーバーレイで使用する字幕設定です。変更は自動保存されます。</small>
+      <small>画面取込オーバーレイと字幕小窓の文字・色・行間・保持時間に共通の設定です。変更は自動保存されます。配置・レール幅・高さ・取込設定は画面取込用です。</small>
       <div class="cap-grid">
         <label>配置<select id="cfgOvCapLayout"><option value="right">右レール</option><option value="left">左レール</option><option value="bottom">下段</option><option value="free">自由配置</option></select></label>
         <label>レール幅<select id="cfgOvCapWidth"><option value="18">18%</option><option value="22">22%</option><option value="28">28%</option><option value="34">34%</option><option value="40">40%</option></select></label>
@@ -1525,7 +1533,7 @@
         <label>Aの原文色<input type="color" id="cfgOvCapSrcA"></label><label>Bの原文色<input type="color" id="cfgOvCapSrcB"></label>
         <label>背景色<input type="color" id="cfgOvCapBg"></label>
         <label>文字透明度<select id="cfgOvCapTextOpacity"><option value="30">30%</option><option value="45">45%</option><option value="60">60%</option><option value="75">75%</option><option value="92">92%</option><option value="100">100%</option></select></label>
-        <label>背景透明度<select id="cfgOvCapBgOpacity"><option value="0">透明</option><option value="20">20%</option><option value="35">35%</option><option value="50">50%</option><option value="70">70%</option><option value="90">90%</option></select></label>
+        <label>背景透明度<select id="cfgOvCapBgOpacity"><option value="0">透明</option><option value="20">20%</option><option value="35">35%</option><option value="50">50%</option><option value="70">70%</option><option value="90">90%</option><option value="100">100%</option></select></label>
         <label>文字サイズ<select id="cfgOvCapFont"><option value="12">12px</option><option value="14">14px</option><option value="16">16px</option><option value="18">18px</option><option value="20">20px</option><option value="22">22px</option><option value="26">26px</option><option value="30">30px</option><option value="36">36px</option><option value="44">44px</option></select></label>
         <label>行間<select id="cfgOvCapLine"><option value="1">最小</option><option value="1.08">かなり狭い</option><option value="1.15">狭い</option><option value="1.35">標準</option><option value="1.55">広い</option></select></label>
         <label>字幕の最大幅<select id="cfgOvCapItemWidth"><option value="60">60%</option><option value="75">75%</option><option value="90">90%</option><option value="100">100%</option></select></label>
@@ -1582,7 +1590,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260906-v1375-overlay-settings';
+var APP_BUILD = '20260906-v1376-caption-pip';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -3084,6 +3092,7 @@ function renderCaptureCapability(){
   updatePhase4Controls();
 }
 function applyCaptureProfile(){
+  renderCaptionPip();
   var root=$('captureOverlay'), rail=$('captureRail'); if(!root||!rail) return;
   ['right','left','bottom','free'].forEach(function(v){ rail.classList.toggle(v,CFG.ovCapLayout===v); });
   var free=CFG.ovCapLayout==='free';
@@ -3114,6 +3123,7 @@ function overlayEntryAt(e){
   return e._overlayReadyAt;
 }
 function renderOverlayRail(){
+  renderCaptionPip();
   var rail=$('captureRailItems'), host=$('captureRail'); if(!rail||!host) return;
   clearTimeout(overlayRailTimer);
   var now=Date.now(), hold=overlayNum(CFG.ovCapHold,18,0,180)*1000;
@@ -3240,6 +3250,148 @@ function applyCaptureControls(){
   syncCaptureWidthControl();
   ['ovCapShadow','ovCapOutline','ovCapRound'].forEach(function(id){ captureControlElements(id).forEach(function(el){el.checked=!!CFG[id];}); });
 }
+
+/* ===== 字幕小窓：表示専用。認識エンジン・音声Trackには触れない ===== */
+var captionPip={win:null,opening:false,ownerGone:false,nodes:new Map(),seen:new Map(),timer:0,follow:true};
+function updateCaptionPipButtons(){
+  var supported=!!(window.documentPictureInPicture&&window.documentPictureInPicture.requestWindow);
+  ['captionPipOpen','capturePipOpen'].forEach(function(id){
+    var b=$(id);if(!b)return;
+    b.disabled=!supported||!!(captionPip&&captionPip.opening);
+    b.textContent=captionPip&&captionPip.win&&!captionPip.win.closed?'字幕小窓を手前に':id==='capturePipOpen'?'字幕小窓':'▣ 字幕を小窓に表示';
+    b.title=supported?'字幕専用の小窓を最前面に表示':'このブラウザは字幕小窓に非対応です。PC版Chrome等で開いてください';
+  });
+  if(!supported&&$('captionPipNote'))$('captionPipNote').textContent='このブラウザでは字幕小窓を利用できません。対応するPC版Chrome等で開いてください。通常表示と画面取込オーバーレイは引き続き使えます。';
+}
+function cleanupCaptionPip(w){
+  if(!captionPip||captionPip.win!==w)return;
+  w.clearTimeout(captionPip.timer);captionPip.timer=0;
+  captionPip.win=null;captionPip.nodes.clear();captionPip.seen.clear();
+  updateCaptionPipButtons();dlog('pip','closed',{recognitionContinues:!!S.running});
+}
+async function openCaptionPip(){
+  if(captionPip.opening)return;
+  if(captionPip.win&&!captionPip.win.closed){captionPip.win.focus();return;}
+  if(!window.documentPictureInPicture||!window.documentPictureInPicture.requestWindow){
+    toast('字幕小窓は対応するPC版Chrome等で利用してください');return;
+  }
+  captionPip.opening=true;updateCaptionPipButtons();
+  var w;
+  try{
+    // Call before the first await: opening requires the user's button gesture.
+    w=await window.documentPictureInPicture.requestWindow({width:440,height:480});
+    if(captionPip.ownerGone){w.close();return;}
+    captionPip.win=w;captionPip.nodes.clear();captionPip.seen.clear();captionPip.follow=true;
+    w.addEventListener('pagehide',function(){cleanupCaptionPip(w);},{once:true});
+    var doc=w.document;doc.title='Duo 字幕';doc.documentElement.lang='ja';
+    var style=doc.createElement('style');
+    style.textContent=`
+      *{box-sizing:border-box}html,body{height:100%;margin:0}body{display:flex;flex-direction:column;background:#111822;color:#edf3fc;font:14px/1.4 system-ui,sans-serif;color-scheme:dark}
+      header{flex:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px;border-bottom:1px solid #394659;background:#1c293b}
+      header strong{margin-right:auto}button,select{font:inherit;background:#263952;color:#fff;border:1px solid #60738d;border-radius:6px;padding:5px 8px;cursor:pointer}button:disabled{opacity:.4;cursor:default}button:focus-visible,select:focus-visible,main:focus-visible{outline:2px solid #8acbff;outline-offset:-2px}
+      label{display:flex;align-items:center;gap:4px;font-size:12px}#pipFont{font-size:12px;font-variant-numeric:tabular-nums}#pipFeed{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:10px;scrollbar-gutter:stable;overflow-anchor:none}
+      article{width:var(--item-w);margin:0 0 10px auto;padding:10px;background:var(--caption-bg);border-left:3px solid var(--seat);border-radius:9px;overflow-wrap:anywhere;line-height:var(--caption-line)}article.square{border-radius:0}article.interim{border-left-style:dashed}article.shadow .main,article.shadow .sub{text-shadow:0 2px 4px #000,0 0 2px #000}article.outline .main,article.outline .sub{-webkit-text-stroke:.45px #000}
+      .meta{font-size:11px;opacity:.7;margin-bottom:4px}.main{font-size:var(--caption-font);white-space:pre-wrap;opacity:var(--text-alpha)}.sub{font-size:calc(var(--caption-font)*.65);white-space:pre-wrap;margin-top:6px;opacity:var(--text-alpha)}.empty{color:#b8c7da;padding:18px 6px;font-size:14px}footer{flex:none;padding:5px 10px;font-size:11px;color:#b8c7da;background:#1c293b}
+    `;
+    doc.head.appendChild(style);
+    var header=doc.createElement('header'),title=doc.createElement('strong');title.textContent='Duo 字幕';header.appendChild(title);
+    function button(id,text,title,fn){var b=doc.createElement('button');b.id=id;b.textContent=text;b.title=title;b.setAttribute('aria-label',title);b.onclick=fn;header.appendChild(b);return b;}
+    button('pipSmaller','A−','字幕を小さく',function(){adjustOverlayFont(-1);});
+    var font=doc.createElement('span');font.id='pipFont';header.appendChild(font);
+    button('pipLarger','A＋','字幕を大きく',function(){adjustOverlayFont(1);});
+    button('pipLatest','最新へ','最新の字幕へ移動して自動追従',function(){captionPip.follow=true;renderCaptionPip();});
+    button('pipClose','閉じる','字幕小窓だけを閉じる',function(){w.close();});
+    var holdLabel=doc.createElement('label');holdLabel.textContent='保持';
+    var hold=doc.createElement('select');hold.id='pipHold';hold.setAttribute('aria-label','字幕の保持時間');
+    [0,8,12,18,30,60].forEach(function(n){var o=doc.createElement('option');o.value=String(n);o.textContent=n?n+'秒':'消さない';hold.appendChild(o);});
+    hold.onchange=function(){CFG.ovCapHold=hold.value;saveCaptureProfile();applyCaptureControls();applyCaptureProfile();renderOverlayRail();};
+    holdLabel.appendChild(hold);header.appendChild(holdLabel);
+    function opacityControl(id,text,key,values){
+      var label=doc.createElement('label');label.textContent=text;
+      var select=doc.createElement('select');select.id=id;select.setAttribute('aria-label',text+'の不透明度');
+      values.forEach(function(n){var option=doc.createElement('option');option.value=String(n);option.textContent=n===0?'透明':n+'%';select.appendChild(option);});
+      select.onchange=function(){CFG[key]=select.value;saveCaptureProfile();applyCaptureControls();applyCaptureProfile();renderOverlayRail();};
+      label.appendChild(select);header.appendChild(label);
+    }
+    opacityControl('pipTextOpacity','文字','ovCapTextOpacity',[30,45,60,75,92,100]);
+    opacityControl('pipBgOpacity','字幕背景','ovCapBgOpacity',[0,20,35,50,70,90,100]);
+    var srcLabel=doc.createElement('label'),src=doc.createElement('input');src.type='checkbox';src.id='pipShowSrc';
+    src.onchange=function(){$('showSrc').checked=src.checked;$('showSrc').dispatchEvent(new Event('change'));};
+    srcLabel.appendChild(src);srcLabel.appendChild(doc.createTextNode('原文併記'));header.appendChild(srcLabel);
+    var feed=doc.createElement('main');feed.id='pipFeed';feed.tabIndex=0;feed.setAttribute('aria-label','字幕履歴');
+    feed.addEventListener('scroll',function(){captionPip.follow=feed.scrollHeight-feed.scrollTop-feed.clientHeight<36;});
+    var footer=doc.createElement('footer');footer.textContent='位置はタイトルバーをドラッグして変更。Duo本体は開いたままに。';
+    doc.body.appendChild(header);doc.body.appendChild(feed);doc.body.appendChild(footer);
+    w.addEventListener('resize',function(){if(captionPip.follow)feed.scrollTop=feed.scrollHeight;});
+    renderCaptionPip();dlog('pip','opened',{width:w.innerWidth,height:w.innerHeight,recognitionContext:'html-main'});
+  }catch(err){
+    if(w){try{w.close();}catch(_){}cleanupCaptionPip(w);}
+    dlog('pip','open-failed',{name:err.name,message:String(err.message||err).slice(0,200)});
+    toast('字幕小窓を開けませんでした：'+String(err.message||err));
+  }finally{captionPip.opening=false;updateCaptionPipButtons();}
+}
+function renderCaptionPip(){
+  if(!captionPip||!captionPip.win)return;
+  var w=captionPip.win;if(w.closed){cleanupCaptionPip(w);return;}
+  var doc=w.document,feed=doc.getElementById('pipFeed');if(!feed)return;
+  w.clearTimeout(captionPip.timer);captionPip.timer=0;
+  var top=feed.scrollTop,follow=captionPip.follow,now=Date.now();
+  var hold=overlayNum(CFG.ovCapHold,18,0,180)*1000,max=Math.round(overlayNum(CFG.ovCapItems,4,1,12));
+  var liveIds=new Set(),available=[],expires=false;
+  S.entries.forEach(function(e){
+    liveIds.add(e.id);var info=captionPip.seen.get(e.id);
+    if(!info){info={entry:e,at:e._overlayReadyAt||now,interim:e.interim,dst:e.dstText};captionPip.seen.set(e.id,info);}
+    if(info.entry!==e||info.interim!==e.interim||info.dst!==e.dstText){info.entry=e;info.at=now;info.interim=e.interim;info.dst=e.dstText;}
+    if(!e.srcText||(e.interim&&!CFG.interimOn))return;
+    if(hold&&!e.interim&&now-info.at>=hold)return;
+    available.push(e);if(hold&&!e.interim)expires=true;
+  });
+  captionPip.seen.forEach(function(_,id){if(!liveIds.has(id))captionPip.seen.delete(id);});
+  var rows=hold?available.slice(-max):available,shown=new Set(rows.map(function(e){return e.id;}));
+  captionPip.nodes.forEach(function(node,id){if(!shown.has(id)){node.remove();captionPip.nodes.delete(id);}});
+  var empty=doc.getElementById('pipEmpty');if(empty&&rows.length)empty.remove();
+  rows.forEach(function(e,index){
+    var node=captionPip.nodes.get(e.id);
+    if(!node){
+      node=doc.createElement('article');node.dataset.eid=e.id;
+      ['meta','main','sub'].forEach(function(cls){var el=doc.createElement('div');el.className=cls;node.appendChild(el);});
+      captionPip.nodes.set(e.id,node);
+    }
+    if(feed.children[index]!==node)feed.insertBefore(node,feed.children[index]||null);
+    node.className=(CFG.ovCapShadow?'shadow ':'')+(CFG.ovCapOutline?'outline ':'')+(CFG.ovCapRound?'':'square ')+(e.interim?'interim':'');
+    var translated=!!e.dstText&&!translationDisabled()&&!e.translationSkipped;
+    var mainColor=e.seat==='A'?CFG.ovCapTextA:CFG.ovCapTextB,srcColor=e.seat==='A'?CFG.ovCapSrcA:CFG.ovCapSrcB;
+    node.style.setProperty('--seat',mainColor);
+    node.children[0].textContent=seatName(e.seat)+' · '+e.time+(e.interim?' · 認識中':'');
+    node.children[1].textContent=translated?e.dstText:e.srcText;
+    node.children[1].style.color=translated||translationDisabled()||e.translationSkipped?mainColor:srcColor;
+    node.children[2].textContent=translated&&CFG.showSrc?e.srcText:'';
+    node.children[2].style.display=translated&&CFG.showSrc?'':'none';node.children[2].style.color=srcColor;
+  });
+  if(!rows.length&&!empty){empty=doc.createElement('div');empty.id='pipEmpty';empty.className='empty';empty.textContent='字幕はここに表示されます。Duo本体で音声認識を開始してください。';feed.appendChild(empty);}
+  var style=doc.body.style;
+  style.setProperty('--caption-font',overlayNum(CFG.ovCapFont,26,12,64)+'px');
+  style.setProperty('--caption-line',overlayNum(CFG.ovCapLine,1.35,1,2));
+  style.setProperty('--item-w',overlayNum(CFG.ovCapItemWidth,100,35,100)+'%');
+  style.setProperty('--caption-bg',overlayHexRgba(CFG.ovCapBg,overlayNum(CFG.ovCapBgOpacity,35,0,100)/100));
+  style.setProperty('--text-alpha',overlayNum(CFG.ovCapTextOpacity,92,20,100)/100);
+  doc.getElementById('pipFont').textContent=CFG.ovCapFont+'px';
+  doc.getElementById('pipSmaller').disabled=Number(CFG.ovCapFont)<=12;
+  doc.getElementById('pipLarger').disabled=Number(CFG.ovCapFont)>=44;
+  var sel=doc.getElementById('pipHold');
+  if(!Array.from(sel.options).some(function(o){return o.value===String(CFG.ovCapHold);})){var option=doc.createElement('option');option.value=String(CFG.ovCapHold);option.textContent=CFG.ovCapHold+'秒';sel.appendChild(option);}
+  sel.value=String(CFG.ovCapHold);doc.getElementById('pipShowSrc').checked=!!CFG.showSrc;
+  [['pipTextOpacity','ovCapTextOpacity'],['pipBgOpacity','ovCapBgOpacity']].forEach(function(pair){
+    var control=doc.getElementById(pair[0]),value=String(CFG[pair[1]]);
+    if(!Array.from(control.options).some(function(o){return o.value===value;})){var option=doc.createElement('option');option.value=value;option.textContent=value+'%';control.appendChild(option);}
+    control.value=value;
+  });
+  feed.scrollTop=follow?feed.scrollHeight:top;
+  if(expires)captionPip.timer=w.setTimeout(renderCaptionPip,500);
+}
+window.addEventListener('pagehide',function(){captionPip.ownerGone=true;if(captionPip.win)captionPip.win.close();});
+window.addEventListener('pageshow',function(){captionPip.ownerGone=false;});
+/* ===== 字幕小窓ここまで ===== */
 
 /* ---------------- A/B会話ログのスクロール連動 ---------------- */
 /* 同じ発言が両側に出ているので、「いま上端に見えている発言」を手がかりに
@@ -9453,7 +9605,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.37.5 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.37.6 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -9996,6 +10148,9 @@ $('ovlBtn').onclick     = function(){
   else openCaptureOverlay(true);
 };
 $('ovCapOpen').onclick  = function(){ openDrawer(false); openCaptureOverlay(true); };
+$('captionPipOpen').onclick = openCaptionPip;
+$('capturePipOpen').onclick = openCaptionPip;
+updateCaptionPipButtons();
 $('captureStart').onclick = function(){ overlaySession.start(!!overlaySession.stream); };
 $('captureStop').onclick  = function(){ overlaySession.stopSource(false); $('capturePlaceholder').hidden=false; };
 $('captureSwitch').onclick=function(){overlaySession.start(true);};
@@ -10380,6 +10535,7 @@ function simple(id, key, prop, isCheck){
     store.set(key, isCheck ? (v?'1':'0') : v);
     if (prop==='flipTop'||prop==='swap'||prop==='nameA'||prop==='nameB') layout();
     if (prop==='showSrc') S.entries.forEach(render);
+    if (prop==='showSrc'||prop==='interimOn') renderCaptionPip();
     if (prop==='prosodyOn'){
       dlog('prosody','config',{on:!!v});
       PROSODY_BASELINES={}; lastMicProsody=null;
@@ -10760,7 +10916,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.37.5 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.37.6 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -10887,6 +11043,7 @@ function diagText(devices){
           (overlaySession.sourceInfo.frameRate?' / '+Math.round(overlaySession.sourceInfo.frameRate)+'fps':'')) : '共有元なし'))
       : '閉じています'],
    ['画面取込解像度', overlayResolutionProfile(CFG.ovCapResolution).label+'（取込時の希望上限）'],
+   ['字幕小窓', captionPip&&captionPip.win&&!captionPip.win.closed?'表示中（HTML本体で認識）':('documentPictureInPicture' in window?'閉じています':'このブラウザでは非対応')],
    ['画面取込音声', overlayAudioProfile(CFG.ovCapAudio).label+' / systemAudio='+overlayAudioProfile(CFG.ovCapAudio).systemAudio+' / windowAudio='+overlayAudioProfile(CFG.ovCapAudio).windowAudio],
    ['オーバーレイ操作', OverlayStage.mode+' / '+OverlayStage.view+' / '+Math.round(OverlayStage.zoom*100)+'% / 注釈'+OverlayStage.annotations.length+'件 / 元タブ操作='+(overlaySession.forwardWheelOn?'ON':'OFF')],
    ['オーバーレイ音声境界', OverlayAudioRoutes.sttInput().kind+' / TTS sink分離='+
