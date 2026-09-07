@@ -1,23 +1,18 @@
 <!DOCTYPE html>
 <!--
-Duo Interpreter v1.38.0 | 2026-09-07 | Adaptive Streaming TTS Phase 1 implementation
-Base: v1.37.7 (minutes model selection retained).
-New: OFF/Balanced/Fast; stable partial commit; single-card segment aggregation;
-ordered translation-to-TTS dispatch; manual per-card segment replay; cancellation epochs;
-post-commit correction reconciliation; overlap start policy; estimated debt fallback;
-advanced settings and segment diagnostics. Existing API key persistence is unchanged.
-TTS synthesis is serial (one provider request/playback at a time); translation concurrency is 2.
-Backpressure defers new provisional commits until STT final; it preserves all final text.
-It bounds synthesized audio in flight, not total text backlog or guaranteed latency.
-Native realtime speech-to-speech remains provider-controlled. Final-only STT cannot
-produce translated speech before its first transcript response. Adaptive mode is Phase 2.
-Validation: 19 deterministic Node VM logic/integration checks passed, including simulated
-60-second input, reversal, correction, timeout, stop and generation guards. JavaScript syntax checked.
-Limitations: real browser layout, actual microphone/Teams, paid API audio and hardware
-routing were not exercised here. Browser QA could not run because no browser binary was
-available and its download was denied by environment network policy.
-L1/L2 are text-arrival/commit proxies, not measured acoustic semantic latency.
-Phase 1E comparative real-conversation evaluation and threshold tuning remain pending.
+v1.38.1 hotfix / 2026-09-08
+Fixes the v1.38.0 permanent debt-fallback latch shown in the supplied diagnostic log:
+6 segments played, 512 recognized characters left provisional despite an empty queue.
+Backpressure now resumes at 50 percent of the configured upper limit and recalculates
+on every segment reservation, including final-only input. Audio silence cannot cause
+an entire large stable buffer to become one chunk. Stopped cards and unread parts are
+marked stopped/cancelled; explicit source replay includes their unread tail.
+Added coalesced live-delta arrival telemetry and corrected mode-specific diagnostics.
+Validation: 22 deterministic Node VM tests passed. The supplied 639-character transcript
+reproduces the empty-queue stall in v1.38.0 and drains in v1.38.1 without server final
+or further delta events. Audio/network timing are simulated, not actual API replay.
+Real-browser layout, Teams capture, Aivis audio and hardware routing remain unverified.
+Prosody extraction for segmented shared live transcription remains a separate limitation.
 -->
 <html lang="ja">
 <head>
@@ -26,7 +21,7 @@ Phase 1E comparative real-conversation evaluation and threshold tuning remain pe
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.38.0 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.38.1 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -679,7 +674,7 @@ Phase 1E comparative real-conversation evaluation and threshold tuning remain pe
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.0 Phase 4</span><span class="build-id">Build: 20260907-v1380-segment-tts</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.1 Phase 4</span><span class="build-id">Build: 20260908-v1381-debt-recovery</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -689,7 +684,7 @@ Phase 1E comparative real-conversation evaluation and threshold tuning remain pe
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.0 Phase 4</span><span class="build-id">Build: 20260907-v1380-segment-tts</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.1 Phase 4</span><span class="build-id">Build: 20260908-v1381-debt-recovery</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1144,7 +1139,7 @@ Phase 1E comparative real-conversation evaluation and threshold tuning remain pe
           <label for="segmentStability">認識の安定待ち ms（0＝既定）</label><input id="segmentStability" type="number" min="0" max="2000" step="50">
           <label for="segmentSilence">無音区間 ms（0＝既定）</label><input id="segmentSilence" type="number" min="0" max="3000" step="50">
           <label for="segmentDebt">待ち音声の上限目安 秒</label><input id="segmentDebt" type="number" min="2" max="60" step="1">
-          <small>上限を超えると、新しい部分の確定を発話終了まで待ちます。原文・訳文の省略や自動要約はしません。</small>
+          <small>上限に達すると、新しい部分の確定を一時停止し、待ち音声が上限の半分以下に減ると自動再開します。原文・訳文の省略や自動要約はしません。</small>
         </details>
         <details><summary>逐次読み上げの診断</summary><small id="segmentStatus" aria-live="off"></small></details>
       </div>
@@ -1625,7 +1620,7 @@ Phase 1E comparative real-conversation evaluation and threshold tuning remain pe
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260907-v1380-segment-tts';
+var APP_BUILD = '20260908-v1381-debt-recovery';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -9674,7 +9669,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.38.0 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.38.1 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -11002,7 +10997,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.38.0 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.38.1 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11048,7 +11043,7 @@ function diagText(devices){
   [['翻訳プロバイダ', CFG.provider], ['翻訳モデル', translationDisabled() ? '(未使用)' : CFG.model],
    ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel], ['句読点の自動補完', CFG.sttPunct ? 'ON' : 'OFF'],
    ['有効なSTT通信方式', diagSttTransport()],
-   ['gpt-live発話確定', isLiveTranscribe() ? '文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）' : '(未使用)'],
+   ['gpt-live発話確定', isLiveTranscribe() ? (segEnabled()?'逐次部分確定＋安定待ち／待ち音声が減れば自動再開（サーバーfinal待ちなし）':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）') : '(未使用)'],
    ['共有音声STT経路', CFG.displaySttRoute],
    ['共有Track直接Web Speech候補', overlayCapabilities().speechTrackInput],
    ['通常マイク入力', CFG.micDevLbl || (CFG.micDev ? '(名称不明)' : '既定')],
@@ -11302,7 +11297,7 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.38.0 / Phase 1.
+/* Duo Segment pipeline v1.38.1 / Phase 1.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
@@ -11334,7 +11329,7 @@ function segDecision(input){
     var c=candidates[i];if(c.end>stable)break;
     if(c.end>=p.min&&c.end<=max*1.5){bound=c.end;reasons=[c.why,'stable'];break;}
   }
-  if(!bound && stable>=p.min && input.silenceMs>=p.silence){bound=stable;reasons=['audio-silence','stable'];}
+  if(!bound && stable>=p.min && stable<=max && input.silenceMs>=p.silence){bound=stable;reasons=['audio-silence','stable'];}
   if(!bound && stable>=max){
     // Never split a Latin word or a decimal. CJK can use a character boundary.
     var prefix=text.slice(0,Math.floor(max));
@@ -11418,7 +11413,7 @@ function segUpdate(e,text,final){
     });
     b.text=text;
   }
-  b.final=!!final;e.interim=!final;e.status=final?'final':'active';
+  b.final=!!final;e.interim=b.cancelled?false:!final;e.status=b.cancelled?'stopped':final?'final':'active';
   if(final)e.endedAt=now;
   segDraft(e);segCheck(e);segJoin(e);segWake();
 }
@@ -11426,16 +11421,27 @@ function segDraft(e){
   var committed=e.segments.filter(function(s){return s.committedAt;}),at=committed.length?committed[committed.length-1].end:0;
   e.segments=committed;
   if(at<e.segment.text.length)e.segments.push({id:e.id+'-draft',cardId:e.id,seq:committed.length+1,
-    start:at,end:e.segment.text.length,sourceText:e.segment.text.slice(at),state:'provisional',sourceRevision:e.segment.revision});
+    start:at,end:e.segment.text.length,sourceText:e.segment.text.slice(at),state:e.segment.cancelled?'cancelled':'provisional',sourceRevision:e.segment.revision});
+}
+/* High/low watermarks: a live STT item may never send completed during a meeting.
+ * Resume from local queue drainage, not from a server-final event. */
+function segBackpressure(e,p,debt){
+  var b=e.segment,low=p.debt*0.5;
+  if(b.deferred){
+    if(debt>low)return true;
+    b.deferred=false;
+    dlog('segment','debt-resume',{cardId:e.id,debtEstimateSeconds:debt,resumeAt:low,
+      pendingChars:e.segments.filter(function(s){return !s.committedAt;}).reduce(function(n,s){return n+s.sourceText.length;},0)});
+  }
+  if(debt>=p.debt){
+    b.deferred=true;dlog('segment','debt-fallback',{cardId:e.id,debtEstimateSeconds:debt,limit:p.debt,
+      policy:'pause-until-debt-drains',resumeAt:low});return true;
+  }
+  return false;
 }
 function segCheck(e){
   var b=e.segment;if(!b||b.cancelled)return;
   var p=segPolicy(b.mode),debt=segDebt(),now=Date.now();
-  if(debt>p.debt&&!b.final){
-    if(!b.deferred){b.deferred=true;dlog('segment','debt-fallback',{cardId:e.id,debtEstimateSeconds:debt,limit:p.debt,policy:'defer-uncommitted-until-final'});}
-    return;
-  }
-  if(b.deferred&&!b.final)return;
   var count=0;
   while(count++<100){
     var s=e.segments[e.segments.length-1];if(!s||s.committedAt)break;
@@ -11444,6 +11450,8 @@ function segCheck(e){
       if(previous){previous.end=s.end;previous.sourceText+=s.sourceText;e.segments.pop();}
       break;
     }
+    // Recalculate on each reservation; one incoming burst must not bypass the limit.
+    debt=segDebt();if(segBackpressure(e,p,debt))break;
     var stable=0;while(s.start+stable<b.stableSince.length&&now-b.stableSince[s.start+stable]>=p.stability)stable++;
     var silence=segSilence(e,now);
     var d=segDecision({text:s.sourceText,stableLength:b.final?s.sourceText.length:stable,policy:p,
@@ -11573,9 +11581,9 @@ function segCancelAll(why){
   SEG.epoch++;
   SEG.requests.slice().forEach(function(r){r.release();});
   SEG.cards.forEach(function(e){e.segment.cancelled=true;clearTimeout(e.segment.timer);
-    e.segments.forEach(function(s){if(s.audio&&s.audio.status!=='done'){s.audio.status='cancelled';s.state='cancelled';}});
+    e.segments.forEach(function(s){if(!s.audio||s.audio.status!=='done'){if(s.audio)s.audio.status='cancelled';s.state='cancelled';}});
     // Preserve recognized text for minutes when the recording is stopped.
-    if(e.srcText.trim()){e.interim=false;e.status='final';e.endedAt=Date.now();render(e);}
+    if(e.srcText.trim()){e.interim=false;e.status='stopped';e.endedAt=Date.now();render(e);}
   });
   SEG.queue=[];SEG.active=null;SEG.cards=[];if(SEG.timer)clearInterval(SEG.timer);SEG.timer=null;
   dlog('segment','cancel',{why:why,epoch:SEG.epoch});segStatus();
@@ -11605,8 +11613,13 @@ function segLiveEvent(engine,event,id){
   if(!segEnabled())return false;
   var t=event.type||'',isDelta=/transcription\.delta$/.test(t),isFinal=/transcription\.completed$/.test(t);
   if(!isDelta&&!isFinal)return false;
-  var x=engine.item(id),entry=engine.ensureEntry(x);
-  x.text=isDelta?x.text+String(event.delta||''):String(event.transcript||x.text);x.lastDeltaAt=Date.now();
+  var x=engine.item(id),entry=engine.ensureEntry(x),now=Date.now(),previousDeltaAt=x.lastDeltaAt;
+  x.text=isDelta?x.text+String(event.delta||''):String(event.transcript||x.text);x.lastDeltaAt=now;
+  if(isFinal||!x.segmentLogAt||now-x.segmentLogAt>=1000){
+    dlog('stt',isFinal?'live-segment-final':'live-segment-delta',{item:id,cardId:entry.id,
+      chars:x.text.length,deltaChars:String(event.delta||'').length,arrivalGapMs:previousDeltaAt?now-previousDeltaAt:null});
+    x.segmentLogAt=now;
+  }
   if(!entry.segment&&((S.autoMode&&micSeats().length>1)||!engine.seat)&&x.text.length>=8){
     var seat=guessSeatFromText(x.text);entry.seat=seat;entry.srcLang=langOf(seat);entry.dstLang=langOf(seat==='A'?'B':'A');
   }
@@ -11626,7 +11639,7 @@ function segReplay(e,viewer,btn){
   var useSrc=translationDisabled()||viewer===e.seat;
   var clone={id:e.id,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,startedAt:Date.now(),endedAt:Date.now(),
     segment:{final:true,mode:CFG.segmentMode,playMs:0,overlapMs:0},segments:[]};
-  e.segments.filter(function(s){return s.committedAt;}).forEach(function(s){
+  e.segments.filter(function(s){return s.committedAt||(useSrc&&hasSpeechContent(s.sourceText));}).forEach(function(s){
     var text=useSrc?s.sourceText:s.translationText;if(!text||(!useSrc&&s.translationError))return;
     var c={id:s.id,seq:s.seq,sourceText:text,translationText:text,committedAt:Date.now(),translationReady:true,
       audio:{segmentId:s.id,seq:s.seq,playbackRate:1,status:'pending'}};
