@@ -1,4 +1,24 @@
 <!DOCTYPE html>
+<!--
+Duo Interpreter v1.38.0 | 2026-09-07 | Adaptive Streaming TTS Phase 1 implementation
+Base: v1.37.7 (minutes model selection retained).
+New: OFF/Balanced/Fast; stable partial commit; single-card segment aggregation;
+ordered translation-to-TTS dispatch; manual per-card segment replay; cancellation epochs;
+post-commit correction reconciliation; overlap start policy; estimated debt fallback;
+advanced settings and segment diagnostics. Existing API key persistence is unchanged.
+TTS synthesis is serial (one provider request/playback at a time); translation concurrency is 2.
+Backpressure defers new provisional commits until STT final; it preserves all final text.
+It bounds synthesized audio in flight, not total text backlog or guaranteed latency.
+Native realtime speech-to-speech remains provider-controlled. Final-only STT cannot
+produce translated speech before its first transcript response. Adaptive mode is Phase 2.
+Validation: 19 deterministic Node VM logic/integration checks passed, including simulated
+60-second input, reversal, correction, timeout, stop and generation guards. JavaScript syntax checked.
+Limitations: real browser layout, actual microphone/Teams, paid API audio and hardware
+routing were not exercised here. Browser QA could not run because no browser binary was
+available and its download was denied by environment network policy.
+L1/L2 are text-arrival/commit proxies, not measured acoustic semantic latency.
+Phase 1E comparative real-conversation evaluation and threshold tuning remain pending.
+-->
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -6,7 +26,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.37.7 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.38.0 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -659,7 +679,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.7 Phase 4</span><span class="build-id">Build: 20260907-v1377-minutes-model</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.0 Phase 4</span><span class="build-id">Build: 20260907-v1380-segment-tts</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -669,7 +689,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.37.7 Phase 4</span><span class="build-id">Build: 20260907-v1377-minutes-model</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.0 Phase 4</span><span class="build-id">Build: 20260907-v1380-segment-tts</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1112,6 +1132,21 @@
           <option value="B2A">相手(B)の発言だけ読み上げる（推奨）</option>
           <option value="A2B">自分(A)の発言だけ読み上げる</option>
         </select>
+      </div>
+      <div class="field" id="segmentSettings">
+        <label for="segmentMode">TTS逐次読み上げ</label>
+        <select id="segmentMode"><option value="off">OFF — カード確定後に全文</option><option value="balanced">Balanced — 自然さと待ち時間の均衡</option><option value="fast">Fast — 早い追従を優先</option></select>
+        <label for="segmentOverlap">話者との重なり</label>
+        <select id="segmentOverlap"><option value="avoid">避ける — 無音区間／発話終了を待つ</option><option value="allow">許容 — 確定した部分から読み上げる</option></select>
+        <small>会話カードは1枚のまま、安定した部分から翻訳・読み上げます。途中結果を返さない音声認識では、認識結果の到着後から分割処理します。重なりを避ける設定は再生開始を待ちます。再生中の音声は最後まで読みます。</small>
+        <details><summary>逐次読み上げの詳細設定</summary>
+          <label for="segmentMin">最小文字数（0＝モード既定）</label><input id="segmentMin" type="number" min="0" max="100" step="1">
+          <label for="segmentStability">認識の安定待ち ms（0＝既定）</label><input id="segmentStability" type="number" min="0" max="2000" step="50">
+          <label for="segmentSilence">無音区間 ms（0＝既定）</label><input id="segmentSilence" type="number" min="0" max="3000" step="50">
+          <label for="segmentDebt">待ち音声の上限目安 秒</label><input id="segmentDebt" type="number" min="2" max="60" step="1">
+          <small>上限を超えると、新しい部分の確定を発話終了まで待ちます。原文・訳文の省略や自動要約はしません。</small>
+        </details>
+        <details><summary>逐次読み上げの診断</summary><small id="segmentStatus" aria-live="off"></small></details>
       </div>
       <div id="ttsRememberField" style="display:none">
         <label class="switch key-save"><input type="checkbox" id="rememberTts" checked> このブラウザに保存する</label>
@@ -1590,7 +1625,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260907-v1377-minutes-model';
+var APP_BUILD = '20260907-v1380-segment-tts';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -1775,6 +1810,12 @@ function loadCfg(){
     sttProvider: pref('di.sttp','sttProvider','webspeech'),
     sttModel:  pref('di.sttm','sttModel',''),
     sttPunct:  pref('di.sttpunc','sttPunct','1')+'' === '1',
+    segmentMode:pref('di.segmentMode','segmentMode','balanced'),
+    segmentOverlap:pref('di.segmentOverlap','segmentOverlap','allow'),
+    segmentMin:pref('di.segmentMin','segmentMin','0'),
+    segmentStability:pref('di.segmentStability','segmentStability','0'),
+    segmentSilence:pref('di.segmentSilence','segmentSilence','0'),
+    segmentDebt:pref('di.segmentDebt','segmentDebt','8'),
     ttsMode:   pref('di.tts','ttsMode','off'),
     ttsWho:    pref('di.ttsw','ttsWho','B2A'),
     focus:     pref('di.focus','focus','split'),
@@ -2044,6 +2085,7 @@ function addEntry(seat, text, interim){
   return e;
 }
 function removeEntry(e){
+  if(!e)return;segRemove(e);
   var n = document.querySelectorAll('[data-eid="'+e.id+'"]');
   for (var i=0;i<n.length;i++) n[i].remove();
   S.entries = S.entries.filter(function(x){ return x.id !== e.id; });
@@ -2084,8 +2126,14 @@ function paint(feedId, e, viewer){
   say.style.display = (main && main !== '…') ? '' : 'none';
   say.onclick = function(ev){
     ev.stopPropagation();      // パネルのタップ（聞き取り言語の切替）を誘発させない
+    if(segReplay(e,viewer,say))return;
     speakManual(main, sayLang, say, e.seat, e.prosody, e.id+':'+viewer);
   };
+  var retry=el.querySelector('.segment-retry');
+  if(e.segments&&e.segments.some(function(x){return x.translationError;})){
+    if(!retry){retry=document.createElement('button');retry.className='segment-retry';retry.textContent='翻訳を再試行';el.appendChild(retry);}
+    retry.onclick=function(ev){ev.stopPropagation();e.segment.cancelled=false;if(SEG.cards.indexOf(e)<0)SEG.cards.push(e);e.segments.forEach(function(x){if(x.translationError){x.translationError=null;x.translationReady=false;x.translationRevision++;}});segWake();};
+  }else if(retry)retry.remove();
   var s = el.querySelector('.sub');
   s.textContent = CFG.showSrc ? sub : '';
   s.style.display = (CFG.showSrc && sub) ? '' : 'none';
@@ -3479,6 +3527,7 @@ function sysPrompt(from, to){
 }
 
 function translate(e){
+  if(segFinalizeEntry(e))return Promise.resolve();
   var from = e.srcLang, to = e.dstLang, text = e.srcText;
   var p = PROVIDERS[CFG.provider] || PROVIDERS.free;
   var job, t0 = Date.now();
@@ -3523,7 +3572,7 @@ function baseUrlOf(){
 function isReasoningModel(id){
   return /^(o[1-9](-|$)|gpt-5(\.|-|$))/i.test(String(id || ''));
 }
-function oaiTranslate(text, from, to){
+function oaiTranslate(text, from, to, segmentContext){
   var key = transKey();
   var p = PROVIDERS[CFG.provider];
   if (p.key && !key) return Promise.reject(new Error('APIキーが未設定です'));
@@ -3535,7 +3584,7 @@ function oaiTranslate(text, from, to){
     model: CFG.model,
     messages:[
       { role:'system', content: sysPrompt(from,to) },
-      { role:'user', content: '【直前までの会話（参考）】\n' + (recentCtx(6)||'(none)') + '\n\n【訳す発話】\n' + text }
+      { role:'user', content: '【直前までの会話（参考）】\n' + ((segmentContext || recentCtx(6))||'(none)') + '\n\n【訳す発話】\n' + text }
     ]
   };
   if (CFG.provider === 'openai' && isReasoningModel(CFG.model)){
@@ -3547,7 +3596,7 @@ function oaiTranslate(text, from, to){
   }).then(chk).then(function(j){ return j.choices[0].message.content; });
 }
 
-function anthropicTranslate(text, from, to){
+function anthropicTranslate(text, from, to, segmentContext){
   var key = transKey();
   if (!key) return Promise.reject(new Error('APIキーが未設定です'));
   return fetch('https://api.anthropic.com/v1/messages', {
@@ -3557,19 +3606,19 @@ function anthropicTranslate(text, from, to){
     body: JSON.stringify({
       model: CFG.model, max_tokens:1024, temperature:0.2,
       system: sysPrompt(from,to),
-      messages:[{ role:'user', content:'【直前までの会話（参考）】\n' + (recentCtx(6)||'(none)') + '\n\n【訳す発話】\n' + text }]
+      messages:[{ role:'user', content:'【直前までの会話（参考）】\n' + ((segmentContext || recentCtx(6))||'(none)') + '\n\n【訳す発話】\n' + text }]
     })
   }).then(chk).then(function(j){ return (j.content||[]).map(function(b){ return b.text||''; }).join(''); });
 }
 
-function geminiTranslate(text, from, to){
+function geminiTranslate(text, from, to, segmentContext){
   var key = transKey();
   if (!key) return Promise.reject(new Error('APIキーが未設定です'));
   var url = PROVIDERS.gemini.base + '/models/' + encodeURIComponent(CFG.model) + ':generateContent?key=' + encodeURIComponent(key);
   return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({
       systemInstruction:{ parts:[{ text: sysPrompt(from,to) }] },
-      contents:[{ role:'user', parts:[{ text:'【直前までの会話（参考）】\n'+(recentCtx(6)||'(none)')+'\n\n【訳す発話】\n'+text }]}],
+      contents:[{ role:'user', parts:[{ text:'【直前までの会話（参考）】\n'+((segmentContext || recentCtx(6))||'(none)')+'\n\n【訳す発話】\n'+text }]}],
       generationConfig:{ temperature:0.2 }
     })
   }).then(chk).then(function(j){
@@ -3868,6 +3917,7 @@ var DLOG = [], DLOG_MAX = 800, DLOG_T0 = Date.now();
 function dlog(cat, msg, data){
   if (DLOG.length >= DLOG_MAX) DLOG.shift();   // 古いものから捨てて上限を超えない
   DLOG.push({ t: Date.now() - DLOG_T0, c: cat, m: msg, d: data });
+  if(cat==='tts')segAudioEvent(msg,data);
 }
 /* APIキーらしき文字列は書き出し時に必ず伏せる（そのまま貼れるようにするため） */
 function redact(s){
@@ -4563,7 +4613,9 @@ function ttsBegin(sayKey){
   }
   return sayKey;
 }
-function ttsEnd(sayKey){
+function ttsEnd(sayKey,requestGen){
+  if(requestGen!=null&&requestGen!==ttsGen)return;
+  segAudioFinished();
   ttsSayKeyEnd(sayKey);
   ttsActive = Math.max(0, ttsActive - 1);
   if (ttsActive > 0) return;            // まだ読み上げ中のものが残っている
@@ -4633,7 +4685,7 @@ function browserSpeak(text, tag, prosody, onFinish){
     if (onFinish) try{ onFinish('unsupported'); }catch(e){}
     return;
   }
-  var done = false, started = false, tStart = null, tEnd = null, t0 = Date.now(), sayKey=String(ttsDispatchSayKey||'');
+  var done = false, started = false, tStart = null, tEnd = null, t0 = Date.now(), requestGen=ttsGen, sayKey=String(ttsDispatchSayKey||'');
   var pmap=prosodyMapForTts(prosody,tag,'browser');
   var finish = function(why){
     if (done) return; done = true;
@@ -4644,7 +4696,7 @@ function browserSpeak(text, tag, prosody, onFinish){
     // ttsPlayStart はここでクリアしない。別の読み上げが再生中の場合に、
     // 先に終わったほうが再生時刻を消してしまい判定を狂わせるため。
     // 次の onstart で必ず上書きされ、未再生時は再生中判定で弾かれる。
-    ttsEnd(sayKey);
+    ttsEnd(sayKey,requestGen);
     if (onFinish) try{ onFinish(why || 'ended'); }catch(e){}
   };
   try{
@@ -5851,7 +5903,7 @@ function ttsGuard(text, ms,seat){
   var done = false, tEnd = null, phase = '', sayKey=String(ttsDispatchSayKey||'');
   var finish = function(){
     if (done) return;
-    done = true; finish.done = true; clearTimeout(tEnd); ttsReleaseOrder(finish); ttsEnd(sayKey);
+    done = true; finish.done = true; clearTimeout(tEnd); ttsReleaseOrder(finish); ttsEnd(sayKey,finish.gen);
   };
   /* phaseごとに時計を張り替える。finish自体は読み上げ要求全体の終了処理なので、
      合成が終わっただけでは呼ばない。 */
@@ -7421,7 +7473,7 @@ function vvFinishJob(job){
   clearTimeout(job.preloadTimer); clearInterval(job.bufferGuard);
   vvReleaseSynth(job); vvRemoveController(job.ctrl);
   try{ if (job.ctrl) job.ctrl.abort(); }catch(e){}
-  ttsEnd(job.sayKey);
+  ttsEnd(job.sayKey,job.gen);
 }
 function vvAbortAll(){
   vvControllers.slice().forEach(function(c){ try{ c.abort(); }catch(e){} });
@@ -7984,6 +8036,7 @@ function setSayBtn(btn,key){
 }
 function ttsIsBusy(){ return ttsActive > 0 || ttsPlayingNow || ttsQueue.length > 0; }
 function stopSpeaking(why){
+  segCancelAll(why||'読み上げ停止');
   var had = ttsIsBusy();
   ttsGen++;                                  /* 以後に届く音声は鳴らさない */
   ttsPendingOrders = {}; ttsOrderWaitLogged = '';
@@ -8055,7 +8108,7 @@ function speakManual(text, lang, btn, seat, prosody,sayKey){
 
 /* 原文読み上げモードでは、翻訳を待たず認識できた時点で読み上げる。
    （ボイスチェンジャーとして使うので、翻訳の往復時間が乗ると使い物にならない） */
-function speakSrcNow(e){ if (CFG.ttsSrc) speak(e); }
+function speakSrcNow(e){ if(segEnabled())return; if (CFG.ttsSrc) speak(e); }
 
 function speak(e){
   if (CFG.ttsMode === 'off'){ dlog('tts','skip',{ why:'読み上げOFF' }); return; }
@@ -8223,6 +8276,8 @@ function buildRec(){
   rec.onstart = function(){ sawSpeech = false; recStartAt = Date.now(); };
 
   rec.onresult = function(ev){
+    if(!recRun||!S.running)return;
+    if(segWebResult(rec,ev,S.listenSeat)){sawSpeech=true;recErr=0;recDeadStart=0;return;}
     // 読み上げ中でも捨てない。自分の読み上げを拾った分だけ下で内容照合して除く。
     var itm='', fin=[];
     for (var i=ev.resultIndex;i<ev.results.length;i++){
@@ -8313,6 +8368,7 @@ function buildRec(){
      「どうせ再起動する、そのタイミングでだけ」言語を切り替える。
      こうすることで AUTO でも再起動回数が増えず、許可ポップアップも増えない。 */
   rec.onend = function(){
+    segWebEnd(rec);
     if (!recRun || restarting) return;
     restarting = true;
 
@@ -8396,6 +8452,7 @@ WebSpeechTrackEngine.prototype.startSameTrack=function(){
   }
 };
 WebSpeechTrackEngine.prototype.fail=function(message,err){
+  segDetachMeter(this);segWebEnd(this.rec);
   if(this.dead)return;this.dead=true;
   dlog('stt','track-FAIL',{seat:this.seat,err:String((err&&err.message)||err||message).slice(0,160),fallback:false});
   try{if(this.rec){this.rec.onend=null;this.rec.abort();}}catch(e){}
@@ -8403,9 +8460,11 @@ WebSpeechTrackEngine.prototype.fail=function(message,err){
   toast(message+'。マイクへは自動切替しません。⚙→音声で「VB-CABLE入力」または「外部API」を選んでください。');
 };
 WebSpeechTrackEngine.prototype.build=function(){
-  var self=this,r=new SR();this.rec=r;
+  var self=this,r=new SR();this.rec=r;segAttachMeter(this,this.track,this.seat);
   r.lang=L(langOf(this.seat)).sr;r.continuous=true;r.interimResults=true;r.maxAlternatives=1;
   r.onresult=function(ev){
+    if(self.dead||!S.running)return;
+    if(segWebResult(r,ev,self.seat)){self.errs=0;return;}
     var itm='',fin=[];
     for(var i=ev.resultIndex;i<ev.results.length;i++){
       var rr=ev.results[i],txt=String((rr[0]&&rr[0].transcript)||'');
@@ -8434,7 +8493,7 @@ WebSpeechTrackEngine.prototype.build=function(){
     if(code==='not-allowed'||code==='service-not-allowed'||code==='audio-capture')self.fail('共有音声Trackを直接認識できませんでした：'+code);
   };
   r.onend=function(){
-    if(self.dead)return;self.restarts++;
+    if(self.dead)return;segWebEnd(r);self.restarts++;
     var wait=Math.min(3000,120+self.errs*350);
     dlog('stt','track-restart',{seat:self.seat,restart:self.restarts,waitMs:wait,sameTrack:true});
     setTimeout(function(){if(!self.dead)self.startSameTrack();},wait);
@@ -8442,6 +8501,7 @@ WebSpeechTrackEngine.prototype.build=function(){
   return this.startSameTrack();
 };
 WebSpeechTrackEngine.prototype.stop=function(){
+  segDetachMeter(this);segWebEnd(this.rec);
   if(this.dead)return;this.dead=true;
   try{if(this.rec){this.rec.onend=null;this.rec.abort();}}catch(e){}
   if(this.interim){removeEntry(this.interim);this.interim=null;}
@@ -8967,6 +9027,10 @@ RealtimeTranscriptionEngine.prototype.checkBoundaries=function(){
     rms=Math.sqrt(sum/this.boundaryBuf.length);this.lastRms=rms;
     if(rms>CFG.vad/1000)this.lastVoiceAt=now;
   }
+  if(segEnabled()){
+    if(this.boundaryAn)segVoice(this.seat||S.listenSeat||'A',rms);
+    return;
+  }
   var self=this;
   Object.keys(this.items).forEach(function(id){
     var x=self.items[id];if(!x||!x.entry||!String(x.text||'').trim()||!x.lastDeltaAt)return;
@@ -8997,7 +9061,9 @@ RealtimeTranscriptionEngine.prototype.finalizeSegment=function(id,x,reason,meta)
   speakSrcNow(holder);translate(holder);return true;
 };
 RealtimeTranscriptionEngine.prototype.onEvent=function(ev){
+  if(this.dead||this.closing||!S.running||this.session!==sessionGen)return;
   var e;try{e=JSON.parse(ev.data);}catch(_){return;}var t=e.type||'',id=e.item_id||e.id||this.fallbackItemId;
+  if(segLiveEvent(this,e,id))return;
   if(t==='conversation.item.input_audio_transcription.delta'||t==='input_audio_transcription.delta'){
     var delta=String(e.delta||'');if(!delta)return;
     var x=this.item(id),entry=this.ensureEntry(x);x.text+=delta;x.allText+=delta;x.lastDeltaAt=Date.now();x.deltaCount++;
@@ -9029,7 +9095,7 @@ RealtimeTranscriptionEngine.prototype.onEvent=function(ev){
 };
 RealtimeTranscriptionEngine.prototype.stop=function(){
   this.dead=true;this.stopBoundaryMonitor();this.closeConnection();
-  Object.keys(this.items).forEach(function(k){removeEntry(this.items[k].entry);},this);this.items={};
+  Object.keys(this.items).forEach(function(k){var e=this.items[k].entry;if(e&&!e.segment)removeEntry(e);},this);this.items={};
   if(this.opts.ownsStream&&this.stream)try{this.stream.getTracks().forEach(function(t){t.stop();});}catch(e){}
   dlog('stt','live-stop',{model:'gpt-live-transcribe',stage:this.connectStage});
 };
@@ -9419,6 +9485,7 @@ function startVU(){
       var s=0; for (var i=0;i<buf.length;i++){ var v=(buf[i]-128)/128; s+=v*v; }
       var rms=Math.sqrt(s/buf.length), t=Date.now();
       setLevel(rms);
+      segVoice(S.listenSeat||'A',rms);
       if (micProsody) micProsody.sample(t,rms);
     }, 80);
     vuTimer._ac = ac;
@@ -9431,6 +9498,7 @@ function stopVU(){
 }
 
 function stopAll(){
+  if(SEG.cards.length||SEG.queue.length)stopSpeaking('認識停止');
   if (S.running) dlog('session','STOP',{ entries: S.entries.length });
   S.running = false;
   sessionGen++;                              /* 送信済みSTTの返答をこの時点で無効化 */
@@ -9558,6 +9626,7 @@ function exportHtml(){
     glossary: CFG.glossary.filter(function(r){ return r.s || r.t; }),
     ctx: CFG.ctx, provider: CFG.provider, baseUrl: CFG.baseUrl, model: CFG.model, tone: CFG.tone,
     sttProvider: CFG.sttProvider, sttModel: CFG.sttModel, ttsModel: CFG.ttsModel,
+    segmentMode:CFG.segmentMode,segmentOverlap:CFG.segmentOverlap,segmentMin:CFG.segmentMin,segmentStability:CFG.segmentStability,segmentSilence:CFG.segmentSilence,segmentDebt:CFG.segmentDebt,
     ttsMode: CFG.ttsMode, ttsWho: CFG.ttsWho, voiceA: CFG.voiceA, voiceB: CFG.voiceB, vad: String(CFG.vad),
     oaiRate: CFG.oaiRate, oaiEmotion: CFG.oaiEmotion, oaiIntonation: CFG.oaiIntonation,
     oaiDynamics: CFG.oaiDynamics, oaiPause: CFG.oaiPause, oaiVolume: CFG.oaiVolume,
@@ -9605,7 +9674,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.37.7 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.38.0 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -9999,6 +10068,7 @@ function applyCfg(){
   $('sttProvider').value = CFG.sttProvider;
   $('displaySttRoute').value = CFG.displaySttRoute;
   $('preventSelfRecognition').checked = !!CFG.preventSelfRecognition;
+  ['segmentMode','segmentOverlap','segmentMin','segmentStability','segmentSilence','segmentDebt'].forEach(function(k){$(k).value=CFG[k];});segStatus();
   $('ttsMode').value = CFG.ttsMode;
   $('ttsWho').value = CFG.ttsWho;
   $('voiceA').value = CFG.voiceA;
@@ -10406,6 +10476,7 @@ $('clearBtn').onclick = function(){
   if (S.entries.length && !confirm('会話ログを消去しますか？')) return;
   /* 消したログのボタンを掴んだままにしないよう、読み上げも一緒に止める */
   stopSpeaking('会話ログを消去');
+  if(S.running)stopAll();
   S.entries=[]; S.seq=0; $('feedA').innerHTML=''; $('feedB').innerHTML='';
   renderOverlayRail();
   PROSODY_BASELINES={}; lastMicProsody=null;
@@ -10607,6 +10678,9 @@ function simple(id, key, prop, isCheck){
 simple('tone','di.tone','tone');
 simple('camModel','di.cam','camModel');
 simple('ctx','di.ctx','ctx');
+['segmentMode','segmentOverlap','segmentMin','segmentStability','segmentSilence','segmentDebt'].forEach(function(k){
+  $(k).onchange=function(){var wasRunning=S.running;stopSpeaking('逐次読み上げ設定変更');if(wasRunning)stopAll();CFG[k]=this.value;store.set('di.'+k,this.value);segStatus();if(wasRunning)toast('逐次読み上げ設定を変更しました。「開始」で認識を再開してください。');};
+});
 simple('ttsMode','di.tts','ttsMode');
 simple('ttsWho','di.ttsw','ttsWho');
 simple('rtDirection','di.rtdirection','rtDirection');
@@ -10928,7 +11002,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.37.7 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.38.0 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -10985,6 +11059,10 @@ function diagText(devices){
    ['読み上げモデル', rtNativeAudio ? 'gpt-realtime-translate' : diagTtsModel()],
    ['読み上げ対象', rtNativeAudio ? '訳す方向に従う' : CFG.ttsWho],
    ['声 A / B', rtNativeAudio ? '(外部TTS設定は未使用)' : ttsSeatVoices()],
+   ['TTS逐次読み上げ',CFG.segmentMode+' / 重なり '+CFG.segmentOverlap],
+   ['逐次確定・訂正',SEG.committed+' / '+SEG.corrected+'（訂正率 '+(SEG.committed?(100*SEG.corrected/SEG.committed).toFixed(1):'0')+'%）'],
+   ['逐次TTS待ち音声',segDebt().toFixed(1)+'秒（文字数による推定）'],
+   ['逐次計測の定義','L1=最初の認識文字から、L2=commitからの代理値。音響的な意味単位終了時刻は未計測。'],
    ['TTSストリーミング', rtNativeAudio ? '(外部TTS設定は未使用)' : ttsStreamCapability(CFG.ttsMode).text],
    ['OpenAI 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'openai' ? oaiManualTweaks() : '(未使用)'],
    ['OpenAI API speed', !rtNativeAudio && CFG.ttsMode === 'openai'
@@ -11101,6 +11179,11 @@ function diagText(devices){
     out.push('');
   }
 
+  out.push('## 逐次読み上げの部分別状態', '');
+  S.entries.filter(function(e){return e.segment;}).forEach(function(e){
+    var b=e.segment;out.push('- '+cell(e.id)+' / '+cell(e.status)+' / 部分数 '+e.segments.length+' / overlap '+(b.playMs?(100*b.overlapMs/b.playMs).toFixed(1):'0')+'%（入力レベルからの推定）');
+    e.segments.forEach(function(s){out.push('  - seq='+s.seq+' '+cell(s.state)+' / '+s.sourceText.length+'文字 / '+cell((s.commitReason||[]).join('+'))+' / 訂正 '+(s.corrected?'あり':'なし')+' / audio '+cell(s.audio?s.audio.status:'none'));});
+  });out.push('');
   out.push('## 動作ログ', '');
   if (!DLOG.length){
     out.push('（記録なし。「開始」を押して操作したあとに書き出すと記録されます）', '');
@@ -11219,6 +11302,340 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
+/* Duo Segment pipeline v1.38.0 / Phase 1.
+ * Provider-neutral commit logic; adapters keep the existing output routing.
+ * TTS requests are dispatched serially, translations run at most two at a time.
+ * Audio debt and scheduled starts are estimates, never measured acoustic latency.
+ */
+var SEG = {cards:[], queue:[], active:null, epoch:0, timer:null, translations:0, requests:[],
+  voice:{}, committed:0, corrected:0, lastReason:'—', lastTick:0};
+function segEnabled(){return CFG.segmentMode!=='off' && /^(balanced|fast)$/.test(CFG.segmentMode) && CFG.sttProvider!=='realtime';}
+function segNumber(v,f,min,max){v=Number(v);return isFinite(v)&&v>0?Math.max(min,Math.min(max,v)):f;}
+function segPolicy(mode){var fast=mode==='fast';return {
+  min:segNumber(CFG.segmentMin,fast?8:12,4,100), max:fast?28:48,
+  stability:segNumber(CFG.segmentStability,fast?300:400,200,2000),
+  silence:segNumber(CFG.segmentSilence,fast?400:700,300,3000),
+  debt:segNumber(CFG.segmentDebt,8,2,60)};}
+/* Pure function. A lack of STT deltas is not evidence of acoustic silence. */
+function segDecision(input){
+  var text=input.text||'', p=input.policy, stable=input.stableLength||0;
+  if(!text.trim())return {length:0,reasons:[]};
+  var bound=0,reasons=[], candidates=[], rx=/[。！？!?]|\.(?=\s|$)/g,m;
+  while((m=rx.exec(text)))candidates.push({end:m.index+1,why:'punctuation'});
+  if(input.mode==='fast'){
+    rx=/[、,;:；：]/g;while((m=rx.exec(text))) {
+      if(/[0-9]/.test(text[m.index-1]||'')&&/[0-9]/.test(text[m.index+1]||''))continue;
+      candidates.push({end:m.index+1,why:'weak-punctuation'});
+    }
+  }
+  candidates.sort(function(a,b){return a.end-b.end;});
+  var max=p.max*(input.debt>1.5?1.5:1);
+  for(var i=0;i<candidates.length;i++){
+    var c=candidates[i];if(c.end>stable)break;
+    if(c.end>=p.min&&c.end<=max*1.5){bound=c.end;reasons=[c.why,'stable'];break;}
+  }
+  if(!bound && stable>=p.min && input.silenceMs>=p.silence){bound=stable;reasons=['audio-silence','stable'];}
+  if(!bound && stable>=max){
+    // Never split a Latin word or a decimal. CJK can use a character boundary.
+    var prefix=text.slice(0,Math.floor(max));
+    var cut=Math.max(prefix.lastIndexOf(' '),prefix.lastIndexOf('、'),prefix.lastIndexOf(','));
+    if(cut>=p.min)bound=cut+1;
+    else if(/[\u3040-\u30ff\u3400-\u9fff]$/.test(prefix))bound=prefix.length;
+    if(bound)reasons=['length','stable'];
+  }
+  if(bound && /(?:ので|けど|けれども|ながら|そして|しかし|\b(?:because|which|although|with|and|but|if|when))[,、;:\s]*$/i.test(text.slice(0,bound)))bound=0;
+  // Final flush still partitions a long final-only transcript at safe boundaries.
+  if(input.final && !bound){bound=text.length;reasons=['stt-final'];}
+  if(input.final&&bound&&reasons.indexOf('stt-final')<0)reasons.push('stt-final');
+  return {length:bound,reasons:bound?reasons:[]};
+}
+function segWake(){if(!SEG.timer)SEG.timer=setInterval(segTick,80);}
+function segInit(e){
+  if(e.segment)return e;
+  e.startedAt=Date.parse(e.ts)||Date.now();e.status=e.interim?'active':'final';e.segments=[];
+  e.segment={text:'',stableSince:[],revision:0,mode:CFG.segmentMode,epoch:SEG.epoch,
+    cancelled:false,final:false,deferred:false,lastUpdate:Date.now(),overlapMs:0,playMs:0};
+  SEG.cards.push(e);segWake();return e;
+}
+function segJoin(e){
+  e.srcText=e.segments.map(function(s){return s.sourceText;}).join('');
+  e.dstText=e.segments.filter(function(s){return s.committedAt;}).map(function(s){
+    return s.translationError?'（翻訳エラー：再試行できます）':(s.translationText||'');
+  }).filter(Boolean).join(' ');
+  e.translationSkipped=translationDisabled();render(e);
+}
+function segVoice(seat,rms){SEG.voice[seat]={at:Date.now(),last:rms>CFG.vad/1000?Date.now():((SEG.voice[seat]||{}).last||Date.now())};}
+function segAttachMeter(owner,track,seat){
+  if(owner._segmentMeter||!segEnabled())return;
+  try{
+    var ac=new (window.AudioContext||window.webkitAudioContext)(),an=ac.createAnalyser();an.fftSize=512;
+    var source=ac.createMediaStreamSource(new MediaStream([track]));source.connect(an);
+    var buf=new Uint8Array(an.frequencyBinCount);
+    owner._segmentMeter={ac:ac,source:source,timer:setInterval(function(){
+      if(ac.state!=='running')return;an.getByteTimeDomainData(buf);var sum=0;
+      for(var i=0;i<buf.length;i++){var v=(buf[i]-128)/128;sum+=v*v;}
+      segVoice(seat,Math.sqrt(sum/buf.length));
+    },80)};
+    if(ac.state==='suspended'){var promise=ac.resume();if(promise&&promise.catch)promise.catch(function(){});}
+  }catch(err){dlog('segment','meter-unavailable',{seat:seat,error:String(err.message||err)});}
+}
+function segDetachMeter(owner){var meter=owner._segmentMeter;if(!meter)return;clearInterval(meter.timer);
+  try{meter.source.disconnect();meter.ac.close();}catch(err){}owner._segmentMeter=null;}
+function segSilence(e,now){var v=SEG.voice[e.seat];return v&&now-v.at<400?now-v.last:null;}
+function segDebt(){
+  var total=0;SEG.queue.forEach(function(j){if(!j.cancelled){
+    var s=j.segment,useSource=CFG.ttsSrc||!s.translationText,chars=(useSource?s.sourceText:s.translationText).length;
+    var lang=useSource?j.card.srcLang:j.card.dstLang;
+    var ms=Math.max(400,chars* (/^(ja|zh)/.test(lang)?170:65));
+    if(j===SEG.active && s.audio&&s.audio.firstAudioAt)ms=Math.max(0,ms-(Date.now()-s.audio.firstAudioAt));
+    total+=ms;
+  }});return total/1000;
+}
+function segUpdate(e,text,final){
+  segInit(e);var b=e.segment,now=Date.now();text=String(text||'');
+  if(!b.cancelled&&SEG.cards.indexOf(e)<0)SEG.cards.push(e);
+  var old=b.text,prefix=0;while(prefix<old.length&&prefix<text.length&&old[prefix]===text[prefix])prefix++;
+  var suffix=0;while(suffix<old.length-prefix&&suffix<text.length-prefix&&old[old.length-1-suffix]===text[text.length-1-suffix])suffix++;
+  if(old!==text){
+    var oldEnd=old.length-suffix,newEnd=text.length-suffix,delta=text.length-old.length;
+    b.revision++;b.lastUpdate=now;
+    b.stableSince=b.stableSince.slice(0,prefix).concat(Array(text.length-prefix).fill(now));
+    // Map previous boundaries through the replaced span. Concatenation stays exact.
+    var at=0;
+    e.segments.filter(function(s){return s.committedAt;}).forEach(function(s){
+      var start=s.start,end=s.end;
+      var mapped=end<=prefix?end:(end>=oldEnd?end+delta:newEnd);
+      mapped=Math.max(at,Math.min(text.length,mapped));
+      var replacement=text.slice(at,mapped);
+      if(replacement!==s.sourceText){
+        if(!s.corrected){s.corrected=true;SEG.corrected++;}
+        s.sourceRevision=b.revision;s.sourceText=replacement;
+        s.translationRevision=(s.translationRevision||0)+1;s.translationReady=false;
+        // Already sent audio is immutable. Correct the screen translation only.
+        dlog('segment','commit-correction',{cardId:e.id,seq:s.seq,revision:b.revision,audioAlreadyDispatched:!!s.dispatched});
+      }
+      s.start=at;s.end=mapped;at=mapped;
+    });
+    b.text=text;
+  }
+  b.final=!!final;e.interim=!final;e.status=final?'final':'active';
+  if(final)e.endedAt=now;
+  segDraft(e);segCheck(e);segJoin(e);segWake();
+}
+function segDraft(e){
+  var committed=e.segments.filter(function(s){return s.committedAt;}),at=committed.length?committed[committed.length-1].end:0;
+  e.segments=committed;
+  if(at<e.segment.text.length)e.segments.push({id:e.id+'-draft',cardId:e.id,seq:committed.length+1,
+    start:at,end:e.segment.text.length,sourceText:e.segment.text.slice(at),state:'provisional',sourceRevision:e.segment.revision});
+}
+function segCheck(e){
+  var b=e.segment;if(!b||b.cancelled)return;
+  var p=segPolicy(b.mode),debt=segDebt(),now=Date.now();
+  if(debt>p.debt&&!b.final){
+    if(!b.deferred){b.deferred=true;dlog('segment','debt-fallback',{cardId:e.id,debtEstimateSeconds:debt,limit:p.debt,policy:'defer-uncommitted-until-final'});}
+    return;
+  }
+  if(b.deferred&&!b.final)return;
+  var count=0;
+  while(count++<100){
+    var s=e.segments[e.segments.length-1];if(!s||s.committedAt)break;
+    if(b.final&&!hasSpeechContent(s.sourceText)){
+      var previous=e.segments[e.segments.length-2];
+      if(previous){previous.end=s.end;previous.sourceText+=s.sourceText;e.segments.pop();}
+      break;
+    }
+    var stable=0;while(s.start+stable<b.stableSince.length&&now-b.stableSince[s.start+stable]>=p.stability)stable++;
+    var silence=segSilence(e,now);
+    var d=segDecision({text:s.sourceText,stableLength:b.final?s.sourceText.length:stable,policy:p,
+      mode:b.mode,debt:debt,silenceMs:silence===null?-1:silence,final:b.final});
+    if(!d.length)break;
+    s.end=s.start+d.length;s.sourceText=b.text.slice(s.start,s.end);s.id=e.id+'-s'+s.seq;
+    s.committedSourceText=s.sourceText;s.committedAt=now;s.stabilityMs=now-(b.stableSince[s.end-1]||now);
+    s.commitReason=d.reasons;s.state='committed';s.translationRevision=0;s.translationReady=false;
+    s.audio={segmentId:s.id,seq:s.seq,playbackRate:1,status:'pending',generatedAt:null};
+    // One immutable queue reservation at commit, independent of translation completion.
+    SEG.queue.push({card:e,segment:s,epoch:SEG.epoch,cancelled:false});SEG.committed++;
+    SEG.lastReason=d.reasons.join(' + ');
+    dlog('segment','commit',{cardId:e.id,seq:s.seq,chars:s.sourceText.length,reason:d.reasons,
+      stabilityMs:s.stabilityMs,debtEstimateSeconds:debt});segDraft(e);
+  }
+}
+function segTranslate(e,s){
+  var rev=s.translationRevision,epoch=SEG.epoch,from=e.srcLang,to=e.dstLang,text=s.sourceText;
+  s.translating=true;s.state=s.dispatched?s.state:'translating';SEG.translations++;
+  var p=PROVIDERS[CFG.provider]||PROVIDERS.free,job,timer;
+  var request={released:false,release:function(){if(request.released)return;request.released=true;
+    clearTimeout(timer);SEG.translations=Math.max(0,SEG.translations-1);s.translating=false;
+    SEG.requests=SEG.requests.filter(function(x){return x!==request;});
+  }};SEG.requests.push(request);
+  try{
+    if(!text.trim()||p.kind==='none')job=Promise.resolve('');
+    else if(p.kind==='free')job=freeTranslate(text,from,to);
+    else {
+      var context=recentCtx(6)+'\n'+e.segments.filter(function(x){return x.seq<s.seq&&x.committedAt;}).map(function(x){return x.sourceText+' → '+(x.translationText||'');}).join('\n');
+      if(p.kind==='anthropic')job=anthropicTranslate(text,from,to,context);
+      else if(p.kind==='gemini')job=geminiTranslate(text,from,to,context);
+      else job=oaiTranslate(text,from,to,context);
+    }
+  }catch(err){job=Promise.reject(err);}
+  // Bound the slot even when a provider never settles. Late replies cannot mutate it.
+  Promise.race([job,new Promise(function(_,reject){timer=setTimeout(function(){reject(new Error('翻訳タイムアウト（20秒）'));},20000);})])
+  .then(function(out){if(request.released||epoch!==SEG.epoch||rev!==s.translationRevision||e.segment.cancelled)return;
+    s.translationText=String(out||'').trim();s.translationError=null;s.translationReady=true;
+    if(!s.dispatched)s.state='queued';
+    dlog('segment','translated',{cardId:e.id,seq:s.seq,revision:rev});
+  }).catch(function(err){if(request.released||epoch!==SEG.epoch||rev!==s.translationRevision||e.segment.cancelled)return;
+    s.translationError=String(err.message||err);s.translationReady=true;if(!s.dispatched)s.state='error';
+    dlog('segment','translation-error',{cardId:e.id,seq:s.seq,error:s.translationError});
+  }).then(function(){request.release();
+    if(!e.segment.cancelled){segJoin(e);segWake();}
+  });
+}
+function segAudioAllowed(e){return CFG.ttsMode!=='off' && !(CFG.ttsWho==='B2A'&&e.seat!=='B') && !(CFG.ttsWho==='A2B'&&e.seat!=='A') &&
+  !(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat));}
+function segPump(){
+  if(SEG.active||ttsIsBusy())return;
+  while(SEG.queue.length){
+    var j=SEG.queue[0],e=j.card,s=j.segment;
+    if(j.cancelled||j.epoch!==SEG.epoch||e.segment.cancelled){SEG.queue.shift();continue;}
+    if(!CFG.ttsSrc&&!s.translationReady)return;
+    if((!j.manual&&!segAudioAllowed(e))||(!CFG.ttsSrc&&s.translationError)||!(CFG.ttsSrc?s.sourceText:s.translationText).trim()){
+      s.audio.status='cancelled';s.audio.skipReason=s.translationError?'translation-error':'not-selected-or-empty';
+      s.state=s.translationError?'error':'skipped';SEG.queue.shift();continue;
+    }
+    var silence=segSilence(e,Date.now());
+    // Without a trustworthy input meter, avoid-overlap waits for STT final.
+    if(CFG.segmentOverlap==='avoid'&&!e.segment.final&&(silence===null||silence<segPolicy(e.segment.mode).silence))return;
+    s.state='tts_generating';s.dispatched=true;s.audio.status='generating';s.audio.requestedAt=Date.now();
+    SEG.active=j;j.started=false;j.finished=false;
+    var proxy={id:e.id,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,srcText:s.sourceText,dstText:s.translationText,prosody:e.prosody};
+    dlog('segment','dispatch',{cardId:e.id,seq:s.seq,debtEstimateSeconds:segDebt(),overlap:CFG.segmentOverlap});
+    try{
+      if(j.manual){
+        if(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat)){j.finished=true;s.audio.error='loop-prevention';return;}
+        var mode=CFG.ttsMode,fn=mode==='openai'?apiSpeak:mode==='voicevox'?vvSpeak:mode==='aivis'?aivisSpeak:mode==='eleven'?elSpeak:mode==='xai'?xaiSpeak:mode==='localvv'?lvvSpeak:null;
+        withTtsSayKey(e.id+':'+j.viewer,function(){
+          if(fn)fn(s.sourceText,e.srcLang,e.seat,e.prosody);else browserSpeak(s.sourceText,L(e.srcLang).tts,e.prosody);
+        });
+      }else speak(proxy);
+    }catch(err){s.audio.error=String(err.message||err);j.finished=true;}
+    // Providers reserve ttsActive synchronously; an immediate skip has no callback.
+    if(!ttsIsBusy())j.finished=true;
+    return;
+  }
+}
+function segAudioEvent(msg,data){
+  var j=SEG.active;if(!j)return;var s=j.segment,a=s.audio,now=Date.now();
+  if(/^(browser-start|wa-play|rate-play|play-start|aivis-first|openai-first|vv-start)$/.test(msg)&&!a.firstAudioAt){
+    a.firstAudioAt=now+((data&&data.leadMs)||0);a.generatedAt=now;a.status='playing';s.state='playing';
+    if(!j.card.firstAudioAt)j.card.firstAudioAt=a.firstAudioAt;
+    a.startEvidence=/first|wa-play/.test(msg)?'scheduled-estimate':'playback-event';
+    // L2 proxy is commit-to-playback, not a measured semantic boundary.
+    DLOG.push({t:now-DLOG_T0,c:'segment',m:'audio-start',d:{cardId:j.card.id,seq:s.seq,
+      L1TextProxyMs:a.firstAudioAt-j.card.startedAt,L2CommitProxyMs:a.firstAudioAt-s.committedAt,evidence:a.startEvidence}});
+  }
+  if(/FAIL|ERROR|TIMEOUT|timeout|SILENT|drop/.test(msg))a.error=msg;
+}
+function segAudioFinished(){if(SEG.active)SEG.active.finished=true;}
+function segTick(){
+  try{
+    var now=Date.now(),dt=Math.min(200,now-(SEG.lastTick||now));SEG.lastTick=now;
+    SEG.cards.forEach(function(e){if(!e.segment.cancelled){segCheck(e);
+      e.segments.forEach(function(s){if(s.committedAt&&!s.translationReady&&!s.translating&&SEG.translations<2)segTranslate(e,s);});
+    }});
+    var j=SEG.active;
+    if(j){var a=j.segment.audio;
+      if(a.firstAudioAt&&now>=a.firstAudioAt){j.card.segment.playMs+=dt;
+        var q=segSilence(j.card,now);if(q!==null&&q<160)j.card.segment.overlapMs+=dt;}
+      if(j.finished&&!ttsIsBusy()){
+        a.endedAt=now;a.status=a.error||!a.firstAudioAt?'error':'done';
+        j.segment.state=a.status==='done'?'played':'error';
+        dlog('segment','audio-end',{cardId:j.card.id,seq:j.segment.seq,state:j.segment.state,
+          L3Ms:j.card.endedAt?now-j.card.endedAt:null});
+        SEG.queue.shift();SEG.active=null;
+      }
+    }
+    segPump();segStatus();
+    // Completed cards remain on S.entries for logs; release runtime scheduling references.
+    SEG.cards=SEG.cards.filter(function(e){return !e.segment.cancelled&&(!e.segment.final||e.segments.some(function(s){return s.translating||!s.translationReady;})||SEG.queue.some(function(j){return j.card===e;}));});
+    if(!SEG.cards.length&&!SEG.queue.length&&!SEG.translations){clearInterval(SEG.timer);SEG.timer=null;}
+  }catch(err){
+    dlog('segment','scheduler-error',{error:String(err.message||err)});
+    segCancelAll('scheduler-error');CFG.segmentMode='off';store.set('di.segmentMode','off');
+    var select=$('segmentMode');if(select)select.value='off';
+    toast('逐次読み上げをOFFへ戻しました。診断ログを確認してください。');
+  }
+}
+function segStatus(){var el=$('segmentStatus');if(!el)return;
+  el.textContent='モード '+(CFG.segmentMode||'off')+' ／ 待ち音声 約'+segDebt().toFixed(1)+'秒（推定） ／ 確定 '+SEG.committed+'部分 ／ 確定後訂正 '+SEG.corrected+'/'+SEG.committed+' ／ '+SEG.lastReason;
+}
+function segCancelAll(why){
+  SEG.epoch++;
+  SEG.requests.slice().forEach(function(r){r.release();});
+  SEG.cards.forEach(function(e){e.segment.cancelled=true;clearTimeout(e.segment.timer);
+    e.segments.forEach(function(s){if(s.audio&&s.audio.status!=='done'){s.audio.status='cancelled';s.state='cancelled';}});
+    // Preserve recognized text for minutes when the recording is stopped.
+    if(e.srcText.trim()){e.interim=false;e.status='final';e.endedAt=Date.now();render(e);}
+  });
+  SEG.queue=[];SEG.active=null;SEG.cards=[];if(SEG.timer)clearInterval(SEG.timer);SEG.timer=null;
+  dlog('segment','cancel',{why:why,epoch:SEG.epoch});segStatus();
+}
+function segRemove(e){if(!e||!e.segment)return;e.segment.cancelled=true;
+  SEG.queue.forEach(function(j){if(j.card===e)j.cancelled=true;});
+  if(SEG.active&&SEG.active.card===e)stopSpeaking('会話カード削除');
+}
+function segWebResult(owner,ev,seat){
+  if(!segEnabled())return false;
+  for(var i=ev.resultIndex;i<ev.results.length;i++){
+    var r=ev.results[i],text=String((r[0]||{}).transcript||'').trim(),key=String(i);
+    owner._segments=owner._segments||{};
+    var e=owner._segments[key];
+    if(!hasSpeechContent(text)||isEcho(text)){if(e){removeEntry(e);delete owner._segments[key];}continue;}
+    if(!e){e=addEntry(seat,'',true);owner._segments[key]=e;}
+    if(r.isFinal&&CFG.prosodyOn)attachProsody(e,micProsodySnapshot(text,false));
+    segUpdate(e,r.isFinal?punctuateTranscript(text,langOf(seat)):text,!!r.isFinal);
+    if(r.isFinal){owner._segments[key]=e;dlog('stt','result',{provider:'webspeech-segment',seat:seat,chars:text.length});}
+  }
+  return true;
+}
+function segWebEnd(owner){Object.keys((owner&&owner._segments)||{}).forEach(function(k){var e=owner._segments[k];
+  if(e.segment&&!e.segment.final&&!e.segment.cancelled)segUpdate(e,e.srcText,true);
+});if(owner)owner._segments={};}
+function segLiveEvent(engine,event,id){
+  if(!segEnabled())return false;
+  var t=event.type||'',isDelta=/transcription\.delta$/.test(t),isFinal=/transcription\.completed$/.test(t);
+  if(!isDelta&&!isFinal)return false;
+  var x=engine.item(id),entry=engine.ensureEntry(x);
+  x.text=isDelta?x.text+String(event.delta||''):String(event.transcript||x.text);x.lastDeltaAt=Date.now();
+  if(!entry.segment&&((S.autoMode&&micSeats().length>1)||!engine.seat)&&x.text.length>=8){
+    var seat=guessSeatFromText(x.text);entry.seat=seat;entry.srcLang=langOf(seat);entry.dstLang=langOf(seat==='A'?'B':'A');
+  }
+  if(hasSpeechContent(x.text)&&!isEcho(x.text))segUpdate(entry,x.text,isFinal);
+  if(isFinal){if(!entry.segment)removeEntry(entry);delete engine.items[id];}
+  return true;
+}
+function segFinalizeEntry(e){
+  if(!segEnabled())return false;
+  segUpdate(e,e.srcText,true);return true;
+}
+function segReplay(e,viewer,btn){
+  if(!e.segment||!e.segments.length)return false;
+  var key=e.id+':'+viewer;
+  if(SEG.queue.some(function(j){return j.card.id===e.id;})){stopSpeaking('カード再生を停止');return true;}
+  stopSpeaking('カードを先頭から再生');
+  var useSrc=translationDisabled()||viewer===e.seat;
+  var clone={id:e.id,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,startedAt:Date.now(),endedAt:Date.now(),
+    segment:{final:true,mode:CFG.segmentMode,playMs:0,overlapMs:0},segments:[]};
+  e.segments.filter(function(s){return s.committedAt;}).forEach(function(s){
+    var text=useSrc?s.sourceText:s.translationText;if(!text||(!useSrc&&s.translationError))return;
+    var c={id:s.id,seq:s.seq,sourceText:text,translationText:text,committedAt:Date.now(),translationReady:true,
+      audio:{segmentId:s.id,seq:s.seq,playbackRate:1,status:'pending'}};
+    // Manual playback uses the visible language independently of automatic selection.
+    var manualCard=Object.assign({},clone,{srcLang:useSrc?e.srcLang:e.dstLang,dstLang:useSrc?e.srcLang:e.dstLang});
+    SEG.queue.push({card:manualCard,segment:c,epoch:SEG.epoch,cancelled:false,manual:true,viewer:viewer,btn:btn});
+  });segWake();return true;
+}
+
 loadCfg();
 applyCfg();
 setMode(store.get('di.automode','1') === '1');
