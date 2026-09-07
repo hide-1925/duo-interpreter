@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.41.0 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.42.0 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -647,18 +647,6 @@
   }
 
 .segment-playing{background:rgba(255,196,75,.25);color:inherit;border-radius:3px;box-shadow:inset 0 -2px 0 #e5b545}
-.segment-controls{margin-top:10px;font-size:13px;line-height:1.5;border-top:1px solid rgba(128,148,170,.3);padding-top:7px}
-.segment-controls summary{cursor:pointer;color:var(--dim);padding:4px 0}
-.segment-controls-hint{font-size:12px;color:var(--dim);margin:6px 0}
-.segment-part{border:1px solid rgba(128,148,170,.3);border-radius:8px;padding:8px;margin-top:7px;overflow-wrap:anywhere;white-space:normal}
-.segment-part-playing{border-color:#e5b545;background:rgba(255,196,75,.08)}
-.segment-part-label{font-size:11px;color:var(--dim);margin-bottom:4px}
-.segment-part-source,.segment-part-translation{white-space:pre-wrap;user-select:text}
-.segment-part-translation{margin-top:4px;color:var(--dim)}
-.segment-part button{font:inherit;margin:7px 8px 0 0;padding:5px 9px;border-radius:6px;cursor:pointer}
-.segment-part button:disabled{opacity:.45;cursor:default}
-.segment-part button:focus-visible,.segment-controls summary:focus-visible{outline:2px solid #e5b545;outline-offset:3px}
-
 /* Compact only the requested overlay settings section. Preserve type sizes and two columns. */
 #overlaySettingsMain .cap-grid{column-gap:8px;row-gap:5px}
 #overlaySettingsMain .cap-grid>label{line-height:1.25;margin:0}
@@ -668,6 +656,13 @@
 #overlaySettingsMain .cap-grid input[type=color]{height:30px;padding:3px}
 #overlaySettingsMain .cap-checks{margin-top:5px;margin-bottom:5px}
 
+
+.overlay-action-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.overlay-action-row .btn{min-width:0;white-space:normal;padding:10px 6px}
+.settings-help{margin-top:8px;font-size:13px;line-height:1.6;color:var(--dim)}
+.settings-help summary{cursor:pointer}
+.settings-help p{margin:8px 0}
+#phase2AudioRoutes select{max-width:100%}
 </style>
 </head>
 <body>
@@ -682,7 +677,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.41.0 Phase 4</span><span class="build-id">Build: 20260908-v1410-segment-controls</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.42.0 Phase 4</span><span class="build-id">Build: 20260908-v1420-settings-card-playback</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -692,7 +687,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.41.0 Phase 4</span><span class="build-id">Build: 20260908-v1410-segment-controls</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.42.0 Phase 4</span><span class="build-id">Build: 20260908-v1420-settings-card-playback</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1016,8 +1011,22 @@
         <label class="switch key-save"><input type="checkbox" id="rememberStt" checked> このブラウザに保存する</label>
       </div>
       </div>
-      <label class="switch"><input type="checkbox" id="sttPunct"> 句読点を自動補完する</label>
-      <small>API型STTには、内容を変えず自然な句読点を付けるよう指示します。ブラウザ内蔵STTは単語時刻を返さないため、誤挿入を避けて文末の「。／？／.／?」だけを補完します。</small>
+      <div id="sttVoiceBehavior">
+      <label class="switch"><input type="checkbox" id="prosodyOn"> 元音声の話し方をできるだけ保持する［実験］</label>
+      <small>ON時だけ、発話ごとの Pitch（声の高さ）・Energy（音量）・内部Pause（文中の間）・Speech Rate（話速）を端末内で解析します。話者ごとの通常値を学習し、ブラウザ標準TTSとAivisへ相対的な変化を反映します。</small>
+      <label class="switch"><input type="checkbox" id="echoGuard" checked> 読み上げ音声の回り込みを除外する</label>
+      <small>スピーカーから出た読み上げを音声認識が拾った場合に除外します。同じ文を繰り返す比較試験ではOFFにできます。</small>
+      <details class="prosodybox">
+        <summary>話し方解析の状態</summary>
+        <div class="prosody-grid">
+          <span>Prosody解析</span><b id="prosodyState">OFF</b>
+          <span>Pitch</span><b id="prosodyPitch">待機</b>
+          <span>Energy</span><b id="prosodyEnergy">待機</b>
+          <span>Pause / Speech Rate</span><b id="prosodyTiming">待機</b>
+          <span>現在のTTSへの反映</span><b id="prosodyTts">OFF</b>
+        </div>
+      </details>
+      </div>
       <small id="xaiSttNote" style="display:none">xAI の音声認識はモデルを選ぶ必要がありません。
       キーは翻訳プロバイダの xAI と共通で、上の欄が空ならそちらのキーを使います。<br>
       日本語・英語を含む25言語に対応しています。<b>中国語は対応一覧にありません</b>ので、
@@ -1057,27 +1066,27 @@
         <b>対面で使う</b>：A・B とも「マイク」。1本のマイクで両言語を交互に待ち受けます。<br><br>
         <b>Zoom / Teams で使う</b>：A =「マイク」（自分）、B =「タブ／システム音声」（相手）。開始時に画面共有ダイアログが出るので、<b>会議のタブ（またはウィンドウ／画面全体）を選び「タブの音声も共有」を必ずON</b>にしてください。オーバーレイで既に取り込んでいる場合は、その音声Trackを再利用します。
       </div>
-      <div class="note" id="phase2AudioRoutes" data-fold="off">
-        <b>Phase 2：タブ／システム音声の認識経路</b><br>
+      <div id="phase2AudioRoutes" data-fold="off">
         <div class="row" style="margin-top:6px">
-          <select id="displaySttRoute" style="flex:1">
-            <option value="direct">🆓 直接Web Speech（Chrome 135+・共有音声Track）</option>
-            <option value="vb">🔌 VB-CABLE入力（互換性重視）</option>
-            <option value="api">⚙ API 外部API（設定中のOpenAI / Groq / Gemini等）</option>
+          <label for="micDev">通常マイク</label><select id="micDev" style="flex:1"></select>
+          <button class="btn ghost" id="inRefresh" title="入力デバイスの一覧を取り直す">更新</button>
+        </div>
+        <small id="displaySttRouteNote" data-fold="off" role="status"></small>
+        <details id="audioRouteDetails" class="settings-help"><summary>共有音声の詳細設定・VB-CABLE</summary>
+          <label for="displaySttRoute">タブ／システム音声の認識方法</label>
+          <select id="displaySttRoute">
+            <option value="auto">選択したSTTを使う（通常）</option>
+            <option value="direct">共有音声だけWeb Speechを使う</option>
+            <option value="vb">仮想ケーブルから入力（VB-CABLE等）</option>
           </select>
-        </div>
-        <small id="displaySttRouteNote"></small>
-        <div class="row" style="margin-top:6px">
-          <span style="font-size:11.5px;color:var(--dim);width:104px;flex:0 0 auto">通常マイク</span>
-          <select id="micDev" style="flex:1"></select>
-        </div>
-        <div class="row" style="margin-top:4px">
-          <span style="font-size:11.5px;color:var(--dim);width:104px;flex:0 0 auto">VB-CABLE入力</span>
-          <select id="vbDev" style="flex:1"></select>
-          <button class="btn ghost" id="inRefresh" title="入力デバイスの一覧を取り直す">🔄 更新</button>
-        </div>
-        <label class="switch"><input type="checkbox" id="preventSelfRecognition" checked> 同じ仮想経路へ出したTTSの自己認識を防止する</label>
-        <small id="audioRouteWarning"></small>
+          <p>通常はマイク・共有音声とも上で選んだSTTを使います。共有音声だけWeb Speechにすると、マイクは選択したSTT、共有音声はブラウザ内蔵の認識になります。Web Speechの共有音声Track入力には対応ブラウザが必要です。</p>
+          <div id="vbInputField">
+            <label for="vbDev">仮想ケーブルの録音デバイス</label><select id="vbDev"></select>
+          </div>
+          <p>VB-CABLEは会議アプリの出力音声を、Duoが読める録音デバイスへ渡す仮想ケーブルです。画面共有で音声を取れない場合に使います。OS側で会議の出力をCABLE Inputへ送り、ここでCABLE Outputを選択します。Duoの読み上げ出力と同じケーブルには戻さないでください。入力の準備と認識ブラウザの対応確認が必要です。</p>
+          <label class="switch"><input type="checkbox" id="preventSelfRecognition" checked> 同じ仮想経路へ出したTTSの自己認識を防止する</label>
+        </details>
+        <small id="audioRouteWarning" data-fold="off" role="status"></small>
       </div>
       <div class="note">
         <b>対面で2人が1本のマイクを使うときのコツ</b><br>
@@ -1088,20 +1097,7 @@
       <div class="note warnbox">
         タブ音声のキャプチャは Chrome / Edge（デスクトップ）のみ対応です。macOS で「画面全体の音声」を取る場合は BlackHole 等の仮想オーディオが必要になることがあります。
       </div>
-      <label class="switch"><input type="checkbox" id="prosodyOn"> 元音声の話し方をできるだけ保持する［実験］</label>
-      <small>ON時だけ、発話ごとの Pitch（声の高さ）・Energy（音量）・内部Pause（文中の間）・Speech Rate（話速）を端末内で解析します。話者ごとの通常値を学習し、ブラウザ標準TTSとAivisへ相対的な変化を反映します。</small>
-      <label class="switch"><input type="checkbox" id="echoGuard" checked> 読み上げ音声の回り込みを除外する</label>
-      <small>スピーカーから出た読み上げを音声認識が拾った場合に除外します。同じ文を繰り返す比較試験ではOFFにできます。</small>
-      <details class="prosodybox">
-        <summary>話し方解析の状態</summary>
-        <div class="prosody-grid">
-          <span>Prosody解析</span><b id="prosodyState">OFF</b>
-          <span>Pitch</span><b id="prosodyPitch">待機</b>
-          <span>Energy</span><b id="prosodyEnergy">待機</b>
-          <span>Pause / Speech Rate</span><b id="prosodyTiming">待機</b>
-          <span>現在のTTSへの反映</span><b id="prosodyTts">OFF</b>
-        </div>
-      </details>
+
     </div>
 
     <div class="hr"></div>
@@ -1141,19 +1137,21 @@
         <select id="segmentMode"><option value="off">OFF — カード確定後に全文</option><option value="balanced">Balanced — 自然さと待ち時間の均衡</option><option value="fast">Fast — 早い追従を優先</option><option value="adaptive">Adaptive — 会話テンポに自動適応（試験）</option></select>
         <label for="segmentBoundary">翻訳する区切り</label>
         <select id="segmentBoundary"><option value="semantic">文末優先 — 文の途中で細かく切らない（試験）</option><option value="legacy">速度優先 — 従来の短い区切り</option></select>
-        <small>文末優先は句点・言語別の語尾を手がかりに翻訳単位をまとめます。認識文字はそのまま逐次表示します。長文や文末が来ない場合は文字数・待ち時間で区切ります。認識誤りそのものを修正する機能ではありません。</small>
         <label for="segmentOverlap">話者との重なり</label>
         <select id="segmentOverlap"><option value="avoid">避ける — 無音区間／発話終了を待つ</option><option value="allow">許容 — 確定した部分から読み上げる</option><option value="auto">自動 — 無音区間と待ち音声から判断</option></select>
-        <small>安定した部分から翻訳し、発話の区切りで会話カードを確定します。Aivisは句点（。）を基本にまとめ、10回/分に合わせて送信間隔を6.1秒以上空け、その間の確定部分をまとめて読み上げます。途中結果を返さない音声認識では、認識結果の到着後から分割処理します。重なりを避ける設定は再生開始を待ちます。再生中の音声は最後まで読みます。</small>
-        <small>Adaptiveは文字の到着速度・観測した無音区間・待ち音声をもとに区切りを調整します。Aivisのみ話速を最大8%補正します（既存設定との合成後は上限2）。手動の詳細値は優先されます。重なりを自動調整する場合は「自動」を選んでください。</small>
+        <details class="settings-help" id="segmentHelp"><summary>説明</summary>
+          <p>文末優先は句点・言語別の語尾を手がかりに翻訳単位をまとめます。認識文字はそのまま逐次表示します。長文や文末が来ない場合は文字数・待ち時間で区切ります。認識誤りそのものを修正する機能ではありません。</p>
+          <p>安定した部分から翻訳し、発話の区切りで会話カードを確定します。Aivisは句点（。）を基本にまとめ、10回/分に合わせて送信間隔を6.1秒以上空け、その間の確定部分をまとめて読み上げます。途中結果を返さない音声認識では、認識結果の到着後から分割処理します。重なりを避ける設定は再生開始を待ちます。再生中の音声は最後まで読みます。</p>
+          <p>Adaptiveは文字の到着速度・観測した無音区間・待ち音声をもとに区切りを調整します。Aivisのみ話速を最大8%補正します（既存設定との合成後は上限2）。手動の詳細値は優先されます。重なりを自動調整する場合は「自動」を選んでください。</p>
+        </details>
         <details><summary>逐次読み上げの詳細設定</summary>
           <label for="segmentMin">最小文字数（0＝モード既定）</label><input id="segmentMin" type="number" min="0" max="100" step="1">
           <label for="segmentStability">認識の安定待ち ms（0＝既定）</label><input id="segmentStability" type="number" min="0" max="2000" step="50">
           <label for="segmentSilence">無音区間 ms（0＝既定）</label><input id="segmentSilence" type="number" min="0" max="3000" step="50">
           <label for="segmentDebt">待ち音声の注意目安 秒</label><input id="segmentDebt" type="number" min="2" max="60" step="1">
-          <small>待ち音声が増えても、認識文字の表示・発話確定・翻訳は継続します。Aivisの送信待ちでは同じ声・言語の確定部分をまとめ、原文・訳文は省略しません。</small>
+          <small data-fold="off">待ち音声が増えても、認識文字の表示・発話確定・翻訳は継続します。Aivisの送信待ちでは同じ声・言語の確定部分をまとめ、原文・訳文は省略しません。</small>
         </details>
-        <details><summary>逐次読み上げの診断</summary><small id="segmentStatus" aria-live="off"></small></details>
+        <details><summary>逐次読み上げの診断</summary><small id="segmentStatus" aria-live="off" data-fold="off"></small></details>
       </div>
       <div id="ttsRememberField" style="display:none">
         <label class="switch key-save"><input type="checkbox" id="rememberTts" checked> このブラウザに保存する</label>
@@ -1546,21 +1544,20 @@
       <label class="switch"><input type="checkbox" id="showSrc" checked> 原文も小さく併記する</label>
       <label class="switch"><input type="checkbox" id="swapSides"> AとBの表示位置を入れ替える</label>
       <label class="switch"><input type="checkbox" id="interimOn" checked> 認識途中の文字も表示する</label>
+      <label class="switch"><input type="checkbox" id="syncScroll" checked> A/B会話ログのスクロールを連動</label>
     </div>
 
-    <div class="field">
-      <label>画面取込オーバーレイ（PC）</label>
-      <button class="btn primary" id="ovCapOpen">🖥 画面を取り込んで字幕を重ねる</button>
-      <small>PDF、PowerPoint、Teams、Zoom、ブラウザ資料などをDuo内へ取り込み、画面端へコメント形式の字幕を表示します。ブラウザ自体を透明にする旧方式、クロマキー、AutoHotkeyは使用しません。<br>
-      Phase 4では対応ブラウザタブへのホイール転送、取込ソース切替、注釈のPNG／JSON保存に対応しています。非対応環境では既存のZoom・Pan・注釈がそのまま使えます。iPhone／iPadでは通常モードをお使いください。</small>
-      <label class="switch"><input type="checkbox" id="syncScroll" checked> A/Bの会話ログのスクロールを連動させる</label>
-    </div>
-
-    <div class="field">
-      <label>字幕小窓（PC）</label>
-      <button class="btn primary" id="captionPipOpen">▣ 字幕を小窓に表示</button>
-      <small id="captionPipNote">別タブの動画や資料を操作しながら、最前面の小窓で字幕を読めます。タイトルバーをドラッグして移動できます。Duo本体は開いたままにしてください。小窓を閉じても認識は続きます。</small>
-      <small>音声入力はこれまでの設定を使います。今までの画面取込オーバーレイで認識している場合は、取込を終了せず小窓を開き、そのまま元の動画タブへ移動してください。小窓の背景は背後のページを透過しません。</small>
+    <div class="field" id="overlayActions">
+      <label>オーバーレイ（PC）</label>
+      <div class="overlay-action-row">
+        <button class="btn primary" id="ovCapOpen">画面取込＆字幕表示</button>
+        <button class="btn primary" id="captionPipOpen">字幕を別窓表示</button>
+      </div>
+      <details class="settings-help" id="overlayHelp"><summary>説明</summary>
+        <p><b>画面取込＆字幕表示：</b>PDF・PowerPoint・Teams・Zoom・ブラウザ資料などをDuo内へ取り込み、画面端に字幕を表示します。取込映像の拡大・移動・注釈、取込元の切替、注釈のPNG／JSON保存が使えます。対応するブラウザタブではホイール操作も転送できます。外部アプリ自体の操作は元のウィンドウで行います。</p>
+        <p id="captionPipNote">字幕を別窓表示：別タブの動画や資料を操作しながら、最前面の字幕窓を表示できます。タイトルバーで移動できます。Duo本体は開いたままにしてください。字幕窓を閉じても認識は続きます。</p>
+        <p>音声入力は現在の設定を使います。画面取込の音声で認識中は、取込を終了せずに字幕窓を開いてください。字幕窓の背景は背後のページを透過しません。別窓表示には対応するPCブラウザが必要です。iPhone／iPadでは通常表示をご利用ください。</p>
+      </details>
     </div>
 
     <div class="field overlay-settings-main" id="overlaySettingsMain">
@@ -1632,7 +1629,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260908-v1410-segment-controls';
+var APP_BUILD = '20260908-v1420-settings-card-playback';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -1816,7 +1813,7 @@ function loadCfg(){
     ctx:       pref('di.ctx','ctx',''),
     sttProvider: pref('di.sttp','sttProvider','webspeech'),
     sttModel:  pref('di.sttm','sttModel',''),
-    sttPunct:  pref('di.sttpunc','sttPunct','1')+'' === '1',
+    sttPunct:  true,
     segmentMode:pref('di.segmentMode','segmentMode','balanced'),
     segmentBoundary:pref('di.segmentBoundary','segmentBoundary','semantic'),
     segmentOverlap:pref('di.segmentOverlap','segmentOverlap','allow'),
@@ -1848,8 +1845,7 @@ function loadCfg(){
     langB:     pref('di.lb','langB','en'),
     srcA:      pref('di.sa','srcA','mic'),
     srcB:      pref('di.sb','srcB','mic'),
-    displaySttRoute:pref('di.audio.displayRoute','displaySttRoute',
-      store.get('di.sttp','webspeech')==='webspeech'?'direct':'api'),
+    displaySttRoute:(function(){var v=pref('di.audio.displayRoute','displaySttRoute','auto');return /^(direct|vb)$/.test(v)?v:'auto';})(),
     preventSelfRecognition:pref('di.audio.preventLoop','preventSelfRecognition','1')+'' === '1',
     nameA:     pref('di.na','nameA',''),
     nameB:     pref('di.nb','nameB',''),
@@ -2110,7 +2106,7 @@ function paint(feedId, e, viewer){
     el.className = 'bubble from-' + e.seat;
     el.setAttribute('data-eid', e.id);
     el.innerHTML = '<div class="who"><span class="whotxt"></span><span class="live-rec"></span>'
-                 + '<button class="saybtn" title="この文を読み上げる">🔊</button></div>'
+                 + '<button class="saybtn" title="この会話カード全体を読み上げる">🔊</button></div>'
                  + '<div class="main"></div><div class="sub"></div>';
     feed.appendChild(el);
   }
@@ -2147,7 +2143,6 @@ function paint(feedId, e, viewer){
   var s = el.querySelector('.sub');
   if(CFG.showSrc)segPaintText(s,e,!noTranslation&&!isSelf,sub);else s.textContent='';
   s.style.display = (CFG.showSrc && sub) ? '' : 'none';
-  segRenderControls(el,e,viewer);
   if(follow)feed.scrollTop = feed.scrollHeight;
 }
 
@@ -3099,7 +3094,7 @@ function updatePhase4Controls(){
 var OverlayAudioRoutes = {
   sttInput:function(){
     var track=overlaySession.activeAudioTrack();
-    return {kind:track?'display-track':'existing',track:track,route:CFG.displaySttRoute||'direct'};
+    return {kind:track?'display-track':'existing',track:track,route:effectiveDisplaySttRoute()};
   },
   ttsOutput:function(seat){
     var sink=sinkForSeat(seat);
@@ -3317,7 +3312,7 @@ function updateCaptionPipButtons(){
   ['captionPipOpen','capturePipOpen'].forEach(function(id){
     var b=$(id);if(!b)return;
     b.disabled=!supported||!!(captionPip&&captionPip.opening);
-    b.textContent=captionPip&&captionPip.win&&!captionPip.win.closed?'字幕小窓を手前に':id==='capturePipOpen'?'字幕小窓':'▣ 字幕を小窓に表示';
+    b.textContent=captionPip&&captionPip.win&&!captionPip.win.closed?'字幕を別窓表示（表示中）':id==='capturePipOpen'?'字幕を別窓表示':'字幕を別窓表示';
     b.title=supported?'字幕専用の小窓を最前面に表示':'このブラウザは字幕小窓に非対応です。PC版Chrome等で開いてください';
   });
   if(!supported&&$('captionPipNote'))$('captionPipNote').textContent='このブラウザでは字幕小窓を利用できません。対応するPC版Chrome等で開いてください。通常表示と画面取込オーバーレイは引き続き使えます。';
@@ -5294,20 +5289,23 @@ function ttsLoopRisk(seat){
   var a=virtualRouteFamily(sink.label);
   return !!(a&&inputs.some(function(input){var b=virtualRouteFamily(input);return b&&a===b;}));
 }
+function effectiveDisplaySttRoute(){
+  if(CFG.displaySttRoute==='vb')return 'vb';
+  if(CFG.displaySttRoute==='direct')return 'direct';
+  return CFG.sttProvider==='webspeech'?'direct':'api';
+}
 function audioRouteWarningText(){
-  var risk=ttsLoopRisk('A')||ttsLoopRisk('B');
-  if(risk) return '<b>⚠ 相手向けTTSとVB-CABLE認識が同じ仮想経路です。</b>'
-    +' 読み上げが自分のSTTへ戻るため、自己認識防止ON時はA→BのTTSを停止します。別の仮想ケーブルかVoicemeeterで経路を分けてください。';
-  if(CFG.displaySttRoute==='direct') return '共有音声TrackをWeb Speechへ直接渡します。Chrome / Edge 135以降が必要です。'
-    +(isLiveTranscribe()?' <b>※ 選択中のgpt-live-transcribeはこの経路では使われず、Web Speechで認識します。</b> 外部API経路を選ぶとRealtime WebRTCを使います。':'')
-    +' 対応しない場合、マイクへ黙って切り替えず停止して案内します。';
-  if(CFG.displaySttRoute==='vb') return '会議音声をOS側でVB-CABLEへ流し、上で選んだ入力デバイスを認識します。';
-  return '共有音声Trackを、上で選択した外部STT APIへ送ります。';
+  if(!(ttsLoopRisk('A')||ttsLoopRisk('B')))return '';
+  return '⚠ TTS出力と認識入力が同じ仮想ケーブルです。自己認識防止が有効な場合、この経路への読み上げを抑止します。入力と出力を別経路にしてください。';
 }
 function renderAudioRouteWarning(){
-  var risk=ttsLoopRisk('A')||ttsLoopRisk('B');
-  var n=$('audioRouteWarning');if(n){n.innerHTML=audioRouteWarningText();n.style.color=risk?'#ffb3bd':'';}
-  var rn=$('displaySttRouteNote');if(rn)rn.innerHTML=audioRouteWarningText();
+  var route=effectiveDisplaySttRoute(),shared=CFG.srcA==='display'||CFG.srcB==='display',rt=CFG.sttProvider==='realtime';
+  var info=$('displaySttRouteNote');
+  if(info)info.textContent=rt?'リアルタイム同時通訳は専用の音声接続を使います。この共有音声設定は適用されません。':!shared?'現在の入力はマイクです。共有音声の設定は、入力元を「タブ／システム音声」にしたときに使います。':route==='vb'?'共有音声：仮想ケーブル → 選択したSTT':route==='direct'?'共有音声：Web Speech'+(CFG.sttProvider!=='webspeech'?'（上で選んだSTTはマイクに使用）':''):'共有音声：選択したSTT（'+CFG.sttProvider+' / '+CFG.sttModel+'）';
+  var details=$('audioRouteDetails');if(details)details.style.display=rt?'none':'';
+  var vb=$('vbInputField');if(vb)vb.style.display=route==='vb'?'':'none';
+  var warn=$('audioRouteWarning'),message=audioRouteWarningText();
+  if(warn){warn.textContent=message;warn.style.display=message?'':'none';warn.style.color='#ffb3bd';}
 }
 function outNoteText(){
   if (!OUT_SUPPORTED)
@@ -9421,7 +9419,7 @@ function startAll(){
   // タブ／システム音声側（Phase 2：直接Track / VB-CABLE / 外部API）
   var dispSeat = (CFG.srcA==='display') ? 'A' : ((CFG.srcB==='display') ? 'B' : null);
   if (dispSeat){
-    var route=CFG.displaySttRoute||'direct';
+    var route=effectiveDisplaySttRoute();
     if(route==='direct'){
       jobs.push(
         getDisplayAudioForStt().then(function(info){
@@ -9691,7 +9689,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.41.0 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.42.0 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -10038,7 +10036,7 @@ function refreshProviderUI(){
 
   $('sttModel').disabled = (CFG.sttProvider === 'webspeech');
   renderCombo('sttModel','sttModelCustom', withKnownNotes(sttModelsFor(CFG.sttProvider), STT_MODELS[CFG.sttProvider]), CFG.sttModel, function(v){
-    CFG.sttModel = v; store.set('di.sttm', v);
+    CFG.sttModel = v; store.set('di.sttm', v);renderAudioRouteWarning();
   });
   var sttFetchable = (CFG.sttProvider !== 'webspeech' && CFG.sttProvider !== 'realtime'
                       && CFG.sttProvider !== 'xai');
@@ -10070,7 +10068,7 @@ function refreshProviderUI(){
   noteShow('xaiSttNote', CFG.sttProvider === 'xai');
   $('rtDirection').value = CFG.rtDirection;
   refreshVvUI();
-  refreshListenBtn();
+  refreshListenBtn();renderAudioRouteWarning();
 }
 
 function applyCfg(){
@@ -10120,7 +10118,6 @@ function applyCfg(){
   $('showSrc').checked = CFG.showSrc;
   $('swapSides').checked = CFG.swap;
   $('interimOn').checked = CFG.interimOn;
-  $('sttPunct').checked = CFG.sttPunct;
   $('prosodyOn').checked = CFG.prosodyOn;
   $('echoGuard').checked = CFG.echoGuard;
   $('syncScroll').checked = CFG.syncScroll;
@@ -10556,7 +10553,7 @@ $('ttsToggle').onclick = function(){
 
 /* 座席セレクタ */
 function seatChanged(restart){
-  layout(); updateStatus(); refreshVvUI();
+  layout(); updateStatus(); refreshVvUI();renderAudioRouteWarning();
   if (restart && S.running){ stopAll(); setTimeout(startAll, 400); }
 }
 $('langA').onchange = function(){ CFG.langA=this.value; store.set('di.la',this.value); seatChanged(false); };
@@ -10566,9 +10563,8 @@ $('srcB').onchange  = function(){
   CFG.srcB=this.value;  store.set('di.sb',this.value);
   if (this.value === 'display'){
     if (CFG.flipTop){ CFG.flipTop=false; store.set('di.flip','0'); $('flipTop').checked=false; }
-    if (CFG.sttProvider === 'webspeech')
-      toast('タブ／システム音声には API 側の音声認識が必要です。⚙→音声 で OpenAI / Groq / Gemini を選んでください。');
-    else toast('オンライン会議モード：開始時の共有ダイアログで<b>「タブの音声も共有」</b>をONにしてください。', true);
+    if(effectiveDisplaySttRoute()==='vb')toast('会議アプリの音声出力と、設定の仮想ケーブル入力を確認してください。');
+    else toast('オンライン会議モード：開始時の共有ダイアログで<b>音声の共有</b>をONにしてください。共有音声の認識方法は⚙→音声で確認できます。', true);
   }
   seatChanged(true);
 };
@@ -10733,7 +10729,6 @@ simple('flipTop','di.flip','flipTop',true);
 simple('showSrc','di.src','showSrc',true);
 simple('swapSides','di.swap','swap',true);
 simple('interimOn','di.itm','interimOn',true);
-simple('sttPunct','di.sttpunc','sttPunct',true);
 simple('prosodyOn','di.prosody','prosodyOn',true);
 simple('echoGuard','di.echo','echoGuard',true);
 simple('syncScroll','di.sync','syncScroll',true);
@@ -11020,7 +11015,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.41.0 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.42.0 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11057,8 +11052,8 @@ function diagText(devices){
     var routes=[];
     if(CFG.srcA==='mic'||CFG.srcB==='mic')routes.push(isLiveTranscribe()?'マイク=Realtime WebRTC':(CFG.sttProvider==='webspeech'?'マイク=Web Speech':'マイク=録音分割REST'));
     if(CFG.srcA==='display'||CFG.srcB==='display'){
-      if(CFG.displaySttRoute==='direct')routes.push('共有音声=Web Speech Track（選択モデルは未使用）');
-      else if(CFG.displaySttRoute==='vb')routes.push('共有音声=VB-CABLE '+(isLiveTranscribe()?'Realtime WebRTC':(CFG.sttProvider==='webspeech'?'Web Speech Track':'録音分割REST')));
+      if(effectiveDisplaySttRoute()==='direct')routes.push('共有音声=Web Speech Track（選択モデルは未使用）');
+      else if(effectiveDisplaySttRoute()==='vb')routes.push('共有音声=VB-CABLE '+(isLiveTranscribe()?'Realtime WebRTC':(CFG.sttProvider==='webspeech'?'Web Speech Track':'録音分割REST')));
       else routes.push('共有音声='+(isLiveTranscribe()?'Realtime WebRTC':'録音分割REST'));
     }
     return routes.join(' / ')||'(入力なし)';
@@ -11067,7 +11062,7 @@ function diagText(devices){
    ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel], ['句読点の自動補完', CFG.sttPunct ? 'ON' : 'OFF'],
    ['有効なSTT通信方式', diagSttTransport()],
    ['gpt-live発話確定', isLiveTranscribe() ? (segEnabled()?'逐次部分翻訳＋文脈・無音・文字停止でカード確定／TTS待ちとは独立':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）') : '(未使用)'],
-   ['共有音声STT経路', CFG.displaySttRoute],
+   ['共有音声STT経路', CFG.displaySttRoute+' → '+effectiveDisplaySttRoute()],
    ['共有Track直接Web Speech候補', overlayCapabilities().speechTrackInput],
    ['通常マイク入力', CFG.micDevLbl || (CFG.micDev ? '(名称不明)' : '既定')],
    ['VB-CABLE入力', CFG.vbDevLbl || (CFG.vbDev ? '(名称不明)' : '(未選択)')],
@@ -11083,7 +11078,7 @@ function diagText(devices){
    ['翻訳の区切り',segSemanticEnabled()?'文末優先（言語別ルール・文字数上限・最大3秒の文字停止待ち）':'速度優先（従来）'],
    ['翻訳の文脈','対象より前の原文のみ／現在カードの全文と未来の発話は含めない'],
    ['自動適応',CFG.segmentMode==='adaptive'?segAdaptiveLabel():'OFF（固定モード）'],
-   ['部分操作','カード内で部分再生・再翻訳／音声開始後に対応箇所を強調／一括合成は範囲表示（文時刻は未推定）'],
+   ['再生操作','カード全体を再生／ステータスに再生待ち・音声準備中・再生中／一括合成は範囲を強調'],
    ['再生順序','カード受付順＋部分seq／送信本文・結合した部分IDをdispatchに記録'],
    ['TTS逐次読み上げ',CFG.segmentMode+' / 重なり '+CFG.segmentOverlap],
    ['逐次確定・訂正',SEG.committed+' / '+SEG.corrected+'（訂正率 '+(SEG.committed?(100*SEG.corrected/SEG.committed).toFixed(1):'0')+'%）'],
@@ -11328,7 +11323,7 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.41.0 / Phase 4A playback controls.
+/* Duo Segment pipeline v1.42.0 / Phase 4A playback controls.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
@@ -11631,7 +11626,7 @@ function segPump(){
     if(!CFG.ttsSrc&&!s.translationReady)return;
     if((!j.manual&&!segAudioAllowed(e))||(!CFG.ttsSrc&&s.translationError)||!(CFG.ttsSrc?s.sourceText:s.translationText).trim()){
       s.audio.status='cancelled';s.audio.skipReason=s.translationError?'translation-error':'not-selected-or-empty';
-      s.state=s.translationError?'error':'skipped';SEG.queue.shift();continue;
+      s.state=s.translationError?'error':'skipped';SEG.queue.shift();segRefreshPlayback(j);continue;
     }
     var silence=segSilence(e,Date.now()),overlap=segOverlapFor(e,segDebt());
     // Without a trustworthy input meter, avoid-overlap waits for STT final.
@@ -11669,7 +11664,7 @@ function segPump(){
     group.forEach(function(q){q.segment.audio.spokenText=useSource?q.segment.sourceText:q.segment.translationText;
       q.segment.audio.dispatchOrder=j.dispatchOrder;q.segment.audio.schedulerRate=rate;});
     group.forEach(function(q){q.segment.state='tts_generating';q.segment.dispatched=true;q.segment.audio.status='generating';q.segment.audio.requestedAt=Date.now();});
-    SEG.active=j;j.started=false;j.finished=false;
+    SEG.active=j;j.started=false;j.finished=false;segRefreshPlayback(j);
     var proxy={id:e.id,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,srcText:source,dstText:target,prosody:e.prosody};
     dlog('segment','dispatch',{cardId:e.id,seq:s.seq,order:j.dispatchOrder,members:group.map(function(q){return q.segment.id;}),
       text:j.speechText,parts:group.length,chars:j.speechText.length,debtEstimateSeconds:segDebt(),overlap:overlap,schedulerRate:rate});
@@ -11896,7 +11891,7 @@ function segReplay(e,viewer,btn){
     // Manual playback uses the visible language independently of automatic selection.
     var manualCard=Object.assign({},clone,{srcLang:useSrc?e.srcLang:e.dstLang,dstLang:useSrc?e.srcLang:e.dstLang});
     SEG.queue.push({card:manualCard,segment:c,epoch:SEG.epoch,cancelled:false,manual:true,viewer:viewer,btn:btn});
-  });segWake();return true;
+  });segWake();render(e);return true;
 }
 
 /* Phase 4A: part replay/retranslation and batch-aware playback indication.
@@ -11911,8 +11906,9 @@ function segIsPlaying(){
   return !!(a&&a.firstAudioAt&&Date.now()>=a.firstAudioAt&&!j.finished);
 }
 function segPlaybackLabel(e){
-  var jobs=segPlaybackJobs(e);if(!jobs.length)return '';
-  if(!segIsPlaying())return SEG.active.finished?'':' · 音声準備中';
+  var jobs=segPlaybackJobs(e);
+  if(!jobs.length)return SEG.queue.some(function(j){return !j.cancelled&&j.card.id===e.id&&(!j.card.segment.cancelled||j.manual);})?' · 再生待ち':'';
+  if(!segIsPlaying())return SEG.active.finished?'':' · 再生待ち（音声準備中）';
   return (SEG.active.group||[SEG.active]).length>1?' · まとめて再生中':' · 再生中';
 }
 function segProgressLabel(e){return segRecognitionLabel(e)+segPlaybackLabel(e);}
@@ -11941,78 +11937,6 @@ function segPaintText(node,e,useSource,fallback){
 function segRefreshPlayback(j){
   if(!j)return;var ids=[];(j.group||[j]).forEach(function(q){if(ids.indexOf(q.card.id)<0)ids.push(q.card.id);});
   S.entries.forEach(function(e){if(ids.indexOf(e.id)>=0)render(e);});
-}
-function segReplayPart(e,partId,viewer,btn){
-  if(!e||!e.segment)return false;
-  var s=e.segments.find(function(p){return p.id===partId;}),useSource=translationDisabled()||viewer===e.seat;
-  if(!s||!s.committedAt)return false;
-  if(!useSource&&(!s.translationReady||s.translationError||!s.translationText))return false;
-  // Repeated press of the same manual part toggles its queued/playing job off.
-  if(SEG.queue.some(function(j){return j.manual&&j.partOnly&&j.card.id===e.id&&j.segment.id===partId&&j.viewer===viewer;})){
-    stopSpeaking('この部分の再生を停止');return true;
-  }
-  stopSpeaking('選んだ部分を再生');
-  var text=useSource?s.sourceText:s.translationText,lang=useSource?e.srcLang:e.dstLang;
-  if(!hasSpeechContent(text))return false;
-  var clone={id:e.id,seat:e.seat,srcLang:lang,dstLang:lang,startedAt:Date.now(),endedAt:Date.now(),prosody:e.prosody,
-    segment:{final:true,mode:CFG.segmentMode,playMs:0,overlapMs:0},segments:[]};
-  var copy={id:s.id,seq:s.seq,sourceText:text,translationText:text,committedAt:Date.now(),translationReady:true,
-    audio:{segmentId:s.id,seq:s.seq,playbackRate:1,status:'pending'}};
-  SEG.queue.push({card:clone,segment:copy,epoch:SEG.epoch,cancelled:false,manual:true,partOnly:true,viewer:viewer,btn:btn});
-  dlog('segment','manual-part-replay',{cardId:e.id,partId:s.id,language:lang,source:useSource});segWake();render(e);return true;
-}
-function segRetranslatePart(e,partId){
-  if(!e||!e.segment||e.segment.cancelled||translationDisabled())return false;
-  var s=e.segments.find(function(p){return p.id===partId;});
-  if(!s||!s.committedAt||s.translating||!s.translationReady)return false;
-  s.translationRevision=(s.translationRevision||0)+1;s.translationReady=false;s.translationError=null;
-  // Keep the previous visible translation until the replacement arrives. Never enqueue new audio here.
-  if(SEG.cards.indexOf(e)<0)SEG.cards.push(e);
-  dlog('segment','manual-part-retranslate',{cardId:e.id,partId:s.id,revision:s.translationRevision,audioReplay:false});
-  segJoin(e);segWake();return true;
-}
-function segRenderControls(el,e,viewer){
-  var details=el.querySelector('.segment-controls');
-  if(!e.segment){if(details)details.remove();return;}
-  var doc=el.ownerDocument||document;
-  if(!details){
-    details=doc.createElement('details');details.className='segment-controls';
-    var summary=doc.createElement('summary');details.appendChild(summary);
-    var hint=doc.createElement('p');hint.className='segment-controls-hint';
-    hint.textContent='確定した部分ごとに操作できます。訳文側の再生は訳文を読みます。複数部分をまとめた音声は範囲全体を強調します。';details.appendChild(hint);
-    var list=doc.createElement('div');list.className='segment-part-list';details.appendChild(list);
-    details.onclick=function(ev){ev.stopPropagation();};
-    details.ontoggle=function(){if(details.open)segRenderControls(el,e,viewer);};el.appendChild(details);
-  }
-  var committed=e.segments.filter(function(s){return s.committedAt;});
-  details.querySelector('summary').textContent='文ごとの再生・再翻訳（'+committed.length+'部分）';
-  if(!details.open)return;
-  var list=details.querySelector('.segment-part-list'),useSource=translationDisabled()||viewer===e.seat;
-  var seen={};
-  committed.forEach(function(s){
-    seen[s.id]=true;var row=list.querySelector('[data-part-id="'+s.id+'"]');
-    if(!row){
-      row=doc.createElement('div');row.className='segment-part';row.setAttribute('data-part-id',s.id);
-      ['segment-part-label','segment-part-source','segment-part-translation'].forEach(function(cls){var n=doc.createElement('div');n.className=cls;row.appendChild(n);});
-      var replay=doc.createElement('button');replay.type='button';replay.className='segment-part-replay';row.appendChild(replay);
-      var retry=doc.createElement('button');retry.type='button';retry.className='segment-part-retranslate';retry.textContent='再翻訳';row.appendChild(retry);list.appendChild(row);
-    }
-    var queued=SEG.queue.some(function(j){return j.card.id===e.id&&j.segment.id===s.id;}),playing=segIsPlaying()&&segPlaybackJobs(e).some(function(j){return j.segment.id===s.id;});
-    var state=playing?((SEG.active.group||[SEG.active]).length>1?'まとめて再生中':'再生中'):queued?'再生待ち':s.translating||!s.translationReady?'翻訳中':s.translationError?'翻訳エラー':'確定';
-    row.className='segment-part'+(playing?' segment-part-playing':'');
-    row.querySelector('.segment-part-label').textContent=s.seq+' · '+state+(s.corrected?' · 原文訂正あり':'');
-    row.querySelector('.segment-part-source').textContent=s.sourceText;
-    row.querySelector('.segment-part-translation').textContent=translationDisabled()?'翻訳OFF':s.translationError?'翻訳に失敗しました。再翻訳できます。':s.translationText||'翻訳待ち';
-    var replay=row.querySelector('.segment-part-replay');
-    var toggles=SEG.queue.some(function(j){return j.manual&&j.partOnly&&j.viewer===viewer&&j.card.id===e.id&&j.segment.id===s.id;});
-    replay.textContent=toggles?'■ 停止':useSource?'▶ 原文':'▶ 訳文';
-    replay.disabled=!useSource&&(!s.translationReady||!!s.translationError||!s.translationText);
-    replay.setAttribute('aria-label',s.seq+'番目の'+(useSource?'原文':'訳文')+(toggles?'を停止':'を再生'));
-    replay.onclick=function(ev){ev.stopPropagation();segReplayPart(e,s.id,viewer,replay);};
-    var retry=row.querySelector('.segment-part-retranslate');retry.disabled=translationDisabled()||!!s.translating||!s.translationReady||!!e.segment.cancelled;
-    retry.setAttribute('aria-label',s.seq+'番目の部分を再翻訳');retry.onclick=function(ev){ev.stopPropagation();segRetranslatePart(e,s.id);};
-  });
-  Array.from(list.children).forEach(function(row){if(!seen[row.getAttribute('data-part-id')])row.remove();});
 }
 var SEG_PLAYBACK_CSS='.segment-playing{background:rgba(255,196,75,.25);color:inherit;border-radius:3px;box-shadow:inset 0 -2px 0 #e5b545}';
 
