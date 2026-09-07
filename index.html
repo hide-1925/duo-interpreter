@@ -1,18 +1,20 @@
 <!DOCTYPE html>
 <!--
-v1.38.1 hotfix / 2026-09-08
-Fixes the v1.38.0 permanent debt-fallback latch shown in the supplied diagnostic log:
-6 segments played, 512 recognized characters left provisional despite an empty queue.
-Backpressure now resumes at 50 percent of the configured upper limit and recalculates
-on every segment reservation, including final-only input. Audio silence cannot cause
-an entire large stable buffer to become one chunk. Stopped cards and unread parts are
-marked stopped/cancelled; explicit source replay includes their unread tail.
-Added coalesced live-delta arrival telemetry and corrected mode-specific diagnostics.
-Validation: 22 deterministic Node VM tests passed. The supplied 639-character transcript
-reproduces the empty-queue stall in v1.38.0 and drains in v1.38.1 without server final
-or further delta events. Audio/network timing are simulated, not actual API replay.
-Real-browser layout, Teams capture, Aivis audio and hardware routing remain unverified.
-Prosody extraction for segmented shared live transcription remains a separate limitation.
+v1.38.2 / 2026-09-08 / Independent STT display hotfix
+Root cause: the whole accumulated transcript was rejected by isEcho() whenever it
+contained a previously spoken segment. This rejected new suffixes for up to the
+30-second echo history window, delaying both UI and subsequent commit decisions.
+Raw STT reception now always updates the card. Commit/translation/TTS run through
+the separate 80ms scheduler. Echo suppression applies only to each candidate audio
+segment; recognized text stays visible. Existing routing/self-loop checks are kept.
+Cards expose received/waiting/stopped and last text reception age. Active cards use
+full opacity. Input headers distinguish observed audio activity from received text.
+Added rate-limited received-to-DOM-update telemetry (not browser paint timing).
+Validation: 28 deterministic tests passed, including actual paint() and isEcho()
+functions against a simulated DOM and audio/network. v1.38.1 fails the same
+spoken-prefix/new-character regression. No real browser rendering or paid API audio
+was exercised. Server-side STT delay cannot be eliminated by UI changes.
+Preserves v1.38.1 queue-drain recovery and v1.37.7 minutes model behavior.
 -->
 <html lang="ja">
 <head>
@@ -21,7 +23,7 @@ Prosody extraction for segmented shared live transcription remains a separate li
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.38.1 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.38.2 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -127,7 +129,8 @@ Prosody extraction for segmented shared live transcription remains a separate li
   .bubble .main{font-size:var(--fs);line-height:1.35;font-weight:600;word-break:break-word}
   .bubble .sub{font-size:calc(var(--fs)*.5);line-height:1.45;color:var(--dim);margin-top:5px;word-break:break-word}
   .bubble.pending .main{opacity:.4;font-style:italic}
-  .bubble.interim{opacity:.55;border-left-style:dashed}
+  .bubble.interim{opacity:1;border-left-style:dashed}
+  .live-rec{font-size:11px;color:var(--dim);margin-left:8px;white-space:normal}
   .empty{margin:auto;text-align:center;color:var(--dim);font-size:14px;line-height:1.9;padding:20px}
   .empty b{display:block;font-size:19px;color:var(--txt);margin-bottom:6px}
   .empty .build-id{display:block;margin-top:2px;color:var(--dim);font:500 11px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.01em}
@@ -674,7 +677,7 @@ Prosody extraction for segmented shared live transcription remains a separate li
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.1 Phase 4</span><span class="build-id">Build: 20260908-v1381-debt-recovery</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.2 Phase 4</span><span class="build-id">Build: 20260908-v1382-live-display</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -684,7 +687,7 @@ Prosody extraction for segmented shared live transcription remains a separate li
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.1 Phase 4</span><span class="build-id">Build: 20260908-v1381-debt-recovery</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.2 Phase 4</span><span class="build-id">Build: 20260908-v1382-live-display</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1620,7 +1623,7 @@ Prosody extraction for segmented shared live transcription remains a separate li
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260908-v1381-debt-recovery';
+var APP_BUILD = '20260908-v1382-live-display';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -2095,7 +2098,7 @@ function paint(feedId, e, viewer){
     el = document.createElement('div');
     el.className = 'bubble from-' + e.seat;
     el.setAttribute('data-eid', e.id);
-    el.innerHTML = '<div class="who"><span class="whotxt"></span>'
+    el.innerHTML = '<div class="who"><span class="whotxt"></span><span class="live-rec"></span>'
                  + '<button class="saybtn" title="この文を読み上げる">🔊</button></div>'
                  + '<div class="main"></div><div class="sub"></div>';
     feed.appendChild(el);
@@ -2112,6 +2115,7 @@ function paint(feedId, e, viewer){
   el.querySelector('.whotxt').textContent =
     seatName(e.seat) + ' · ' + L(e.srcLang).name + ' · ' + e.time + (noTranslation ? ' · 文字起こし' : (isSelf ? ' · 原文' : ' · 訳'));
   el.querySelector('.main').textContent = main;
+  el.querySelector('.live-rec').textContent = segProgressLabel(e);
 
   /* このパネルに表示している文を、その言語で読み上げる。
      「今読んでいるものがそのまま鳴る」ので、どちらのパネルでも直感的に使える。 */
@@ -9286,7 +9290,7 @@ function startAll(){
   if (p.baseEditable && !CFG.baseUrl){ toast('Base URL を入力してください'); openDrawer(true); return; }
 
   sessionGen++;
-  S.running = true;
+  S.running = true;segStartProgress();
   resetProsodyCaps(CFG.prosodyOn,true);
   $('mic').classList.add('live'); $('mic').textContent = '■ 停止';
   acquireWakeLock();
@@ -9495,7 +9499,7 @@ function stopVU(){
 function stopAll(){
   if(SEG.cards.length||SEG.queue.length)stopSpeaking('認識停止');
   if (S.running) dlog('session','STOP',{ entries: S.entries.length });
-  S.running = false;
+  S.running = false;segStopProgress();
   sessionGen++;                              /* 送信済みSTTの返答をこの時点で無効化 */
   clearTimeout(altTimer); clearTimeout(altStreamTimer);
   $('mic').classList.remove('live'); $('mic').textContent = '● 開始';
@@ -9516,6 +9520,7 @@ function updateStatus(){
     if (ms.length>1) txt = '● 認識中 [' + (S.autoMode?'AUTO ':'') + L(langOf(S.listenSeat||'A')).name + ']';
     else txt = '● 認識中';
   }
+  txt=segInputLabel()||txt;
   $('statusA').textContent = txt;
   $('statusB').textContent = txt;
   refreshListenBtn();
@@ -9669,7 +9674,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.38.1 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.38.2 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -10997,7 +11002,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.38.1 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.38.2 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11054,6 +11059,8 @@ function diagText(devices){
    ['読み上げモデル', rtNativeAudio ? 'gpt-realtime-translate' : diagTtsModel()],
    ['読み上げ対象', rtNativeAudio ? '訳す方向に従う' : CFG.ttsWho],
    ['声 A / B', rtNativeAudio ? '(外部TTS設定は未使用)' : ttsSeatVoices()],
+   ['認識文字表示','STT受信ごとにカードへ反映／確定・翻訳・TTSは独立したタイマーで進行'],
+   ['逐次エコー除外','部分単位の自動音声のみ抑制（認識文字表示は維持）'],
    ['TTS逐次読み上げ',CFG.segmentMode+' / 重なり '+CFG.segmentOverlap],
    ['逐次確定・訂正',SEG.committed+' / '+SEG.corrected+'（訂正率 '+(SEG.committed?(100*SEG.corrected/SEG.committed).toFixed(1):'0')+'%）'],
    ['逐次TTS待ち音声',segDebt().toFixed(1)+'秒（文字数による推定）'],
@@ -11297,13 +11304,13 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.38.1 / Phase 1.
+/* Duo Segment pipeline v1.38.2 / Phase 1.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
  */
 var SEG = {cards:[], queue:[], active:null, epoch:0, timer:null, translations:0, requests:[],
-  voice:{}, committed:0, corrected:0, lastReason:'—', lastTick:0};
+  voice:{}, received:{}, uiTimer:null, committed:0, corrected:0, lastReason:'—', lastTick:0};
 function segEnabled(){return CFG.segmentMode!=='off' && /^(balanced|fast)$/.test(CFG.segmentMode) && CFG.sttProvider!=='realtime';}
 function segNumber(v,f,min,max){v=Number(v);return isFinite(v)&&v>0?Math.max(min,Math.min(max,v)):f;}
 function segPolicy(mode){var fast=mode==='fast';return {
@@ -11358,6 +11365,60 @@ function segJoin(e){
     return s.translationError?'（翻訳エラー：再試行できます）':(s.translationText||'');
   }).filter(Boolean).join(' ');
   e.translationSkipped=translationDisabled();render(e);
+}
+function segReceiveDisplay(e){
+  // The STT ingress path updates the card before any commit/translation/TTS work.
+  e.segment.receivedAt=Date.now();
+  segJoin(e);
+  SEG.received[e.seat]={at:e.segment.receivedAt,chars:e.srcText.length};
+  if(!e.segment.uiLoggedAt||Date.now()-e.segment.uiLoggedAt>=1000||e.segment.final){
+    e.segment.uiLoggedAt=Date.now();
+    dlog('ui','stt-text-update',{cardId:e.id,chars:e.srcText.length,revision:e.segment.revision,
+      receivedToDomMs:Date.now()-e.segment.receivedAt,interim:e.interim,queueDeferred:e.segment.deferred});
+  }
+}
+function segProgressLabel(e){
+  if(!e.segment)return '';
+  if(e.segment.cancelled)return '停止';
+  if(e.segment.final)return '認識確定';
+  var at=e.segment.receivedAt,age=at?Math.max(0,Date.now()-at):0;
+  return (age<1500?'認識文字を受信中':'次の認識文字を待っています')+' · '+e.srcText.length+'字'+
+    (at?' · 最終受信 '+(age/1000).toFixed(1)+'秒前':'');
+}
+function segInputLabel(){
+  if(!S.running||!segEnabled())return '';
+  var newest=null,hasAudio=false,now=Date.now();
+  ['A','B'].forEach(function(seat){var r=SEG.received[seat],v=SEG.voice[seat];
+    if(r&&(!newest||r.at>newest.at))newest=r;
+    if(v&&now-v.at<400&&now-v.last<250)hasAudio=true;
+  });
+  var text=hasAudio?'● 音声入力あり':'● 認識中';
+  return text+(newest?' · 最終文字受信 '+(Math.max(0,now-newest.at)/1000).toFixed(1)+'秒前':' · 文字受信待ち');
+}
+function segRefreshProgress(){
+  ['statusA','statusB'].forEach(function(id){var el=$(id),label=segInputLabel();if(el&&label)el.textContent=label;});
+  SEG.cards.forEach(function(e){
+    ['feedA','feedB'].forEach(function(id){var feed=$(id);if(!feed)return;
+      var node=feed.querySelector('[data-eid="'+e.id+'"]'),badge=node&&node.querySelector('.live-rec');
+      if(badge)badge.textContent=segProgressLabel(e);
+    });
+  });
+}
+function segStartProgress(){
+  SEG.received={};SEG.voice={};if(SEG.uiTimer)clearInterval(SEG.uiTimer);
+  SEG.uiTimer=setInterval(segRefreshProgress,250);segRefreshProgress();
+}
+function segStopProgress(){if(SEG.uiTimer)clearInterval(SEG.uiTimer);SEG.uiTimer=null;}
+/* A candidate may be suppressed acoustically, but it must never suppress raw UI.
+ * Do not reject a growing transcript just because it contains a previously spoken prefix.
+ */
+function segEchoCandidate(text){
+  if(!CFG.echoGuard)return false;
+  var n=normTxt(text);if(n.length<8)return false;var now=Date.now();
+  return spokenRecent.some(function(r){
+    if(now-r.at>30000||r.t.length<8)return false;
+    return r.t.indexOf(n)>=0||(n.indexOf(r.t)>=0&&r.t.length/n.length>=0.85)||biDice(n,r.t)>=0.85;
+  });
 }
 function segVoice(seat,rms){SEG.voice[seat]={at:Date.now(),last:rms>CFG.vad/1000?Date.now():((SEG.voice[seat]||{}).last||Date.now())};}
 function segAttachMeter(owner,track,seat){
@@ -11415,7 +11476,7 @@ function segUpdate(e,text,final){
   }
   b.final=!!final;e.interim=b.cancelled?false:!final;e.status=b.cancelled?'stopped':final?'final':'active';
   if(final)e.endedAt=now;
-  segDraft(e);segCheck(e);segJoin(e);segWake();
+  segDraft(e);segReceiveDisplay(e);segWake();
 }
 function segDraft(e){
   var committed=e.segments.filter(function(s){return s.committedAt;}),at=committed.length?committed[committed.length-1].end:0;
@@ -11462,7 +11523,11 @@ function segCheck(e){
     s.commitReason=d.reasons;s.state='committed';s.translationRevision=0;s.translationReady=false;
     s.audio={segmentId:s.id,seq:s.seq,playbackRate:1,status:'pending',generatedAt:null};
     // One immutable queue reservation at commit, independent of translation completion.
-    SEG.queue.push({card:e,segment:s,epoch:SEG.epoch,cancelled:false});SEG.committed++;
+    s.echoSuppressed=segEchoCandidate(s.sourceText);
+    if(s.echoSuppressed){s.audio.status='cancelled';s.audio.skipReason='echo';s.state='echo-suppressed';
+      dlog('segment','echo-suppressed',{cardId:e.id,seq:s.seq,chars:s.sourceText.length,displayPreserved:true});
+    }else SEG.queue.push({card:e,segment:s,epoch:SEG.epoch,cancelled:false});
+    SEG.committed++;
     SEG.lastReason=d.reasons.join(' + ');
     dlog('segment','commit',{cardId:e.id,seq:s.seq,chars:s.sourceText.length,reason:d.reasons,
       stabilityMs:s.stabilityMs,debtEstimateSeconds:debt});segDraft(e);
@@ -11490,7 +11555,7 @@ function segTranslate(e,s){
   Promise.race([job,new Promise(function(_,reject){timer=setTimeout(function(){reject(new Error('翻訳タイムアウト（20秒）'));},20000);})])
   .then(function(out){if(request.released||epoch!==SEG.epoch||rev!==s.translationRevision||e.segment.cancelled)return;
     s.translationText=String(out||'').trim();s.translationError=null;s.translationReady=true;
-    if(!s.dispatched)s.state='queued';
+    if(!s.dispatched)s.state=s.echoSuppressed?'echo-suppressed':'queued';
     dlog('segment','translated',{cardId:e.id,seq:s.seq,revision:rev});
   }).catch(function(err){if(request.released||epoch!==SEG.epoch||rev!==s.translationRevision||e.segment.cancelled)return;
     s.translationError=String(err.message||err);s.translationReady=true;if(!s.dispatched)s.state='error';
@@ -11598,7 +11663,7 @@ function segWebResult(owner,ev,seat){
     var r=ev.results[i],text=String((r[0]||{}).transcript||'').trim(),key=String(i);
     owner._segments=owner._segments||{};
     var e=owner._segments[key];
-    if(!hasSpeechContent(text)||isEcho(text)){if(e){removeEntry(e);delete owner._segments[key];}continue;}
+    if(!text&&!e)continue;
     if(!e){e=addEntry(seat,'',true);owner._segments[key]=e;}
     if(r.isFinal&&CFG.prosodyOn)attachProsody(e,micProsodySnapshot(text,false));
     segUpdate(e,r.isFinal?punctuateTranscript(text,langOf(seat)):text,!!r.isFinal);
@@ -11623,7 +11688,7 @@ function segLiveEvent(engine,event,id){
   if(!entry.segment&&((S.autoMode&&micSeats().length>1)||!engine.seat)&&x.text.length>=8){
     var seat=guessSeatFromText(x.text);entry.seat=seat;entry.srcLang=langOf(seat);entry.dstLang=langOf(seat==='A'?'B':'A');
   }
-  if(hasSpeechContent(x.text)&&!isEcho(x.text))segUpdate(entry,x.text,isFinal);
+  segUpdate(entry,x.text,isFinal);
   if(isFinal){if(!entry.segment)removeEntry(entry);delete engine.items[id];}
   return true;
 }
