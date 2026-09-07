@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.40.0 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.41.0 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -646,6 +646,28 @@
     .headbtn .lbl{display:none}
   }
 
+.segment-playing{background:rgba(255,196,75,.25);color:inherit;border-radius:3px;box-shadow:inset 0 -2px 0 #e5b545}
+.segment-controls{margin-top:10px;font-size:13px;line-height:1.5;border-top:1px solid rgba(128,148,170,.3);padding-top:7px}
+.segment-controls summary{cursor:pointer;color:var(--dim);padding:4px 0}
+.segment-controls-hint{font-size:12px;color:var(--dim);margin:6px 0}
+.segment-part{border:1px solid rgba(128,148,170,.3);border-radius:8px;padding:8px;margin-top:7px;overflow-wrap:anywhere;white-space:normal}
+.segment-part-playing{border-color:#e5b545;background:rgba(255,196,75,.08)}
+.segment-part-label{font-size:11px;color:var(--dim);margin-bottom:4px}
+.segment-part-source,.segment-part-translation{white-space:pre-wrap;user-select:text}
+.segment-part-translation{margin-top:4px;color:var(--dim)}
+.segment-part button{font:inherit;margin:7px 8px 0 0;padding:5px 9px;border-radius:6px;cursor:pointer}
+.segment-part button:disabled{opacity:.45;cursor:default}
+.segment-part button:focus-visible,.segment-controls summary:focus-visible{outline:2px solid #e5b545;outline-offset:3px}
+
+/* Compact only the requested overlay settings section. Preserve type sizes and two columns. */
+#overlaySettingsMain .cap-grid{column-gap:8px;row-gap:5px}
+#overlaySettingsMain .cap-grid>label{line-height:1.25;margin:0}
+#overlaySettingsMain .cap-grid>label>select,
+#overlaySettingsMain .cap-grid>label>input:not([type=checkbox]){margin-top:2px}
+#overlaySettingsMain .cap-grid>label>select{padding-top:6px;padding-bottom:6px;min-height:34px}
+#overlaySettingsMain .cap-grid input[type=color]{height:30px;padding:3px}
+#overlaySettingsMain .cap-checks{margin-top:5px;margin-bottom:5px}
+
 </style>
 </head>
 <body>
@@ -660,7 +682,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.40.0 Phase 4</span><span class="build-id">Build: 20260908-v1400-semantic-context</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.41.0 Phase 4</span><span class="build-id">Build: 20260908-v1410-segment-controls</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -670,7 +692,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.40.0 Phase 4</span><span class="build-id">Build: 20260908-v1400-semantic-context</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.41.0 Phase 4</span><span class="build-id">Build: 20260908-v1410-segment-controls</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1610,7 +1632,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260908-v1400-semantic-context';
+var APP_BUILD = '20260908-v1410-segment-controls';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -2081,6 +2103,7 @@ function render(e){ clearEmpty(); paint('feedA', e, 'A'); paint('feedB', e, 'B')
 
 function paint(feedId, e, viewer){
   var feed = $(feedId);
+  var follow=feed.scrollHeight-feed.scrollTop-(feed.clientHeight||0)<48;
   var el = feed.querySelector('[data-eid="'+e.id+'"]');
   if (!el){
     el = document.createElement('div');
@@ -2102,7 +2125,7 @@ function paint(feedId, e, viewer){
                  (e.dstText || noTranslation ? '' : ' pending') + (e.interim ? ' interim' : '');
   el.querySelector('.whotxt').textContent =
     seatName(e.seat) + ' · ' + L(e.srcLang).name + ' · ' + e.time + (noTranslation ? ' · 文字起こし' : (isSelf ? ' · 原文' : ' · 訳'));
-  el.querySelector('.main').textContent = main;
+  segPaintText(el.querySelector('.main'),e,noTranslation||isSelf,main);
   el.querySelector('.live-rec').textContent = segProgressLabel(e);
 
   /* このパネルに表示している文を、その言語で読み上げる。
@@ -2122,9 +2145,10 @@ function paint(feedId, e, viewer){
     retry.onclick=function(ev){ev.stopPropagation();e.segment.cancelled=false;if(SEG.cards.indexOf(e)<0)SEG.cards.push(e);e.segments.forEach(function(x){if(x.translationError){x.translationError=null;x.translationReady=false;x.translationRevision++;}});segWake();};
   }else if(retry)retry.remove();
   var s = el.querySelector('.sub');
-  s.textContent = CFG.showSrc ? sub : '';
+  if(CFG.showSrc)segPaintText(s,e,!noTranslation&&!isSelf,sub);else s.textContent='';
   s.style.display = (CFG.showSrc && sub) ? '' : 'none';
-  feed.scrollTop = feed.scrollHeight;
+  segRenderControls(el,e,viewer);
+  if(follow)feed.scrollTop = feed.scrollHeight;
 }
 
 /* =========================================================================
@@ -3174,13 +3198,13 @@ function renderOverlayRail(){
     item.className='capture-caption'+(CFG.ovCapShadow?' shadow':'')+(CFG.ovCapOutline?' outline':'')+(CFG.ovCapRound?'':' square')+(e.interim?' interim':'');
     item.style.setProperty('--cap-seat',e.seat==='A'?CFG.ovCapTextA:CFG.ovCapTextB);
     var who=document.createElement('div'); who.className='cap-meta';
-    who.textContent=seatName(e.seat)+' · '+e.time;
+    who.textContent=seatName(e.seat)+' · '+e.time+segPlaybackLabel(e);
     var main=document.createElement('div'); main.className='cap-main';
-    main.textContent=noTranslation?e.srcText:(e.dstText||e.srcText);
+    segPaintText(main,e,noTranslation||!e.dstText,e.srcText);
     main.style.color=(e.dstText||noTranslation)?(e.seat==='A'?CFG.ovCapTextA:CFG.ovCapTextB):(e.seat==='A'?CFG.ovCapSrcA:CFG.ovCapSrcB);
     item.appendChild(who); item.appendChild(main);
     if(e.dstText&&!noTranslation){
-      var sub=document.createElement('div'); sub.className='cap-src'; sub.textContent=e.srcText;
+      var sub=document.createElement('div'); sub.className='cap-src';segPaintText(sub,e,true);
       sub.style.color=e.seat==='A'?CFG.ovCapSrcA:CFG.ovCapSrcB; item.appendChild(sub);
     }
     rail.appendChild(item);
@@ -3328,7 +3352,7 @@ async function openCaptionPip(){
       article{width:var(--item-w);margin:0 0 10px auto;padding:10px;background:var(--caption-bg);border-left:3px solid var(--seat);border-radius:9px;overflow-wrap:anywhere;line-height:var(--caption-line)}article.square{border-radius:0}article.interim{border-left-style:dashed}article.shadow .main,article.shadow .sub{text-shadow:0 2px 4px #000,0 0 2px #000}article.outline .main,article.outline .sub{-webkit-text-stroke:.45px #000}
       .meta{font-size:11px;opacity:.7;margin-bottom:4px}.main{font-size:var(--caption-font);white-space:pre-wrap;opacity:var(--text-alpha)}.sub{font-size:calc(var(--caption-font)*.65);white-space:pre-wrap;margin-top:6px;opacity:var(--text-alpha)}.empty{color:#b8c7da;padding:18px 6px;font-size:14px}footer{flex:none;padding:5px 10px;font-size:11px;color:#b8c7da;background:#1c293b}
     `;
-    doc.head.appendChild(style);
+    style.textContent+=SEG_PLAYBACK_CSS;doc.head.appendChild(style);
     var header=doc.createElement('header'),title=doc.createElement('strong');title.textContent='Duo 字幕';header.appendChild(title);
     function button(id,text,title,fn){var b=doc.createElement('button');b.id=id;b.textContent=text;b.title=title;b.setAttribute('aria-label',title);b.onclick=fn;header.appendChild(b);return b;}
     button('pipSmaller','A−','字幕を小さく',function(){adjustOverlayFont(-1);});
@@ -3397,10 +3421,10 @@ function renderCaptionPip(){
     var translated=!!e.dstText&&!translationDisabled()&&!e.translationSkipped;
     var mainColor=e.seat==='A'?CFG.ovCapTextA:CFG.ovCapTextB,srcColor=e.seat==='A'?CFG.ovCapSrcA:CFG.ovCapSrcB;
     node.style.setProperty('--seat',mainColor);
-    node.children[0].textContent=seatName(e.seat)+' · '+e.time+(e.interim?' · 認識中':'');
-    node.children[1].textContent=translated?e.dstText:e.srcText;
+    node.children[0].textContent=seatName(e.seat)+' · '+e.time+(e.interim?' · 認識中':'')+segPlaybackLabel(e);
+    segPaintText(node.children[1],e,!translated,e.srcText);
     node.children[1].style.color=translated||translationDisabled()||e.translationSkipped?mainColor:srcColor;
-    node.children[2].textContent=translated&&CFG.showSrc?e.srcText:'';
+    if(translated&&CFG.showSrc)segPaintText(node.children[2],e,true);else node.children[2].textContent='';
     node.children[2].style.display=translated&&CFG.showSrc?'':'none';node.children[2].style.color=srcColor;
   });
   if(!rows.length&&!empty){empty=doc.createElement('div');empty.id='pipEmpty';empty.className='empty';empty.textContent='字幕はここに表示されます。Duo本体で音声認識を開始してください。';feed.appendChild(empty);}
@@ -9667,7 +9691,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.40.0 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.41.0 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -10996,7 +11020,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.40.0 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.41.0 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11059,6 +11083,7 @@ function diagText(devices){
    ['翻訳の区切り',segSemanticEnabled()?'文末優先（言語別ルール・文字数上限・最大3秒の文字停止待ち）':'速度優先（従来）'],
    ['翻訳の文脈','対象より前の原文のみ／現在カードの全文と未来の発話は含めない'],
    ['自動適応',CFG.segmentMode==='adaptive'?segAdaptiveLabel():'OFF（固定モード）'],
+   ['部分操作','カード内で部分再生・再翻訳／音声開始後に対応箇所を強調／一括合成は範囲表示（文時刻は未推定）'],
    ['再生順序','カード受付順＋部分seq／送信本文・結合した部分IDをdispatchに記録'],
    ['TTS逐次読み上げ',CFG.segmentMode+' / 重なり '+CFG.segmentOverlap],
    ['逐次確定・訂正',SEG.committed+' / '+SEG.corrected+'（訂正率 '+(SEG.committed?(100*SEG.corrected/SEG.committed).toFixed(1):'0')+'%）'],
@@ -11303,7 +11328,7 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.40.0 / Phase 3 language-boundary pilot.
+/* Duo Segment pipeline v1.41.0 / Phase 4A playback controls.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
@@ -11376,7 +11401,7 @@ function segReceiveDisplay(e){
       receivedToDomMs:Date.now()-e.segment.receivedAt,interim:e.interim,queueDeferred:e.segment.deferred});
   }
 }
-function segProgressLabel(e){
+function segRecognitionLabel(e){
   if(!e.segment)return '';
   if(e.segment.cancelled)return '停止';
   if(e.segment.final){
@@ -11619,7 +11644,7 @@ function segPump(){
       for(var n=1;n<SEG.queue.length;n++){
         var next=SEG.queue[n],ns=next.segment,ne=next.card;
         if(segEarlierOpen(next))break;
-        if(next.cancelled||next.epoch!==j.epoch||ne.segment.cancelled||!!next.manual!==!!j.manual||
+        if(next.partOnly||j.partOnly||next.cancelled||next.epoch!==j.epoch||ne.segment.cancelled||!!next.manual!==!!j.manual||
           ne.seat!==e.seat||ne.srcLang!==e.srcLang||ne.dstLang!==e.dstLang||
           JSON.stringify(ne.prosody||null)!==JSON.stringify(e.prosody||null)||
           (!useSource&&(!ns.translationReady||ns.translationError))||(!next.manual&&!segAudioAllowed(ne)))break;
@@ -11668,6 +11693,7 @@ function segAudioEvent(msg,data){
   if(/^(browser-start|wa-play|rate-play|play-start|aivis-first|openai-first|vv-start)$/.test(msg)&&!a.firstAudioAt){
     a.firstAudioAt=now+((data&&data.leadMs)||0);a.generatedAt=now;a.status='playing';s.state='playing';
     if(!j.card.firstAudioAt)j.card.firstAudioAt=a.firstAudioAt;
+    segRefreshPlayback(j);
     a.startEvidence=/first|wa-play/.test(msg)?'scheduled-estimate':'playback-event';
     // L2 proxy is commit-to-playback, not a measured semantic boundary.
     DLOG.push({t:now-DLOG_T0,c:'segment',m:'audio-start',d:{cardId:j.card.id,seq:s.seq,
@@ -11684,7 +11710,7 @@ function segTick(){
     }});
     var j=SEG.active;
     if(j){var a=j.segment.audio;
-      if(a.firstAudioAt&&now>=a.firstAudioAt){j.card.segment.playMs+=dt;
+      if(a.firstAudioAt&&now>=a.firstAudioAt){if(!j.uiStarted){j.uiStarted=true;segRefreshPlayback(j);}j.card.segment.playMs+=dt;
         var q=segSilence(j.card,now);if(q!==null&&q<160)j.card.segment.overlapMs+=dt;}
       if(j.finished&&!ttsIsBusy()){
         a.endedAt=now;a.status=a.error||!a.firstAudioAt?'error':'done';
@@ -11696,7 +11722,7 @@ function segTick(){
           q.segment.state=a.status==='done'?'played':'error';
         });
         var finishedGroup=j.group||[j];
-        SEG.queue=SEG.queue.filter(function(q){return finishedGroup.indexOf(q)<0;});SEG.active=null;
+        SEG.queue=SEG.queue.filter(function(q){return finishedGroup.indexOf(q)<0;});SEG.active=null;segRefreshPlayback(j);
       }
     }
     segPump();segStatus();
@@ -11716,6 +11742,7 @@ function segStatus(){var el=$('segmentStatus');if(!el)return;
 }
 function segCancelAudio(why){
   // Output settings must not invalidate source cards or in-flight translations.
+  var oldActive=SEG.active,oldQueue=SEG.queue.slice();
   var changing=/変更/.test(why||'');
   SEG.cards.forEach(function(e){e.segment.audioMuted=!changing;});
   var activeGroup=SEG.active?(SEG.active.group||[SEG.active]):[];
@@ -11723,6 +11750,7 @@ function segCancelAudio(why){
     if(changing&&activeGroup.indexOf(j)<0)return true;
     if(j.segment.audio)j.segment.audio.status='cancelled';return false;
   });SEG.active=null;
+  if(oldQueue.length)segRefreshPlayback({group:oldQueue});else segRefreshPlayback(oldActive);
   dlog('segment','audio-cancel',{why:why,translationContinues:true});segWake();
 }
 function segFinishRecording(){
@@ -11870,6 +11898,123 @@ function segReplay(e,viewer,btn){
     SEG.queue.push({card:manualCard,segment:c,epoch:SEG.epoch,cancelled:false,manual:true,viewer:viewer,btn:btn});
   });segWake();return true;
 }
+
+/* Phase 4A: part replay/retranslation and batch-aware playback indication.
+ * A batched synthesis has no word alignment. Highlight its range, not fake per-word timing.
+ */
+function segPlaybackJobs(e){
+  var active=SEG.active;if(!active||(e.segment&&e.segment.cancelled))return [];
+  return (active.group||[active]).filter(function(j){return !j.cancelled&&j.card.id===e.id;});
+}
+function segIsPlaying(){
+  var j=SEG.active,a=j&&j.segment.audio;
+  return !!(a&&a.firstAudioAt&&Date.now()>=a.firstAudioAt&&!j.finished);
+}
+function segPlaybackLabel(e){
+  var jobs=segPlaybackJobs(e);if(!jobs.length)return '';
+  if(!segIsPlaying())return SEG.active.finished?'':' · 音声準備中';
+  return (SEG.active.group||[SEG.active]).length>1?' · まとめて再生中':' · 再生中';
+}
+function segProgressLabel(e){return segRecognitionLabel(e)+segPlaybackLabel(e);}
+function segTextParts(e,useSource){
+  if(!e.segment)return [];
+  return e.segments.filter(function(s){return useSource||s.committedAt;}).map(function(s){
+    var text=useSource?s.sourceText:s.translationError?'（翻訳エラー：再試行できます）':s.translationText||'';
+    return {id:s.id,text:text};
+  }).filter(function(p){return !!p.text;});
+}
+function segPaintText(node,e,useSource,fallback){
+  if(!node)return;
+  var parts=segTextParts(e,useSource),text=parts.map(function(p){return p.text;}).join(useSource?'':' ');
+  if(!e.segment){node.textContent=fallback==null?(useSource?e.srcText:e.dstText):fallback;return;}
+  if(!text){node.textContent=fallback==null?'':fallback;return;}
+  var jobs=segIsPlaying()?segPlaybackJobs(e):[],activeIds=jobs.map(function(j){return j.segment.id;});
+  if(!activeIds.length){node.textContent=text;return;}
+  var doc=node.ownerDocument||document;node.textContent='';
+  parts.forEach(function(p,i){
+    if(i&&!useSource)node.appendChild(doc.createTextNode(' '));
+    if(activeIds.indexOf(p.id)<0){node.appendChild(doc.createTextNode(p.text));return;}
+    var mark=doc.createElement('span');mark.className='segment-playing';mark.textContent=p.text;
+    mark.setAttribute('aria-current','true');mark.title=jobs.length>1?'この範囲をまとめて再生中':'この部分を再生中';node.appendChild(mark);
+  });
+}
+function segRefreshPlayback(j){
+  if(!j)return;var ids=[];(j.group||[j]).forEach(function(q){if(ids.indexOf(q.card.id)<0)ids.push(q.card.id);});
+  S.entries.forEach(function(e){if(ids.indexOf(e.id)>=0)render(e);});
+}
+function segReplayPart(e,partId,viewer,btn){
+  if(!e||!e.segment)return false;
+  var s=e.segments.find(function(p){return p.id===partId;}),useSource=translationDisabled()||viewer===e.seat;
+  if(!s||!s.committedAt)return false;
+  if(!useSource&&(!s.translationReady||s.translationError||!s.translationText))return false;
+  // Repeated press of the same manual part toggles its queued/playing job off.
+  if(SEG.queue.some(function(j){return j.manual&&j.partOnly&&j.card.id===e.id&&j.segment.id===partId&&j.viewer===viewer;})){
+    stopSpeaking('この部分の再生を停止');return true;
+  }
+  stopSpeaking('選んだ部分を再生');
+  var text=useSource?s.sourceText:s.translationText,lang=useSource?e.srcLang:e.dstLang;
+  if(!hasSpeechContent(text))return false;
+  var clone={id:e.id,seat:e.seat,srcLang:lang,dstLang:lang,startedAt:Date.now(),endedAt:Date.now(),prosody:e.prosody,
+    segment:{final:true,mode:CFG.segmentMode,playMs:0,overlapMs:0},segments:[]};
+  var copy={id:s.id,seq:s.seq,sourceText:text,translationText:text,committedAt:Date.now(),translationReady:true,
+    audio:{segmentId:s.id,seq:s.seq,playbackRate:1,status:'pending'}};
+  SEG.queue.push({card:clone,segment:copy,epoch:SEG.epoch,cancelled:false,manual:true,partOnly:true,viewer:viewer,btn:btn});
+  dlog('segment','manual-part-replay',{cardId:e.id,partId:s.id,language:lang,source:useSource});segWake();render(e);return true;
+}
+function segRetranslatePart(e,partId){
+  if(!e||!e.segment||e.segment.cancelled||translationDisabled())return false;
+  var s=e.segments.find(function(p){return p.id===partId;});
+  if(!s||!s.committedAt||s.translating||!s.translationReady)return false;
+  s.translationRevision=(s.translationRevision||0)+1;s.translationReady=false;s.translationError=null;
+  // Keep the previous visible translation until the replacement arrives. Never enqueue new audio here.
+  if(SEG.cards.indexOf(e)<0)SEG.cards.push(e);
+  dlog('segment','manual-part-retranslate',{cardId:e.id,partId:s.id,revision:s.translationRevision,audioReplay:false});
+  segJoin(e);segWake();return true;
+}
+function segRenderControls(el,e,viewer){
+  var details=el.querySelector('.segment-controls');
+  if(!e.segment){if(details)details.remove();return;}
+  var doc=el.ownerDocument||document;
+  if(!details){
+    details=doc.createElement('details');details.className='segment-controls';
+    var summary=doc.createElement('summary');details.appendChild(summary);
+    var hint=doc.createElement('p');hint.className='segment-controls-hint';
+    hint.textContent='確定した部分ごとに操作できます。訳文側の再生は訳文を読みます。複数部分をまとめた音声は範囲全体を強調します。';details.appendChild(hint);
+    var list=doc.createElement('div');list.className='segment-part-list';details.appendChild(list);
+    details.onclick=function(ev){ev.stopPropagation();};
+    details.ontoggle=function(){if(details.open)segRenderControls(el,e,viewer);};el.appendChild(details);
+  }
+  var committed=e.segments.filter(function(s){return s.committedAt;});
+  details.querySelector('summary').textContent='文ごとの再生・再翻訳（'+committed.length+'部分）';
+  if(!details.open)return;
+  var list=details.querySelector('.segment-part-list'),useSource=translationDisabled()||viewer===e.seat;
+  var seen={};
+  committed.forEach(function(s){
+    seen[s.id]=true;var row=list.querySelector('[data-part-id="'+s.id+'"]');
+    if(!row){
+      row=doc.createElement('div');row.className='segment-part';row.setAttribute('data-part-id',s.id);
+      ['segment-part-label','segment-part-source','segment-part-translation'].forEach(function(cls){var n=doc.createElement('div');n.className=cls;row.appendChild(n);});
+      var replay=doc.createElement('button');replay.type='button';replay.className='segment-part-replay';row.appendChild(replay);
+      var retry=doc.createElement('button');retry.type='button';retry.className='segment-part-retranslate';retry.textContent='再翻訳';row.appendChild(retry);list.appendChild(row);
+    }
+    var queued=SEG.queue.some(function(j){return j.card.id===e.id&&j.segment.id===s.id;}),playing=segIsPlaying()&&segPlaybackJobs(e).some(function(j){return j.segment.id===s.id;});
+    var state=playing?((SEG.active.group||[SEG.active]).length>1?'まとめて再生中':'再生中'):queued?'再生待ち':s.translating||!s.translationReady?'翻訳中':s.translationError?'翻訳エラー':'確定';
+    row.className='segment-part'+(playing?' segment-part-playing':'');
+    row.querySelector('.segment-part-label').textContent=s.seq+' · '+state+(s.corrected?' · 原文訂正あり':'');
+    row.querySelector('.segment-part-source').textContent=s.sourceText;
+    row.querySelector('.segment-part-translation').textContent=translationDisabled()?'翻訳OFF':s.translationError?'翻訳に失敗しました。再翻訳できます。':s.translationText||'翻訳待ち';
+    var replay=row.querySelector('.segment-part-replay');
+    var toggles=SEG.queue.some(function(j){return j.manual&&j.partOnly&&j.viewer===viewer&&j.card.id===e.id&&j.segment.id===s.id;});
+    replay.textContent=toggles?'■ 停止':useSource?'▶ 原文':'▶ 訳文';
+    replay.disabled=!useSource&&(!s.translationReady||!!s.translationError||!s.translationText);
+    replay.setAttribute('aria-label',s.seq+'番目の'+(useSource?'原文':'訳文')+(toggles?'を停止':'を再生'));
+    replay.onclick=function(ev){ev.stopPropagation();segReplayPart(e,s.id,viewer,replay);};
+    var retry=row.querySelector('.segment-part-retranslate');retry.disabled=translationDisabled()||!!s.translating||!s.translationReady||!!e.segment.cancelled;
+    retry.setAttribute('aria-label',s.seq+'番目の部分を再翻訳');retry.onclick=function(ev){ev.stopPropagation();segRetranslatePart(e,s.id);};
+  });
+  Array.from(list.children).forEach(function(row){if(!seen[row.getAttribute('data-part-id')])row.remove();});
+}
+var SEG_PLAYBACK_CSS='.segment-playing{background:rgba(255,196,75,.25);color:inherit;border-radius:3px;box-shadow:inset 0 -2px 0 #e5b545}';
 
 /* Phase 3: bounded language rules, not an LLM judgment of semantic truth. */
 function segSemanticEnabled(){return CFG.segmentBoundary==='semantic';}
