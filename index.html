@@ -1,21 +1,4 @@
 <!DOCTYPE html>
-<!--
-v1.38.2 / 2026-09-08 / Independent STT display hotfix
-Root cause: the whole accumulated transcript was rejected by isEcho() whenever it
-contained a previously spoken segment. This rejected new suffixes for up to the
-30-second echo history window, delaying both UI and subsequent commit decisions.
-Raw STT reception now always updates the card. Commit/translation/TTS run through
-the separate 80ms scheduler. Echo suppression applies only to each candidate audio
-segment; recognized text stays visible. Existing routing/self-loop checks are kept.
-Cards expose received/waiting/stopped and last text reception age. Active cards use
-full opacity. Input headers distinguish observed audio activity from received text.
-Added rate-limited received-to-DOM-update telemetry (not browser paint timing).
-Validation: 28 deterministic tests passed, including actual paint() and isEcho()
-functions against a simulated DOM and audio/network. v1.38.1 fails the same
-spoken-prefix/new-character regression. No real browser rendering or paid API audio
-was exercised. Server-side STT delay cannot be eliminated by UI changes.
-Preserves v1.38.1 queue-drain recovery and v1.37.7 minutes model behavior.
--->
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -23,7 +6,7 @@ Preserves v1.38.1 queue-drain recovery and v1.37.7 minutes model behavior.
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.38.2 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.38.3 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -677,7 +660,7 @@ Preserves v1.38.1 queue-drain recovery and v1.37.7 minutes model behavior.
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.2 Phase 4</span><span class="build-id">Build: 20260908-v1382-live-display</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.3 Phase 4</span><span class="build-id">Build: 20260908-v1383-rate-cards</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -687,7 +670,7 @@ Preserves v1.38.1 queue-drain recovery and v1.37.7 minutes model behavior.
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.2 Phase 4</span><span class="build-id">Build: 20260908-v1382-live-display</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.3 Phase 4</span><span class="build-id">Build: 20260908-v1383-rate-cards</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1136,13 +1119,13 @@ Preserves v1.38.1 queue-drain recovery and v1.37.7 minutes model behavior.
         <select id="segmentMode"><option value="off">OFF — カード確定後に全文</option><option value="balanced">Balanced — 自然さと待ち時間の均衡</option><option value="fast">Fast — 早い追従を優先</option></select>
         <label for="segmentOverlap">話者との重なり</label>
         <select id="segmentOverlap"><option value="avoid">避ける — 無音区間／発話終了を待つ</option><option value="allow">許容 — 確定した部分から読み上げる</option></select>
-        <small>会話カードは1枚のまま、安定した部分から翻訳・読み上げます。途中結果を返さない音声認識では、認識結果の到着後から分割処理します。重なりを避ける設定は再生開始を待ちます。再生中の音声は最後まで読みます。</small>
+        <small>安定した部分から翻訳し、発話の区切りで会話カードを確定します。Aivisは句点（。）を基本にまとめ、10回/分に合わせて送信間隔を6.1秒以上空け、その間の確定部分をまとめて読み上げます。途中結果を返さない音声認識では、認識結果の到着後から分割処理します。重なりを避ける設定は再生開始を待ちます。再生中の音声は最後まで読みます。</small>
         <details><summary>逐次読み上げの詳細設定</summary>
           <label for="segmentMin">最小文字数（0＝モード既定）</label><input id="segmentMin" type="number" min="0" max="100" step="1">
           <label for="segmentStability">認識の安定待ち ms（0＝既定）</label><input id="segmentStability" type="number" min="0" max="2000" step="50">
           <label for="segmentSilence">無音区間 ms（0＝既定）</label><input id="segmentSilence" type="number" min="0" max="3000" step="50">
-          <label for="segmentDebt">待ち音声の上限目安 秒</label><input id="segmentDebt" type="number" min="2" max="60" step="1">
-          <small>上限に達すると、新しい部分の確定を一時停止し、待ち音声が上限の半分以下に減ると自動再開します。原文・訳文の省略や自動要約はしません。</small>
+          <label for="segmentDebt">待ち音声の注意目安 秒</label><input id="segmentDebt" type="number" min="2" max="60" step="1">
+          <small>待ち音声が増えても、認識文字の表示・発話確定・翻訳は継続します。Aivisの送信待ちでは同じ声・言語の確定部分をまとめ、原文・訳文は省略しません。</small>
         </details>
         <details><summary>逐次読み上げの診断</summary><small id="segmentStatus" aria-live="off"></small></details>
       </div>
@@ -1623,7 +1606,7 @@ Preserves v1.38.1 queue-drain recovery and v1.37.7 minutes model behavior.
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260908-v1382-live-display';
+var APP_BUILD = '20260908-v1383-rate-cards';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -3817,7 +3800,7 @@ function verifyAivisKey(){
     var seat = seatUsed('B') ? 'B' : 'A';
     if (!aivisModelFor(seat)) return Promise.reject(new Error('モデル UUID が未入力です'));
     var body = aivisBody(AIVIS_TEST_LINE, seat, 'mp3');
-    return fetch(AIVIS_URL, {
+    return aivisLimitedFetch(AIVIS_URL, {
       method:'POST',
       headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + key },
       body: JSON.stringify(body)
@@ -6125,11 +6108,11 @@ function aivisSpeakBlob(text, lang, seat, prosody){
   logProsodyMap(body._prosodyMap,{effectiveRate:body.speaking_rate==null?1:body.speaking_rate,
     effectiveDynamics:body.tempo_dynamics==null?1:body.tempo_dynamics,effectiveVolume:body.volume==null?1:body.volume});
   var st = aivisStyleFor(seat), rate = parseFloat(CFG.aivisRate);
-  fetch(AIVIS_URL, {
+  aivisLimitedFetch(AIVIS_URL, {
     method:'POST',
     headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + aivisKey() },
     body: JSON.stringify(body)
-  }).then(function(r){
+  },{finish:finish,guardMs:Math.min(90000,8000+text.length*150)}).then(function(r){
     var meta=aivisBillingMeta(r);aivisLogBilling(meta,'blob');
     if (!r.ok) return r.text().then(function(x){ throw aivisHttpError(r,x); });
     return r.blob();
@@ -6137,10 +6120,12 @@ function aivisSpeakBlob(text, lang, seat, prosody){
     dlog('tts','aivis-ok',{ chars:text.length, ms:Date.now()-t0, bytes:b.size, seat:seat||'A', model:uuid.slice(0,8), style:(st===''?'既定':st), tweaks:aivisBodyTweaks(body) });
     playBlob(b, finish, 'aivis');
   }).catch(function(err){
+    if(finish.gen!==ttsGen||finish.done||err.name==='AbortError')return;
     var m = String((err && err.message) || err);
     dlog('tts','aivis-FAIL',{ err:m.slice(0,140), ms:Date.now()-t0 });
     finish();
     if(err&&err.aivisBilling)aivisLogBilling(err.aivisBilling,'blob-error');
+    if(err.status===429){toast('Aivisの上限待ちが続いています。時間を置いてカードを再生してください。');return;}
     var hint=aivisFailureHint(err);
     ttsFallback(text, lang, 'API失敗', hint, 'aivisWarned',prosody);
   });
@@ -6225,13 +6210,13 @@ function aivisSpeakStream(text, lang, seat, prosody){
     return remainMs;
   };
   /* ttsGuardは表示上の読み上げ状態を戻す。こちらは再生ロックと通信も必ず解放する */
-  streamWatchdog = setTimeout(function(){
+  var armStreamWatchdog=function(){clearTimeout(streamWatchdog);streamWatchdog = setTimeout(function(){
     if (streamDone) return;
     timedOut = true;
     if (ctrl){ try{ ctrl.abort(); }catch(e){} }
     dlog('tts','aivis-stream-TIMEOUT',{ ms:Date.now()-t0, started:started });
     if (started) endAfterBuffered('timeout'); else streamEnd('timeout');
-  }, guardMs + 50);
+  }, guardMs + 50);};
 
   var drain = function(flush){
     if (!head) return;
@@ -6261,11 +6246,11 @@ function aivisSpeakStream(text, lang, seat, prosody){
     }
   };
 
-  fetch(AIVIS_URL, {
+  aivisLimitedFetch(AIVIS_URL, {
     method:'POST', signal: ctrl && ctrl.signal,
     headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + aivisKey() },
     body: JSON.stringify(body)
-  }).then(function(r){
+  },{finish:finish,guardMs:guardMs,wait:function(){clearTimeout(streamWatchdog);},send:armStreamWatchdog}).then(function(r){
     var meta=aivisBillingMeta(r);aivisLogBilling(meta,'stream');
     if (!r.ok) return r.text().then(function(x){ throw aivisHttpError(r,x); });
     if (!r.body || !r.body.getReader) throw new Error('ストリーミング非対応');
@@ -6308,6 +6293,7 @@ function aivisSpeakStream(text, lang, seat, prosody){
     if(err&&err.aivisBilling)aivisLogBilling(err.aivisBilling,'stream-error');
     if (started){ endAfterBuffered('failed'); return; }
     streamEnd('failed');
+    if(err.status===429){toast('Aivisの上限待ちが続いています。時間を置いてカードを再生してください。');return;}
     /* まだ音が出ていなければ、確実な従来方式でやり直す。
        途中まで鳴っている場合にやり直すと二重に聞こえるので、そこでは諦める。 */
     if (!started && !(err&&err.status>=400&&err.status<500)) aivisSpeakBlob(text, lang, seat, prosody);
@@ -6595,7 +6581,7 @@ function aivisStyleOk(msg){
    1回あたり1文字ぶんしか消費しないので、費用はごくわずか。 */
 var AIVIS_PROBE_MAX = 12;
 function aivisProbeOne(uuid, id){
-  return fetch(AIVIS_URL, {
+  return aivisLimitedFetch(AIVIS_URL, {
     method:'POST',
     headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + aivisKey() },
     body: JSON.stringify({ model_uuid:uuid, text:'あ', style_id:id, output_format:'mp3' })
@@ -8035,7 +8021,7 @@ function setSayBtn(btn,key){
 }
 function ttsIsBusy(){ return ttsActive > 0 || ttsPlayingNow || ttsQueue.length > 0; }
 function stopSpeaking(why){
-  segCancelAll(why||'読み上げ停止');
+  segCancelAudio(why||'読み上げ停止');
   var had = ttsIsBusy();
   ttsGen++;                                  /* 以後に届く音声は鳴らさない */
   ttsPendingOrders = {}; ttsOrderWaitLogged = '';
@@ -9028,7 +9014,7 @@ RealtimeTranscriptionEngine.prototype.checkBoundaries=function(){
   }
   if(segEnabled()){
     if(this.boundaryAn)segVoice(this.seat||S.listenSeat||'A',rms);
-    return;
+    segLiveBoundaries(this);return;
   }
   var self=this;
   Object.keys(this.items).forEach(function(id){
@@ -9497,7 +9483,8 @@ function stopVU(){
 }
 
 function stopAll(){
-  if(SEG.cards.length||SEG.queue.length)stopSpeaking('認識停止');
+  segFinishRecording();
+  if(SEG.queue.length||ttsIsBusy())stopSpeaking('認識停止');
   if (S.running) dlog('session','STOP',{ entries: S.entries.length });
   S.running = false;segStopProgress();
   sessionGen++;                              /* 送信済みSTTの返答をこの時点で無効化 */
@@ -9674,7 +9661,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.38.2 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.38.3 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -10016,7 +10003,7 @@ function refreshProviderUI(){
   $('model').disabled = isFree||noTranslation;
   $('fetchModels').disabled = isFree||noTranslation;
   renderModelCombo(chatModelsFor(CFG.provider), CFG.model, function(v){
-    CFG.model = v; store.set('di.model', v);
+    if(CFG.model===v)return;CFG.model = v; store.set('di.model', v);segRefreshTranslations();
   });
 
   $('sttModel').disabled = (CFG.sttProvider === 'webspeech');
@@ -10475,7 +10462,7 @@ $('feedB').addEventListener('scroll', function(){ onFeedScroll('feedB','feedA');
 $('clearBtn').onclick = function(){
   if (S.entries.length && !confirm('会話ログを消去しますか？')) return;
   /* 消したログのボタンを掴んだままにしないよう、読み上げも一緒に止める */
-  stopSpeaking('会話ログを消去');
+  segCancelAll('会話ログを消去');stopSpeaking('会話ログを消去');
   if(S.running)stopAll();
   S.entries=[]; S.seq=0; $('feedA').innerHTML=''; $('feedB').innerHTML='';
   renderOverlayRail();
@@ -10561,6 +10548,7 @@ $('provider').onchange = function(){
   CFG.provider = this.value; store.set('di.prov', CFG.provider);
   CFG.model = defaultModel(CFG.provider); store.set('di.model', CFG.model);
   refreshProviderUI();
+  segRefreshTranslations();
   S.entries.forEach(function(e){render(e);});
   autoFetchModels();
 };
@@ -11002,7 +10990,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.38.2 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.38.3 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11048,7 +11036,7 @@ function diagText(devices){
   [['翻訳プロバイダ', CFG.provider], ['翻訳モデル', translationDisabled() ? '(未使用)' : CFG.model],
    ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel], ['句読点の自動補完', CFG.sttPunct ? 'ON' : 'OFF'],
    ['有効なSTT通信方式', diagSttTransport()],
-   ['gpt-live発話確定', isLiveTranscribe() ? (segEnabled()?'逐次部分確定＋安定待ち／待ち音声が減れば自動再開（サーバーfinal待ちなし）':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）') : '(未使用)'],
+   ['gpt-live発話確定', isLiveTranscribe() ? (segEnabled()?'逐次部分翻訳＋文脈・無音・文字停止でカード確定／TTS待ちとは独立':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）') : '(未使用)'],
    ['共有音声STT経路', CFG.displaySttRoute],
    ['共有Track直接Web Speech候補', overlayCapabilities().speechTrackInput],
    ['通常マイク入力', CFG.micDevLbl || (CFG.micDev ? '(名称不明)' : '既定')],
@@ -11061,6 +11049,7 @@ function diagText(devices){
    ['声 A / B', rtNativeAudio ? '(外部TTS設定は未使用)' : ttsSeatVoices()],
    ['認識文字表示','STT受信ごとにカードへ反映／確定・翻訳・TTSは独立したタイマーで進行'],
    ['逐次エコー除外','部分単位の自動音声のみ抑制（認識文字表示は維持）'],
+   ['Aivis送信制御','全合成経路で10回/60秒・最小6.1秒間隔／429待機再試行2回／同声・同言語を最大500文字でまとめる'],
    ['TTS逐次読み上げ',CFG.segmentMode+' / 重なり '+CFG.segmentOverlap],
    ['逐次確定・訂正',SEG.committed+' / '+SEG.corrected+'（訂正率 '+(SEG.committed?(100*SEG.corrected/SEG.committed).toFixed(1):'0')+'%）'],
    ['逐次TTS待ち音声',segDebt().toFixed(1)+'秒（文字数による推定）'],
@@ -11304,7 +11293,7 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.38.2 / Phase 1.
+/* Duo Segment pipeline v1.38.3 / Phase 1.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
@@ -11380,7 +11369,11 @@ function segReceiveDisplay(e){
 function segProgressLabel(e){
   if(!e.segment)return '';
   if(e.segment.cancelled)return '停止';
-  if(e.segment.final)return '認識確定';
+  if(e.segment.final){
+    if(translationDisabled())return '発話確定 · 翻訳OFF';
+    if(e.segments.some(function(s){return s.translationError;}))return '発話確定 · 翻訳エラー';
+    return '発話確定 · '+(e.segments.some(function(s){return !s.translationReady;})?'翻訳中':'翻訳完了');
+  }
   var at=e.segment.receivedAt,age=at?Math.max(0,Date.now()-at):0;
   return (age<1500?'認識文字を受信中':'次の認識文字を待っています')+' · '+e.srcText.length+'字'+
     (at?' · 最終受信 '+(age/1000).toFixed(1)+'秒前':'');
@@ -11484,19 +11477,18 @@ function segDraft(e){
   if(at<e.segment.text.length)e.segments.push({id:e.id+'-draft',cardId:e.id,seq:committed.length+1,
     start:at,end:e.segment.text.length,sourceText:e.segment.text.slice(at),state:e.segment.cancelled?'cancelled':'provisional',sourceRevision:e.segment.revision});
 }
-/* High/low watermarks: a live STT item may never send completed during a meeting.
- * Resume from local queue drainage, not from a server-final event. */
+/* Audio debt is diagnostic only. Recognition, card completion and translation continue. */
 function segBackpressure(e,p,debt){
   var b=e.segment,low=p.debt*0.5;
   if(b.deferred){
     if(debt>low)return true;
     b.deferred=false;
-    dlog('segment','debt-resume',{cardId:e.id,debtEstimateSeconds:debt,resumeAt:low,
+    dlog('segment','debt-low',{cardId:e.id,debtEstimateSeconds:debt,resumeAt:low,
       pendingChars:e.segments.filter(function(s){return !s.committedAt;}).reduce(function(n,s){return n+s.sourceText.length;},0)});
   }
   if(debt>=p.debt){
-    b.deferred=true;dlog('segment','debt-fallback',{cardId:e.id,debtEstimateSeconds:debt,limit:p.debt,
-      policy:'pause-until-debt-drains',resumeAt:low});return true;
+    b.deferred=true;dlog('segment','debt-high',{cardId:e.id,debtEstimateSeconds:debt,limit:p.debt,
+      policy:'audio-warning-only',resumeAt:low});return true;
   }
   return false;
 }
@@ -11512,7 +11504,7 @@ function segCheck(e){
       break;
     }
     // Recalculate on each reservation; one incoming burst must not bypass the limit.
-    debt=segDebt();if(segBackpressure(e,p,debt))break;
+    debt=segDebt();segBackpressure(e,p,debt); // Audio debt never blocks text commits or translation.
     var stable=0;while(s.start+stable<b.stableSince.length&&now-b.stableSince[s.start+stable]>=p.stability)stable++;
     var silence=segSilence(e,now);
     var d=segDecision({text:s.sourceText,stableLength:b.final?s.sourceText.length:stable,policy:p,
@@ -11526,7 +11518,8 @@ function segCheck(e){
     s.echoSuppressed=segEchoCandidate(s.sourceText);
     if(s.echoSuppressed){s.audio.status='cancelled';s.audio.skipReason='echo';s.state='echo-suppressed';
       dlog('segment','echo-suppressed',{cardId:e.id,seq:s.seq,chars:s.sourceText.length,displayPreserved:true});
-    }else SEG.queue.push({card:e,segment:s,epoch:SEG.epoch,cancelled:false});
+    }else if(b.audioMuted){s.audio.status='cancelled';s.audio.skipReason='speech-stopped';}
+    else SEG.queue.push({card:e,segment:s,epoch:SEG.epoch,cancelled:false});
     SEG.committed++;
     SEG.lastReason=d.reasons.join(' + ');
     dlog('segment','commit',{cardId:e.id,seq:s.seq,chars:s.sourceText.length,reason:d.reasons,
@@ -11556,13 +11549,26 @@ function segTranslate(e,s){
   .then(function(out){if(request.released||epoch!==SEG.epoch||rev!==s.translationRevision||e.segment.cancelled)return;
     s.translationText=String(out||'').trim();s.translationError=null;s.translationReady=true;
     if(!s.dispatched)s.state=s.echoSuppressed?'echo-suppressed':'queued';
-    dlog('segment','translated',{cardId:e.id,seq:s.seq,revision:rev});
+    s.translationProvider=CFG.provider;s.translationModel=CFG.model||'';
+    dlog('segment',p.kind==='none'?'translation-skipped':'translated',{cardId:e.id,seq:s.seq,revision:rev,provider:CFG.provider,model:CFG.model||'',chars:s.translationText.length});
   }).catch(function(err){if(request.released||epoch!==SEG.epoch||rev!==s.translationRevision||e.segment.cancelled)return;
     s.translationError=String(err.message||err);s.translationReady=true;if(!s.dispatched)s.state='error';
     dlog('segment','translation-error',{cardId:e.id,seq:s.seq,error:s.translationError});
   }).then(function(){request.release();
     if(!e.segment.cancelled){segJoin(e);segWake();}
   });
+}
+function segRefreshTranslations(){
+  // Invalidate pending results as well as previously skipped translations.
+  SEG.requests.slice().forEach(function(r){r.release();});
+  S.entries.forEach(function(e){if(!e.segment||e.segment.cancelled)return;
+    e.segments.forEach(function(s){if(!s.committedAt)return;
+      s.translationRevision=(s.translationRevision||0)+1;s.translationReady=false;
+      s.translationText='';s.translationError=null;
+    });
+    if(SEG.cards.indexOf(e)<0)SEG.cards.push(e);segJoin(e);
+  });
+  dlog('segment','translation-settings-changed',{provider:CFG.provider,model:CFG.model||''});segWake();
 }
 function segAudioAllowed(e){return CFG.ttsMode!=='off' && !(CFG.ttsWho==='B2A'&&e.seat!=='B') && !(CFG.ttsWho==='A2B'&&e.seat!=='A') &&
   !(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat));}
@@ -11579,16 +11585,42 @@ function segPump(){
     var silence=segSilence(e,Date.now());
     // Without a trustworthy input meter, avoid-overlap waits for STT final.
     if(CFG.segmentOverlap==='avoid'&&!e.segment.final&&(silence===null||silence<segPolicy(e.segment.mode).silence))return;
-    s.state='tts_generating';s.dispatched=true;s.audio.status='generating';s.audio.requestedAt=Date.now();
+    var useSource=j.manual||CFG.ttsSrc,lang=useSource?e.srcLang:e.dstLang;
+    var group=[j],source=s.sourceText,target=s.translationText||'';
+    if(CFG.ttsMode==='aivis'&&lang==='ja'){
+      if(aivisRateWait()>0)return;
+      // Collect adjacent ready parts during the rate wait. Keep speaker/language/prosody identical.
+      for(var n=1;n<SEG.queue.length;n++){
+        var next=SEG.queue[n],ns=next.segment,ne=next.card;
+        if(next.cancelled||next.epoch!==j.epoch||ne.segment.cancelled||!!next.manual!==!!j.manual||
+          ne.seat!==e.seat||ne.srcLang!==e.srcLang||ne.dstLang!==e.dstLang||
+          JSON.stringify(ne.prosody||null)!==JSON.stringify(e.prosody||null)||
+          (!useSource&&(!ns.translationReady||ns.translationError))||(!next.manual&&!segAudioAllowed(ne)))break;
+        var more=useSource?ns.sourceText:ns.translationText||'';
+        if(!(more.trim())||(useSource?source:target).length+more.length+(useSource?0:1)>500)break;
+        source+=ns.sourceText;target+=(target&&ns.translationText?' ':'')+(ns.translationText||'');group.push(next);
+      }
+      // Prefer full sentences for Aivis, even if Fast translation commits at commas.
+      var cut=0;
+      group.forEach(function(q,i){var text=useSource?q.segment.sourceText:q.segment.translationText||'';
+        if(/[。！？!?][\s」』）]*$/.test(text)||/\.[\s"')]*$/.test(text)||q.card.segment.final)cut=i+1;
+      });
+      if(cut&&cut<group.length)group=group.slice(0,cut);
+      else if(!cut&&(useSource?source:target).length<500&&Date.now()-(group[group.length-1].card.segment.lastUpdate||0)<1500)return;
+      source=group.map(function(q){return q.segment.sourceText;}).join('');
+      target=group.map(function(q){return q.segment.translationText||'';}).filter(Boolean).join(' ');
+    }
+    j.group=group;
+    group.forEach(function(q){q.segment.state='tts_generating';q.segment.dispatched=true;q.segment.audio.status='generating';q.segment.audio.requestedAt=Date.now();});
     SEG.active=j;j.started=false;j.finished=false;
-    var proxy={id:e.id,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,srcText:s.sourceText,dstText:s.translationText,prosody:e.prosody};
-    dlog('segment','dispatch',{cardId:e.id,seq:s.seq,debtEstimateSeconds:segDebt(),overlap:CFG.segmentOverlap});
+    var proxy={id:e.id,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,srcText:source,dstText:target,prosody:e.prosody};
+    dlog('segment','dispatch',{cardId:e.id,seq:s.seq,parts:group.length,chars:(useSource?source:target).length,debtEstimateSeconds:segDebt(),overlap:CFG.segmentOverlap});
     try{
       if(j.manual){
         if(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat)){j.finished=true;s.audio.error='loop-prevention';return;}
         var mode=CFG.ttsMode,fn=mode==='openai'?apiSpeak:mode==='voicevox'?vvSpeak:mode==='aivis'?aivisSpeak:mode==='eleven'?elSpeak:mode==='xai'?xaiSpeak:mode==='localvv'?lvvSpeak:null;
         withTtsSayKey(e.id+':'+j.viewer,function(){
-          if(fn)fn(s.sourceText,e.srcLang,e.seat,e.prosody);else browserSpeak(s.sourceText,L(e.srcLang).tts,e.prosody);
+          if(fn)fn(source,e.srcLang,e.seat,e.prosody);else browserSpeak(source,L(e.srcLang).tts,e.prosody);
         });
       }else speak(proxy);
     }catch(err){s.audio.error=String(err.message||err);j.finished=true;}
@@ -11625,7 +11657,11 @@ function segTick(){
         j.segment.state=a.status==='done'?'played':'error';
         dlog('segment','audio-end',{cardId:j.card.id,seq:j.segment.seq,state:j.segment.state,
           L3Ms:j.card.endedAt?now-j.card.endedAt:null});
-        SEG.queue.shift();SEG.active=null;
+        (j.group||[j]).forEach(function(q){var qa=q.segment.audio;
+          qa.endedAt=now;qa.status=a.status;qa.firstAudioAt=a.firstAudioAt;qa.error=a.error;
+          q.segment.state=a.status==='done'?'played':'error';
+        });
+        SEG.queue.splice(0,(j.group||[j]).length);SEG.active=null;
       }
     }
     segPump();segStatus();
@@ -11640,7 +11676,26 @@ function segTick(){
   }
 }
 function segStatus(){var el=$('segmentStatus');if(!el)return;
-  el.textContent='モード '+(CFG.segmentMode||'off')+' ／ 待ち音声 約'+segDebt().toFixed(1)+'秒（推定） ／ 確定 '+SEG.committed+'部分 ／ 確定後訂正 '+SEG.corrected+'/'+SEG.committed+' ／ '+SEG.lastReason;
+  el.textContent='モード '+(CFG.segmentMode||'off')+' ／ 待ち音声 約'+segDebt().toFixed(1)+'秒（推定） ／ 確定 '+SEG.committed+'部分 ／ 確定後訂正 '+SEG.corrected+'/'+SEG.committed+' ／ '+SEG.lastReason+
+    (CFG.ttsMode==='aivis'?' ／ Aivis 10回/分 · '+(aivisRateWait()>0?'次の送信まで '+(aivisRateWait()/1000).toFixed(1)+'秒':'送信可能'):'');
+}
+function segCancelAudio(why){
+  // Output settings must not invalidate source cards or in-flight translations.
+  var changing=/変更/.test(why||'');
+  SEG.cards.forEach(function(e){e.segment.audioMuted=!changing;});
+  var activeGroup=SEG.active?(SEG.active.group||[SEG.active]):[];
+  SEG.queue=SEG.queue.filter(function(j){
+    if(changing&&activeGroup.indexOf(j)<0)return true;
+    if(j.segment.audio)j.segment.audio.status='cancelled';return false;
+  });SEG.active=null;
+  dlog('segment','audio-cancel',{why:why,translationContinues:true});segWake();
+}
+function segFinishRecording(){
+  SEG.cards.slice().forEach(function(e){if(e.segment.cancelled)return;
+    e.segment.audioMuted=true;
+    if(!e.segment.final)segUpdate(e,e.srcText,true);
+  });
+  segWake();
 }
 function segCancelAll(why){
   SEG.epoch++;
@@ -11655,7 +11710,7 @@ function segCancelAll(why){
 }
 function segRemove(e){if(!e||!e.segment)return;e.segment.cancelled=true;
   SEG.queue.forEach(function(j){if(j.card===e)j.cancelled=true;});
-  if(SEG.active&&SEG.active.card===e)stopSpeaking('会話カード削除');
+  if(SEG.active&&(SEG.active.group||[SEG.active]).some(function(j){return j.card===e;}))stopSpeaking('会話カード削除');
 }
 function segWebResult(owner,ev,seat){
   if(!segEnabled())return false;
@@ -11674,23 +11729,90 @@ function segWebResult(owner,ev,seat){
 function segWebEnd(owner){Object.keys((owner&&owner._segments)||{}).forEach(function(k){var e=owner._segments[k];
   if(e.segment&&!e.segment.final&&!e.segment.cancelled)segUpdate(e,e.srcText,true);
 });if(owner)owner._segments={};}
+/* Local card completion is independent from server item completion and audio playback. */
+function segLiveClose(engine,id,x,reason,meta){
+  var e=x.entry;if(!e||!e.srcText.trim()||e.segment.cancelled)return;
+  segUpdate(e,e.srcText,true);e.segment.finalReason=reason;
+  x.segmentRanges=x.segmentRanges||[];
+  x.segmentRanges.push({entry:e,end:x.text.length});x.cardOffset=x.text.length;x.entry=null;
+  dlog('stt','live-card-final',{item:id,cardId:e.id,reason:reason,chars:e.srcText.length,meta:meta||{}});
+}
+function segLiveBoundaries(engine){
+  var now=Date.now();
+  Object.keys(engine.items).forEach(function(id){
+    var x=engine.items[id],e=x.entry;if(!e||!e.segment||e.segment.cancelled||!e.srcText.trim())return;
+    var idle=now-x.lastDeltaAt,kind=engine.boundaryContext(e.srcText,e.srcLang),p=engine.boundaryPolicy(kind);
+    var silence=segSilence(e,now),reason='';
+    if(idle>=p.hard)reason='delta-timeout';
+    else if(idle>=p.idle&&silence!==null&&silence>=p.silence)reason='audio-pause';
+    else if(now-e.startedAt>=30000&&idle>=650)reason='max-duration';
+    if(reason)segLiveClose(engine,id,x,reason,{context:kind,idleMs:idle,silenceMs:silence});
+  });
+}
+function segLiveReconcile(engine,x,text){
+  // Map all closed-card boundaries through the final transcript correction.
+  var old=x.text||'',ranges=x.segmentRanges||[],ends=segMapCardEnds(old,text,ranges.map(function(r){return r.end;})),at=0;
+  ranges.forEach(function(r,i){
+    var end=Math.max(at,Math.min(text.length,ends[i]));
+    if(!r.entry.segment.cancelled)segUpdate(r.entry,text.slice(at,end),true);
+    r.end=end;at=end;
+  });
+  x.cardOffset=at;x.text=text;
+  if(x.entry||at<text.length){var e=engine.ensureEntry(x);segUpdate(e,text.slice(at),true);}
+}
+function segMapCardEnds(old,text,ends){
+  var prefix=0,suffix=0;
+  while(prefix<old.length&&prefix<text.length&&old[prefix]===text[prefix])prefix++;
+  while(suffix<old.length-prefix&&suffix<text.length-prefix&&old[old.length-1-suffix]===text[text.length-1-suffix])suffix++;
+  var a=old.slice(prefix),b=text.slice(prefix),map={};
+  // Multiple edits (including a new tail) require alignment, not one replacement span.
+  if(a.length*b.length<=2000000){
+    var width=b.length+1,dp=new Uint32Array((a.length+1)*width),i,j;
+    for(i=a.length-1;i>=0;i--)for(j=b.length-1;j>=0;j--)
+      dp[i*width+j]=a[i]===b[j]?1+dp[(i+1)*width+j+1]:Math.max(dp[(i+1)*width+j],dp[i*width+j+1]);
+    i=0;j=0;map[prefix]=prefix;
+    while(i<a.length){
+      if(j<b.length&&a[i]===b[j]){i++;j++;map[prefix+i]=prefix+j;}
+      else if(j<b.length&&dp[i*width+j+1]>dp[(i+1)*width+j])j++;
+      else {i++;map[prefix+i]=prefix+j;}
+    }
+  }
+  var previous=0;
+  return ends.map(function(end){var mapped;
+    if(end<=prefix)mapped=end;
+    else if(map[end]!==undefined)mapped=map[end];
+    else {
+      // Large final corrections: use a nearby text anchor, keeping alignment work bounded.
+      var anchor=old.slice(Math.max(0,end-32),end),found=text.indexOf(anchor,previous);
+      mapped=anchor&&found>=0?found+anchor.length:Math.min(text.length,end+text.length-old.length);
+    }
+    previous=Math.max(previous,mapped);return previous;
+  });
+}
 function segLiveEvent(engine,event,id){
   if(!segEnabled())return false;
   var t=event.type||'',isDelta=/transcription\.delta$/.test(t),isFinal=/transcription\.completed$/.test(t);
   if(!isDelta&&!isFinal)return false;
-  var x=engine.item(id),entry=engine.ensureEntry(x),now=Date.now(),previousDeltaAt=x.lastDeltaAt;
-  x.text=isDelta?x.text+String(event.delta||''):String(event.transcript||x.text);x.lastDeltaAt=now;
-  if(isFinal||!x.segmentLogAt||now-x.segmentLogAt>=1000){
-    dlog('stt',isFinal?'live-segment-final':'live-segment-delta',{item:id,cardId:entry.id,
-      chars:x.text.length,deltaChars:String(event.delta||'').length,arrivalGapMs:previousDeltaAt?now-previousDeltaAt:null});
-    x.segmentLogAt=now;
+  engine.segmentCompleted=engine.segmentCompleted||{};
+  if(engine.segmentCompleted[id])return true;
+  if(isDelta&&!event.delta)return true;
+  var x=engine.item(id),now=Date.now(),previousDeltaAt=x.lastDeltaAt;
+  if(isFinal){
+    segLiveReconcile(engine,x,String(event.transcript||x.text));
+    dlog('stt','live-segment-final',{item:id,chars:x.text.length,cards:(x.segmentRanges||[]).length+(x.entry?1:0)});
+    engine.segmentCompleted[id]=now;
+    Object.keys(engine.segmentCompleted).forEach(function(k){if(now-engine.segmentCompleted[k]>300000)delete engine.segmentCompleted[k];});
+    delete engine.items[id];return true;
   }
-  if(!entry.segment&&((S.autoMode&&micSeats().length>1)||!engine.seat)&&x.text.length>=8){
-    var seat=guessSeatFromText(x.text);entry.seat=seat;entry.srcLang=langOf(seat);entry.dstLang=langOf(seat==='A'?'B':'A');
+  x.text+=String(event.delta||'');x.lastDeltaAt=now;
+  var entry=engine.ensureEntry(x),local=x.text.slice(x.cardOffset||0);
+  if(!x.segmentLogAt||now-x.segmentLogAt>=1000){
+    dlog('stt','live-segment-delta',{item:id,cardId:entry.id,chars:local.length,deltaChars:String(event.delta||'').length,arrivalGapMs:previousDeltaAt?now-previousDeltaAt:null});x.segmentLogAt=now;
   }
-  segUpdate(entry,x.text,isFinal);
-  if(isFinal){if(!entry.segment)removeEntry(entry);delete engine.items[id];}
-  return true;
+  if(!entry.segment&&((S.autoMode&&micSeats().length>1)||!engine.seat)&&local.length>=8){
+    var seat=guessSeatFromText(local);entry.seat=seat;entry.srcLang=langOf(seat);entry.dstLang=langOf(seat==='A'?'B':'A');
+  }
+  segUpdate(entry,local,false);return true;
 }
 function segFinalizeEntry(e){
   if(!segEnabled())return false;
@@ -11712,6 +11834,77 @@ function segReplay(e,viewer,btn){
     var manualCard=Object.assign({},clone,{srcLang:useSrc?e.srcLang:e.dstLang,dstLang:useSrc?e.srcLang:e.dstLang});
     SEG.queue.push({card:manualCard,segment:c,epoch:SEG.epoch,cancelled:false,manual:true,viewer:viewer,btn:btn});
   });segWake();return true;
+}
+
+/* Aivis subscription budget: this page's requests, including previews and retries.
+ * Persist timestamps across reloads; never reset this budget when stopping speech.
+ */
+var AIVIS_RATE={sent:[],blockedUntil:0,tail:Promise.resolve(),loaded:false};
+function aivisRateLoad(){
+  if(AIVIS_RATE.loaded)return;AIVIS_RATE.loaded=true;
+  try{var saved=JSON.parse(store.get('di.aivisRateWindow','{}'));
+    AIVIS_RATE.sent=(saved.sent||[]).filter(function(t){return typeof t==='number'&&t<=Date.now();});
+    AIVIS_RATE.blockedUntil=Number(saved.blockedUntil)||0;
+  }catch(err){}
+}
+function aivisRateSave(){try{store.set('di.aivisRateWindow',JSON.stringify({sent:AIVIS_RATE.sent,blockedUntil:AIVIS_RATE.blockedUntil}));}catch(err){}}
+function aivisRateWait(){
+  aivisRateLoad();var now=Date.now();
+  AIVIS_RATE.sent=AIVIS_RATE.sent.filter(function(t){return now-t<60000;});
+  var sent=AIVIS_RATE.sent,last=sent.length?sent[sent.length-1]:0;
+  return Math.max(0,AIVIS_RATE.blockedUntil-now,last?last+6100-now:0,sent.length>=10?sent[sent.length-10]+60100-now:0);
+}
+function aivisLimitedFetch(url,options,life){
+  life=life||{};var gen=ttsGen,tries=0;
+  function cancelled(){return gen!==ttsGen||(options.signal&&options.signal.aborted)||(life.finish&&life.finish.done);}
+  function abort(){var err=new Error('Aivis request cancelled');err.name='AbortError';throw err;}
+  function wait(){
+    return new Promise(function(resolve,reject){
+      function poll(){
+        if(cancelled()){try{abort();}catch(err){reject(err);}return;}
+        var ms=aivisRateWait();if(!ms){resolve();return;}
+        setTimeout(poll,Math.min(250,ms));
+      }poll();
+    });
+  }
+  function attempt(){
+    if(cancelled())abort();
+    if(life.finish)life.finish.holdPhase('rate-limit');if(life.wait)life.wait();
+    var delay=aivisRateWait();
+    if(delay)dlog('tts','aivis-rate-wait',{waitMs:delay,limit:10,windowMs:60000});
+    return wait().then(function(){
+      if(cancelled())abort();
+      AIVIS_RATE.sent.push(Date.now());aivisRateSave();
+      if(life.finish)life.finish.armPhase('synthesis',life.guardMs||90000);
+      if(life.send)life.send();
+      dlog('tts','aivis-request',{count60s:AIVIS_RATE.sent.length,limit:10,attempt:tries+1});
+      // Bound the header wait so a hung request cannot lock the shared budget queue.
+      return new Promise(function(resolve,reject){
+        var started=Date.now(),done=false,ctrl=typeof AbortController!=='undefined'?new AbortController():null;
+        var opts=Object.assign({},options);if(ctrl)opts.signal=ctrl.signal;
+        function settle(fn,value){if(done)return;done=true;clearInterval(watch);fn(value);}
+        var watch=setInterval(function(){
+          if(cancelled()||Date.now()-started>(life.guardMs||90000)){
+            if(ctrl)ctrl.abort();var err=new Error(cancelled()?'Aivis request cancelled':'Aivis synthesis timeout');
+            if(cancelled())err.name='AbortError';settle(reject,err);
+          }
+        },100);
+        Promise.resolve().then(function(){return fetch(url,opts);}).then(function(r){settle(resolve,r);},function(err){settle(reject,err);});
+      });
+    }).then(function(r){
+      if(cancelled()){if(r.body&&r.body.cancel)r.body.cancel().catch(function(){});abort();}
+      if(r.status!==429)return r;
+      var retry=r.headers&&r.headers.get('Retry-After'),seconds=Number(retry),until=Date.parse(retry||'');
+      var delay=retry?(isFinite(seconds)?seconds*1000:(isFinite(until)?until-Date.now():61000)):61000;
+      AIVIS_RATE.blockedUntil=Math.max(AIVIS_RATE.blockedUntil,Date.now()+Math.max(6100,delay)+250);aivisRateSave();
+      dlog('tts','aivis-rate-limited',{retryMs:aivisRateWait(),retry:tries+1});
+      if(tries++>=2)return r;
+      return r.text().then(attempt);
+    });
+  }
+  if(life.finish)life.finish.holdPhase('rate-limit');if(life.wait)life.wait();
+  var job=AIVIS_RATE.tail.catch(function(){}).then(attempt);
+  AIVIS_RATE.tail=job.catch(function(){});return job;
 }
 
 loadCfg();
