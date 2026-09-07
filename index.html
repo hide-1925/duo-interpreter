@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.38.3 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.39.0 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -660,7 +660,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.3 Phase 4</span><span class="build-id">Build: 20260908-v1383-rate-cards</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.39.0 Phase 4</span><span class="build-id">Build: 20260908-v1390-order-adaptive</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -670,7 +670,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.38.3 Phase 4</span><span class="build-id">Build: 20260908-v1383-rate-cards</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.39.0 Phase 4</span><span class="build-id">Build: 20260908-v1390-order-adaptive</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1116,10 +1116,11 @@
       </div>
       <div class="field" id="segmentSettings">
         <label for="segmentMode">TTS逐次読み上げ</label>
-        <select id="segmentMode"><option value="off">OFF — カード確定後に全文</option><option value="balanced">Balanced — 自然さと待ち時間の均衡</option><option value="fast">Fast — 早い追従を優先</option></select>
+        <select id="segmentMode"><option value="off">OFF — カード確定後に全文</option><option value="balanced">Balanced — 自然さと待ち時間の均衡</option><option value="fast">Fast — 早い追従を優先</option><option value="adaptive">Adaptive — 会話テンポに自動適応（試験）</option></select>
         <label for="segmentOverlap">話者との重なり</label>
-        <select id="segmentOverlap"><option value="avoid">避ける — 無音区間／発話終了を待つ</option><option value="allow">許容 — 確定した部分から読み上げる</option></select>
+        <select id="segmentOverlap"><option value="avoid">避ける — 無音区間／発話終了を待つ</option><option value="allow">許容 — 確定した部分から読み上げる</option><option value="auto">自動 — 無音区間と待ち音声から判断</option></select>
         <small>安定した部分から翻訳し、発話の区切りで会話カードを確定します。Aivisは句点（。）を基本にまとめ、10回/分に合わせて送信間隔を6.1秒以上空け、その間の確定部分をまとめて読み上げます。途中結果を返さない音声認識では、認識結果の到着後から分割処理します。重なりを避ける設定は再生開始を待ちます。再生中の音声は最後まで読みます。</small>
+        <small>Adaptiveは文字の到着速度・観測した無音区間・待ち音声をもとに区切りを調整します。Aivisのみ話速を最大8%補正します（既存設定との合成後は上限2）。手動の詳細値は優先されます。重なりを自動調整する場合は「自動」を選んでください。</small>
         <details><summary>逐次読み上げの詳細設定</summary>
           <label for="segmentMin">最小文字数（0＝モード既定）</label><input id="segmentMin" type="number" min="0" max="100" step="1">
           <label for="segmentStability">認識の安定待ち ms（0＝既定）</label><input id="segmentStability" type="number" min="0" max="2000" step="50">
@@ -1606,7 +1607,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260908-v1383-rate-cards';
+var APP_BUILD = '20260908-v1390-order-adaptive';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -6061,6 +6062,7 @@ function aivisBody(text, seat, fmt, prosody){
     vals.volume=prosodyRound(prosodyClamp(vals.volume*pmap.volume,0,2),3);
     try{ Object.defineProperty(body,'_prosodyMap',{value:pmap,enumerable:false}); }catch(e){}
   }
+  if(SEG.dispatchRate>1)vals.speaking_rate=prosodyRound(prosodyClamp(vals.speaking_rate*SEG.dispatchRate,0.5,2),3);
   Object.keys(vals).forEach(function(k){
     if (vals[k] !== AIVIS_DEFAULTS[k]) body[k] = vals[k];
   });
@@ -9661,7 +9663,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.38.3 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.39.0 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -10990,7 +10992,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.38.3 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.39.0 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11050,6 +11052,8 @@ function diagText(devices){
    ['認識文字表示','STT受信ごとにカードへ反映／確定・翻訳・TTSは独立したタイマーで進行'],
    ['逐次エコー除外','部分単位の自動音声のみ抑制（認識文字表示は維持）'],
    ['Aivis送信制御','全合成経路で10回/60秒・最小6.1秒間隔／429待機再試行2回／同声・同言語を最大500文字でまとめる'],
+   ['自動適応',CFG.segmentMode==='adaptive'?segAdaptiveLabel():'OFF（固定モード）'],
+   ['再生順序','カード受付順＋部分seq／送信本文・結合した部分IDをdispatchに記録'],
    ['TTS逐次読み上げ',CFG.segmentMode+' / 重なり '+CFG.segmentOverlap],
    ['逐次確定・訂正',SEG.committed+' / '+SEG.corrected+'（訂正率 '+(SEG.committed?(100*SEG.corrected/SEG.committed).toFixed(1):'0')+'%）'],
    ['逐次TTS待ち音声',segDebt().toFixed(1)+'秒（文字数による推定）'],
@@ -11293,14 +11297,14 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.38.3 / Phase 1.
+/* Duo Segment pipeline v1.39.0 / Phase 2 opt-in pilot.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
  */
 var SEG = {cards:[], queue:[], active:null, epoch:0, timer:null, translations:0, requests:[],
-  voice:{}, received:{}, uiTimer:null, committed:0, corrected:0, lastReason:'—', lastTick:0};
-function segEnabled(){return CFG.segmentMode!=='off' && /^(balanced|fast)$/.test(CFG.segmentMode) && CFG.sttProvider!=='realtime';}
+  voice:{}, received:{}, uiTimer:null, committed:0, corrected:0, lastReason:'—', lastTick:0,cardOrder:0,dispatchOrder:0,dispatchRate:1,adaptive:{}};
+function segEnabled(){return CFG.segmentMode!=='off' && /^(balanced|fast|adaptive)$/.test(CFG.segmentMode) && CFG.sttProvider!=='realtime';}
 function segNumber(v,f,min,max){v=Number(v);return isFinite(v)&&v>0?Math.max(min,Math.min(max,v)):f;}
 function segPolicy(mode){var fast=mode==='fast';return {
   min:segNumber(CFG.segmentMin,fast?8:12,4,100), max:fast?28:48,
@@ -11345,7 +11349,7 @@ function segInit(e){
   if(e.segment)return e;
   e.startedAt=Date.parse(e.ts)||Date.now();e.status=e.interim?'active':'final';e.segments=[];
   e.segment={text:'',stableSince:[],revision:0,mode:CFG.segmentMode,epoch:SEG.epoch,
-    cancelled:false,final:false,deferred:false,lastUpdate:Date.now(),overlapMs:0,playMs:0};
+    order:++SEG.cardOrder,cancelled:false,final:false,deferred:false,lastUpdate:Date.now(),overlapMs:0,playMs:0};
   SEG.cards.push(e);segWake();return e;
 }
 function segJoin(e){
@@ -11398,7 +11402,7 @@ function segRefreshProgress(){
   });
 }
 function segStartProgress(){
-  SEG.received={};SEG.voice={};if(SEG.uiTimer)clearInterval(SEG.uiTimer);
+  SEG.received={};SEG.voice={};SEG.adaptive={};if(SEG.uiTimer)clearInterval(SEG.uiTimer);
   SEG.uiTimer=setInterval(segRefreshProgress,250);segRefreshProgress();
 }
 function segStopProgress(){if(SEG.uiTimer)clearInterval(SEG.uiTimer);SEG.uiTimer=null;}
@@ -11413,7 +11417,7 @@ function segEchoCandidate(text){
     return r.t.indexOf(n)>=0||(n.indexOf(r.t)>=0&&r.t.length/n.length>=0.85)||biDice(n,r.t)>=0.85;
   });
 }
-function segVoice(seat,rms){SEG.voice[seat]={at:Date.now(),last:rms>CFG.vad/1000?Date.now():((SEG.voice[seat]||{}).last||Date.now())};}
+function segVoice(seat,rms){var talking=rms>CFG.vad/1000;segObservePause(seat,SEG.voice[seat],talking);SEG.voice[seat]={talking:talking,at:Date.now(),last:rms>CFG.vad/1000?Date.now():((SEG.voice[seat]||{}).last||Date.now())};}
 function segAttachMeter(owner,track,seat){
   if(owner._segmentMeter||!segEnabled())return;
   try{
@@ -11432,13 +11436,15 @@ function segDetachMeter(owner){var meter=owner._segmentMeter;if(!meter)return;cl
   try{meter.source.disconnect();meter.ac.close();}catch(err){}owner._segmentMeter=null;}
 function segSilence(e,now){var v=SEG.voice[e.seat];return v&&now-v.at<400?now-v.last:null;}
 function segDebt(){
-  var total=0;SEG.queue.forEach(function(j){if(!j.cancelled){
+  var total=0,active=SEG.active,group=active?(active.group||[active]):[],groupMs=0;
+  SEG.queue.forEach(function(j){if(!j.cancelled){
     var s=j.segment,useSource=CFG.ttsSrc||!s.translationText,chars=(useSource?s.sourceText:s.translationText).length;
     var lang=useSource?j.card.srcLang:j.card.dstLang;
     var ms=Math.max(400,chars* (/^(ja|zh)/.test(lang)?170:65));
-    if(j===SEG.active && s.audio&&s.audio.firstAudioAt)ms=Math.max(0,ms-(Date.now()-s.audio.firstAudioAt));
-    total+=ms;
-  }});return total/1000;
+    if(group.indexOf(j)>=0)groupMs+=ms;else total+=ms;
+  }});
+  if(active&&active.segment.audio.firstAudioAt)groupMs=Math.max(0,groupMs-(Date.now()-active.segment.audio.firstAudioAt));
+  return (total+groupMs)/1000;
 }
 function segUpdate(e,text,final){
   segInit(e);var b=e.segment,now=Date.now();text=String(text||'');
@@ -11446,6 +11452,7 @@ function segUpdate(e,text,final){
   var old=b.text,prefix=0;while(prefix<old.length&&prefix<text.length&&old[prefix]===text[prefix])prefix++;
   var suffix=0;while(suffix<old.length-prefix&&suffix<text.length-prefix&&old[old.length-1-suffix]===text[text.length-1-suffix])suffix++;
   if(old!==text){
+    segObserveTempo(e,old,text,now);
     var oldEnd=old.length-suffix,newEnd=text.length-suffix,delta=text.length-old.length;
     b.revision++;b.lastUpdate=now;
     b.stableSince=b.stableSince.slice(0,prefix).concat(Array(text.length-prefix).fill(now));
@@ -11494,7 +11501,7 @@ function segBackpressure(e,p,debt){
 }
 function segCheck(e){
   var b=e.segment;if(!b||b.cancelled)return;
-  var p=segPolicy(b.mode),debt=segDebt(),now=Date.now();
+  var debt=segDebt(),p=segPolicyFor(e,debt),now=Date.now();
   var count=0;
   while(count++<100){
     var s=e.segments[e.segments.length-1];if(!s||s.committedAt)break;
@@ -11508,7 +11515,7 @@ function segCheck(e){
     var stable=0;while(s.start+stable<b.stableSince.length&&now-b.stableSince[s.start+stable]>=p.stability)stable++;
     var silence=segSilence(e,now);
     var d=segDecision({text:s.sourceText,stableLength:b.final?s.sourceText.length:stable,policy:p,
-      mode:b.mode,debt:debt,silenceMs:silence===null?-1:silence,final:b.final});
+      mode:p.mode,debt:debt,silenceMs:silence===null?-1:silence,final:b.final});
     if(!d.length)break;
     s.end=s.start+d.length;s.sourceText=b.text.slice(s.start,s.end);s.id=e.id+'-s'+s.seq;
     s.committedSourceText=s.sourceText;s.committedAt=now;s.stabilityMs=now-(b.stableSince[s.end-1]||now);
@@ -11522,7 +11529,7 @@ function segCheck(e){
     else SEG.queue.push({card:e,segment:s,epoch:SEG.epoch,cancelled:false});
     SEG.committed++;
     SEG.lastReason=d.reasons.join(' + ');
-    dlog('segment','commit',{cardId:e.id,seq:s.seq,chars:s.sourceText.length,reason:d.reasons,
+    dlog('segment','commit',{cardId:e.id,seq:s.seq,text:s.sourceText,chars:s.sourceText.length,reason:d.reasons,
       stabilityMs:s.stabilityMs,debtEstimateSeconds:debt});segDraft(e);
   }
 }
@@ -11572,19 +11579,30 @@ function segRefreshTranslations(){
 }
 function segAudioAllowed(e){return CFG.ttsMode!=='off' && !(CFG.ttsWho==='B2A'&&e.seat!=='B') && !(CFG.ttsWho==='A2B'&&e.seat!=='A') &&
   !(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat));}
+function segQueueCompare(a,b){
+  if(a.manual||b.manual)return a.manual&&b.manual?a.segment.seq-b.segment.seq:(a.manual?-1:1);
+  return a.card.segment.order-b.card.segment.order||a.segment.seq-b.segment.seq;
+}
+function segEarlierOpen(j){
+  if(j.manual)return false;
+  return SEG.cards.some(function(e){return e.segment.order<j.card.segment.order&&!e.segment.cancelled&&!e.segment.final&&
+    !e.segment.audioMuted&&segAudioAllowed(e);});
+}
 function segPump(){
   if(SEG.active||ttsIsBusy())return;
+  SEG.queue.sort(segQueueCompare);
   while(SEG.queue.length){
     var j=SEG.queue[0],e=j.card,s=j.segment;
     if(j.cancelled||j.epoch!==SEG.epoch||e.segment.cancelled){SEG.queue.shift();continue;}
+    if(segEarlierOpen(j))return;
     if(!CFG.ttsSrc&&!s.translationReady)return;
     if((!j.manual&&!segAudioAllowed(e))||(!CFG.ttsSrc&&s.translationError)||!(CFG.ttsSrc?s.sourceText:s.translationText).trim()){
       s.audio.status='cancelled';s.audio.skipReason=s.translationError?'translation-error':'not-selected-or-empty';
       s.state=s.translationError?'error':'skipped';SEG.queue.shift();continue;
     }
-    var silence=segSilence(e,Date.now());
+    var silence=segSilence(e,Date.now()),overlap=segOverlapFor(e,segDebt());
     // Without a trustworthy input meter, avoid-overlap waits for STT final.
-    if(CFG.segmentOverlap==='avoid'&&!e.segment.final&&(silence===null||silence<segPolicy(e.segment.mode).silence))return;
+    if(overlap==='avoid'&&!e.segment.final&&(silence===null||silence<segPolicyFor(e,segDebt()).silence))return;
     var useSource=j.manual||CFG.ttsSrc,lang=useSource?e.srcLang:e.dstLang;
     var group=[j],source=s.sourceText,target=s.translationText||'';
     if(CFG.ttsMode==='aivis'&&lang==='ja'){
@@ -11592,6 +11610,7 @@ function segPump(){
       // Collect adjacent ready parts during the rate wait. Keep speaker/language/prosody identical.
       for(var n=1;n<SEG.queue.length;n++){
         var next=SEG.queue[n],ns=next.segment,ne=next.card;
+        if(segEarlierOpen(next))break;
         if(next.cancelled||next.epoch!==j.epoch||ne.segment.cancelled||!!next.manual!==!!j.manual||
           ne.seat!==e.seat||ne.srcLang!==e.srcLang||ne.dstLang!==e.dstLang||
           JSON.stringify(ne.prosody||null)!==JSON.stringify(e.prosody||null)||
@@ -11610,11 +11629,18 @@ function segPump(){
       source=group.map(function(q){return q.segment.sourceText;}).join('');
       target=group.map(function(q){return q.segment.translationText||'';}).filter(Boolean).join(' ');
     }
+    var rate=e.segment.mode==='adaptive'&&CFG.ttsMode==='aivis'&&lang==='ja'?segAdaptiveState(e,segDebt()).rate:1;
     j.group=group;
+    j.dispatchOrder=++SEG.dispatchOrder;
+    j.speechText=useSource?source:target;
+    group.forEach(function(q){q.segment.audio.spokenText=useSource?q.segment.sourceText:q.segment.translationText;
+      q.segment.audio.dispatchOrder=j.dispatchOrder;q.segment.audio.schedulerRate=rate;});
     group.forEach(function(q){q.segment.state='tts_generating';q.segment.dispatched=true;q.segment.audio.status='generating';q.segment.audio.requestedAt=Date.now();});
     SEG.active=j;j.started=false;j.finished=false;
     var proxy={id:e.id,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,srcText:source,dstText:target,prosody:e.prosody};
-    dlog('segment','dispatch',{cardId:e.id,seq:s.seq,parts:group.length,chars:(useSource?source:target).length,debtEstimateSeconds:segDebt(),overlap:CFG.segmentOverlap});
+    dlog('segment','dispatch',{cardId:e.id,seq:s.seq,order:j.dispatchOrder,members:group.map(function(q){return q.segment.id;}),
+      text:j.speechText,parts:group.length,chars:j.speechText.length,debtEstimateSeconds:segDebt(),overlap:overlap,schedulerRate:rate});
+    SEG.dispatchRate=rate;
     try{
       if(j.manual){
         if(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat)){j.finished=true;s.audio.error='loop-prevention';return;}
@@ -11623,7 +11649,7 @@ function segPump(){
           if(fn)fn(source,e.srcLang,e.seat,e.prosody);else browserSpeak(source,L(e.srcLang).tts,e.prosody);
         });
       }else speak(proxy);
-    }catch(err){s.audio.error=String(err.message||err);j.finished=true;}
+    }catch(err){s.audio.error=String(err.message||err);j.finished=true;}finally{SEG.dispatchRate=1;}
     // Providers reserve ttsActive synchronously; an immediate skip has no callback.
     if(!ttsIsBusy())j.finished=true;
     return;
@@ -11661,7 +11687,8 @@ function segTick(){
           qa.endedAt=now;qa.status=a.status;qa.firstAudioAt=a.firstAudioAt;qa.error=a.error;
           q.segment.state=a.status==='done'?'played':'error';
         });
-        SEG.queue.splice(0,(j.group||[j]).length);SEG.active=null;
+        var finishedGroup=j.group||[j];
+        SEG.queue=SEG.queue.filter(function(q){return finishedGroup.indexOf(q)<0;});SEG.active=null;
       }
     }
     segPump();segStatus();
@@ -11677,7 +11704,7 @@ function segTick(){
 }
 function segStatus(){var el=$('segmentStatus');if(!el)return;
   el.textContent='モード '+(CFG.segmentMode||'off')+' ／ 待ち音声 約'+segDebt().toFixed(1)+'秒（推定） ／ 確定 '+SEG.committed+'部分 ／ 確定後訂正 '+SEG.corrected+'/'+SEG.committed+' ／ '+SEG.lastReason+
-    (CFG.ttsMode==='aivis'?' ／ Aivis 10回/分 · '+(aivisRateWait()>0?'次の送信まで '+(aivisRateWait()/1000).toFixed(1)+'秒':'送信可能'):'');
+    segAdaptiveLabel()+(CFG.ttsMode==='aivis'?' ／ Aivis 10回/分 · '+(aivisRateWait()>0?'次の送信まで '+(aivisRateWait()/1000).toFixed(1)+'秒':'送信可能'):'');
 }
 function segCancelAudio(why){
   // Output settings must not invalidate source cards or in-flight translations.
@@ -11834,6 +11861,78 @@ function segReplay(e,viewer,btn){
     var manualCard=Object.assign({},clone,{srcLang:useSrc?e.srcLang:e.dstLang,dstLang:useSrc?e.srcLang:e.dstLang});
     SEG.queue.push({card:manualCard,segment:c,epoch:SEG.epoch,cancelled:false,manual:true,viewer:viewer,btn:btn});
   });segWake();return true;
+}
+
+/* Phase 2 pilot. Text arrival rate is a proxy, never a measured acoustic speaking rate. */
+function segTempoState(seat){return SEG.adaptive[seat]||(SEG.adaptive[seat]={events:[],pauseMs:null,pauseSamples:0,decision:null,changedAt:0,checkedAt:0});}
+function segObserveTempo(e,old,text,now){
+  if(text.indexOf(old)!==0)return; // Revisions do not count as newly spoken characters.
+  var chars=text.length-old.length;if(!chars)return;
+  var a=segTempoState(e.seat);a.events.push({at:now,chars:chars});
+  a.events=a.events.filter(function(x){return now-x.at<=10000;}).slice(-250);
+}
+function segObservePause(seat,old,talking){
+  var a=segTempoState(seat),now=Date.now();
+  if(old&&old.talking===false&&talking&&now-old.last>=150&&now-old.last<=10000){
+    var pause=now-old.last;a.pauseMs=a.pauseMs===null?pause:0.7*a.pauseMs+0.3*pause;a.pauseSamples++;
+  }
+  if(talking&&(!old||!old.talking))a.voiceRunAt=now;
+  if(!talking)a.voiceRunAt=0;
+}
+function segAdaptiveDecision(input){
+  var profile='balanced',mode='balanced',min=12,max=48,stability=400,silence=700,rate=1,reason='initial-observation';
+  if(input.committed>=10&&input.correctionRate>0.1){
+    profile='cautious';min=16;max=64;stability=800;silence=1000;reason='corrections-high';
+  }else if(input.debt>=8||(input.previous==='catchup'&&input.debt>4)){
+    profile='catchup';min=20;max=72;stability=450;rate=1.08;reason='audio-backlog';
+  }else if(input.debt>=4){
+    profile='grouped';min=16;max=64;rate=1.04;reason='audio-wait-growing';
+  }else if(input.samples>=3&&input.spanMs>=2000&&input.cps>input.fastCps&&input.pauseMs!==null&&input.pauseMs<700){
+    profile='fast';mode='fast';min=8;max=28;stability=350;silence=450;reason='fast-text-short-pauses';
+  }else if(input.samples>=3)reason='balanced-tempo';
+  return {profile:profile,mode:mode,min:min,max:max,stability:stability,silence:silence,rate:rate,reason:reason};
+}
+function segAdaptiveState(e,debt){
+  var a=segTempoState(e.seat),now=Date.now();
+  if(a.decision&&now-a.checkedAt<1000)return a.decision;
+  a.checkedAt=now;a.events=a.events.filter(function(x){return now-x.at<=10000;});
+  var span=a.events.length?now-a.events[0].at:0;
+  a.cps=span>=2000?a.events.reduce(function(n,x){return n+x.chars;},0)/(span/1000):0;
+  var next=segAdaptiveDecision({debt:debt,cps:a.cps,samples:a.events.length,spanMs:span,pauseMs:a.pauseMs,
+    fastCps:/^(ja|zh)/.test(e.srcLang)?5:13,previous:a.decision&&a.decision.profile,
+    committed:SEG.committed,correctionRate:SEG.committed?SEG.corrected/SEG.committed:0});
+  if(a.decision&&next.profile!==a.decision.profile&&now-a.changedAt<3000&&next.profile!=='cautious')return a.decision;
+  if(!a.decision||next.profile!==a.decision.profile){
+    a.changedAt=now;
+    dlog('segment','adaptive-decision',{seat:e.seat,profile:next.profile,reason:next.reason,textCharsPerSecProxy:+a.cps.toFixed(2),
+      pauseMs:a.pauseMs===null?null:Math.round(a.pauseMs),pauseSamples:a.pauseSamples,debtEstimateSeconds:debt,
+      stabilityMs:next.stability,maxChars:next.max,aivisRateMultiplier:next.rate});
+  }
+  a.decision=next;return next;
+}
+function segPolicyFor(e,debt){
+  if(e.segment.mode!=='adaptive'){var fixed=segPolicy(e.segment.mode);fixed.mode=e.segment.mode;return fixed;}
+  var a=segAdaptiveState(e,debt),p=segPolicy('balanced');
+  p.mode=a.mode;p.max=a.max;
+  if(!Number(CFG.segmentMin))p.min=a.min;
+  if(!Number(CFG.segmentStability))p.stability=a.stability;
+  if(!Number(CFG.segmentSilence))p.silence=a.silence;
+  return p;
+}
+function segOverlapFor(e,debt){
+  if(CFG.segmentOverlap!=='auto')return CFG.segmentOverlap;
+  if(ttsLoopRisk(e.seat))return 'avoid';
+  var silence=segSilence(e,Date.now());if(silence===null)return 'avoid';
+  if(silence>=segPolicyFor(e,debt).silence)return 'allow';
+  var a=segTempoState(e.seat);
+  return debt>=8||(debt>=4&&a.voiceRunAt&&Date.now()-a.voiceRunAt>=4000)?'allow':'avoid';
+}
+function segAdaptiveLabel(){
+  if(CFG.segmentMode!=='adaptive')return '';
+  return ' ／ 自動 '+['A','B'].map(function(seat){var a=SEG.adaptive[seat];if(!a||!a.decision)return seat+':観測中';
+    var names={balanced:'均衡',fast:'早い追従',grouped:'まとめ読み',catchup:'追従回復',cautious:'訂正待ち'};
+    return seat+':'+names[a.decision.profile]+' · 文字到着 '+(a.cps||0).toFixed(1)+'字/秒（代理値）';
+  }).join(' / ');
 }
 
 /* Aivis subscription budget: this page's requests, including previews and retries.
