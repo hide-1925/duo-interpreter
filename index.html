@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.44.2 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.44.5 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -729,7 +729,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.2 Phase 4</span><span class="build-id">Build: 20260908-v1442-realtime-cards-volume</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.5 Phase 4</span><span class="build-id">Build: 20260908-v1445-four-o-file-carry</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -739,7 +739,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.2 Phase 4</span><span class="build-id">Build: 20260908-v1442-realtime-cards-volume</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.5 Phase 4</span><span class="build-id">Build: 20260908-v1445-four-o-file-carry</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -832,7 +832,7 @@
           <select id="ovCapResolution"><option value="native">自動（共有元の最大）</option><option value="1080">Full HD（1920×1080・30fps）</option><option value="1440">2K（2560×1440・30fps）</option><option value="2160">4K（3840×2160・15fps）</option></select>
         </label>
         <label>取込音声
-          <select id="ovCapAudio"><option value="target">対象の音声のみ（推奨）</option><option value="system">システム全体の音声</option><option value="off">音声を取り込まない</option></select>
+          <select id="ovCapAudio"><option value="target">対象の音声のみ（推奨）</option><option value="system">システム全体の音声</option></select>
         </label>
         <label>Aの訳文色<input type="color" id="ovCapTextA"></label>
         <label>Bの訳文色<input type="color" id="ovCapTextB"></label>
@@ -1053,6 +1053,13 @@
       </div>
       <input type="text" id="sttModelCustom" placeholder="モデル名を直接入力" style="display:none">
       <small id="sttModelNote"></small>
+      <div id="fourOField" class="field" style="display:none" data-fold="off">
+        <label>4o系の録音上限</label>
+        <select id="fourOSeconds"><option value="6">6秒</option><option value="10">10秒</option><option value="14">14秒</option><option value="18">18秒</option><option value="custom">任意の秒数</option></select>
+        <div id="fourOCustomField" style="display:none"><label for="fourOCustom">秒数（1〜120秒）</label><input id="fourOCustom" type="number" min="1" max="120" step="1" value="10"></div>
+        <label class="settings-check switch"><input id="fourOCarry" type="checkbox" checked> 未確定の末尾を次の録音結果につなぐ</label>
+        <small>mini・4o-transcribe・話者分離版に共通。無音で早めに送信し、話し続けても指定秒数で送信します。文字は認識完了後に表示します。時間で切った録音の最後の一文は未確定で表示し、次の結果へつなぎます。保持上限は録音上限＋5秒です。秒数の変更は次の録音から反映されます。</small>
+      </div>
       <div class="field" id="sttKeyField">
         <label>APIキー（翻訳と別プロバイダの場合）</label>
         <div class="keyline">
@@ -1646,7 +1653,7 @@
         <label>配置<select id="cfgOvCapLayout"><option value="right">右レール</option><option value="left">左レール</option><option value="bottom">下段</option><option value="free">自由配置</option></select></label>
         <label>レール幅<select id="cfgOvCapWidth"><option value="18">18%</option><option value="22">22%</option><option value="28">28%</option><option value="34">34%</option><option value="40">40%</option></select></label>
         <label>取込解像度<select id="cfgOvCapResolution"><option value="native">自動（共有元の最大）</option><option value="1080">Full HD（1920×1080・30fps）</option><option value="1440">2K（2560×1440・30fps）</option><option value="2160">4K（3840×2160・15fps）</option></select></label>
-        <label>取込音声<select id="cfgOvCapAudio"><option value="target">対象の音声のみ（推奨）</option><option value="system">システム全体の音声</option><option value="off">音声を取り込まない</option></select></label>
+        <label>取込音声<select id="cfgOvCapAudio"><option value="target">対象の音声のみ（推奨）</option><option value="system">システム全体の音声</option></select></label>
         <label>Aの訳文色<input type="color" id="cfgOvCapTextA"></label><label>Bの訳文色<input type="color" id="cfgOvCapTextB"></label>
         <label>Aの原文色<input type="color" id="cfgOvCapSrcA"></label><label>Bの原文色<input type="color" id="cfgOvCapSrcB"></label>
         <label>背景色<input type="color" id="cfgOvCapBg"></label>
@@ -1705,7 +1712,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260908-v1442-realtime-cards-volume';
+var APP_BUILD = '20260908-v1445-four-o-file-carry';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -1889,6 +1896,8 @@ function loadCfg(){
     ctx:       pref('di.ctx','ctx',''),
     sttProvider: pref('di.sttp','sttProvider','webspeech'),
     sttModel:  pref('di.sttm','sttModel',''),
+    fourOSeconds:fourOSeconds(pref('di.fourOSeconds','fourOSeconds','10')),
+    fourOCarry:pref('di.fourOCarry','fourOCarry','1')+''==='1',
     sttPunct:  true,
     segmentMode:pref('di.segmentMode','segmentMode','balanced'),
     segmentBoundary:pref('di.segmentBoundary','segmentBoundary','semantic'),
@@ -1940,7 +1949,7 @@ function loadCfg(){
     ovCapLayout:pref('di.overlay.layout','ovCapLayout','right'),
     ovCapWidth: pref('di.overlay.width','ovCapWidth','28'),
     ovCapResolution:pref('di.overlay.resolution','ovCapResolution','native'),
-    ovCapAudio:pref('di.overlay.audio','ovCapAudio','target'),
+    ovCapAudio:pref('di.overlay.audio','ovCapAudio','target')==='system'?'system':'target',
     ovCapTextA: pref('di.overlay.textA','ovCapTextA','#FFFFFF'),
     ovCapTextB: pref('di.overlay.textB','ovCapTextB','#A7E8FF'),
     ovCapSrcA:  pref('di.overlay.srcA','ovCapSrcA','#D4E8DE'),
@@ -2201,7 +2210,7 @@ function paint(feedId, e, viewer){
     seatName(e.seat) + ' · ' + L(e.srcLang).name + ' · ' + e.time + (noTranslation ? ' · 文字起こし' : (isSelf ? ' · 原文' : ' · 訳'));
   segPaintText(el.querySelector('.main'),e,noTranslation||isSelf,main);
   el.querySelector('.live-rec').textContent = e.rtWindow?realtimeCardLabel(e):segProgressLabel(e);
-  if(e.rtWindow){
+  if(e.rtWindow||e.fourOState){
     var at=S.entries.indexOf(e),next=null;
     for(var j=at+1;j<S.entries.length&&!next;j++)next=feed.querySelector('[data-eid="'+S.entries[j].id+'"]');
     if(next&&el.nextSibling!==next)feed.insertBefore(el,next);
@@ -2859,7 +2868,7 @@ function overlayCaptureVideoConstraint(){
 function overlayAudioProfile(value){
   var key=String(value||'target');
   if(key==='system')return {key:key,label:'システム全体の音声',audio:true,systemAudio:'include',windowAudio:'system'};
-  if(key==='off')return {key:key,label:'音声を取り込まない',audio:false,systemAudio:'exclude',windowAudio:'exclude'};
+  // Legacy OFF preferences now use target audio; audio is required for capture.
   return {key:'target',label:'対象の音声のみ（推奨）',audio:true,systemAudio:'exclude',windowAudio:'window'};
 }
 function overlayDisplayMediaOptions(video,controller){
@@ -2869,6 +2878,14 @@ function overlayDisplayMediaOptions(video,controller){
   if(a.audio){options.systemAudio=a.systemAudio;options.windowAudio=a.windowAudio;}
   if(controller)options.controller=controller;
   return options;
+}
+function requireSharedAudio(stream,surface){
+  var track=stream&&stream.getAudioTracks()[0];
+  if(track&&track.readyState==='live')return track;
+  var message=overlayAudioProfile(CFG.ovCapAudio).key==='target'&&surface==='monitor'?
+    '画面全体の音声を使うには「システム全体の音声」を選んで共有し直してください。':
+    '共有音声がありません。「画面取込」を押し、共有画面の「アプリ音声も共有する」または「音声も共有」をONにして選び直してください。';
+  var err=new Error(message);err.name='SharedAudioRequiredError';throw err;
 }
 function overlayNoAudioDetail(surface){
   var a=overlayAudioProfile(CFG.ovCapAudio);
@@ -2980,7 +2997,7 @@ var OverlaySession = {
     var previousState=this.state;
     $('capturePlaceholder').hidden = false;
     this.lastError = '';
-    this.transition('SELECTING_SOURCE','共有する画面またはウィンドウを選択してください');
+    this.transition('SELECTING_SOURCE','共有元を選び、「アプリ音声も共有する」または「音声も共有」をONにしてください');
     var stream, controller=null;
     try {
       if(caps.captureController)controller=new window.CaptureController();
@@ -3013,6 +3030,7 @@ var OverlaySession = {
         dlog('overlay','audio-policy-drop',{mode:audioPolicy.key,surface:selectedSurface});
         audio=null;
       }
+      requireSharedAudio(stream,selectedSurface);
       this.stopSource(true);
       this.controller=controller;this.forwardWheelOn=false;
       this.stream = stream; this.videoTrack = video; this.audioTrack = audio;
@@ -3073,7 +3091,8 @@ var OverlaySession = {
         $('capturePlaceholder').hidden=!!this.stream;
       }
       else {
-        this.transition('ERROR',this.lastError);
+        this.transition(replacing&&this.stream?previousState:'ERROR',this.lastError);
+        $('capturePlaceholder').hidden=!!this.stream;
         toast('画面を取り込めませんでした：' + this.lastError);
       }
       dlog('overlay','capture-FAIL',{name:err&&err.name,err:this.lastError});
@@ -8624,6 +8643,7 @@ function StreamEngine(seat, stream, opts){
   this.rec=null; this.ac=null; this.an=null; this.dead=false;
   this.prosody=null;
   this.peak=0; this.sent=0; this.hbAt=0; this.hbPeak=0; this.lowStreak=0; this.warnedLow=false;
+  this.fourO=fourOFileModel()?new FourOFileBuffer(this):null;
 }
 StreamEngine.prototype.start = function(){
   var self = this;
@@ -8682,9 +8702,10 @@ StreamEngine.prototype.start = function(){
     }
 
     if (rms > CFG.vad/1000) { self.voice=true; self.last=t; }
-    if (self.voice && (t-self.last)>900 && (t-self.segStart)>700) self.cut(true);
-    else if (!self.voice && (t-self.segStart)>8000) self.cut(false);
-    else if ((t-self.segStart)>20000) self.cut(true);
+    if(self.fourO)self.fourO.poll(t,t-self.last>900);
+    if (self.voice && (t-self.last)>900 && (t-self.segStart)>700) self.cut(true,'silence');
+    else if (!self.voice && (t-self.segStart)>8000) self.cut(false,'silence');
+    else if ((t-self.segStart)>(self.fourO&&self.rec&&self.rec._fourOMeta?self.rec._fourOMeta.seconds*1000:20000)) self.cut(true,'limit');
   }, 60);
 };
 StreamEngine.prototype.newRec = function(){
@@ -8695,32 +8716,40 @@ StreamEngine.prototype.newRec = function(){
   var mime = pickMime();
   try{ this.rec = mime ? new MediaRecorder(this.stream,{mimeType:mime}) : new MediaRecorder(this.stream); }
   catch(e){ dlog('audio','recorder-FAIL',{ err:String((e&&e.message)||e) }); toast('録音を開始できません: '+e.message); return; }
-  this.rec.ondataavailable = function(ev){ if (ev.data && ev.data.size) self.chunks.push(ev.data); };
+  var recorder=this.rec,recordedChunks=this.chunks;
+  this.rec._fourOMeta={seconds:fourOSeconds(CFG.fourOSeconds),carry:CFG.fourOCarry!==false};
+  this.rec.ondataavailable = function(ev){ if (ev.data && ev.data.size) recordedChunks.push(ev.data); };
   this.rec.onstop = function(){
-    var send = self.rec && self.rec._send;
-    var peak = (self.rec && self.rec._peak) || 0;
-    var prosody = self.rec && self.rec._prosody;
-    var blob = new Blob(self.chunks, { type:(self.rec && self.rec.mimeType) || 'audio/webm' });
+    var send = recorder && recorder._send;
+    var peak = (recorder && recorder._peak) || 0;
+    var prosody = recorder && recorder._prosody;
+    var blob = new Blob(recordedChunks, { type:(recorder && recorder.mimeType) || 'audio/webm' });
     if (send && blob.size > 6000){
       self.sent++;
-      transcribeBlob(blob, self.seat, prosody);
+      if(self.fourO)self.fourO.submit(blob,self.seat,prosody,recorder._fourOMeta);
+      else transcribeBlob(blob, self.seat, prosody);
     } else {
       // これまで完全に無記録だった経路。捨てた理由が分からないと原因を追えない。
       dlog('audio','discard',{ seat:self.seat, why: (!send ? '発話を検出せず（無音扱い）' : 'データが小さすぎる'),
         bytes: blob.size, peak:+peak.toFixed(4), threshold:+(CFG.vad/1000).toFixed(4) });
     }
-    if (!self.dead && S.running) self.newRec();
+    if(self.rec===recorder){self.rec=null;if(!self.dead&&S.running)self.newRec();}
   };
   try{ this.rec.start(); }catch(e){}
 };
-StreamEngine.prototype.cut = function(send){
+StreamEngine.prototype.cut = function(send,reason){
+  if(this.rec&&this.rec._stopping)return;
   if (!this.rec || this.rec.state==='inactive'){ if(!this.dead && S.running) this.newRec(); return; }
+  this.rec._stopping=true;
   this.rec._send = !!send;
+  if(this.rec._fourOMeta){this.rec._fourOMeta.reason=reason||'silence';
+    if(this.fourO)dlog('stt','4o-recording-cut',{reason:this.rec._fourOMeta.reason,seconds:this.rec._fourOMeta.seconds,spanMs:Date.now()-this.segStart,send:!!send});}
   this.rec._peak = this.peak;
   if (send && this.prosody) this.rec._prosody = this.prosody.finalize();
   try{ this.rec.stop(); }catch(e){}
 };
 StreamEngine.prototype.stop = function(){
+  if(this.fourO)this.fourO.stop();
   this.dead = true;
   clearInterval(this.timer);
   if (this.rec){ this.rec._send=false; try{ this.rec.stop(); }catch(e){} }
@@ -8737,6 +8766,140 @@ function pickMime(){
   for (var i=0;i<c.length;i++) if (window.MediaRecorder && MediaRecorder.isTypeSupported(c[i])) return c[i];
   return '';
 }
+
+/* Bounded recorded-audio recognition. Transport chunks and readable cards have
+   independent boundaries. No live/Reatime model substitution is performed. */
+function fourOFileModel(model){return CFG.sttProvider==='openai'&&/^gpt-4o(?:-mini)?-transcribe(?:$|-)/.test(String(model==null?CFG.sttModel:model).trim());}
+function fourOSeconds(value){var n=Number(value);return isFinite(n)&&n>=1&&n<=120?Math.round(n):10;}
+function fourOSettingsUI(){
+  var field=$('fourOField');if(!field)return;field.style.display=fourOFileModel()?'':'none';
+  var n=fourOSeconds(CFG.fourOSeconds),preset=[6,10,14,18].indexOf(n)>=0;
+  $('fourOSeconds').value=preset?String(n):'custom';$('fourOCustom').value=n;
+  $('fourOCustomField').style.display=preset?'none':'';$('fourOCarry').checked=CFG.fourOCarry!==false;
+}
+function fourOSetSeconds(value){
+  var n=Number(value);if(!isFinite(n)||n<1||n>120||n!==Math.round(n)){toast('録音上限は1〜120秒の整数で指定してください');fourOSettingsUI();return;}
+  CFG.fourOSeconds=n;store.set('di.fourOSeconds',String(n));fourOSettingsUI();
+  dlog('stt','4o-interval-setting',{seconds:n,effective:'next-recording'});
+}
+function fourOSetModel(value){
+  if(CFG.sttModel===value)return;var was=S.running;if(was)stopAll();
+  CFG.sttModel=value;store.set('di.sttm',value);fourOSettingsUI();renderAudioRouteWarning();
+  if(was)toast('認識モデルを変更しました。「開始」で再開してください。',true);
+}
+function fourOSentenceEnds(text){
+  var ends=[],re=/[。！？!?]+["'」』）】〕〉》\]]*\s*|\.["'”’）\])]*(?:\s+|$)/g,m;
+  while((m=re.exec(text))){
+    if(m[0][0]==='.'&&/\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e)\.$/i.test(text.slice(0,m.index+1)))continue;
+    ends.push(m.index+m[0].length);
+  }return ends;
+}
+function fourOSplit(text,reserve){
+  if(!reserve)return {ready:text,tail:''};
+  var ends=fourOSentenceEnds(text),cut=ends.length?ends[ends.length-1]:0;
+  // On a timed cut, even a final period may have been inferred from truncated audio.
+  if(cut===text.length)cut=ends.length>1?ends[ends.length-2]:0;
+  return {ready:text.slice(0,cut),tail:text.slice(cut)};
+}
+function fourOJoin(a,b){
+  // Preserve recognized characters; do not guess missing words or erase API punctuation.
+  return a+(/[A-Za-z0-9]$/.test(a)&&/^[A-Za-z0-9]/.test(b)?' ':'')+b;
+}
+function fourOCardText(e,text,final,reason){
+  e.fourOState.pending=!final;e.fourOState.reason=reason;
+  if(e.segment||segEnabled())segUpdate(e,text,final);
+  else{e.srcText=text;e.interim=!final;if(final)e.endedAt=Date.now();render(e);}
+}
+function fourOFinalize(e,reason,muted){
+  if(!e||S.entries.indexOf(e)<0)return;
+  if(muted&&e.segment)e.segment.audioMuted=true;
+  fourOCardText(e,e.srcText,true,reason);
+  if(muted){e.status='stopped';if(e.segment)e.segment.finalReason='recording-stop';render(e);}
+  else if(!e.segment){speakSrcNow(e);translate(e);}
+  dlog('stt','4o-card-final',{cardId:e.id,chars:e.srcText.length,reason:reason,muted:!!muted});
+}
+function fourOPlaceAfter(e,anchor){
+  var at=S.entries.indexOf(e);if(at>=0)S.entries.splice(at,1);
+  var pos=S.entries.indexOf(anchor);S.entries.splice(pos+1,0,e);
+  if(e.segment&&anchor.segment){
+    var next=Infinity;S.entries.forEach(function(q){if(q!==e&&q.segment&&q.segment.order>anchor.segment.order)next=Math.min(next,q.segment.order);});
+    e.segment.order=isFinite(next)?(anchor.segment.order+next)/2:anchor.segment.order+0.5;
+  }
+  render(e);
+}
+function FourOFileBuffer(engine){
+  this.engine=engine;this.model=String(CFG.sttModel).trim();this.session=sessionGen;
+  this.queue=[];this.held=null;this.dead=false;this.serial=0;
+}
+FourOFileBuffer.prototype.alive=function(){return !this.dead&&S.running&&this.session===sessionGen;};
+FourOFileBuffer.prototype.submit=function(blob,seat,prosody,meta){
+  if(!this.alive())return;
+  var self=this,e=addEntry(seat,'',true),q={id:++this.serial,entry:e,seat:seat,lang:langOf(seat),
+    srcLang:langOf(seat),dstLang:langOf(seat==='A'?'B':'A'),prosody:prosody,meta:meta,done:false,
+    created:Date.now(),text:'',controller:new AbortController()};
+  e.fourOState={pending:true,reason:'recognizing',model:this.model,request:q.id};
+  if(segEnabled())segInit(e);render(e);this.queue.push(q);
+  function settle(text,error){
+    if(q.done)return;q.done=true;clearTimeout(q.timer);
+    if(!self.alive())return;
+    if(error){q.error=String(error.message||error);dlog('stt','4o-file-error',{request:q.id,model:self.model,error:q.error.slice(0,200)});}
+    else{
+      q.text=String(text||'').trim();
+      if(S.autoMode&&micSeats().length>1&&q.text){q.seat=guessSeatFromText(q.text);q.srcLang=langOf(q.seat);q.dstLang=langOf(q.seat==='A'?'B':'A');}
+      e.seat=q.seat;e.srcLang=q.srcLang;e.dstLang=q.dstLang;
+      if(S.entries.indexOf(e)>=0)fourOCardText(e,q.text,false,'ordered-result-wait');
+      dlog('stt','4o-file-result',{request:q.id,model:self.model,cardId:e.id,chars:q.text.length,ms:Date.now()-q.created,cut:meta.reason,seconds:meta.seconds});
+    }
+    self.drain();
+  }
+  q.timer=setTimeout(function(){q.controller.abort();settle('',new Error('音声認識が20秒でタイムアウトしました'));},20000);
+  try{Promise.resolve(sttCall(blob,q.lang,{model:this.model,signal:q.controller.signal})).then(function(text){settle(text,null);},function(err){settle('',err);});}
+  catch(err){settle('',err);}
+};
+FourOFileBuffer.prototype.release=function(reason,muted){
+  var held=this.held;this.held=null;if(held)fourOFinalize(held.entry,reason,muted);
+};
+FourOFileBuffer.prototype.drain=function(){
+  while(this.alive()&&this.queue.length&&this.queue[0].done){
+    var q=this.queue.shift(),e=q.entry;
+    if(q.error){if(S.entries.indexOf(e)>=0)removeEntry(e);this.release('recognition-gap',false);toast('音声認識: '+realtimeEscape(redact(q.error)));continue;}
+    if(S.entries.indexOf(e)<0){this.release('card-removed',false);continue;}
+    if(!hasSpeechContent(q.text)||isEcho(q.text)){removeEntry(e);continue;}
+    var held=this.held;
+    if(held&&S.entries.indexOf(held.entry)<0)this.held=held=null;
+    if(held&&(held.entry.seat!==q.seat||held.entry.srcLang!==q.srcLang||held.entry.dstLang!==q.dstLang)){this.release('speaker-language-change',false);held=null;}
+    var text=q.text;
+    if(held){text=fourOJoin(held.entry.srcText,text);removeEntry(e);e=held.entry;e.prosody=null;this.held=null;}
+    else if(CFG.prosodyOn&&q.prosody){e.srcText=text;attachProsody(e,q.prosody);}
+    var parts=fourOSplit(text,q.meta.reason==='limit'&&q.meta.carry),tail;
+    if(parts.ready){
+      fourOCardText(e,parts.ready,true,'sentence-prefix');fourOFinalize(e,'sentence-prefix',false);
+      if(parts.tail){
+        tail=addEntry(q.seat,'',true);tail.srcLang=q.srcLang;tail.dstLang=q.dstLang;
+        tail.fourOState={pending:true,reason:'tail',model:this.model,request:q.id};
+        if(segEnabled())segInit(tail);fourOPlaceAfter(tail,e);fourOCardText(tail,parts.tail,false,'tail');
+      }
+    }else{tail=e;fourOCardText(tail,parts.tail,false,'tail');}
+    if(tail){
+      // Never reset an already-waiting tail's deadline merely because new text arrived.
+      this.held={entry:tail,until:held&&!parts.ready?held.until:Date.now()+(q.meta.seconds+5)*1000};
+      dlog('stt','4o-tail-held',{cardId:tail.id,chars:tail.srcText.length,until:this.held.until,request:q.id});
+    }
+  }
+};
+FourOFileBuffer.prototype.poll=function(now,silent){
+  if(!this.alive()||!this.held)return;
+  if(now>=this.held.until)this.release('carry-time-limit',false);
+  else if(silent&&!this.queue.length)this.release('audio-silence',false);
+};
+FourOFileBuffer.prototype.stop=function(){
+  if(this.dead)return;this.dead=true;this.release('recording-stop',true);
+  this.queue.forEach(function(q){
+    clearTimeout(q.timer);q.done=true;q.controller.abort();var e=q.entry;
+    if(S.entries.indexOf(e)<0)return;
+    if(e.srcText)fourOFinalize(e,'recording-stop',true);else removeEntry(e);
+  });this.queue=[];
+};
 
 function transcribeBlob(blob, seat, prosody){
   var lang = langOf(seat);
@@ -8858,14 +9021,15 @@ function xaiSTT(blob, lang){
   }).then(chk).then(function(j){ return (j && j.text) || ''; });
 }
 
-function sttCall(blob, lang){
+function sttCall(blob, lang,requestOptions){
+  requestOptions=requestOptions||{};
   var p = CFG.sttProvider;
   if (p === 'gemini') return geminiSTT(blob, lang);
   if (p === 'xai')    return xaiSTT(blob, lang);
   var key = sttKey();
   if (!key) return Promise.reject(new Error('音声認識用のAPIキーが未設定です'));
   // モデル名が空だと OpenAI が 400「you must provide a model parameter」を返すため必ず補う
-  var mdl = (CFG.sttModel||'').trim();
+  var mdl = (requestOptions.model||CFG.sttModel||'').trim();
   if (!mdl || mdl.charAt(0) === '('){
     mdl = defaultSttModel(p) || 'gpt-4o-mini-transcribe';
     CFG.sttModel = mdl; store.set('di.sttm', mdl);
@@ -8887,7 +9051,7 @@ function sttCall(blob, lang){
   if (terms) hints.push('Terminology: '+terms);
   if (hints.length && !diarize) fd.append('prompt', hints.join('\n'));
   return fetch((STT_BASE[p]||STT_BASE.openai) + '/audio/transcriptions', {
-    method:'POST', headers:{ 'Authorization':'Bearer '+key }, body: fd
+    method:'POST', headers:{ 'Authorization':'Bearer '+key }, body: fd, signal:requestOptions.signal
   }).then(chk).then(function(j){
     if(diarize){
       var segs=Array.isArray(j&&j.segments)?j.segments:[];
@@ -9666,7 +9830,11 @@ function startAll(){
     rtDirection: CFG.sttProvider === 'realtime' ? CFG.rtDirection : '(unused)',
     prosody:CFG.prosodyOn, listenSeat: S.listenSeat });
 
-  var jobs = [];
+  var jobs = [],startGen=sessionGen;
+  function captureCurrent(stream,owned){
+    if(S.running&&sessionGen===startGen)return true;
+    if(owned)realtimeStopStream(stream);return false;
+  }
 
   // Route each translation direction to its selected source before starting WebRTC.
   if(CFG.sttProvider==='realtime')return startRealtimeInputs();
@@ -9683,7 +9851,7 @@ function startAll(){
              2〜5ms後に失敗が始まっていた）。少し待ってから開始する。 */
           .then(function(){ return new Promise(function(r){ setTimeout(r, 400); }); })
           .then(function(){
-            if (!S.running) return;
+            if (!S.running||sessionGen!==startGen) return;
             if (!startWebSpeech()){ stopAll(); return; }
             var hints = [];
             /* iOSの内蔵音声認識はキーボードの音声入力（ディクテーション）機能を使うため、
@@ -9700,6 +9868,7 @@ function startAll(){
             hints.forEach(function(m, i){ setTimeout(function(){ toast(m, true); }, i * 3000); });
           })
           .catch(function(err){
+            if(!S.running||sessionGen!==startGen)return;
             toast('マイクにアクセスできません: ' + err.message);
             stopAll();
           })
@@ -9707,12 +9876,14 @@ function startAll(){
     } else if (isLiveTranscribe()) {
       jobs.push(
         ensureMic().then(function(st){
+          if(!captureCurrent(st,false))return;
           var seat=ms.length>1?null:ms[0];
           var live=new RealtimeTranscriptionEngine(seat,st,{isMic:true,ownsStream:false});
           engines.push(live);
           return live.start();
         }).then(function(){toast('OpenAI Realtime音声認識を開始しました',true);})
           .catch(function(err){
+            if(!S.running||sessionGen!==startGen)return;
             if(err&&err.cancelled)return;
             dlog('stt','live-start-FAIL',{source:'mic',err:String(err.message||err).slice(0,200)});
             toast('Realtime音声認識を開始できません：'+String(err.message||err));stopAll();
@@ -9722,6 +9893,7 @@ function startAll(){
       jobs.push(
         ensureMic()
         .then(function(st){
+          if(!captureCurrent(st,false))return;
           if (ms.length > 1){
             // 1本のマイクで2言語 → 交互待ち受け（言語指定つきSTT）
             S.listenSeat = S.listenSeat || ms[0];
@@ -9730,14 +9902,15 @@ function startAll(){
             eng._alt = true;
             // seat はカット時に現在の listenSeat を使う
             var origCut = eng.cut.bind(eng);
-            eng.cut = function(send){ this.seat = S.listenSeat; origCut(send); };
+            eng.cut = function(send,reason){ this.seat = S.listenSeat; origCut(send,reason); };
             engines.push(eng); eng.start();
             scheduleAltStream();
           } else {
             var e2 = new StreamEngine(ms[0], st, { isMic:true, meter:true });
             engines.push(e2); e2.start();
           }
-        }).catch(function(err){ toast('マイクにアクセスできません: '+err.message); })
+        }).catch(function(err){
+            if(!S.running||sessionGen!==startGen)return; toast('マイクにアクセスできません: '+err.message); })
       );
     }
   }
@@ -9749,12 +9922,14 @@ function startAll(){
     if(route==='direct'){
       jobs.push(
         getDisplayAudioForStt().then(function(info){
+          if(!captureCurrent(info.stream,info.ownsStream))return;
           var eng=new WebSpeechTrackEngine(dispSeat,info.track,{ownsStream:info.ownsStream,stream:info.stream});
           engines.push(eng);eng.start();
           dlog('stt','transport-override',{selectedModel:CFG.sttModel,effective:'webspeech-track',reason:'共有音声STT経路=direct'});
           toast('共有音声Trackの直接Web Speech認識を開始しました'
             +(isLiveTranscribe()?'<br>※ gpt-live-transcribeを使う場合は、⚙→音声→共有音声の認識経路を「外部API」にしてください。':''),true);
         }).catch(function(err){
+            if(!S.running||sessionGen!==startGen)return;
           dlog('stt','track-FAIL',{seat:dispSeat,err:String(err.message||err),fallback:false});
           toast('共有音声の直接認識を開始できません：'+String(err.message||err)+'<br>VB-CABLEまたは外部APIを選んでください。');
         })
@@ -9762,6 +9937,7 @@ function startAll(){
     }else if(route==='vb'){
       if(!CFG.vbDev){toast('⚙→音声でVB-CABLE入力デバイスを選んでください。');}
       else jobs.push(openInputDevice(CFG.vbDev,true).then(function(st){
+        if(!captureCurrent(st,true))return;
         var tr=st.getAudioTracks()[0];CFG.vbDevLbl=(tr&&tr.label)||CFG.vbDevLbl||'';store.set('di.indevl.vb',CFG.vbDevLbl);
         if(!isVirtualDev(CFG.vbDevLbl))toast('選択した入力は仮想オーディオとして判定できません。経路を確認してください。');
         var eng;
@@ -9774,6 +9950,7 @@ function startAll(){
         renderAudioRouteWarning();
         toast('VB-CABLE入力の認識を開始しました'+(isLiveTranscribe()?'（Realtime WebRTC）':''),true);
       }).catch(function(err){
+            if(!S.running||sessionGen!==startGen)return;
         if(err&&err.cancelled)return;
         dlog('stt',isLiveTranscribe()?'live-start-FAIL':'input-start-FAIL',{source:'vb-cable',err:String(err.message||err).slice(0,300)});
         toast('VB-CABLE入力を開始できません：'+String(err.message||err));stopAll();
@@ -9782,6 +9959,7 @@ function startAll(){
       toast('外部API経路を使うには、音声認識でOpenAI / xAI / Groq / Geminiを選んでください。');
     }else{
       jobs.push(getDisplayAudioForStt().then(function(info){
+        if(!captureCurrent(info.stream,info.ownsStream))return;
         var eng;
         if(isLiveTranscribe()){
           eng=new RealtimeTranscriptionEngine(dispSeat,info.stream,{isMic:false,ownsStream:info.ownsStream});
@@ -9790,6 +9968,7 @@ function startAll(){
         eng=new StreamEngine(dispSeat,info.stream,{isMic:false,meter:false,ownsStream:info.ownsStream});
         engines.push(eng);eng.start();toast('共有音声を外部STT APIへ送信します',true);
       }).catch(function(err){
+            if(!S.running||sessionGen!==startGen)return;
         if(err&&err.cancelled)return;
         dlog('stt',isLiveTranscribe()?'live-start-FAIL':'api-start-FAIL',{source:'display',err:String(err.message||err).slice(0,300)});
         toast('画面／タブ音声のRealtime認識を開始できません：'+String(err.message||err));stopAll();
@@ -9797,7 +9976,7 @@ function startAll(){
     }
   }
 
-  Promise.all(jobs).then(function(){ startVU(); updateStatus(); });
+  Promise.all(jobs).then(function(){ if(S.running&&sessionGen===startGen){startVU(); updateStatus();} });
   updateStatus();
 }
 
@@ -9968,7 +10147,7 @@ function exportHtml(){
   var data = {
     glossary: CFG.glossary.filter(function(r){ return r.s || r.t; }),
     ctx: CFG.ctx, provider: CFG.provider, baseUrl: CFG.baseUrl, model: CFG.model, tone: CFG.tone,
-    sttProvider: CFG.sttProvider, sttModel: CFG.sttModel, ttsModel: CFG.ttsModel,
+    sttProvider: CFG.sttProvider, sttModel: CFG.sttModel, fourOSeconds:CFG.fourOSeconds, fourOCarry:CFG.fourOCarry?'1':'0', ttsModel: CFG.ttsModel,
     segmentMode:CFG.segmentMode,segmentBoundary:CFG.segmentBoundary,segmentOverlap:CFG.segmentOverlap,segmentMin:CFG.segmentMin,segmentStability:CFG.segmentStability,segmentSilence:CFG.segmentSilence,segmentDebt:CFG.segmentDebt,
     ttsMode: CFG.ttsMode, ttsWho: CFG.ttsWho, voiceA: CFG.voiceA, voiceB: CFG.voiceB, vad: String(CFG.vad),
     oaiRate: CFG.oaiRate, oaiEmotion: CFG.oaiEmotion, oaiIntonation: CFG.oaiIntonation,
@@ -10017,7 +10196,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.2 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.5 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -10478,7 +10657,7 @@ function refreshProviderUI(){
 
   $('sttModel').disabled = (CFG.sttProvider === 'webspeech');
   renderCombo('sttModel','sttModelCustom', withKnownNotes(sttModelsFor(CFG.sttProvider), STT_MODELS[CFG.sttProvider]), CFG.sttModel, function(v){
-    CFG.sttModel = v; store.set('di.sttm', v);renderAudioRouteWarning();
+    fourOSetModel(v);
   });
   var sttFetchable = (CFG.sttProvider !== 'webspeech' && CFG.sttProvider !== 'realtime'
                       && CFG.sttProvider !== 'xai');
@@ -10489,6 +10668,7 @@ function refreshProviderUI(){
     refreshVvUI();
   });
 
+  fourOSettingsUI();
   $('sttKey').value = KEYS['stt:'+CFG.sttProvider] || '';
   keyChkShow('chkSttMsg','','');
   refreshTtsBtn();
@@ -11000,8 +11180,12 @@ function seatChanged(restart){
   layout(); updateStatus(); refreshVvUI();renderAudioRouteWarning();
   if (restart && S.running){ stopAll(); setTimeout(startAll, 400); }
 }
-$('langA').onchange = function(){ CFG.langA=this.value; store.set('di.la',this.value); seatChanged(false); };
-$('langB').onchange = function(){ CFG.langB=this.value; store.set('di.lb',this.value); seatChanged(false); };
+function changeInputLanguage(seat,value){
+  var was=S.running;if(was)stopAll();CFG['lang'+seat]=value;store.set(seat==='A'?'di.la':'di.lb',value);seatChanged(false);
+  if(was)toast('言語を変更しました。「開始」で再開してください。',true);
+}
+$('langA').onchange=function(){changeInputLanguage('A',this.value);};
+$('langB').onchange=function(){changeInputLanguage('B',this.value);};
 $('srcA').onchange  = function(){ CFG.srcA=this.value;  store.set('di.sa',this.value); seatChanged(true); };
 $('srcB').onchange  = function(){
   CFG.srcB=this.value;  store.set('di.sb',this.value);
@@ -11054,14 +11238,21 @@ $('sttKey').oninput = function(){
 };
 $('baseUrl').oninput = function(){ CFG.baseUrl = this.value.trim(); store.set('di.base', CFG.baseUrl); };
 $('sttProvider').onchange = function(){
+  var wasRunning=S.running;if(wasRunning)stopAll();
   CFG.sttProvider = this.value; store.set('di.sttp', CFG.sttProvider);
   CFG.sttModel = defaultSttModel(CFG.sttProvider); store.set('di.sttm', CFG.sttModel);
   // 無料モードに切り替えたら手動固定、API側に戻したら元のAUTO設定を復帰させる
   setMode(store.get('di.automode','1') === '1');
   refreshProviderUI();
   autoFetchSttModels();
-  if (S.running){ stopAll(); setTimeout(startAll, 400); }
+  if(wasRunning)toast('認識方式を変更しました。「開始」で再開してください。',true);
 };
+$('fourOSeconds').onchange=function(){
+  if(this.value==='custom'){$('fourOCustomField').style.display='';$('fourOCustom').focus();return;}
+  fourOSetSeconds(this.value);
+};
+$('fourOCustom').onchange=function(){fourOSetSeconds(this.value);};
+$('fourOCarry').onchange=function(){CFG.fourOCarry=this.checked;store.set('di.fourOCarry',this.checked?'1':'0');};
 $('rememberTrans').onchange = function(){ setKeyRemember('trans',this.checked); };
 $('rememberStt').onchange   = function(){ setKeyRemember('stt',this.checked); };
 $('rememberTts').onchange   = function(){ setKeyRemember('tts',this.checked); };
@@ -11468,7 +11659,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.44.2 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.44.5 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11512,7 +11703,8 @@ function diagText(devices){
     return routes.join(' / ')||'(入力なし)';
   }
   [['翻訳プロバイダ', CFG.provider], ['翻訳モデル', translationDisabled() ? '(未使用)' : CFG.model],
-   ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel], ['句読点の自動補完', CFG.sttPunct ? 'ON' : 'OFF'],
+   ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel],
+   ['4o系の録音上限', fourOFileModel()?fourOSeconds(CFG.fourOSeconds)+'秒／末尾繰越 '+(CFG.fourOCarry!==false?'ON':'OFF')+'／録音ファイルAPI':'(未使用)'], ['句読点の自動補完', CFG.sttPunct ? 'ON' : 'OFF'],
    ['有効なSTT通信方式', diagSttTransport()],
    ['gpt-live発話確定', isLiveTranscribe() ? (segEnabled()?'逐次部分翻訳＋文脈・無音・文字停止でカード確定／TTS待ちとは独立':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）') : '(未使用)'],
    ['共有音声STT経路', CFG.displaySttRoute+' → '+effectiveDisplaySttRoute()],
@@ -11785,7 +11977,7 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.44.2 / Phase 4B minutes linkage.
+/* Duo Segment pipeline v1.44.5 / Phase 4B minutes linkage.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
@@ -11859,6 +12051,7 @@ function segReceiveDisplay(e){
   }
 }
 function segRecognitionLabel(e){
+  if(e.fourOState&&e.fourOState.pending)return e.fourOState.reason==='recognizing'?'音声認識を処理中':e.fourOState.reason==='tail'?'末尾を保留 · 次の認識結果待ち':'認識済み · 前の結果待ち';
   if(!e.segment)return '';
   if(e.segment.cancelled)return '停止';
   if(e.segment.final){
@@ -11993,6 +12186,7 @@ function segBackpressure(e,p,debt){
 }
 function segCheck(e){
   var b=e.segment;if(!b||b.cancelled)return;
+  if(e.fourOState&&e.fourOState.pending&&!b.final)return;
   var debt=segDebt(),p=segPolicyFor(e,debt),now=Date.now();
   var count=0;
   while(count++<100){
