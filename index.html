@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.42.1 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.42.2 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -670,6 +670,27 @@
   color:var(--dim);letter-spacing:.05em;line-height:1.35;
 }
 #drawer label.settings-check b,#drawer label.settings-check strong{font-weight:inherit}
+
+/* Explicit control metrics: no browser-default checkbox margins or flex shrinking. */
+#drawer{--settings-check-size:17px;--settings-check-gap:9px;--settings-check-row-gap:6px}
+#drawer label.settings-check{
+  display:flex;align-items:center;gap:var(--settings-check-gap);
+  min-height:22px;padding:0;margin:0;
+}
+#drawer label.settings-check>input[type=checkbox]{
+  box-sizing:border-box;appearance:auto;
+  width:var(--settings-check-size);height:var(--settings-check-size);
+  min-width:var(--settings-check-size);max-width:var(--settings-check-size);
+  min-height:var(--settings-check-size);max-height:var(--settings-check-size);
+  flex:0 0 var(--settings-check-size);margin:0;padding:0;
+  accent-color:var(--a);align-self:center;
+}
+#sttCheckboxGroup{display:flex;flex-direction:column;gap:var(--settings-check-row-gap)}
+#drawer #sttCheckboxGroup>label{margin:0;min-height:22px;line-height:1.35}
+#segmentSettings>details>summary{
+  font-family:inherit;font-size:13px;font-weight:400;line-height:1.6;
+  color:var(--dim);cursor:pointer;
+}
 </style>
 </head>
 <body>
@@ -684,7 +705,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.42.1 Phase 4</span><span class="build-id">Build: 20260908-v1421-checkbox-layout</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.42.2 Phase 4</span><span class="build-id">Build: 20260908-v1422-control-metrics</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -694,7 +715,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.42.1 Phase 4</span><span class="build-id">Build: 20260908-v1421-checkbox-layout</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.42.2 Phase 4</span><span class="build-id">Build: 20260908-v1422-control-metrics</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1015,12 +1036,14 @@
           <button class="btn ghost" id="chkStt" title="実際に使う前に、このキーで通るかどうかを確かめます">🔍 確認</button>
         </div>
         <div class="keyrow"><span class="keychk" id="chkSttMsg"></span></div>
-        <label class="settings-check switch key-save"><input type="checkbox" id="rememberStt" checked> このブラウザに保存する</label>
       </div>
       </div>
       <div id="sttVoiceBehavior">
+      <div id="sttCheckboxGroup">
+        <label class="settings-check switch key-save"><input type="checkbox" id="rememberStt" checked> このブラウザに保存する</label>
       <label class="settings-check switch"><input type="checkbox" id="echoGuard" checked> 読上げ音声の回り込み除外（繰り返し検出）</label>
       <label class="settings-check switch"><input type="checkbox" id="prosodyOn"> 元音声の話し方を保持</label>
+      </div>
       <small>実験機能です。ON時だけ、発話ごとの Pitch（声の高さ）・Energy（音量）・内部Pause（文中の間）・Speech Rate（話速）を端末内で解析します。話者ごとの通常値を学習し、ブラウザ標準TTSとAivisへ相対的な変化を反映します。</small>
       <details class="prosodybox">
         <summary>話し方解析の状態</summary>
@@ -1636,7 +1659,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260908-v1421-checkbox-layout';
+var APP_BUILD = '20260908-v1422-control-metrics';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -9696,7 +9719,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.42.1 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.42.2 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -11022,7 +11045,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.42.1 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.42.2 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11330,7 +11353,7 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.42.1 / Phase 4A playback controls.
+/* Duo Segment pipeline v1.42.2 / Phase 4A playback controls.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
