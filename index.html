@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.44.6 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.44.7 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -729,7 +729,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.6 Phase 4</span><span class="build-id">Build: 20260908-v1446-aivis-gap</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.7 Phase 4</span><span class="build-id">Build: 20260908-v1447-realtime-display</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -739,7 +739,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.6 Phase 4</span><span class="build-id">Build: 20260908-v1446-aivis-gap</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.7 Phase 4</span><span class="build-id">Build: 20260908-v1447-realtime-display</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1712,7 +1712,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260908-v1446-aivis-gap';
+var APP_BUILD = '20260908-v1447-realtime-display';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -2064,6 +2064,11 @@ function loadCfg(){
 function firstId(list){ var a = normList(list); return a.length ? a[0].id : ''; }
 function defaultModel(p){ var P = PROVIDERS[p]; return P ? firstId(P.models) : ''; }
 function translationDisabled(){ return !!(PROVIDERS[CFG.provider] && PROVIDERS[CFG.provider].kind === 'none'); }
+// Realtime cards own their translations independently of the cascade provider.
+// Use the recorded card type so switching providers later cannot hide these texts.
+function entryTranslationDisabled(e){
+  return e&&e.rtWindow?false:translationDisabled()||!!(e&&e.translationSkipped);
+}
 function defaultSttModel(p){ return firstId(STT_MODELS[p]); }
 function saveKeys(){
   Object.keys(KEY_SCOPES).forEach(function(scope){
@@ -2198,7 +2203,7 @@ function paint(feedId, e, viewer){
     feed.appendChild(el);
   }
   var isSelf = (e.seat === viewer);
-  var noTranslation = translationDisabled() || !!e.translationSkipped;
+  var noTranslation = entryTranslationDisabled(e);
   /* 文字起こし専用モードでは原文を両側の主表示へ出す。
      .main を使うため、翻訳後テキストと同じ文字サイズになる。 */
   var main = noTranslation ? e.srcText : (isSelf ? e.srcText : (e.dstText || '…'));
@@ -3292,14 +3297,14 @@ function renderOverlayRail(){
   var rows=hold ? available.slice(-max) : available;
   rail.innerHTML='';
   rows.forEach(function(e){
-    var noTranslation=translationDisabled()||!!e.translationSkipped;
+    var noTranslation=entryTranslationDisabled(e);
     var item=document.createElement('article');
     item.className='capture-caption'+(CFG.ovCapShadow?' shadow':'')+(CFG.ovCapOutline?' outline':'')+(CFG.ovCapRound?'':' square')+(e.interim?' interim':'');
     item.style.setProperty('--cap-seat',e.seat==='A'?CFG.ovCapTextA:CFG.ovCapTextB);
     var who=document.createElement('div'); who.className='cap-meta';
     who.textContent=seatName(e.seat)+' · '+e.time+segPlaybackLabel(e);
     var main=document.createElement('div'); main.className='cap-main';
-    segPaintText(main,e,noTranslation||!e.dstText,e.srcText);
+    segPaintText(main,e,noTranslation||!e.dstText,noTranslation||!e.dstText?e.srcText:e.dstText);
     main.style.color=(e.dstText||noTranslation)?(e.seat==='A'?CFG.ovCapTextA:CFG.ovCapTextB):(e.seat==='A'?CFG.ovCapSrcA:CFG.ovCapSrcB);
     item.appendChild(who); item.appendChild(main);
     if(e.dstText&&!noTranslation){
@@ -3517,12 +3522,12 @@ function renderCaptionPip(){
     }
     if(feed.children[index]!==node)feed.insertBefore(node,feed.children[index]||null);
     node.className=(CFG.ovCapShadow?'shadow ':'')+(CFG.ovCapOutline?'outline ':'')+(CFG.ovCapRound?'':'square ')+(e.interim?'interim':'');
-    var translated=!!e.dstText&&!translationDisabled()&&!e.translationSkipped;
+    var translated=!!e.dstText&&!entryTranslationDisabled(e);
     var mainColor=e.seat==='A'?CFG.ovCapTextA:CFG.ovCapTextB,srcColor=e.seat==='A'?CFG.ovCapSrcA:CFG.ovCapSrcB;
     node.style.setProperty('--seat',mainColor);
     node.children[0].textContent=seatName(e.seat)+' · '+e.time+(e.interim?' · 認識中':'')+segPlaybackLabel(e);
-    segPaintText(node.children[1],e,!translated,e.srcText);
-    node.children[1].style.color=translated||translationDisabled()||e.translationSkipped?mainColor:srcColor;
+    segPaintText(node.children[1],e,!translated,translated?e.dstText:e.srcText);
+    node.children[1].style.color=translated||entryTranslationDisabled(e)?mainColor:srcColor;
     if(translated&&CFG.showSrc)segPaintText(node.children[2],e,true);else node.children[2].textContent='';
     node.children[2].style.display=translated&&CFG.showSrc?'':'none';node.children[2].style.color=srcColor;
   });
@@ -10197,7 +10202,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.6 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.7 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -10234,7 +10239,7 @@ function minutesTime(value){
   return isFinite(n)&&n>0?new Date(n).toISOString():null;
 }
 function minutesTranslation(e,s){
-  if(e.translationSkipped||translationDisabled())return {status:'off',text:null};
+  if(entryTranslationDisabled(e))return {status:'off',text:null};
   if(s){
     if(s.translationError)return {status:'error',text:null};
     if(!s.translationReady||s.translating)return {status:'pending',text:null};
@@ -11660,7 +11665,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.44.6 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.44.7 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11877,7 +11882,7 @@ function diagText(devices){
   else {
     rows.forEach(function(e){
       out.push('- `' + e.time + '` **' + seatName(e.seat) + '** (' + L(e.srcLang).name + ') ' + cell(e.srcText));
-      if(!(translationDisabled()||e.translationSkipped))out.push('  - → (' + L(e.dstLang).name + ') ' + cell(e.dstText || '(未翻訳)'));
+      if(!entryTranslationDisabled(e))out.push('  - → (' + L(e.dstLang).name + ') ' + cell(e.dstText || '(未翻訳)'));
     });
     out.push('');
   }
@@ -11920,10 +11925,10 @@ $('copyDiag').onclick = function(){
 
 /* ログ */
 $('dlTxt').onclick = function(){
-  var t = '# '+(translationDisabled()?'文字起こしログ ':'通訳ログ ') + new Date().toLocaleString() + '\n\n' +
+  var t = '# '+(logRows().some(function(e){return !entryTranslationDisabled(e);})?'通訳ログ ':'文字起こしログ ') + new Date().toLocaleString() + '\n\n' +
     logRows().map(function(e){
       var source='[' + e.time + '] ' + seatName(e.seat) + ' (' + L(e.srcLang).name + ')\n  ' + e.srcText;
-      return (translationDisabled()||e.translationSkipped)?source:(source+'\n  → (' + L(e.dstLang).name + ') ' + (e.dstText||''));
+      return entryTranslationDisabled(e)?source:(source+'\n  → (' + L(e.dstLang).name + ') ' + (e.dstText||''));
     }).join('\n\n');
   download('interpret-log-'+stamp()+'.txt', t);
 };
@@ -11978,7 +11983,7 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.44.6 / Phase 4B minutes linkage.
+/* Duo Segment pipeline v1.44.7 / Phase 4B minutes linkage.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
