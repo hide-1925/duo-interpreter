@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.44.5 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.44.6 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -729,7 +729,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.5 Phase 4</span><span class="build-id">Build: 20260908-v1445-four-o-file-carry</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.6 Phase 4</span><span class="build-id">Build: 20260908-v1446-aivis-gap</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -739,7 +739,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.5 Phase 4</span><span class="build-id">Build: 20260908-v1445-four-o-file-carry</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.6 Phase 4</span><span class="build-id">Build: 20260908-v1446-aivis-gap</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1222,7 +1222,7 @@
         <select id="segmentOverlap"><option value="avoid">避ける — 無音区間／発話終了を待つ</option><option value="allow">許容 — 確定した部分から読み上げる</option><option value="auto">自動 — 無音区間と待ち音声から判断</option></select>
         <details class="settings-help" id="segmentHelp"><summary>説明</summary>
           <p>文末優先は句点・言語別の語尾を手がかりに翻訳単位をまとめます。認識文字はそのまま逐次表示します。長文や文末が来ない場合は文字数・待ち時間で区切ります。認識誤りそのものを修正する機能ではありません。</p>
-          <p>安定した部分から翻訳し、発話の区切りで会話カードを確定します。Aivisは句点（。）を基本にまとめ、10回/分に合わせて送信間隔を6.1秒以上空け、その間の確定部分をまとめて読み上げます。途中結果を返さない音声認識では、認識結果の到着後から分割処理します。重なりを避ける設定は再生開始を待ちます。再生中の音声は最後まで読みます。</p>
+          <p>安定した部分から翻訳し、発話の区切りで会話カードを確定します。Aivisは句点（。）を基本にまとめ、直近60秒で10回の送信上限に達した場合に待機します。枠が残っていれば前の再生後に次を送信します。同じ声・言語・実際の音声設定の確定部分は最大500文字までまとめます。短文が続いて上限に達すると、Fastでも待ち時間が生じます。途中結果を返さない音声認識では、認識結果の到着後から分割処理します。重なりを避ける設定は再生開始を待ちます。再生中の音声は最後まで読みます。</p>
           <p>Adaptiveは文字の到着速度・観測した無音区間・待ち音声をもとに区切りを調整します。Aivisのみ話速を最大8%補正します（既存設定との合成後は上限2）。手動の詳細値は優先されます。重なりを自動調整する場合は「自動」を選んでください。</p>
         </details>
         <details><summary>逐次読み上げの詳細設定</summary>
@@ -1712,7 +1712,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260908-v1445-four-o-file-carry';
+var APP_BUILD = '20260908-v1446-aivis-gap';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -6127,15 +6127,16 @@ function aivisBillingMeta(r){
     mode:h('X-Aivis-Billing-Mode'),
     creditsUsed:h('X-Aivis-Credits-Used'),
     creditsRemaining:h('X-Aivis-Credits-Remaining'),
-    rateLimit:h('X-RateLimit-Limit')||h('X-Aivis-RateLimit-Limit'),
-    rateRemaining:h('X-RateLimit-Remaining')||h('X-Aivis-RateLimit-Remaining')
+    rateLimit:h('X-Aivis-RateLimit-Requests-Limit')||h('X-RateLimit-Limit')||h('X-Aivis-RateLimit-Limit'),
+    rateRemaining:h('X-Aivis-RateLimit-Requests-Remaining')||h('X-RateLimit-Remaining')||h('X-Aivis-RateLimit-Remaining'),
+    rateReset:h('X-Aivis-RateLimit-Requests-Reset')
   };
 }
 function aivisLogBilling(meta,where){
   if(!meta)return;
   if(meta.mode||meta.creditsUsed||meta.creditsRemaining||meta.rateLimit||meta.rateRemaining){
     AIVIS_LAST_BILLING=meta;
-    dlog('tts','aivis-billing',{where:where||'synthesize',mode:meta.mode||'(headerなし)',creditsUsed:meta.creditsUsed||'',creditsRemaining:meta.creditsRemaining||'',rateLimit:meta.rateLimit||'',rateRemaining:meta.rateRemaining||''});
+    dlog('tts','aivis-billing',{where:where||'synthesize',mode:meta.mode||'(headerなし)',creditsUsed:meta.creditsUsed||'',creditsRemaining:meta.creditsRemaining||'',rateLimit:meta.rateLimit||'',rateRemaining:meta.rateRemaining||'',rateReset:meta.rateReset||''});
   }
 }
 function aivisHttpError(r,raw){
@@ -10196,7 +10197,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.5 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.6 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -11659,7 +11660,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.44.5 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.44.6 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11722,7 +11723,7 @@ function diagText(devices){
    ['声 A / B', rtNativeAudio ? '(外部TTS設定は未使用)' : ttsSeatVoices()],
    ['認識文字表示','STT受信ごとにカードへ反映／確定・翻訳・TTSは独立したタイマーで進行'],
    ['逐次エコー除外','部分単位の自動音声のみ抑制（認識文字表示は維持）'],
-   ['Aivis送信制御','全合成経路で10回/60秒・最小6.1秒間隔／429待機再試行2回／同声・同言語を最大500文字でまとめる'],
+   ['Aivis送信制御','全合成経路で直近60秒10回（境界余裕0.1秒）・固定間隔なし／429はサーバー指定待機・再試行2回／同声・同言語・同一音声設定を最大500文字でまとめる'],
    ['翻訳の区切り',segSemanticEnabled()?'文末優先（言語別ルール・文字数上限・最大3秒の文字停止待ち）':'速度優先（従来）'],
    ['翻訳の文脈','対象より前の原文のみ／現在カードの全文と未来の発話は含めない'],
    ['自動適応',CFG.segmentMode==='adaptive'?segAdaptiveLabel():'OFF（固定モード）'],
@@ -11977,7 +11978,7 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.44.5 / Phase 4B minutes linkage.
+/* Duo Segment pipeline v1.44.6 / Phase 4B minutes linkage.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
@@ -12280,6 +12281,20 @@ function segEarlierOpen(j){
   return SEG.cards.some(function(e){return e.segment.order<j.card.segment.order&&!e.segment.cancelled&&!e.segment.final&&
     !e.segment.audioMuted&&segAudioAllowed(e);});
 }
+// Compare only settings sent to Aivis; timestamps/confidence do not change the voice.
+// Deliberately keep differing rates, dynamics and volumes in separate requests.
+function segAivisVoiceKey(e){return JSON.stringify(aivisBody('',e.seat,'mp3',e.prosody));}
+function segTtsWait(j,reason,details){
+  if(j.ttsWait&&j.ttsWait.reason===reason)return;
+  segTtsResume(j);
+  j.ttsWait={reason:reason,at:Date.now()};
+  dlog('segment','tts-wait',Object.assign({cardId:j.card.id,segmentId:j.segment.id,reason:reason},details||{}));
+}
+function segTtsResume(j){
+  if(!j.ttsWait)return;
+  dlog('segment','tts-wait-end',{cardId:j.card.id,segmentId:j.segment.id,
+    reason:j.ttsWait.reason,waitMs:Date.now()-j.ttsWait.at});j.ttsWait=null;
+}
 function segPump(){
   if(SEG.active||ttsIsBusy())return;
   SEG.queue.sort(segQueueCompare);
@@ -12290,26 +12305,29 @@ function segPump(){
       s.audio.status='cancelled';s.audio.skipReason='source-or-translation-updated';SEG.queue.shift();segRefreshPlayback(j);
       dlog('segment','manual-replay-invalidated',{cardId:e.id,segmentId:s.id});continue;
     }
-    if(segEarlierOpen(j))return;
-    if(!CFG.ttsSrc&&!s.translationReady)return;
+    if(segEarlierOpen(j)){segTtsWait(j,'earlier-card-open');return;}
+    if(!CFG.ttsSrc&&!s.translationReady){segTtsWait(j,'translation');return;}
     if((!j.manual&&!segAudioAllowed(e))||(!CFG.ttsSrc&&s.translationError)||!(CFG.ttsSrc?s.sourceText:s.translationText).trim()){
       s.audio.status='cancelled';s.audio.skipReason=s.translationError?'translation-error':'not-selected-or-empty';
       s.state=s.translationError?'error':'skipped';SEG.queue.shift();segRefreshPlayback(j);continue;
     }
     var silence=segSilence(e,Date.now()),overlap=segOverlapFor(e,segDebt());
     // Without a trustworthy input meter, avoid-overlap waits for STT final.
-    if(overlap==='avoid'&&!e.segment.final&&(silence===null||silence<segPolicyFor(e,segDebt()).silence))return;
+    if(overlap==='avoid'&&!e.segment.final&&(silence===null||silence<segPolicyFor(e,segDebt()).silence)){segTtsWait(j,'input-silence');return;}
     var useSource=j.manual||CFG.ttsSrc,lang=useSource?e.srcLang:e.dstLang;
     var group=[j],source=s.sourceText,target=s.translationText||'';
     if(CFG.ttsMode==='aivis'&&lang==='ja'){
-      if(aivisRateWait()>0)return;
-      // Collect adjacent ready parts during the rate wait. Keep speaker/language/prosody identical.
+      var rateWait=aivisRateWait();
+      if(rateWait>0){segTtsWait(j,AIVIS_RATE.blockedUntil>Date.now()?'aivis-server-limit':'aivis-window-limit',
+        {waitMs:rateWait,count60s:AIVIS_RATE.sent.length,limit:10});return;}
+      var voiceKey=segAivisVoiceKey(e);
+      // Collect adjacent ready parts with identical effective synthesis settings.
       for(var n=1;n<SEG.queue.length;n++){
         var next=SEG.queue[n],ns=next.segment,ne=next.card;
         if(segEarlierOpen(next))break;
         if(next.partOnly||j.partOnly||!segManualJobValid(next)||next.cancelled||next.epoch!==j.epoch||ne.segment.cancelled||!!next.manual!==!!j.manual||
           ne.seat!==e.seat||ne.srcLang!==e.srcLang||ne.dstLang!==e.dstLang||
-          JSON.stringify(ne.prosody||null)!==JSON.stringify(e.prosody||null)||
+          segAivisVoiceKey(ne)!==voiceKey||
           (!useSource&&(!ns.translationReady||ns.translationError))||(!next.manual&&!segAudioAllowed(ne)))break;
         var more=useSource?ns.sourceText:ns.translationText||'';
         if(!(more.trim())||(useSource?source:target).length+more.length+(useSource?0:1)>500)break;
@@ -12321,11 +12339,12 @@ function segPump(){
         if(/[。！？!?][\s」』）]*$/.test(text)||/\.[\s"')]*$/.test(text)||q.card.segment.final)cut=i+1;
       });
       if(cut&&cut<group.length)group=group.slice(0,cut);
-      else if(!cut&&(useSource?source:target).length<500&&Date.now()-(group[group.length-1].card.segment.lastUpdate||0)<1500)return;
+      else if(!cut&&(useSource?source:target).length<500&&Date.now()-(group[group.length-1].card.segment.lastUpdate||0)<1500){segTtsWait(j,'sentence-boundary');return;}
       source=group.map(function(q){return q.segment.sourceText;}).join('');
       target=group.map(function(q){return q.segment.translationText||'';}).filter(Boolean).join(' ');
     }
     var rate=e.segment.mode==='adaptive'&&CFG.ttsMode==='aivis'&&lang==='ja'?segAdaptiveState(e,segDebt()).rate:1;
+    segTtsResume(j);
     j.group=group;
     j.dispatchOrder=++SEG.dispatchOrder;
     j.speechText=useSource?source:target;
@@ -12871,9 +12890,21 @@ function aivisRateLoad(){
 function aivisRateSave(){try{store.set('di.aivisRateWindow',JSON.stringify({sent:AIVIS_RATE.sent,blockedUntil:AIVIS_RATE.blockedUntil}));}catch(err){}}
 function aivisRateWait(){
   aivisRateLoad();var now=Date.now();
-  AIVIS_RATE.sent=AIVIS_RATE.sent.filter(function(t){return now-t<60000;});
-  var sent=AIVIS_RATE.sent,last=sent.length?sent[sent.length-1]:0;
-  return Math.max(0,AIVIS_RATE.blockedUntil-now,last?last+6100-now:0,sent.length>=10?sent[sent.length-10]+60100-now:0);
+  // Keep 100 ms of clock/network margin at the rolling-window boundary.
+  AIVIS_RATE.sent=AIVIS_RATE.sent.filter(function(t){return now-t<60100;});
+  var sent=AIVIS_RATE.sent;
+  return Math.max(0,AIVIS_RATE.blockedUntil-now,sent.length>=10?sent[sent.length-10]+60100-now:0);
+}
+function aivisRetryDelay(r){
+  var reset=r.headers&&r.headers.get('X-Aivis-RateLimit-Requests-Reset');
+  var retry=r.headers&&r.headers.get('Retry-After'),delays=[];
+  if(reset!=null&&String(reset).trim()!==''&&isFinite(Number(reset))&&Number(reset)>=0)delays.push(Number(reset)*1000);
+  if(retry!=null&&String(retry).trim()!==''){
+    var seconds=Number(retry),until=Date.parse(retry);
+    if(isFinite(seconds)&&seconds>=0)delays.push(seconds*1000);
+    else if(isFinite(until))delays.push(Math.max(0,until-Date.now()));
+  }
+  return Math.max(1000,delays.length?Math.max.apply(Math,delays):61000)+250;
 }
 function aivisLimitedFetch(url,options,life){
   life=life||{};var gen=ttsGen,tries=0;
@@ -12915,9 +12946,7 @@ function aivisLimitedFetch(url,options,life){
     }).then(function(r){
       if(cancelled()){if(r.body&&r.body.cancel)r.body.cancel().catch(function(){});abort();}
       if(r.status!==429)return r;
-      var retry=r.headers&&r.headers.get('Retry-After'),seconds=Number(retry),until=Date.parse(retry||'');
-      var delay=retry?(isFinite(seconds)?seconds*1000:(isFinite(until)?until-Date.now():61000)):61000;
-      AIVIS_RATE.blockedUntil=Math.max(AIVIS_RATE.blockedUntil,Date.now()+Math.max(6100,delay)+250);aivisRateSave();
+      AIVIS_RATE.blockedUntil=Math.max(AIVIS_RATE.blockedUntil,Date.now()+aivisRetryDelay(r));aivisRateSave();
       dlog('tts','aivis-rate-limited',{retryMs:aivisRateWait(),retry:tries+1});
       if(tries++>=2)return r;
       return r.text().then(attempt);
