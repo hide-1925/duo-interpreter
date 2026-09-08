@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.43.0 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.44.0 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -696,6 +696,25 @@
   font-family:inherit;font-size:13px;font-weight:400;line-height:1.6;
   color:var(--dim);cursor:pointer;
 }
+
+/* Part controls inherit the card font and stay collapsed during ordinary use. */
+.segment-controls{margin-top:8px;border-top:1px solid var(--line);font-size:12px;line-height:1.5;font-family:inherit}
+.segment-controls summary{padding:8px 0;cursor:pointer;color:var(--dim);font:inherit}
+.segment-controls summary:focus-visible,.segment-part-actions button:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+.segment-control-hint{margin:0 0 8px;color:var(--dim);font-size:11px}
+.segment-control-list{display:flex;flex-direction:column;gap:8px;max-height:360px;overflow:auto;overscroll-behavior:contain}
+.segment-control-row{padding:8px;border:1px solid var(--line);border-radius:8px;min-width:0}
+.segment-control-row.is-playing{border-color:#e5b545}
+.segment-part-state{color:var(--dim);font-size:11px;margin-bottom:4px}
+.segment-part-source,.segment-part-translation{white-space:pre-wrap;overflow-wrap:anywhere}
+.segment-part-translation{color:var(--dim);margin-top:4px}
+.segment-part-translation:empty{display:none}
+.segment-part-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.segment-part-actions button,.segment-retry{font:inherit;min-height:32px;padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--txt);cursor:pointer}
+.segment-part-actions button:disabled{opacity:.45;cursor:default}
+.segment-part-actions button[hidden]{display:none}
+.segment-part-actions button:hover:enabled{border-color:var(--a)}
+
 </style>
 </head>
 <body>
@@ -710,7 +729,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.43.0 Phase 4</span><span class="build-id">Build: 20260908-v1430-minutes-provenance</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.0 Phase 4</span><span class="build-id">Build: 20260908-v1440-segment-controls</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -720,7 +739,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.43.0 Phase 4</span><span class="build-id">Build: 20260908-v1430-minutes-provenance</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.0 Phase 4</span><span class="build-id">Build: 20260908-v1440-segment-controls</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1665,7 +1684,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260908-v1430-minutes-provenance';
+var APP_BUILD = '20260908-v1440-segment-controls';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -2174,11 +2193,12 @@ function paint(feedId, e, viewer){
   var retry=el.querySelector('.segment-retry');
   if(e.segments&&e.segments.some(function(x){return x.translationError;})){
     if(!retry){retry=document.createElement('button');retry.className='segment-retry';retry.textContent='翻訳を再試行';el.appendChild(retry);}
-    retry.onclick=function(ev){ev.stopPropagation();e.segment.cancelled=false;if(SEG.cards.indexOf(e)<0)SEG.cards.push(e);e.segments.forEach(function(x){if(x.translationError){x.translationError=null;x.translationReady=false;x.translationRevision++;}});segWake();};
+    retry.onclick=function(ev){ev.stopPropagation();e.segments.forEach(function(x){if(x.translationError)segRetranslatePart(e,x.id);});};
   }else if(retry)retry.remove();
   var s = el.querySelector('.sub');
   if(CFG.showSrc)segPaintText(s,e,!noTranslation&&!isSelf,sub);else s.textContent='';
   s.style.display = (CFG.showSrc && sub) ? '' : 'none';
+  segRenderControls(el,e,viewer);
   if(follow)feed.scrollTop = feed.scrollHeight;
 }
 
@@ -9725,7 +9745,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.43.0 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.0 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -9792,7 +9812,9 @@ function minutesSnapshot(entries,capturedAt){
           confirmation:s.committedAt?'committed':confirmation==='stopped'?'stopped-uncommitted':'card-final',
           committedAt:minutesTime(s.committedAt),corrected:!!s.corrected,
           correctionCount:s.correctionCount|| (s.corrected?1:0),correctedAt:minutesTime(s.correctedAt),
-          translationStatus:tr.status,translation:tr.text});
+          translationStatus:tr.status,translation:tr.text,
+          translationRevision:s.translationRevision==null?null:s.translationRevision,
+          retranslationCount:s.retranslationCount||0,retranslationRequestedAt:minutesTime(s.retranslationRequestedAt)});
       });
     }else if(finalCard){
       var tr=minutesTranslation(e,null);
@@ -11159,7 +11181,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.43.0 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.44.0 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11222,7 +11244,7 @@ function diagText(devices){
    ['翻訳の区切り',segSemanticEnabled()?'文末優先（言語別ルール・文字数上限・最大3秒の文字停止待ち）':'速度優先（従来）'],
    ['翻訳の文脈','対象より前の原文のみ／現在カードの全文と未来の発話は含めない'],
    ['自動適応',CFG.segmentMode==='adaptive'?segAdaptiveLabel():'OFF（固定モード）'],
-   ['再生操作','カード全体を再生／ステータスに再生待ち・音声準備中・再生中／一括合成は範囲を強調'],
+   ['再生操作','カード全体・部分ごとの原文／訳文再生・部分再翻訳／古い訳の手動再生を防止／一括合成は範囲を強調'],
    ['再生順序','カード受付順＋部分seq／送信本文・結合した部分IDをdispatchに記録'],
    ['TTS逐次読み上げ',CFG.segmentMode+' / 重なり '+CFG.segmentOverlap],
    ['逐次確定・訂正',SEG.committed+' / '+SEG.corrected+'（訂正率 '+(SEG.committed?(100*SEG.corrected/SEG.committed).toFixed(1):'0')+'%）'],
@@ -11473,13 +11495,13 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.43.0 / Phase 4B minutes linkage.
+/* Duo Segment pipeline v1.44.0 / Phase 4B minutes linkage.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
  */
 var SEG = {cards:[], queue:[], active:null, epoch:0, timer:null, translations:0, requests:[],
-  voice:{}, received:{}, uiTimer:null, committed:0, corrected:0, lastReason:'—', lastTick:0,cardOrder:0,dispatchOrder:0,dispatchRate:1,adaptive:{}};
+  retranslations:[], voice:{}, received:{}, uiTimer:null, committed:0, corrected:0, lastReason:'—', lastTick:0,cardOrder:0,dispatchOrder:0,dispatchRate:1,adaptive:{}};
 function segEnabled(){return CFG.segmentMode!=='off' && /^(balanced|fast|adaptive)$/.test(CFG.segmentMode) && CFG.sttProvider!=='realtime';}
 function segNumber(v,f,min,max){v=Number(v);return isFinite(v)&&v>0?Math.max(min,Math.min(max,v)):f;}
 function segPolicy(mode){var fast=mode==='fast';return {
@@ -11531,7 +11553,7 @@ function segInit(e){
 function segJoin(e){
   e.srcText=e.segments.map(function(s){return s.sourceText;}).join('');
   e.dstText=e.segments.filter(function(s){return s.committedAt;}).map(function(s){
-    return s.translationError?'（翻訳エラー：再試行できます）':(s.translationText||'');
+    return s.translationError?'（翻訳エラー：再試行できます）':segCurrentTranslation(s)?s.translationText:'';
   }).filter(Boolean).join(' ');
   e.translationSkipped=translationDisabled();render(e);
 }
@@ -11716,7 +11738,7 @@ function segCheck(e){
       stabilityMs:s.stabilityMs,debtEstimateSeconds:debt});segDraft(e);
   }
 }
-function segTranslate(e,s){
+function segTranslate(e,s,manual){
   var rev=s.translationRevision,sourceRevision=s.sourceRevision,epoch=SEG.epoch,from=e.srcLang,to=e.dstLang,text=s.sourceText;
   s.translating=true;s.state=s.dispatched?s.state:'translating';SEG.translations++;
   var p=PROVIDERS[CFG.provider]||PROVIDERS.free,job,timer;
@@ -11736,17 +11758,19 @@ function segTranslate(e,s){
   }catch(err){job=Promise.reject(err);}
   // Bound the slot even when a provider never settles. Late replies cannot mutate it.
   Promise.race([job,new Promise(function(_,reject){timer=setTimeout(function(){reject(new Error('翻訳タイムアウト（20秒）'));},20000);})])
-  .then(function(out){if(request.released||epoch!==SEG.epoch||rev!==s.translationRevision||e.segment.cancelled)return;
+  .then(function(out){if(request.released||epoch!==SEG.epoch||rev!==s.translationRevision||(e.segment.cancelled&&!manual)||(manual&&S.entries.indexOf(e)<0))return;
     s.translationText=String(out||'').trim();s.translationError=null;s.translationReady=true;
     s.translatedSourceRevision=sourceRevision;s.translatedSourceText=text;s.translatedAt=Date.now();
     if(!s.dispatched)s.state=s.echoSuppressed?'echo-suppressed':'queued';
     s.translationProvider=CFG.provider;s.translationModel=CFG.model||'';
     dlog('segment',p.kind==='none'?'translation-skipped':'translated',{cardId:e.id,seq:s.seq,revision:rev,provider:CFG.provider,model:CFG.model||'',chars:s.translationText.length});
-  }).catch(function(err){if(request.released||epoch!==SEG.epoch||rev!==s.translationRevision||e.segment.cancelled)return;
+  }).catch(function(err){if(request.released||epoch!==SEG.epoch||rev!==s.translationRevision||(e.segment.cancelled&&!manual)||(manual&&S.entries.indexOf(e)<0))return;
     s.translationError=String(err.message||err);s.translationReady=true;if(!s.dispatched)s.state='error';
     dlog('segment','translation-error',{cardId:e.id,seq:s.seq,error:s.translationError});
   }).then(function(){request.release();
-    if(!e.segment.cancelled){segJoin(e);segWake();}
+    if(!e.segment.cancelled||(manual&&S.entries.indexOf(e)>=0)){
+      if(s.translationReady)s.manualTranslationPending=false;segJoin(e);segWake();minutesRefreshStatus();
+    }
   });
 }
 function segRefreshTranslations(){
@@ -11778,6 +11802,10 @@ function segPump(){
   while(SEG.queue.length){
     var j=SEG.queue[0],e=j.card,s=j.segment;
     if(j.cancelled||j.epoch!==SEG.epoch||e.segment.cancelled){SEG.queue.shift();continue;}
+    if(!segManualJobValid(j)){
+      s.audio.status='cancelled';s.audio.skipReason='source-or-translation-updated';SEG.queue.shift();segRefreshPlayback(j);
+      dlog('segment','manual-replay-invalidated',{cardId:e.id,segmentId:s.id});continue;
+    }
     if(segEarlierOpen(j))return;
     if(!CFG.ttsSrc&&!s.translationReady)return;
     if((!j.manual&&!segAudioAllowed(e))||(!CFG.ttsSrc&&s.translationError)||!(CFG.ttsSrc?s.sourceText:s.translationText).trim()){
@@ -11795,7 +11823,7 @@ function segPump(){
       for(var n=1;n<SEG.queue.length;n++){
         var next=SEG.queue[n],ns=next.segment,ne=next.card;
         if(segEarlierOpen(next))break;
-        if(next.partOnly||j.partOnly||next.cancelled||next.epoch!==j.epoch||ne.segment.cancelled||!!next.manual!==!!j.manual||
+        if(next.partOnly||j.partOnly||!segManualJobValid(next)||next.cancelled||next.epoch!==j.epoch||ne.segment.cancelled||!!next.manual!==!!j.manual||
           ne.seat!==e.seat||ne.srcLang!==e.srcLang||ne.dstLang!==e.dstLang||
           JSON.stringify(ne.prosody||null)!==JSON.stringify(e.prosody||null)||
           (!useSource&&(!ns.translationReady||ns.translationError))||(!next.manual&&!segAudioAllowed(ne)))break;
@@ -11822,14 +11850,14 @@ function segPump(){
     group.forEach(function(q){q.segment.state='tts_generating';q.segment.dispatched=true;q.segment.audio.status='generating';q.segment.audio.requestedAt=Date.now();});
     SEG.active=j;j.started=false;j.finished=false;segRefreshPlayback(j);
     var proxy={id:e.id,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,srcText:source,dstText:target,prosody:e.prosody};
-    dlog('segment','dispatch',{cardId:e.id,seq:s.seq,order:j.dispatchOrder,members:group.map(function(q){return q.segment.id;}),
+    dlog('segment','dispatch',{cardId:e.id,seq:s.seq,manualReplay:!!j.manual,order:j.dispatchOrder,members:group.map(function(q){return q.segment.id;}),
       text:j.speechText,parts:group.length,chars:j.speechText.length,debtEstimateSeconds:segDebt(),overlap:overlap,schedulerRate:rate});
     SEG.dispatchRate=rate;
     try{
       if(j.manual){
         if(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat)){j.finished=true;s.audio.error='loop-prevention';return;}
         var mode=CFG.ttsMode,fn=mode==='openai'?apiSpeak:mode==='voicevox'?vvSpeak:mode==='aivis'?aivisSpeak:mode==='eleven'?elSpeak:mode==='xai'?xaiSpeak:mode==='localvv'?lvvSpeak:null;
-        withTtsSayKey(e.id+':'+j.viewer,function(){
+        withTtsSayKey(j.sayKey||e.id+':'+j.viewer,function(){
           if(fn)fn(source,e.srcLang,e.seat,e.prosody);else browserSpeak(source,L(e.srcLang).tts,e.prosody);
         });
       }else speak(proxy);
@@ -11847,7 +11875,7 @@ function segAudioEvent(msg,data){
     segRefreshPlayback(j);
     a.startEvidence=/first|wa-play/.test(msg)?'scheduled-estimate':'playback-event';
     // L2 proxy is commit-to-playback, not a measured semantic boundary.
-    DLOG.push({t:now-DLOG_T0,c:'segment',m:'audio-start',d:{cardId:j.card.id,seq:s.seq,
+    DLOG.push({t:now-DLOG_T0,c:'segment',m:'audio-start',d:{cardId:j.card.id,seq:s.seq,manualReplay:!!j.manual,
       L1TextProxyMs:a.firstAudioAt-j.card.startedAt,L2CommitProxyMs:a.firstAudioAt-s.committedAt,evidence:a.startEvidence}});
   }
   if(/FAIL|ERROR|TIMEOUT|timeout|SILENT|drop/.test(msg))a.error=msg;
@@ -11856,6 +11884,7 @@ function segAudioFinished(){if(SEG.active)SEG.active.finished=true;}
 function segTick(){
   try{
     var now=Date.now(),dt=Math.min(200,now-(SEG.lastTick||now));SEG.lastTick=now;
+    segProcessRetranslations();
     SEG.cards.forEach(function(e){if(!e.segment.cancelled){segCheck(e);
       e.segments.forEach(function(s){if(s.committedAt&&!s.translationReady&&!s.translating&&SEG.translations<2)segTranslate(e,s);});
     }});
@@ -11866,7 +11895,7 @@ function segTick(){
       if(j.finished&&!ttsIsBusy()){
         a.endedAt=now;a.status=a.error||!a.firstAudioAt?'error':'done';
         j.segment.state=a.status==='done'?'played':'error';
-        dlog('segment','audio-end',{cardId:j.card.id,seq:j.segment.seq,state:j.segment.state,
+        dlog('segment','audio-end',{cardId:j.card.id,seq:j.segment.seq,manualReplay:!!j.manual,state:j.segment.state,
           L3Ms:j.card.endedAt?now-j.card.endedAt:null});
         (j.group||[j]).forEach(function(q){var qa=q.segment.audio;
           qa.endedAt=now;qa.status=a.status;qa.firstAudioAt=a.firstAudioAt;qa.error=a.error;
@@ -11879,7 +11908,7 @@ function segTick(){
     segPump();segStatus();
     // Completed cards remain on S.entries for logs; release runtime scheduling references.
     SEG.cards=SEG.cards.filter(function(e){return !e.segment.cancelled&&(!e.segment.final||e.segments.some(function(s){return s.translating||!s.translationReady;})||SEG.queue.some(function(j){return j.card===e;}));});
-    if(!SEG.cards.length&&!SEG.queue.length&&!SEG.translations){clearInterval(SEG.timer);SEG.timer=null;}
+    if(!SEG.cards.length&&!SEG.queue.length&&!SEG.translations&&!SEG.retranslations.length){clearInterval(SEG.timer);SEG.timer=null;}
   }catch(err){
     dlog('segment','scheduler-error',{error:String(err.message||err)});
     segCancelAll('scheduler-error');CFG.segmentMode='off';store.set('di.segmentMode','off');
@@ -11913,6 +11942,7 @@ function segFinishRecording(){
 }
 function segCancelAll(why){
   SEG.epoch++;
+  SEG.retranslations.forEach(function(j){j.segment.manualTranslationPending=false;});SEG.retranslations=[];
   SEG.requests.slice().forEach(function(r){r.release();});
   SEG.cards.forEach(function(e){e.segment.cancelled=true;clearTimeout(e.segment.timer);
     e.segments.forEach(function(s){if(!s.audio||s.audio.status!=='done'){if(s.audio)s.audio.status='cancelled';s.state='cancelled';}});
@@ -12034,27 +12064,140 @@ function segFinalizeEntry(e){
 }
 function segReplay(e,viewer,btn){
   if(!e.segment||!e.segments.length)return false;
-  var key=e.id+':'+viewer;
-  if(SEG.queue.some(function(j){return j.card.id===e.id;})){stopSpeaking('カード再生を停止');return true;}
-  stopSpeaking('カードを先頭から再生');
-  var useSrc=translationDisabled()||viewer===e.seat;
-  var clone={id:e.id,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,startedAt:Date.now(),endedAt:Date.now(),
-    segment:{final:true,mode:CFG.segmentMode,playMs:0,overlapMs:0},segments:[]};
-  e.segments.filter(function(s){return s.committedAt||(useSrc&&hasSpeechContent(s.sourceText));}).forEach(function(s){
-    var text=useSrc?s.sourceText:s.translationText;if(!text||(!useSrc&&s.translationError))return;
-    var c={id:s.id,seq:s.seq,sourceText:text,translationText:text,committedAt:Date.now(),translationReady:true,
-      audio:{segmentId:s.id,seq:s.seq,playbackRate:1,status:'pending'}};
-    // Manual playback uses the visible language independently of automatic selection.
-    var manualCard=Object.assign({},clone,{srcLang:useSrc?e.srcLang:e.dstLang,dstLang:useSrc?e.srcLang:e.dstLang});
-    SEG.queue.push({card:manualCard,segment:c,epoch:SEG.epoch,cancelled:false,manual:true,viewer:viewer,btn:btn});
-  });segWake();render(e);return true;
+  var useSource=translationDisabled()||viewer===e.seat;
+  return segQueueManual(e,e.segments.filter(function(s){return s.committedAt&&hasSpeechContent(s.sourceText);}),useSource,viewer,btn,false);
 }
 
-/* Phase 4A: part replay/retranslation and batch-aware playback indication.
+/* Phase 4C: explicit part controls. Replay copies never rewrite recorded audio. */
+function segCurrentTranslation(s){
+  return !!(s.translationReady&&!s.translating&&!s.translationError&&
+    s.translatedSourceRevision===s.sourceRevision&&s.translatedSourceText===s.sourceText&&
+    (s.translationText||'').trim());
+}
+function segManualJobValid(j){
+  if(!j.manual||!j.originalCard)return true;
+  var e=j.originalCard,s=j.originalSegment;
+  return S.entries.indexOf(e)>=0&&e.segments.indexOf(s)>=0&&
+    s.sourceRevision===j.sourceRevision&&s.sourceText===j.originalSource&&
+    (j.useSource||(segCurrentTranslation(s)&&s.translationRevision===j.translationRevision&&s.translationText===j.segment.sourceText));
+}
+function segQueueManual(e,parts,useSource,viewer,btn,partOnly){
+  var key=e.id+':'+viewer+(partOnly?':'+parts[0].id+':'+(useSource?'source':'translation'):'');
+  if(SEG.queue.some(function(j){return j.manual&&j.sayKey===key&&!j.cancelled;})){
+    stopSpeaking('部分・カード再生を停止');return true;
+  }
+  if(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat)){
+    toast('自己認識を防ぐため再生できません。音声の出力経路を確認してください。');return true;
+  }
+  // Validate the whole selection before stopping any currently playing audio.
+  if(!parts.length||parts.some(function(s){return !s.committedAt||!hasSpeechContent(s.sourceText)||(!useSource&&!segCurrentTranslation(s));})){
+    toast(useSource?'確定した部分を選んでください。':'最新の訳がそろっていません。翻訳完了を待つか、部分操作から再翻訳してください。');return true;
+  }
+  stopSpeaking(partOnly?'選んだ部分を再生':'カードを先頭から再生');
+  primeOutput(e.seat);
+  parts.forEach(function(s){
+    var text=useSource?s.sourceText:s.translationText,lang=useSource?e.srcLang:e.dstLang;
+    var copy={id:s.id,seq:s.seq,sourceText:text,translationText:text,committedAt:Date.now(),translationReady:true,
+      audio:{segmentId:s.id,seq:s.seq,playbackRate:1,status:'pending'}};
+    var card={id:e.id,seat:e.seat,srcLang:lang,dstLang:lang,prosody:e.prosody,
+      startedAt:Date.now(),endedAt:Date.now(),segment:{final:true,mode:'off',playMs:0,overlapMs:0}};
+    SEG.queue.push({card:card,segment:copy,epoch:SEG.epoch,cancelled:false,manual:true,partOnly:!!partOnly,
+      useSource:useSource,viewer:viewer,btn:btn,sayKey:key,originalCard:e,originalSegment:s,
+      sourceRevision:s.sourceRevision,originalSource:s.sourceText,translationRevision:s.translationRevision});
+  });
+  dlog('segment','manual-replay',{cardId:e.id,parts:parts.map(function(s){return s.id;}),language:useSource?e.srcLang:e.dstLang,partOnly:!!partOnly});
+  segWake();render(e);return true;
+}
+function segReplayPart(e,id,useSource,viewer,btn){
+  var s=(e.segments||[]).filter(function(x){return x.id===id;})[0];
+  if(!s||S.entries.indexOf(e)<0)return false;
+  return segQueueManual(e,[s],useSource,viewer,btn,true);
+}
+function segRetranslatePart(e,id){
+  var s=(e.segments||[]).filter(function(x){return x.id===id;})[0];
+  if(!s||!s.committedAt||!hasSpeechContent(s.sourceText)||S.entries.indexOf(e)<0||translationDisabled())return false;
+  if(s.manualTranslationPending||s.translating)return false;
+  s.translationRevision=(s.translationRevision||0)+1;s.translationReady=false;s.translationError=null;
+  s.translationText='';s.manualTranslationPending=true;
+  s.retranslationCount=(s.retranslationCount||0)+1;s.retranslationRequestedAt=Date.now();
+  SEG.retranslations.push({card:e,segment:s,epoch:SEG.epoch});
+  dlog('segment','manual-retranslate',{cardId:e.id,segmentId:s.id,seq:s.seq,sourceRevision:s.sourceRevision,
+    translationRevision:s.translationRevision,retranslationCount:s.retranslationCount});
+  // No new audio reservation: a played part changes only when explicitly replayed.
+  segJoin(e);segWake();minutesRefreshStatus();return true;
+}
+function segProcessRetranslations(){
+  SEG.retranslations=SEG.retranslations.filter(function(j){
+    var e=j.card,s=j.segment;
+    if(j.epoch!==SEG.epoch||S.entries.indexOf(e)<0||e.segments.indexOf(s)<0){s.manualTranslationPending=false;return false;}
+    if(s.translationReady&&!s.translating){s.manualTranslationPending=false;return false;}
+    if(!s.translating&&SEG.translations<2)segTranslate(e,s,true);
+    return true;
+  });
+}
+function segPartStatus(e,s){
+  if(!s.committedAt)return '認識中';
+  if(s.manualTranslationPending||s.translating||!s.translationReady)return '翻訳待ち・処理中';
+  if(translationDisabled())return '翻訳OFF';
+  if(s.translationError)return '翻訳エラー';
+  if(!segCurrentTranslation(s))return '最新の訳なし';
+  return (s.corrected?'原文訂正あり · ':'')+(s.retranslationCount?'再翻訳済み':'翻訳済み');
+}
+function segRenderControls(el,e,viewer){
+  var panel=el.querySelector('.segment-controls');
+  if(!e.segment||!e.segments||!e.segments.length){if(panel)panel.remove();return;}
+  if(!panel){
+    panel=document.createElement('details');panel.className='segment-controls';
+    var summary=document.createElement('summary');panel.appendChild(summary);
+    var hint=document.createElement('p');hint.className='segment-control-hint';
+    hint.textContent='再生すると現在の読み上げと待ち音声を止めます。再翻訳後は、再生ボタンで聞き直せます。';panel.appendChild(hint);
+    var list=document.createElement('div');list.className='segment-control-list';panel.appendChild(list);
+    panel.onclick=function(ev){ev.stopPropagation();};
+    panel.onkeydown=function(ev){ev.stopPropagation();};
+    panel.ontoggle=function(){if(panel.open)segRenderControls(el,e,viewer);};
+    el.appendChild(panel);
+  }
+  panel.querySelector('summary').textContent='部分操作（'+e.segments.filter(function(s){return s.committedAt;}).length+'部分）';
+  if(!panel.open)return;
+  var list=panel.querySelector('.segment-control-list'),seen=[];
+  e.segments.forEach(function(s){
+    if(!hasSpeechContent(s.sourceText))return;seen.push(s.id);
+    var row=Array.prototype.find.call(list.children,function(n){return n.getAttribute('data-part-id')===s.id;});
+    if(!row){
+      row=document.createElement('div');row.className='segment-control-row';row.setAttribute('data-part-id',s.id);
+      // Static markup only. Recognized and translated text always uses textContent.
+      row.innerHTML='<div class="segment-part-state"></div><div class="segment-part-source"></div><div class="segment-part-translation"></div>'+
+        '<div class="segment-part-actions"><button type="button" class="segment-play-source">原文を再生</button>'+
+        '<button type="button" class="segment-play-translation">訳文を再生</button><button type="button" class="segment-retranslate">再翻訳</button></div>';
+      list.appendChild(row);
+    }
+    var fresh=segCurrentTranslation(s),state=segPartStatus(e,s);
+    var matching=SEG.queue.filter(function(j){return !j.cancelled&&j.manual&&j.partOnly&&j.card.id===e.id&&j.segment.id===s.id;});
+    var active=segPlaybackJobs(e).some(function(j){return j.segment.id===s.id;});
+    row.classList.toggle('is-playing',active&&segIsPlaying());
+    row.querySelector('.segment-part-state').textContent='部分 '+s.seq+' · '+state+(active?segPlaybackLabel(e):matching.length?' · 再生待ち':'');
+    row.querySelector('.segment-part-source').textContent=s.sourceText;
+    row.querySelector('.segment-part-translation').textContent=translationDisabled()?'':fresh?s.translationText:'（'+state+'）';
+    var src=row.querySelector('.segment-play-source'),dst=row.querySelector('.segment-play-translation'),retry=row.querySelector('.segment-retranslate');
+    var srcPlaying=matching.some(function(j){return j.useSource;}),dstPlaying=matching.some(function(j){return !j.useSource;});
+    src.textContent=srcPlaying?'原文を停止':'原文を再生';dst.textContent=dstPlaying?'訳文を停止':'訳文を再生';
+    src.disabled=!s.committedAt;dst.disabled=(!fresh&&!dstPlaying)||translationDisabled();
+    dst.hidden=translationDisabled();retry.hidden=translationDisabled();
+    retry.disabled=!s.committedAt||!!s.manualTranslationPending||!!s.translating;
+    retry.textContent=s.manualTranslationPending?'再翻訳中…':'再翻訳';
+    src.onclick=function(){segReplayPart(e,s.id,true,viewer,src);};
+    dst.onclick=function(){segReplayPart(e,s.id,false,viewer,dst);};
+    retry.onclick=function(){segRetranslatePart(e,s.id);};
+  });
+  Array.prototype.slice.call(list.children).forEach(function(row){if(seen.indexOf(row.getAttribute('data-part-id'))<0)row.remove();});
+}
+
+
+/* Phase 4A: batch-aware playback indication.
  * A batched synthesis has no word alignment. Highlight its range, not fake per-word timing.
  */
 function segPlaybackJobs(e){
-  var active=SEG.active;if(!active||(e.segment&&e.segment.cancelled))return [];
+  var active=SEG.active;if(!active)return [];
   return (active.group||[active]).filter(function(j){return !j.cancelled&&j.card.id===e.id;});
 }
 function segIsPlaying(){
@@ -12071,7 +12214,7 @@ function segProgressLabel(e){return segRecognitionLabel(e)+segPlaybackLabel(e);}
 function segTextParts(e,useSource){
   if(!e.segment)return [];
   return e.segments.filter(function(s){return useSource||s.committedAt;}).map(function(s){
-    var text=useSource?s.sourceText:s.translationError?'（翻訳エラー：再試行できます）':s.translationText||'';
+    var text=useSource?s.sourceText:s.translationError?'（翻訳エラー：再試行できます）':segCurrentTranslation(s)?s.translationText:'';
     return {id:s.id,text:text};
   }).filter(function(p){return !!p.text;});
 }
