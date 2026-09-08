@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.42.0 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.42.1 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -663,6 +663,13 @@
 .settings-help summary{cursor:pointer}
 .settings-help p{margin:8px 0}
 #phase2AudioRoutes select{max-width:100%}
+
+/* Settings checkbox typography matches the original key-save label. */
+#drawer label.settings-check{
+  font-family:inherit;font-size:11.5px;font-weight:800;font-style:normal;
+  color:var(--dim);letter-spacing:.05em;line-height:1.35;
+}
+#drawer label.settings-check b,#drawer label.settings-check strong{font-weight:inherit}
 </style>
 </head>
 <body>
@@ -677,7 +684,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.42.0 Phase 4</span><span class="build-id">Build: 20260908-v1420-settings-card-playback</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.42.1 Phase 4</span><span class="build-id">Build: 20260908-v1421-checkbox-layout</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -687,7 +694,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.42.0 Phase 4</span><span class="build-id">Build: 20260908-v1420-settings-card-playback</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.42.1 Phase 4</span><span class="build-id">Build: 20260908-v1421-checkbox-layout</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -947,7 +954,7 @@
         <button class="btn ghost" id="chkTrans" title="実際に使う前に、このキーで通るかどうかを確かめます">🔍 確認</button>
       </div>
       <div class="keyrow"><span class="keychk" id="chkTransMsg"></span></div>
-      <label class="switch key-save"><input type="checkbox" id="rememberTrans" checked> このブラウザに保存する</label>
+      <label class="settings-check switch key-save"><input type="checkbox" id="rememberTrans" checked> このブラウザに保存する</label>
     </div>
 
     <div class="field" id="baseField" style="display:none">
@@ -1008,14 +1015,13 @@
           <button class="btn ghost" id="chkStt" title="実際に使う前に、このキーで通るかどうかを確かめます">🔍 確認</button>
         </div>
         <div class="keyrow"><span class="keychk" id="chkSttMsg"></span></div>
-        <label class="switch key-save"><input type="checkbox" id="rememberStt" checked> このブラウザに保存する</label>
+        <label class="settings-check switch key-save"><input type="checkbox" id="rememberStt" checked> このブラウザに保存する</label>
       </div>
       </div>
       <div id="sttVoiceBehavior">
-      <label class="switch"><input type="checkbox" id="prosodyOn"> 元音声の話し方をできるだけ保持する［実験］</label>
-      <small>ON時だけ、発話ごとの Pitch（声の高さ）・Energy（音量）・内部Pause（文中の間）・Speech Rate（話速）を端末内で解析します。話者ごとの通常値を学習し、ブラウザ標準TTSとAivisへ相対的な変化を反映します。</small>
-      <label class="switch"><input type="checkbox" id="echoGuard" checked> 読み上げ音声の回り込みを除外する</label>
-      <small>スピーカーから出た読み上げを音声認識が拾った場合に除外します。同じ文を繰り返す比較試験ではOFFにできます。</small>
+      <label class="settings-check switch"><input type="checkbox" id="echoGuard" checked> 読上げ音声の回り込み除外（繰り返し検出）</label>
+      <label class="settings-check switch"><input type="checkbox" id="prosodyOn"> 元音声の話し方を保持</label>
+      <small>実験機能です。ON時だけ、発話ごとの Pitch（声の高さ）・Energy（音量）・内部Pause（文中の間）・Speech Rate（話速）を端末内で解析します。話者ごとの通常値を学習し、ブラウザ標準TTSとAivisへ相対的な変化を反映します。</small>
       <details class="prosodybox">
         <summary>話し方解析の状態</summary>
         <div class="prosody-grid">
@@ -1084,7 +1090,7 @@
             <label for="vbDev">仮想ケーブルの録音デバイス</label><select id="vbDev"></select>
           </div>
           <p>VB-CABLEは会議アプリの出力音声を、Duoが読める録音デバイスへ渡す仮想ケーブルです。画面共有で音声を取れない場合に使います。OS側で会議の出力をCABLE Inputへ送り、ここでCABLE Outputを選択します。Duoの読み上げ出力と同じケーブルには戻さないでください。入力の準備と認識ブラウザの対応確認が必要です。</p>
-          <label class="switch"><input type="checkbox" id="preventSelfRecognition" checked> 同じ仮想経路へ出したTTSの自己認識を防止する</label>
+          <label class="settings-check switch"><input type="checkbox" id="preventSelfRecognition" checked> 同じ仮想経路へ出したTTSの自己認識を防止する</label>
         </details>
         <small id="audioRouteWarning" data-fold="off" role="status"></small>
       </div>
@@ -1154,10 +1160,10 @@
         <details><summary>逐次読み上げの診断</summary><small id="segmentStatus" aria-live="off" data-fold="off"></small></details>
       </div>
       <div id="ttsRememberField" style="display:none">
-        <label class="switch key-save"><input type="checkbox" id="rememberTts" checked> このブラウザに保存する</label>
+        <label class="settings-check switch key-save"><input type="checkbox" id="rememberTts" checked> このブラウザに保存する</label>
       </div>
       <div class="tts-stream-field" id="ttsStreamField">
-        <label class="switch"><input type="checkbox" id="ttsStream"> ストリーミング再生</label>
+        <label class="settings-check switch"><input type="checkbox" id="ttsStream"> ストリーミング再生</label>
         <small id="ttsStreamStatus"></small>
       </div>
       <!-- 声とモデルの指定は OpenAI 音声だけが使う。他のエンジンでは一切参照しないので、
@@ -1202,7 +1208,7 @@
           <small>Web Speech APIが数値指定できる3項目だけを表示します。感情・緩急・文中の間はブラウザ共通の制御方法がないため対象外です。音量はAPI上限が1.00なので、標準より大きくはできません。</small>
         </details>
       </div>
-      <label class="switch"><input type="checkbox" id="ttsSrc"> 訳文ではなく<b>原文</b>をそのまま読み上げる</label>
+      <label class="settings-check switch"><input type="checkbox" id="ttsSrc"> 訳文ではなく<b>原文</b>をそのまま読み上げる</label>
       <div class="row">
         <span style="font-size:11.5px;color:var(--dim);width:104px;flex:0 0 auto">鳴り始めの無音</span>
         <select id="ttsPad" style="flex:1">
@@ -1288,7 +1294,7 @@
           <details class="prosodybox">
             <summary>声の再現度・話者強調を調整</summary>
             <div class="tunerow"><span>声の再現度</span><select id="elSimilarity"><option value="-2">低い</option><option value="-1">やや低い</option><option value="0">標準</option><option value="1">高い</option><option value="2">非常に高い</option></select></div>
-            <label class="check"><input type="checkbox" id="elSpeakerBoost"> 話者強調（元の声へ近づける・わずかに遅延増）</label>
+            <label class="settings-check check"><input type="checkbox" id="elSpeakerBoost"> 話者強調（元の声へ近づける・わずかに遅延増）</label>
           </details>
           <small>話速1.20倍まではElevenLabs APIで生成します。1.50／1.80倍はAPI側を1.20倍にし、残りをブラウザのピッチ保持再生で加速します。感情幅は<code>stability</code>、抑揚・緩急は<code>style</code>等で近似するため、声素材とモデルによって効き方が変わります。</small>
         </div>
@@ -1395,7 +1401,7 @@
           <input type="range" id="aivisVol" min="0" max="2" step="0.05"><b id="aivisVolV"></b></label>
         <label class="sl"><span>改行時の無音</span>
           <input type="range" id="aivisBreak" min="0" max="2" step="0.05"><b id="aivisBreakV"></b></label>
-        <label class="switch"><input type="checkbox" id="aivisNorm"> 音量のノーマライズ</label>
+        <label class="settings-check switch"><input type="checkbox" id="aivisNorm"> 音量のノーマライズ</label>
         <input type="text" id="aivisDict" placeholder="ユーザー辞書UUID（任意・読み方を直したいとき）" autocomplete="off">
         <div class="keyrow">
           <button class="btn ghost" id="aivisAdvReset">↩ 既定に戻す</button>
@@ -1525,7 +1531,7 @@
 
     <div class="field">
       <label>このHTMLファイルに焼き込んで保存</label>
-      <label class="switch"><input type="checkbox" id="embedKey"> APIキーも埋め込む（自分専用ファイルにする場合のみ）</label>
+      <label class="settings-check switch"><input type="checkbox" id="embedKey"> APIキーも埋め込む（自分専用ファイルにする場合のみ）</label>
       <button class="btn primary" id="saveHtml">⤓ 設定・用語集を埋め込んだHTMLを書き出す</button>
       <small>用語集・コンテキスト・各種設定を埋め込んだ新しい HTML を書き出します。書き出したファイルを配れば、相手のPCでも同じ用語集で動きます。<br>
       ※ 元ファイルは上書きされないので、ダウンロードしたものと置き換えてお使いください。</small>
@@ -1540,11 +1546,16 @@
     <div class="field">
       <label>表示</label>
       <div class="row"><span style="font-size:11.5px;color:var(--dim);width:72px">文字サイズ</span><input type="range" id="fsize" min="16" max="72" value="30"></div>
-      <label class="switch"><input type="checkbox" id="flipTop"> 相手（B）側のパネルを180°回転 — 対面で端末を挟むとき</label>
-      <label class="switch"><input type="checkbox" id="showSrc" checked> 原文も小さく併記する</label>
-      <label class="switch"><input type="checkbox" id="swapSides"> AとBの表示位置を入れ替える</label>
-      <label class="switch"><input type="checkbox" id="interimOn" checked> 認識途中の文字も表示する</label>
-      <label class="switch"><input type="checkbox" id="syncScroll" checked> A/B会話ログのスクロールを連動</label>
+      <label class="settings-check switch"><input type="checkbox" id="flipTop"> 相手（B）側のパネルを180°回転 — 対面で端末を挟むとき</label>
+      <label class="settings-check switch"><input type="checkbox" id="showSrc" checked> 原文も小さく併記する</label>
+      <label class="settings-check switch"><input type="checkbox" id="swapSides"> AとBの表示位置を入れ替える</label>
+      <label class="settings-check switch"><input type="checkbox" id="interimOn" checked> 認識途中の文字も表示する</label>
+      <label class="settings-check switch"><input type="checkbox" id="syncScroll" checked> A/B会話ログのスクロールを連動</label>
+    </div>
+
+    <div class="field">
+      <label>名前（表示ラベル）</label>
+      <div class="row"><input type="text" id="nameA" placeholder="自分 / Me"><input type="text" id="nameB" placeholder="相手 / Partner"></div>
     </div>
 
     <div class="field" id="overlayActions">
@@ -1579,13 +1590,9 @@
         <label>表示件数<select id="cfgOvCapItems"><option value="2">2件</option><option value="3">3件</option><option value="4">4件</option><option value="6">6件</option><option value="8">8件</option></select></label>
         <label>保持時間<select id="cfgOvCapHold"><option value="8">8秒</option><option value="12">12秒</option><option value="18">18秒</option><option value="30">30秒</option><option value="60">60秒</option><option value="0">消さない</option></select></label>
       </div>
-      <div class="cap-checks"><label><input type="checkbox" id="cfgOvCapShadow"> 影</label><label><input type="checkbox" id="cfgOvCapOutline"> 縁取り</label><label><input type="checkbox" id="cfgOvCapRound"> 角丸</label></div>
+      <div class="cap-checks"><label class="settings-check"><input type="checkbox" id="cfgOvCapShadow"> 影</label><label class="settings-check"><input type="checkbox" id="cfgOvCapOutline"> 縁取り</label><label class="settings-check"><input type="checkbox" id="cfgOvCapRound"> 角丸</label></div>
       <small>「保持時間」を「消さない」にすると、表示件数を超えた古い字幕だけが入れ替わります。取込解像度と取込音声は次回の画面取込から反映されます。</small>
       <div class="row wrap"><button class="btn ghost" id="cfgOvCapReset">オーバーレイ設定を既定に戻す</button></div>
-    </div>
-    <div class="field">
-      <label>名前（表示ラベル）</label>
-      <div class="row"><input type="text" id="nameA" placeholder="自分 / Me"><input type="text" id="nameB" placeholder="相手 / Partner"></div>
     </div>
 
     <div class="hr"></div>
@@ -1629,7 +1636,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260908-v1420-settings-card-playback';
+var APP_BUILD = '20260908-v1421-checkbox-layout';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -9689,7 +9696,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.42.0 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.42.1 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -11015,7 +11022,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.42.0 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.42.1 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11323,7 +11330,7 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.42.0 / Phase 4A playback controls.
+/* Duo Segment pipeline v1.42.1 / Phase 4A playback controls.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
