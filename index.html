@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.44.0 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.44.1 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -729,7 +729,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.0 Phase 4</span><span class="build-id">Build: 20260908-v1440-segment-controls</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.1 Phase 4</span><span class="build-id">Build: 20260908-v1441-realtime-input-routing</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -739,7 +739,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.0 Phase 4</span><span class="build-id">Build: 20260908-v1440-segment-controls</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.1 Phase 4</span><span class="build-id">Build: 20260908-v1441-realtime-input-routing</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1098,7 +1098,8 @@
         ・訳文の音声は自動で読み上げられます（TTS設定は使いません）<br>
         ・翻訳プロバイダの設定（モデル・用語集・背景）は<b>使われません</b><br>
         ・料金は音声1分あたり $0.034 程度（従量課金）<br>
-        ・OpenAI の APIキーが必要です（⚙→翻訳 で OpenAI を選び、キーを入力）
+        ・音声認識用のAPIキー、またはOpenAIのAPIキーを使います<br>
+        ・A→Bは入力元A、B→Aは入力元Bを使います。タブ／システム音声を選ぶと、開始時に音声の共有画面が開きます
       </div>
       <div class="field" id="rtDirField" style="display:none">
         <label>訳す方向</label>
@@ -1107,7 +1108,7 @@
           <option value="B2A">B（相手）が話した内容を → A（自分）の言語へ</option>
           <option value="both">両方向（2接続・料金2倍）</option>
         </select>
-        <small>片方向は1接続、両方向はA→BとB→Aの2接続を同時に使うため、料金も2倍になります。</small>
+        <small>A→Bは入力元A、B→Aは入力元Bを使います。両方向は両方の入力を有効にしてください（2接続分の課金）。</small>
       </div>
     </div>
 
@@ -1684,7 +1685,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260908-v1440-segment-controls';
+var APP_BUILD = '20260908-v1441-realtime-input-routing';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -3984,6 +3985,7 @@ function dlog(cat, msg, data){
 /* APIキーらしき文字列は書き出し時に必ず伏せる（そのまま貼れるようにするため） */
 function redact(s){
   return String(s)
+    .replace(/\bek_[A-Za-z0-9_\-]{6,}/g, 'ek_***REDACTED***')
     .replace(/\b(sk|rk|gsk|xai|pk|sk-ant)-[A-Za-z0-9_\-]{6,}/gi, '$1-***REDACTED***')
     .replace(/\bAIza[A-Za-z0-9_\-]{8,}/g, 'AIza***REDACTED***')
     .replace(/(Bearer\s+)[A-Za-z0-9._\-]{6,}/gi, '$1***REDACTED***');
@@ -5347,6 +5349,7 @@ function ttsLoopRisk(seat){
 }
 function effectiveDisplaySttRoute(){
   if(CFG.displaySttRoute==='vb')return 'vb';
+  if(CFG.sttProvider==='realtime')return 'api';
   if(CFG.displaySttRoute==='direct')return 'direct';
   return CFG.sttProvider==='webspeech'?'direct':'api';
 }
@@ -5357,8 +5360,8 @@ function audioRouteWarningText(){
 function renderAudioRouteWarning(){
   var route=effectiveDisplaySttRoute(),shared=CFG.srcA==='display'||CFG.srcB==='display',rt=CFG.sttProvider==='realtime';
   var info=$('displaySttRouteNote');
-  if(info)info.textContent=rt?'リアルタイム同時通訳は専用の音声接続を使います。この共有音声設定は適用されません。':!shared?'現在の入力はマイクです。共有音声の設定は、入力元を「タブ／システム音声」にしたときに使います。':route==='vb'?'共有音声：仮想ケーブル → 選択したSTT':route==='direct'?'共有音声：Web Speech'+(CFG.sttProvider!=='webspeech'?'（上で選んだSTTはマイクに使用）':''):'共有音声：選択したSTT（'+CFG.sttProvider+' / '+CFG.sttModel+'）';
-  var details=$('audioRouteDetails');if(details)details.style.display=rt?'none':'';
+  if(info)info.textContent=rt?'リアルタイム同時通訳は、訳す方向に対応するA/Bの入力元を使います。タブ／システム音声は共有音声を直接接続し、VB-CABLE選択時は指定した仮想入力を使います。':!shared?'現在の入力はマイクです。共有音声の設定は、入力元を「タブ／システム音声」にしたときに使います。':route==='vb'?'共有音声：仮想ケーブル → 選択したSTT':route==='direct'?'共有音声：Web Speech'+(CFG.sttProvider!=='webspeech'?'（上で選んだSTTはマイクに使用）':''):'共有音声：選択したSTT（'+CFG.sttProvider+' / '+CFG.sttModel+'）';
+  var details=$('audioRouteDetails');if(details)details.style.display='';
   var vb=$('vbInputField');if(vb)vb.style.display=route==='vb'?'':'none';
   var warn=$('audioRouteWarning'),message=audioRouteWarningText();
   if(warn){warn.textContent=message;warn.style.display=message?'':'none';warn.style.color='#ffb3bd';}
@@ -9175,92 +9178,226 @@ RealtimeTranscriptionEngine.prototype.stop=function(){
    音声を送りながら、訳した音声と字幕がストリーミングで返ってくる。
    1接続 = 1方向（出力言語を1つ指定する）。双方向にしたい場合は2接続張る。
    ========================================================================= */
-function RealtimeEngine(srcSeat, stream){
-  this.srcSeat = srcSeat;                       // 話し手の席
-  this.dstSeat = (srcSeat === 'A') ? 'B' : 'A'; // 訳の届け先
-  this.stream  = stream;
-  this.pc = null; this.dc = null; this.audio = null;
-  this.entry = null; this.dead = false;
+function realtimeKey(){
+  return String(KEYS['stt:realtime']||'').trim()||keyOf('openai')||(CFG.provider==='openai'?transKey():'');
 }
-
-RealtimeEngine.prototype.start = function(){
-  var self = this;
-  var key = keyOf('openai') || transKey();
-  if (!key) return Promise.reject(new Error('OpenAI の APIキーが必要です'));
-  var target = L(langOf(this.dstSeat)).g.split('-')[0];   // 出力（訳）言語
-
-  // 1) 短期クライアントシークレットを発行
-  return fetch('https://api.openai.com/v1/realtime/translations/client_secrets', {
-    method:'POST',
-    headers:{ 'Authorization':'Bearer '+key, 'Content-Type':'application/json' },
-    body: JSON.stringify({
-      session:{
-        model:'gpt-realtime-translate',
-        audio:{
-          input:{ noise_reduction:{ type:'near_field' },
-                  transcription:{ model:'gpt-realtime-whisper' } },
-          output:{ language: target }
-        }
-      }
-    })
-  }).then(chk).then(function(j){
-    var secret = j.value || (j.client_secret && j.client_secret.value);
-    if (!secret) throw new Error('クライアントシークレットを取得できませんでした');
-    return self.connect(secret);
+function realtimeEscape(value){return String(value).replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];});}
+function realtimeInputPlan(cfg){
+  var dirs=cfg.rtDirection==='both'?['A','B']:[cfg.rtDirection==='B2A'?'B':'A'];
+  return dirs.map(function(seat){
+    var source=seat==='A'?cfg.srcA:cfg.srcB;
+    return {seat:seat,source:source,route:source==='display'?(cfg.displaySttRoute==='vb'?'vb':'display'):source};
+  });
+}
+function realtimeStopStream(stream){
+  if(stream&&stream.getTracks)stream.getTracks().forEach(function(track){try{track.stop();}catch(e){}});
+}
+function realtimeInputLabel(route){return route==='display'?'タブ／システム音声':route==='vb'?'VB-CABLE入力':'マイク';}
+function startRealtimeInputs(){
+  var gen=sessionGen,plan=realtimeInputPlan(CFG),groups={},direction=CFG.rtDirection;
+  function current(){return S.running&&gen===sessionGen;}
+  if(!realtimeKey()){
+    toast('リアルタイム同時通訳の音声認識用APIキー、またはOpenAIのAPIキーを設定してください。');
+    stopAll();openDrawer(true);return Promise.resolve([]);
+  }
+  var disabled=plan.filter(function(p){return p.source==='off';});
+  if(disabled.length){
+    toast('訳す方向の入力元 '+disabled.map(function(p){return p.seat;}).join('・')+' が「使わない」です。入力元または訳す方向を変更してください。');
+    dlog('rt','input-off',{seats:disabled.map(function(p){return p.seat;})});stopAll();return Promise.resolve([]);
+  }
+  plan.forEach(function(p){(groups[p.route]||(groups[p.route]=[])).push(p);});
+  dlog('rt','input-plan',{direction:direction,inputs:plan});
+  // Invoke display acquisition in the start click, before waiting on any microphone or HTTP request.
+  var jobs=Object.keys(groups).sort(function(a,b){return a==='display'?-1:b==='display'?1:0;}).map(function(route){
+    var acquire;
+    try{
+      if(route==='display')acquire=getDisplayAudioForStt();
+      else if(route==='vb'){
+        if(!CFG.vbDev)throw new Error('VB-CABLE入力デバイスを選択してください。');
+        acquire=openInputDevice(CFG.vbDev,true).then(function(st){return {stream:st,ownsStream:true};});
+      }else if(route==='mic')acquire=openInputDevice(CFG.micDev,false).then(function(st){return {stream:st,ownsStream:true};});
+      else throw new Error('入力元を選択してください。');
+    }catch(err){acquire=Promise.reject(err);}
+    return Promise.resolve(acquire).then(function(info){
+      if(!current()){if(info.ownsStream)realtimeStopStream(info.stream);return [];}
+      var tr=info.stream&&info.stream.getAudioTracks()[0],created=[];
+      try{
+        if(!tr||tr.readyState!=='live'||!tr.enabled)throw new Error('有効な共有音声がありません。「音声も共有」をONにしてください。');
+        if(route==='vb'&&!isVirtualDev(tr.label||''))throw new Error('VB-CABLE経路に通常マイクが選ばれています。CABLE Outputなど、仮想ケーブルの入力を選択してください。');
+        groups[route].forEach(function(p){
+          // Each direction owns its clone. Stopping one direction never stops the other or an overlay's capture.
+          var clone=tr.clone(),stream=new MediaStream([clone]);
+          var eng=new RealtimeEngine(p.seat,stream,{route:route,isMic:route==='mic',ownsStream:true,sourceTrack:tr,fromOverlay:!!info.fromOverlay});
+          created.push(eng);engines.push(eng);
+          dlog('rt','input-acquired',{seat:p.seat,source:p.source,route:route,label:tr.label||'',fromOverlay:!!info.fromOverlay,
+            trackState:clone.readyState,trackMuted:!!clone.muted,trackEnabled:!!clone.enabled});
+        });
+      }catch(err){created.forEach(function(e){e.stop();});engines=engines.filter(function(e){return created.indexOf(e)<0;});throw err;}
+      finally{if(info.ownsStream)realtimeStopStream(info.stream);}
+      return Promise.all(created.map(function(eng){
+        return eng.start().then(function(){return {seat:eng.srcSeat,ok:true};}).catch(function(err){
+          eng.stop();engines=engines.filter(function(e){return e!==eng;});
+          if(!current()||err.cancelled)return {seat:eng.srcSeat,cancelled:true};
+          dlog('rt','start-FAIL',{seat:eng.srcSeat,route:route,stage:err.rtStage||eng.connectStage,error:redact(String(err.message||err)).slice(0,300)});
+          return {seat:eng.srcSeat,ok:false,error:redact(String(err.message||err)).slice(0,200)};
+        });
+      }));
+    }).catch(function(err){
+      if(!current())return [];
+      dlog('rt','input-FAIL',{route:route,error:redact(String(err.message||err)).slice(0,300)});
+      return groups[route].map(function(p){return {seat:p.seat,ok:false,error:redact(String(err.message||err)).slice(0,200)};});
+    });
+  });
+  updateStatus();
+  return Promise.all(jobs).then(function(results){
+    var flat=[].concat.apply([],results);if(!current())return flat;
+    var ok=flat.filter(function(r){return r.ok;}),failed=flat.filter(function(r){return r.ok===false;});
+    if(!ok.length)stopAll();else updateStatus();
+    if(failed.length)toast('リアルタイム接続失敗：'+realtimeEscape(failed.map(function(r){return r.seat+'：'+r.error;}).join(' / '))+(ok.length?'<br>接続済み：'+ok.map(function(r){return r.seat;}).join('・'):''));
+    else if(ok.length)toast('リアルタイム同時通訳に接続しました（'+realtimeDirectionLabel(direction)+'）。',true);
+    return flat;
+  });
+}
+function RealtimeEngine(srcSeat,stream,opts){
+  this.srcSeat=srcSeat;this.dstSeat=srcSeat==='A'?'B':'A';this.stream=stream;this.opts=opts||{};
+  this.sourceLang=langOf(srcSeat);this.targetLang=L(langOf(this.dstSeat)).g.split('-')[0];
+  this.pc=null;this.dc=null;this.audio=null;this.entry=null;this.dead=false;this.session=sessionGen;
+  this.connectStage='input';this.connected=false;this.pending=[];this.openTimer=null;this.openReject=null;
+  this.meter=null;this.statsTimer=null;this.lastRms=null;this.prosody=null;
+}
+RealtimeEngine.prototype.alive=function(){return !this.dead&&S.running&&this.session===sessionGen;};
+RealtimeEngine.prototype.cancelError=function(){var e=new Error('Realtime接続を停止しました');e.cancelled=true;e.rtStage=this.connectStage;return e;};
+RealtimeEngine.prototype.request=function(stage,url,opts,ms,json){
+  var self=this;this.connectStage=stage;
+  return new Promise(function(resolve,reject){
+    if(!self.alive()){reject(self.cancelError());return;}
+    var ctl=typeof AbortController!=='undefined'?new AbortController():null,timer=null,done=false;
+    var pending={cancel:function(){finish(self.cancelError());if(ctl)ctl.abort();}};
+    function finish(err,value){
+      if(done)return;done=true;clearTimeout(timer);self.pending=self.pending.filter(function(p){return p!==pending;});
+      if(err){err.rtStage=stage;reject(err);}else resolve(value);
+    }
+    self.pending.push(pending);if(ctl)opts.signal=ctl.signal;
+    timer=setTimeout(function(){finish(new Error('Realtime '+stage+'が'+ms/1000+'秒でタイムアウトしました'));if(ctl)ctl.abort();},ms);
+    dlog('rt',stage+'-request',{seat:self.srcSeat,timeoutMs:ms});
+    Promise.resolve().then(function(){if(!self.alive())throw self.cancelError();return fetch(url,opts);}).then(function(r){
+      if(done||!self.alive())throw self.cancelError();
+      dlog('rt',stage+'-response',{seat:self.srcSeat,status:r.status});
+      if(!r.ok)return r.text().then(function(t){throw new Error('Realtime '+stage+'失敗 '+r.status+': '+redact(String(t||'')).slice(0,200));});
+      return json?r.json():r.text();
+    }).then(function(value){if(!self.alive())finish(self.cancelError());else finish(null,value);},function(err){finish(err);});
   });
 };
-
-RealtimeEngine.prototype.connect = function(secret){
-  var self = this;
-  var pc = new RTCPeerConnection();
-  this.pc = pc;
-
-  // 訳した音声を再生する
-  var audio = document.createElement('audio');
-  audio.autoplay = true;
-  this.audio = audio;
-  pc.ontrack = function(ev){
-    audio.srcObject = ev.streams[0];
-    // 自分の声が混ざらないよう、再生中はマイク側の認識を抑制する
+RealtimeEngine.prototype.start=function(){
+  var self=this,key=realtimeKey(),track=this.stream&&this.stream.getAudioTracks()[0];
+  if(!this.alive())return Promise.reject(this.cancelError());
+  if(!key)return Promise.reject(new Error('OpenAIの音声認識用APIキーが未設定です'));
+  if(!track||track.readyState!=='live')return Promise.reject(new Error('有効な音声Trackがありません'));
+  this.track=track;
+  this.inputEnded=function(){
+    if(!self.alive())return;dlog('rt','input-ended',{seat:self.srcSeat,route:self.opts.route});
+    self.stop();engines=engines.filter(function(e){return e!==self;});
+    if(!engines.some(function(e){return !e.dead;}))stopAll();else updateStatus();
+    toast('共有音声または入力が終了しました。入力を選び直して開始してください。');
   };
-
-  this.stream.getAudioTracks().forEach(function(t){ pc.addTrack(t, self.stream); });
-
-  var dc = pc.createDataChannel('oai-events');
-  this.dc = dc;
-  dc.onmessage = function(ev){ self.onEvent(ev); };
-  dc.onopen = function(){
-    // 念のため出力言語を明示（発行時の設定と同じ）
-    try{
-      dc.send(JSON.stringify({
-        type:'session.update',
-        session:{ audio:{ output:{ language: L(langOf(self.dstSeat)).g.split('-')[0] } } }
-      }));
-    }catch(e){}
+  track.addEventListener('ended',this.inputEnded);
+  if(this.opts.fromOverlay&&this.opts.sourceTrack)this.opts.sourceTrack.addEventListener('ended',this.inputEnded);
+  this.startMeter();
+  return this.request('secret','https://api.openai.com/v1/realtime/translations/client_secrets',{
+    method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},
+    body:JSON.stringify({session:{model:'gpt-realtime-translate',audio:{
+      input:{noise_reduction:this.opts.isMic?{type:'near_field'}:null,transcription:{model:'gpt-realtime-whisper'}},
+      output:{language:this.targetLang}}}})
+  },15000,true).then(function(j){
+    if(!self.alive())throw self.cancelError();
+    var secret=j.value||(j.client_secret&&j.client_secret.value);
+    if(!secret)throw new Error('クライアントシークレットを取得できませんでした');
+    return self.connect(secret);
+  }).catch(function(err){self.stop();throw err;});
+};
+RealtimeEngine.prototype.connect=function(secret){
+  var self=this;if(!this.alive())return Promise.reject(this.cancelError());
+  var pc=new RTCPeerConnection(),audio=document.createElement('audio'),opened=false,readyResolve,readyReject;
+  this.pc=pc;this.audio=audio;this.connectStage='peer';audio.autoplay=true;
+  pc.ontrack=function(ev){
+    if(!self.alive())return;audio.srcObject=ev.streams[0]||new MediaStream([ev.track]);
+    dlog('rt','remote-audio',{seat:self.srcSeat});
+    var play=audio.play();if(play&&play.catch)play.catch(function(err){if(self.alive()){
+      dlog('rt','playback-blocked',{seat:self.srcSeat,error:String(err.name||err)});
+      toast('翻訳音声を自動再生できません。ブラウザの音声再生設定を確認してください。');
+    }});
   };
-
-  pc.onconnectionstatechange = function(){
-    if (self.dead) return;
-    if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected'){
-      toast('リアルタイム接続が切断されました。停止して開始し直してください。');
+  pc.addTrack(this.track,this.stream);
+  dlog('rt','track-attached',{seat:this.srcSeat,route:this.opts.route,label:this.track.label||'',enabled:this.track.enabled,muted:this.track.muted});
+  var dc=pc.createDataChannel('oai-events');this.dc=dc;
+  var ready=new Promise(function(resolve,reject){readyResolve=resolve;readyReject=reject;});ready.catch(function(){});
+  function fail(err){if(opened)return;clearTimeout(self.openTimer);self.openTimer=null;self.openReject=null;readyReject(err);}
+  this.openReject=fail;
+  this.openTimer=setTimeout(function(){fail(new Error('Realtimeの接続が30秒でタイムアウトしました'));},30000);
+  dc.onmessage=function(ev){if(self.alive())self.onEvent(ev);};
+  dc.onopen=function(){
+    if(!self.alive()){fail(self.cancelError());return;}
+    opened=true;clearTimeout(self.openTimer);self.openTimer=null;self.openReject=null;
+    dlog('rt','dc-open',{seat:self.srcSeat});readyResolve();
+  };
+  dc.onerror=function(){if(self.alive()){dlog('rt','channel-error',{seat:self.srcSeat});fail(new Error('Realtime字幕接続でエラーが発生しました'));}};
+  pc.onconnectionstatechange=function(){
+    if(!self.alive())return;dlog('rt','connection-state',{seat:self.srcSeat,state:pc.connectionState});updateStatus();
+    if(pc.connectionState==='failed'){
+      if(!opened)fail(new Error('Realtime WebRTC接続に失敗しました'));
+      else {self.stop();engines=engines.filter(function(e){return e!==self;});
+        if(!engines.some(function(e){return !e.dead;}))stopAll();else updateStatus();
+        toast('リアルタイム接続が切断されました。停止して開始し直してください。');}
     }
   };
-
-  return pc.createOffer().then(function(offer){
-    return pc.setLocalDescription(offer).then(function(){ return offer; });
+  var setup=pc.createOffer().then(function(offer){
+    if(!self.alive())throw self.cancelError();return pc.setLocalDescription(offer).then(function(){return offer;});
   }).then(function(offer){
-    return fetch('https://api.openai.com/v1/realtime/translations/calls', {
-      method:'POST',
-      headers:{ 'Authorization':'Bearer '+secret, 'Content-Type':'application/sdp' },
-      body: offer.sdp
-    });
-  }).then(function(r){
-    if (!r.ok) return r.text().then(function(t){ throw new Error('WebRTC接続失敗 '+r.status+': '+t.slice(0,160)); });
-    return r.text();
-  }).then(function(sdp){
-    return self.pc.setRemoteDescription({ type:'answer', sdp: sdp });
+    if(!self.alive())throw self.cancelError();
+    return self.request('sdp','https://api.openai.com/v1/realtime/translations/calls',{
+      method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/sdp'},body:offer.sdp
+    },15000,false);
+  }).then(function(sdp){if(!self.alive())throw self.cancelError();return pc.setRemoteDescription({type:'answer',sdp:sdp});});
+  // Race rejects promptly on stop/DC timeout even if a browser's SDP promise never resolves.
+  var failureOnly=ready.then(function(){return new Promise(function(){});});
+  return Promise.race([Promise.all([setup,ready]),failureOnly]).then(function(){
+    if(!self.alive())throw self.cancelError();self.connected=true;self.connectStage='connected';
+    self.statsTimer=setInterval(function(){self.logStats();},3000);
+    dlog('rt','connected',{seat:self.srcSeat,route:self.opts.route,targetLanguage:self.targetLang});updateStatus();
   });
 };
+RealtimeEngine.prototype.startMeter=function(){
+  var self=this;
+  try{
+    var ac=new (window.AudioContext||window.webkitAudioContext)(),an=ac.createAnalyser();an.fftSize=2048;
+    this.meter={ac:ac,source:ac.createMediaStreamSource(this.stream),timer:null};this.meter.source.connect(an);
+    if(CFG.prosodyOn)this.prosody=new ProsodyAnalyzer(an,ac.sampleRate,'realtime:'+(this.opts.route||'audio'));
+    var buf=new Uint8Array(an.frequencyBinCount);
+    this.meter.timer=setInterval(function(){
+      if(!self.alive()||ac.state!=='running')return;an.getByteTimeDomainData(buf);var sum=0;
+      for(var i=0;i<buf.length;i++){var v=(buf[i]-128)/128;sum+=v*v;}
+      self.lastRms=Math.sqrt(sum/buf.length);if(self.prosody)self.prosody.sample(Date.now(),self.lastRms);
+      setLevel(engines.reduce(function(max,e){return Math.max(max,e.lastRms||0);},0));
+    },100);
+    if(ac.state==='suspended'){var resume=ac.resume();if(resume&&resume.catch)resume.catch(function(){});}
+  }catch(err){dlog('rt','meter-unavailable',{seat:this.srcSeat,error:String(err.message||err)});}
+};
+RealtimeEngine.prototype.logStats=function(){
+  var self=this,pc=this.pc;if(!this.alive()||!pc||!pc.getStats||this.statsBusy)return;this.statsBusy=true;
+  Promise.resolve().then(function(){return pc.getStats();}).then(function(stats){
+    if(!self.alive())return;var bytes=0,packets=0;
+    stats.forEach(function(r){if(r.type==='outbound-rtp'&&(r.kind==='audio'||r.mediaType==='audio')){bytes+=r.bytesSent||0;packets+=r.packetsSent||0;}});
+    dlog('rt','audio-transport',{seat:self.srcSeat,route:self.opts.route,connection:pc.connectionState,
+      trackState:self.track.readyState,trackEnabled:self.track.enabled,trackMuted:self.track.muted,
+      rms:self.lastRms===null?null:+self.lastRms.toFixed(5),bytesSent:bytes,packetsSent:packets,
+      bytesSinceLast:self.lastBytes==null?null:bytes-self.lastBytes});self.lastBytes=bytes;
+  }).catch(function(){}).then(function(){self.statsBusy=false;});
+};
+function realtimeConnectionLabel(){
+  var active=engines.filter(function(e){return e instanceof RealtimeEngine&&!e.dead;});
+  return active.length?active.map(function(e){return e.srcSeat+'：'+realtimeInputLabel(e.opts.route)+' / '+(e.pc&&e.pc.connectionState==='disconnected'?'切断中':e.connected?'接続済み':e.connectStage+'待ち');}).join(' / '):'入力選択・取得待ち';
+}
+
 
 /* ストリーミングで届く字幕を吹き出しに反映する */
 RealtimeEngine.prototype.ensureEntry = function(){
@@ -9271,9 +9408,11 @@ RealtimeEngine.prototype.ensureEntry = function(){
   return this.entry;
 };
 RealtimeEngine.prototype.onEvent = function(ev){
+  if(!this.alive())return;
   var e;
   try { e = JSON.parse(ev.data); } catch(err){ return; }
   var t = e.type || '';
+  if(t.indexOf('transcript')>=0)dlog('rt','transcript',{seat:this.srcSeat,type:t,chars:String(e.delta||'').length});
 
   if (t === 'session.input_transcript.delta'){          // 話した内容（原文）
     this.ensureEntry().srcText += (e.delta || '');
@@ -9289,7 +9428,7 @@ RealtimeEngine.prototype.onEvent = function(ev){
       this.entry.interim = false;
       if (t === 'session.input_transcript.completed'){
         this.entry.srcText=punctuateTranscript(this.entry.srcText,this.entry.srcLang);
-        if (CFG.prosodyOn) attachProsody(this.entry,micProsodySnapshot(this.entry.srcText,true));
+        if (CFG.prosodyOn) attachProsody(this.entry,this.prosody?this.prosody.finalize():null);
       }
       render(this.entry);
     }
@@ -9297,17 +9436,28 @@ RealtimeEngine.prototype.onEvent = function(ev){
     if (t !== 'session.input_transcript.completed') this.entry = null;
   }
   else if (t === 'error' || (e.error && e.error.message)){
-    toast('リアルタイム: ' + ((e.error && e.error.message) || 'エラー'));
+    dlog('rt','server-error',{seat:this.srcSeat,error:redact(String(e.error&&e.error.message||'エラー')).slice(0,300)});
+    toast('リアルタイム: ' + realtimeEscape(redact(String((e.error && e.error.message) || 'エラー'))));
   }
 };
 
 RealtimeEngine.prototype.stop = function(){
-  this.dead = true;
-  try{ if (this.dc && this.dc.readyState === 'open') this.dc.send(JSON.stringify({ type:'session.close' })); }catch(e){}
-  try{ if (this.dc) this.dc.close(); }catch(e){}
-  try{ if (this.pc) this.pc.close(); }catch(e){}
-  if (this.audio){ try{ this.audio.srcObject = null; }catch(e){} this.audio = null; }
-  this.pc = null; this.dc = null; this.entry = null;
+  if(this.dead)return;this.dead=true;this.connected=false;
+  this.pending.slice().forEach(function(p){p.cancel();});
+  if(this.openReject)this.openReject(this.cancelError());clearTimeout(this.openTimer);this.openTimer=null;
+  clearInterval(this.statsTimer);this.statsTimer=null;
+  if(this.meter){clearInterval(this.meter.timer);try{this.meter.source.disconnect();this.meter.ac.close();}catch(e){}this.meter=null;}
+  if(this.prosody){this.prosody.stop();this.prosody=null;}
+  if(this.track&&this.inputEnded)this.track.removeEventListener('ended',this.inputEnded);
+  if(this.opts.fromOverlay&&this.opts.sourceTrack&&this.inputEnded)this.opts.sourceTrack.removeEventListener('ended',this.inputEnded);
+  try{if(this.dc&&this.dc.readyState==='open')this.dc.send(JSON.stringify({type:'session.close'}));}catch(e){}
+  try{if(this.dc)this.dc.close();}catch(e){}
+  try{if(this.pc)this.pc.close();}catch(e){}
+  if(this.audio){try{this.audio.pause();this.audio.srcObject=null;}catch(e){}this.audio=null;}
+  if(this.opts.ownsStream)realtimeStopStream(this.stream);
+  if(this.entry&&(this.entry.srcText||this.entry.dstText)){this.entry.interim=false;render(this.entry);}
+  this.pc=null;this.dc=null;this.entry=null;
+  dlog('rt','stopped',{seat:this.srcSeat,route:this.opts.route});
 };
 
 /* =========================================================================
@@ -9319,7 +9469,7 @@ function stopEnginesForTrack(track,why){
   if(!track||!engines||!engines.length)return;
   var keep=[];
   engines.forEach(function(e){
-    var hit=e&&e.track===track;
+    var hit=e&&(e.track===track||e.opts&&e.opts.sourceTrack===track);
     if(!hit&&e&&e.stream&&e.stream.getAudioTracks)hit=e.stream.getAudioTracks().indexOf(track)>=0;
     if(hit){try{e.stop();}catch(_){}dlog('audio','route-stop',{why:why||'Track終了',engine:e.constructor&&e.constructor.name||'engine'});}
     else keep.push(e);
@@ -9354,10 +9504,11 @@ function getDisplayAudioForStt(){
 }
 
 function startAll(){
+  if(S.running)return;
   if (CFG.srcA==='off' && CFG.srcB==='off'){ toast('音声入力元がどちらも「使わない」になっています'); return; }
   var p = PROVIDERS[CFG.provider];
-  if (p.key && !transKey()){ toast('APIキーを設定してください（⚙ → 翻訳）'); openDrawer(true); return; }
-  if (p.baseEditable && !CFG.baseUrl){ toast('Base URL を入力してください'); openDrawer(true); return; }
+  if (CFG.sttProvider!=='realtime' && p.key && !transKey()){ toast('APIキーを設定してください（⚙ → 翻訳）'); openDrawer(true); return; }
+  if (CFG.sttProvider!=='realtime' && p.baseEditable && !CFG.baseUrl){ toast('Base URL を入力してください'); openDrawer(true); return; }
 
   sessionGen++;
   S.running = true;segStartProgress();
@@ -9372,34 +9523,8 @@ function startAll(){
 
   var jobs = [];
 
-  // ---- リアルタイム同時通訳モード（gpt-realtime-translate）----
-  if (CFG.sttProvider === 'realtime'){
-    if (!(keyOf('openai') || transKey())){
-      toast('リアルタイムモードには OpenAI の APIキーが必要です（⚙→翻訳）');
-      stopAll(); openDrawer(true); return;
-    }
-    jobs.push(
-      ensureMic().then(function(st){
-        var dirs = (CFG.rtDirection === 'both') ? ['A','B'] : [CFG.rtDirection === 'B2A' ? 'B' : 'A'];
-        // dirs = 「話し手の席」の配列
-        return Promise.all(dirs.map(function(seat){
-          var eng = new RealtimeEngine(seat, st);
-          engines.push(eng);
-          return eng.start().catch(function(err){
-            toast('リアルタイム開始失敗: ' + String(err.message||err));
-          });
-        }));
-      }).then(function(){
-        if (engines.length) toast('リアルタイム同時通訳を開始しました（' + realtimeDirectionLabel(CFG.rtDirection) + '）。そのまま話してください。', true);
-      }).catch(function(err){
-        toast('マイクにアクセスできません: ' + err.message);
-        stopAll();
-      })
-    );
-    Promise.all(jobs).then(function(){ startVU(); updateStatus(); });
-    updateStatus();
-    return;
-  }
+  // Route each translation direction to its selected source before starting WebRTC.
+  if(CFG.sttProvider==='realtime')return startRealtimeInputs();
 
   // マイク側
   var ms = micSeats();
@@ -9591,6 +9716,7 @@ function updateStatus(){
     if (ms.length>1) txt = '● 認識中 [' + (S.autoMode?'AUTO ':'') + L(langOf(S.listenSeat||'A')).name + ']';
     else txt = '● 認識中';
   }
+  if(S.running&&CFG.sttProvider==='realtime')txt='● '+realtimeConnectionLabel();
   txt=segInputLabel()||txt;
   $('statusA').textContent = txt;
   $('statusB').textContent = txt;
@@ -9745,7 +9871,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.0 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.1 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -11181,7 +11307,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.44.0 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.44.1 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11287,7 +11413,7 @@ function diagText(devices){
    ['出力先の指定を守れるか', rtNativeAudio ? '(外部TTSの出力先設定は未使用)' : (!(CFG.outDevLocal||CFG.outDevRemote) ? '(既定なので指定なし)'
       : (ttsCtx ? (ttsCtxCanRoute(ttsCtx,'A')&&ttsCtxCanRoute(ttsCtx,'B') ? 'Web Audio でも守れる' : '一部を<audio>に回す')
                 : '(再生経路が未使用のため不明)'))],
-   ['再生経路の状態', rtNativeAudio ? (engines.length ? engines.length + '接続' : '(未接続)') : (ttsCtx ? (ttsCtx.state + ' / ' + ttsCtx.sampleRate + 'Hz') : '(未使用)')],
+   ['再生経路の状態', rtNativeAudio ? (S.running?realtimeConnectionLabel():'(停止中)') : (ttsCtx ? (ttsCtx.state + ' / ' + ttsCtx.sampleRate + 'Hz') : '(未使用)')],
    ['読み上げの設定不足', rtNativeAudio ? 'なし（モデル内蔵音声）' : (ttsSetupMissing() || 'なし')],
    ['ローカルエンジンURL', !rtNativeAudio && CFG.ttsMode === 'localvv' ? CFG.lvvBase : '(未使用)'],
    ['読み上げ出力 自分向け(B→A)', rtNativeAudio ? 'ブラウザの既定出力（WebRTC）' : (OUT_SUPPORTED ? (CFG.outDevLocalLbl || (CFG.outDevLocal ? '(名称不明)' : '既定')) : '(このブラウザは非対応)')],
@@ -11495,7 +11621,7 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.44.0 / Phase 4B minutes linkage.
+/* Duo Segment pipeline v1.44.1 / Phase 4B minutes linkage.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
