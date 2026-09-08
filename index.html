@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.44.3 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.44.4 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -729,7 +729,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.3 Phase 4</span><span class="build-id">Build: 20260908-v1443-mini-streaming-stt</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.4 Phase 4</span><span class="build-id">Build: 20260908-v1444-mini-sentence-boundaries</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -739,7 +739,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.3 Phase 4</span><span class="build-id">Build: 20260908-v1443-mini-streaming-stt</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.4 Phase 4</span><span class="build-id">Build: 20260908-v1444-mini-sentence-boundaries</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1055,7 +1055,7 @@
       <small id="sttModelNote"></small>
       <div id="miniSttField" class="field" style="display:none" data-fold="off">
         <label class="settings-check switch"><input type="checkbox" id="miniSttStream" checked> 認識途中の文字を表示</label>
-        <small>ON：音声を接続したまま短い区間ごとに認識し、受信した文字を未確定カードへ表示します。連続発話は約3秒分ごと＋処理時間が目安です。OFF：従来の録音方式です。短く区切ることで認識精度が変わる場合があります。</small>
+        <small>ON：無音で区切った音声の認識途中を表示します。読み上げは句点・疑問符・感嘆符を優先し、文の途中は次の結果につなげます。句点がない場合は2秒以上の無音と認識完了を待って確定します。話し続けている間は表示が遅れる場合があります。OFF：従来の録音方式です。</small>
       </div>
       <div class="field" id="sttKeyField">
         <label>APIキー（翻訳と別プロバイダの場合）</label>
@@ -1709,7 +1709,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260908-v1443-mini-streaming-stt';
+var APP_BUILD = '20260908-v1444-mini-sentence-boundaries';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -9208,13 +9208,26 @@ function setSttModel(value){
   if(wasRunning)toast('音声認識モデルを変更しました。「開始」で新しいモデルの認識を始めてください。',true);
 }
 
-/* mini produces transcript deltas for committed audio turns. Server VAD handles
-   pauses; a bounded manual commit also handles continuous speech. No extra STT,
-   duplicate audio upload, response.create, or native voice response is used. */
+/* Audio turns end at server-detected silence. Text boundaries are independent:
+   trust completed transcripts, join unfinished turns, and prefer sentence ends. */
+function miniSentenceCut(text){
+  var re=/[。！？!?]+["'」』）】〕〉》\]]*\s*|\.["'”’）\])]*\s*(?=\s|$)/g,m;
+  while((m=re.exec(text))){
+    if(m[0][0]==='.'&&(/\d\.$/.test(text.slice(0,m.index+1))&&/^\d/.test(text.slice(m.index+1))||
+        /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e)\.$/i.test(text.slice(0,m.index+1))))continue;
+    return m.index+m[0].length;
+  }
+  return 0;
+}
+function miniSentenceEnded(text){
+  var rest=text,n;while((n=miniSentenceCut(rest)))rest=rest.slice(n);
+  return !rest.trim();
+}
 function MiniTranscriptionEngine(seat,stream,opts){
   RealtimeTranscriptionEngine.call(this,seat,stream,opts);
   this.isMini=true;this.model=String(CFG.sttModel).trim();this.miniItems={};this.miniOrder=[];
   this.miniSpeaking=false;this.miniTurnAt=0;this.miniCommitPending=0;this.miniProsody=null;
+  this.miniHeld=null;this.miniStoppedAt=0;
 }
 MiniTranscriptionEngine.prototype=Object.create(RealtimeTranscriptionEngine.prototype);
 MiniTranscriptionEngine.prototype.constructor=MiniTranscriptionEngine;
@@ -9227,7 +9240,7 @@ MiniTranscriptionEngine.prototype.config=function(){
   if(terms)hints.push('Terminology: '+terms);if(hints.length)tr.prompt=hints.join('\n');
   return {type:'transcription',audio:{input:{transcription:tr,
     noise_reduction:this.opts.isMic?{type:'near_field'}:null,
-    turn_detection:{type:'server_vad',threshold:0.5,prefix_padding_ms:300,silence_duration_ms:500}}}};
+    turn_detection:{type:'server_vad',threshold:0.5,prefix_padding_ms:300,silence_duration_ms:750}}}};
 };
 MiniTranscriptionEngine.prototype.startBoundaryMonitor=function(){
   RealtimeTranscriptionEngine.prototype.startBoundaryMonitor.call(this);
@@ -9246,14 +9259,10 @@ MiniTranscriptionEngine.prototype.checkBoundaries=function(){
     if(segEnabled())segVoice(this.seat||S.listenSeat||'A',rms);
     if(this.opts.isMic)setLevel(rms);
   }
-  if(this.miniSpeaking&&!this.miniCommitPending&&now-this.miniTurnAt>=3000&&this.dc&&this.dc.readyState==='open'){
-    this.miniCommitPending=now;
-    try{this.dc.send(JSON.stringify({type:'input_audio_buffer.commit'}));}
-    catch(err){this.failMini(err.message||'音声区間の確定要求を送信できませんでした');return;}
-    dlog('stt','mini-audio-commit',{model:this.model,seat:this.seat||'auto',reason:'continuous-speech',spanMs:now-this.miniTurnAt});
-  }
-  // Never keep committing an unacknowledged buffer on a broken connection.
-  if(this.miniCommitPending&&now-this.miniCommitPending>12000){this.failMini('音声区間の確定応答がありません。停止して再開始してください。');return;}
+  // No wall-clock commit during speech: forcing short audio loses linguistic context.
+  var pending=this.miniOrder.some(function(id){var x=this.miniItems[id];return !x.done&&!x.removed;},this);
+  if(this.miniHeld&&!pending&&!this.miniSpeaking&&this.miniStoppedAt&&now-this.miniStoppedAt>=2000)
+    this.finishMiniHeld('speech-pause');
   var stalled=this.miniOrder.some(function(id){var x=this.miniItems[id];return !x.done&&!x.removed&&now-(x.updated||x.created)>30000;},this);
   if(stalled)this.failMini('認識結果の受信が30秒以上進んでいません。受信済みの文字を残して停止しました。');
 };
@@ -9262,7 +9271,7 @@ MiniTranscriptionEngine.prototype.miniItem=function(id,previous){
   x={id:id,previous:previous||null,text:'',entry:null,done:false,removed:false,created:Date.now()};
   this.miniItems[id]=x;this.miniOrder.push(id);
   x.entry=addEntry(this.seat||S.listenSeat||'A','',true);
-  x.entry.sttStream={model:this.model,itemId:id,status:'recognizing',transport:'webrtc',final:false};
+  x.entry.sttStream={model:this.model,itemId:id,itemIds:[id],status:'recognizing',transport:'webrtc',final:false,sentencePolicy:true};
   // Reserve acceptance order before asynchronous transcript results arrive.
   if(segEnabled())segInit(x.entry);
   render(x.entry);
@@ -9276,23 +9285,44 @@ MiniTranscriptionEngine.prototype.showMiniText=function(x,text,final){
     var seat=guessSeatFromText(text);e.seat=seat;e.srcLang=langOf(seat);e.dstLang=langOf(seat==='A'?'B':'A');
     x.seatResolved=true;
   }
-  e.sttStream.status=final?'completed':'receiving';e.sttStream.final=final;
-  if(final&&CFG.prosodyOn&&x.prosody){e.srcText=text;attachProsody(e,x.prosody);}
-  if(segEnabled())segUpdate(e,text,final);
+  var cardFinal=final&&miniSentenceEnded(text);
+  e.sttStream.status=final?(cardFinal?'completed':'awaiting-sentence'):'receiving';e.sttStream.final=final;
+  if(final&&CFG.prosodyOn&&x.prosody&&!x.merged){e.srcText=text;attachProsody(e,x.prosody);}
+  if(segEnabled())segUpdate(e,text,cardFinal);
   else{
-    e.srcText=text;e.interim=!final;if(final)e.endedAt=Date.now();render(e);
+    e.srcText=text;e.interim=!cardFinal;if(cardFinal)e.endedAt=Date.now();render(e);
   }
   if(final||!x.loggedAt||Date.now()-x.loggedAt>=1000){
-    dlog('stt',final?'mini-final':'mini-delta',{model:this.model,item:x.id,cardId:e.id,chars:text.length,interim:!final});x.loggedAt=Date.now();
+    dlog('stt',final?'mini-final':'mini-delta',{model:this.model,item:x.id,cardId:e.id,chars:text.length,interim:!cardFinal});x.loggedAt=Date.now();
   }
 };
 MiniTranscriptionEngine.prototype.flushMiniFinals=function(){
-  // The legacy (non-segment) translator must also receive completed turns in input order.
+  // Final responses may arrive out of order. Only ordered final text can feed TTS.
   for(var i=0;i<this.miniOrder.length;i++){
     var x=this.miniItems[this.miniOrder[i]];if(!x.done&&!x.removed)break;
     if(x.dispatched)continue;x.dispatched=true;
-    if(!x.removed&&x.entry&&S.entries.indexOf(x.entry)>=0&&!x.entry.segment){speakSrcNow(x.entry);translate(x.entry);}
+    if(x.removed||!x.entry||S.entries.indexOf(x.entry)<0)continue;
+    var held=this.miniHeld;
+    if(held&&S.entries.indexOf(held)<0)this.miniHeld=held=null;
+    if(held&&held.seat!==x.entry.seat){this.finishMiniHeld('speaker-change');held=null;}
+    var text=x.text;
+    if(held&&held!==x.entry){
+      var separator=/[A-Za-z0-9]$/.test(held.srcText)&&/^[A-Za-z0-9]/.test(text)?' ':'';
+      text=held.srcText+separator+text;removeEntry(x.entry);x.entry=held;x.merged=true;
+      held.sttStream.itemIds.push(x.id);held.sttStream.itemId=x.id;held.prosody=null;
+      dlog('stt','mini-sentence-join',{cardId:held.id,item:x.id,chars:text.length});
+    }
+    this.showMiniText(x,text,true);
+    this.miniHeld=x.entry.interim?x.entry:null;
+    if(!this.miniHeld&&!x.entry.segment){speakSrcNow(x.entry);translate(x.entry);}
   }
+};
+MiniTranscriptionEngine.prototype.finishMiniHeld=function(reason){
+  var e=this.miniHeld;this.miniHeld=null;if(!e||S.entries.indexOf(e)<0)return;
+  e.sttStream.status='completed';e.sttStream.final=true;e.sttStream.boundaryReason=reason;
+  if(e.segment)segUpdate(e,e.srcText,true);
+  else{e.interim=false;e.endedAt=Date.now();render(e);speakSrcNow(e);translate(e);}
+  dlog('stt','mini-sentence-close',{cardId:e.id,reason:reason,chars:e.srcText.length});
 };
 MiniTranscriptionEngine.prototype.failMini=function(message){
   dlog('stt','mini-FAIL',{model:this.model,error:redact(String(message)).slice(0,250)});
@@ -9305,9 +9335,9 @@ MiniTranscriptionEngine.prototype.onEvent=function(ev){
   if(!event||typeof event!=='object')return;
   var t=event.type||'',id=event.item_id;
   if(t==='input_audio_buffer.speech_started'){
-    this.miniSpeaking=true;this.miniTurnAt=Date.now();return;
+    this.miniSpeaking=true;this.miniStoppedAt=0;this.miniTurnAt=Date.now();return;
   }
-  if(t==='input_audio_buffer.speech_stopped'){this.miniSpeaking=false;return;}
+  if(t==='input_audio_buffer.speech_stopped'){this.miniSpeaking=false;this.miniStoppedAt=Date.now();return;}
   if(t==='input_audio_buffer.committed'){
     this.miniCommitPending=0;this.miniTurnAt=Date.now();
     if(id){
@@ -9328,7 +9358,7 @@ MiniTranscriptionEngine.prototype.onEvent=function(ev){
       var text=typeof event.transcript==='string'?event.transcript:x.text;x.done=true;x.text=text;
       if(!hasSpeechContent(text)){if(x.entry)removeEntry(x.entry);x.removed=true;this.flushMiniFinals();return;}
       // The final transcript is authoritative, including corrections to earlier deltas.
-      this.showMiniText(x,text,true);
+      this.showMiniText(x,text,false);
       this.flushMiniFinals();
     }
     return;
@@ -9346,12 +9376,13 @@ MiniTranscriptionEngine.prototype.stop=function(){
   if(this.dead)return;
   this.miniSpeaking=false;this.miniCommitPending=0;
   Object.keys(this.miniItems).forEach(function(id){
-    var x=this.miniItems[id],e=x.entry;if(!e||x.done||S.entries.indexOf(e)<0)return;
+    var x=this.miniItems[id],e=x.entry;if(!e||e.sttStream.status==='completed'||S.entries.indexOf(e)<0)return;
     if(!e.srcText){removeEntry(e);return;}
     e.sttStream.status='stopped';e.sttStream.final=false;e.status='stopped';e.interim=false;e.endedAt=Date.now();
     if(e.segment){e.segment.audioMuted=true;e.segment.final=true;e.segment.finalReason='recording-stop';}
     render(e);
   },this);
+  this.miniHeld=null;
   if(this.miniProsody){this.miniProsody.stop();this.miniProsody=null;}
   RealtimeTranscriptionEngine.prototype.stop.call(this);
 };
@@ -10188,7 +10219,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.3 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.4 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -11651,7 +11682,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.44.3 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.44.4 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11697,7 +11728,7 @@ function diagText(devices){
   [['翻訳プロバイダ', CFG.provider], ['翻訳モデル', translationDisabled() ? '(未使用)' : CFG.model],
    ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel], ['句読点の自動補完', CFG.sttPunct ? 'ON' : 'OFF'],
    ['有効なSTT通信方式', diagSttTransport()],
-   ['Realtime STT発話確定', isRealtimeStt() ? (isMiniTranscribe()?'サーバーの無音判定＋連続発話は約3秒で音声区間確定／部分文字→確定本文': (segEnabled()?'逐次部分翻訳＋文脈・無音・文字停止でカード確定／TTS待ちとは独立':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）')) : '(未使用)'],
+   ['Realtime STT発話確定', isRealtimeStt() ? (isMiniTranscribe()?'無音750msで音声区間確定／3秒強制分割なし／読上げは文末優先・未完文を連結・無音2秒で末尾確定': (segEnabled()?'逐次部分翻訳＋文脈・無音・文字停止でカード確定／TTS待ちとは独立':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）')) : '(未使用)'],
    ['共有音声STT経路', CFG.displaySttRoute+' → '+effectiveDisplaySttRoute()],
    ['共有Track直接Web Speech候補', overlayCapabilities().speechTrackInput],
    ['通常マイク入力', CFG.micDevLbl || (CFG.micDev ? '(名称不明)' : '既定')],
@@ -11968,7 +11999,7 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.44.3 / Phase 4B minutes linkage.
+/* Duo Segment pipeline v1.44.4 / Phase 4B minutes linkage.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
@@ -12043,6 +12074,7 @@ function segReceiveDisplay(e){
 }
 function segRecognitionLabel(e){
   if(e.sttStream&&e.sttStream.status==='stopped')return '認識停止 · 受信済みの途中結果';
+  if(e.sttStream&&e.sttStream.status==='awaiting-sentence')return '文末待ち · 次の認識結果と連結';
   if(!e.segment)return '';
   if(e.segment.cancelled)return '停止';
   if(e.segment.final){
@@ -12193,7 +12225,12 @@ function segCheck(e){
     var silence=segSilence(e,now);
     var decisionInput={text:s.sourceText,stableLength:b.final?s.sourceText.length:stable,policy:p,lang:e.srcLang,idleMs:now-b.lastUpdate,
       mode:p.mode,debt:debt,silenceMs:silence===null?-1:silence,final:b.final};
-    var d=segSemanticEnabled()?segSemanticDecision(decisionInput):segDecision(decisionInput);
+    var d;
+    if(e.sttStream&&e.sttStream.sentencePolicy){
+      if(!e.sttStream.final&&!b.final)break;
+      var sentenceLength=miniSentenceCut(s.sourceText);
+      d={length:sentenceLength||(b.final?s.sourceText.length:0),reasons:[sentenceLength?'sentence-end':'speech-pause']};
+    }else d=segSemanticEnabled()?segSemanticDecision(decisionInput):segDecision(decisionInput);
     if(d.waiting)b.boundaryWaiting=d.waiting;else b.boundaryWaiting='';
     if(!d.length)break;
     s.end=s.start+d.length;s.sourceText=b.text.slice(s.start,s.end);s.id=e.id+'-s'+s.seq;
