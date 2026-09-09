@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.44.8 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.44.9 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -729,7 +729,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.8 Phase 4</span><span class="build-id">Build: 20260909-v1448-card-language-label</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.9 Phase 4</span><span class="build-id">Build: 20260909-v1449-compact-caption-window</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -739,7 +739,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.8 Phase 4</span><span class="build-id">Build: 20260909-v1448-card-language-label</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.9 Phase 4</span><span class="build-id">Build: 20260909-v1449-compact-caption-window</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -1712,7 +1712,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260909-v1448-card-language-label';
+var APP_BUILD = '20260909-v1449-compact-caption-window';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -3454,10 +3454,10 @@ async function openCaptionPip(){
     var style=doc.createElement('style');
     style.textContent=`
       *{box-sizing:border-box}html,body{height:100%;margin:0}body{display:flex;flex-direction:column;background:#111822;color:#edf3fc;font:14px/1.4 system-ui,sans-serif;color-scheme:dark}
-      header{flex:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px;border-bottom:1px solid #394659;background:#1c293b}
-      header strong{margin-right:auto}button,select{font:inherit;background:#263952;color:#fff;border:1px solid #60738d;border-radius:6px;padding:5px 8px;cursor:pointer}button:disabled{opacity:.4;cursor:default}button:focus-visible,select:focus-visible,main:focus-visible{outline:2px solid #8acbff;outline-offset:-2px}
-      label{display:flex;align-items:center;gap:4px;font-size:12px}#pipFont{font-size:12px;font-variant-numeric:tabular-nums}#pipFeed{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:10px;scrollbar-gutter:stable;overflow-anchor:none}
-      article{width:var(--item-w);margin:0 0 10px auto;padding:10px;background:var(--caption-bg);border-left:3px solid var(--seat);border-radius:9px;overflow-wrap:anywhere;line-height:var(--caption-line)}article.square{border-radius:0}article.interim{border-left-style:dashed}article.shadow .main,article.shadow .sub{text-shadow:0 2px 4px #000,0 0 2px #000}article.outline .main,article.outline .sub{-webkit-text-stroke:.45px #000}
+      header{flex:none;display:flex;align-items:center;gap:3px;flex-wrap:wrap;padding:3px 4px;font-size:12px;line-height:1;border-bottom:1px solid #394659;background:#1c293b}
+      header strong{margin-right:3px;white-space:nowrap;font-size:12px;line-height:1}button,select{font:inherit;line-height:1;height:22px;min-width:0;background:#263952;color:#fff;border:1px solid #60738d;border-radius:4px;padding:0 4px;cursor:pointer}button:disabled{opacity:.4;cursor:default}button:focus-visible,select:focus-visible,main:focus-visible{outline:2px solid #8acbff;outline-offset:-2px}
+      label{display:flex;align-items:center;gap:3px;font-size:12px;line-height:1;white-space:nowrap}label input{margin:0;width:13px;height:13px}#pipFont{font-size:12px;font-variant-numeric:tabular-nums}#pipFeed{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px;scrollbar-gutter:stable;overflow-anchor:none}
+      article{width:100%;margin:0 0 10px;padding:10px;background:var(--caption-bg);border-left:3px solid var(--seat);border-radius:9px;overflow-wrap:anywhere;line-height:var(--caption-line)}article.square{border-radius:0}article.interim{border-left-style:dashed}article.shadow .main,article.shadow .sub{text-shadow:0 2px 4px #000,0 0 2px #000}article.outline .main,article.outline .sub{-webkit-text-stroke:.45px #000}
       .meta{font-size:11px;opacity:.7;margin-bottom:4px}.main{font-size:var(--caption-font);white-space:pre-wrap;opacity:var(--text-alpha)}.sub{font-size:calc(var(--caption-font)*.65);white-space:pre-wrap;margin-top:6px;opacity:var(--text-alpha)}.empty{color:#b8c7da;padding:18px 6px;font-size:14px}footer{flex:none;padding:5px 10px;font-size:11px;color:#b8c7da;background:#1c293b}
     `;
     style.textContent+=SEG_PLAYBACK_CSS;doc.head.appendChild(style);
@@ -3467,18 +3467,15 @@ async function openCaptionPip(){
     var font=doc.createElement('span');font.id='pipFont';header.appendChild(font);
     button('pipLarger','A＋','字幕を大きく',function(){adjustOverlayFont(1);});
     button('pipLatest','最新へ','最新の字幕へ移動して自動追従',function(){captionPip.follow=true;renderCaptionPip();});
-    button('pipClose','閉じる','字幕小窓だけを閉じる',function(){w.close();});
-    var holdLabel=doc.createElement('label');holdLabel.textContent='保持';
-    var hold=doc.createElement('select');hold.id='pipHold';hold.setAttribute('aria-label','字幕の保持時間');
+    var hold=doc.createElement('select');hold.id='pipHold';hold.title='保持：字幕を残す時間';hold.setAttribute('aria-label','字幕の保持時間');
     [0,8,12,18,30,60].forEach(function(n){var o=doc.createElement('option');o.value=String(n);o.textContent=n?n+'秒':'消さない';hold.appendChild(o);});
     hold.onchange=function(){CFG.ovCapHold=hold.value;saveCaptureProfile();applyCaptureControls();applyCaptureProfile();renderOverlayRail();};
-    holdLabel.appendChild(hold);header.appendChild(holdLabel);
+    header.appendChild(hold);
     function opacityControl(id,text,key,values){
-      var label=doc.createElement('label');label.textContent=text;
-      var select=doc.createElement('select');select.id=id;select.setAttribute('aria-label',text+'の不透明度');
+      var select=doc.createElement('select');select.id=id;select.title=text+'：不透明度';select.setAttribute('aria-label',text+'の不透明度');
       values.forEach(function(n){var option=doc.createElement('option');option.value=String(n);option.textContent=n===0?'透明':n+'%';select.appendChild(option);});
       select.onchange=function(){CFG[key]=select.value;saveCaptureProfile();applyCaptureControls();applyCaptureProfile();renderOverlayRail();};
-      label.appendChild(select);header.appendChild(label);
+      header.appendChild(select);
     }
     opacityControl('pipTextOpacity','文字','ovCapTextOpacity',[30,45,60,75,92,100]);
     opacityControl('pipBgOpacity','字幕背景','ovCapBgOpacity',[0,20,35,50,70,90,100]);
@@ -3539,7 +3536,6 @@ function renderCaptionPip(){
   var style=doc.body.style;
   style.setProperty('--caption-font',overlayNum(CFG.ovCapFont,26,12,64)+'px');
   style.setProperty('--caption-line',overlayNum(CFG.ovCapLine,1.35,1,2));
-  style.setProperty('--item-w',overlayNum(CFG.ovCapItemWidth,100,35,100)+'%');
   style.setProperty('--caption-bg',overlayHexRgba(CFG.ovCapBg,overlayNum(CFG.ovCapBgOpacity,35,0,100)/100));
   style.setProperty('--text-alpha',overlayNum(CFG.ovCapTextOpacity,92,20,100)/100);
   doc.getElementById('pipFont').textContent=CFG.ovCapFont+'px';
@@ -10206,7 +10202,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.8 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.9 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -11669,7 +11665,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.44.8 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.44.9 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -11987,7 +11983,7 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.44.8 / Phase 4B minutes linkage.
+/* Duo Segment pipeline v1.44.9 / Phase 4B minutes linkage.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
