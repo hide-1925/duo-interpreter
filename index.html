@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.44.12 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter v1.44.13 Phase 4 — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -596,14 +596,14 @@
   /* 画面下端（ホームバー領域）は操作バー自身が余白を持つので、bodyでは空けない。
      bodyで空けるとバーの下に地の色の帯が残ってしまう。 */
   body{padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left)}
-  body.viewport-fit{position:fixed;inset:0;width:100%;height:100%;height:var(--native-view-height,100dvh);min-height:0;
-    padding-top:env(safe-area-inset-top,0px)}
-  body.viewport-fit.viewport-keyboard{top:var(--view-top,0px);bottom:auto;height:var(--view-height);
-    padding-top:max(0px,calc(env(safe-area-inset-top,0px) - var(--view-top,0px)))}
+  body.viewport-fit{position:fixed;top:var(--view-top,0px);left:0;bottom:auto;width:100%;
+    height:var(--view-height,100%);min-height:0;
+    padding-top:min(var(--view-height,100vh),max(0px,calc(env(safe-area-inset-top,0px) - var(--view-top,0px))))}
+  #controlsDock{flex:0 1 auto;min-height:0;max-height:100%;width:100%;overflow:auto;overscroll-behavior:contain}
   body.viewport-fit #bar{align-content:flex-start}
-  body.viewport-fit.viewport-keyboard #drawer,body.viewport-fit.viewport-keyboard #cam,body.viewport-fit.viewport-keyboard #scrim{
-    top:var(--view-top,0px);bottom:auto;height:var(--view-height,100dvh)}
-  body.viewport-fit.viewport-keyboard #drawer{padding-top:max(0px,calc(env(safe-area-inset-top,0px) - var(--view-top,0px)))}
+  body.viewport-fit #drawer,body.viewport-fit #cam,body.viewport-fit #scrim{
+    top:var(--view-top,0px);bottom:auto;height:var(--view-height,100%)}
+  body.viewport-fit #drawer{padding-top:max(0px,calc(env(safe-area-inset-top,0px) - var(--view-top,0px)))}
   .feed{-webkit-overflow-scrolling:touch}
   /* iOSでは入力欄のフォントが16px未満だと自動ズームするので下限を16pxにする */
   input[type=text],input[type=password],select,textarea{font-size:16px}
@@ -735,7 +735,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.12 Phase 4</span><span class="build-id">Build: 20260911-v14412-standalone-height</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.13 Phase 4</span><span class="build-id">Build: 20260911-v14413-bounded-layout</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -745,7 +745,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.12 Phase 4</span><span class="build-id">Build: 20260911-v14412-standalone-height</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.13 Phase 4</span><span class="build-id">Build: 20260911-v14413-bounded-layout</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
   </section>
 </div>
 
@@ -879,6 +879,7 @@
   </div>
 </div>
 
+<div id="controlsDock">
 <div id="txtbar">
   <button class="cbtn stack" id="txtSeatBtn" title="入力された言語からA/Bを自動で判定します（クリックで固定に切替）">
     <small>話者</small><span class="val" id="txtSeatTxt">自動</span>
@@ -931,6 +932,7 @@
   <button class="cbtn icon" id="cog" title="設定"><span class="bar-icon">⚙</span></button>
 </div>
 
+</div><!-- controlsDock -->
 <div id="cam">
   <div id="camWrap">
     <video id="camVideo" playsinline muted autoplay></video>
@@ -1718,7 +1720,7 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260911-v14412-standalone-height';
+var APP_BUILD = '20260911-v14413-bounded-layout';
 function syncBuildBadges(){
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
@@ -2611,20 +2613,13 @@ function measureSafeEdge(edge){
   document.body.appendChild(p);var h=p.getBoundingClientRect().height;p.remove();return h;
 }
 function measureSafeBottom(){return measureSafeEdge('bottom');}
-function standaloneViewportHeight(standalone,width,height,screenWidth,screenHeight,safeTop,keyboard,offsetTop){
-  var gap=screenHeight-height;
-  // Narrow workaround for a standalone portrait viewport missing exactly its top inset.
-  if(!standalone||keyboard||offsetTop>1||width>=height||Math.abs(screenWidth-width)>2)return null;
-  return safeTop>0&&gap>0&&Math.abs(gap-safeTop)<=2?screenHeight:null;
-}
 function viewportFitGeometry(height,top,layoutHeight,safeBottom,keyboard){
-  return {height:Math.max(1,height),top:Math.max(0,top),
-    bottom:keyboard?0:Math.max(0,safeBottom-Math.max(0,layoutHeight-top-height))};
+  top=Math.max(0,Math.min(top,Math.max(0,layoutHeight-1)));
+  height=Math.max(1,Math.min(height,layoutHeight-top));
+  return {height:height,top:top,
+    bottom:keyboard?0:Math.min(height,Math.max(0,safeBottom-Math.max(0,layoutHeight-top-height)))};
 }
 function fitSafeBottom(){
-  var mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||
-    (navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-  if(!mobile){document.documentElement.style.setProperty('--sab',measureSafeBottom()+'px');return;}
   var vv=window.visualViewport;
   // Preserve browser pinch zoom: do not reflow the page into its magnified viewport.
   if(vv&&Math.abs(vv.scale-1)>0.02)return;
@@ -2638,18 +2633,13 @@ function fitSafeBottom(){
   var keyboard=editing&&(layoutHeight-top-height>100||viewportFitBaseline-height>120);
   var g=viewportFitGeometry(height,top,layoutHeight,measureSafeBottom(),keyboard);
   var root=document.documentElement;
-  var standalone=!!navigator.standalone||(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches);
-  var nativeHeight=standaloneViewportHeight(standalone,width,height,screen.width,screen.height,measureSafeEdge('top'),keyboard,top);
-  if(nativeHeight)root.style.setProperty('--native-view-height',nativeHeight+'px');
-  else root.style.removeProperty('--native-view-height');
   root.style.setProperty('--view-height',g.height+'px');
   root.style.setProperty('--view-top',g.top+'px');
   root.style.setProperty('--sab',g.bottom+'px');
   document.body.classList.add('viewport-fit');
-  document.body.classList.toggle('viewport-keyboard',keyboard);
-  var signature=[Math.round(g.height),Math.round(g.top),Math.round(g.bottom),keyboard,nativeHeight].join('/');
+  var signature=[Math.round(g.height),Math.round(g.top),Math.round(g.bottom),keyboard].join('/');
   if(signature!==viewportFitLast){viewportFitLast=signature;
-    dlog('layout','safe-bottom',{inner:window.innerHeight,visual:Math.round(height),offsetTop:Math.round(top),layout:layoutHeight,sab:Math.round(g.bottom),keyboard:keyboard,nativeHeight:nativeHeight,mode:keyboard?'keyboard-viewport':nativeHeight?'standalone-inset-correction':'native-css-viewport'});
+    dlog('layout','safe-bottom',{inner:window.innerHeight,visual:Math.round(height),offsetTop:Math.round(top),layout:layoutHeight,sab:Math.round(g.bottom),keyboard:keyboard,height:Math.round(g.height),mode:'bounded-viewport'});
   }
 }
 function logViewportLayout(){
@@ -10246,7 +10236,7 @@ function exportHtml(){
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.12 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.13 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -11718,7 +11708,7 @@ function diagText(devices){
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
   out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.44.12 Phase 4');
+  out.push('- バージョン: Duo Interpreter v1.44.13 Phase 4');
   out.push('- ビルドID: ' + APP_BUILD);
   out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
   out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
@@ -12036,7 +12026,7 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.44.12 / Phase 4B minutes linkage.
+/* Duo Segment pipeline v1.44.13 / Phase 4B minutes linkage.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
