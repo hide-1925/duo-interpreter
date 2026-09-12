@@ -6,7 +6,7 @@
 <!-- このページは常に暗い配色。これが無いとSafariが「明るいページ」と判断し、
      アドレスバー・下部ツールバー・セレクトの選択リスト・スクロールのはみ出し部分が白くなる -->
 <meta name="color-scheme" content="dark">
-<title>Duo Interpreter v1.44.13 Phase 4 — 多言語 双方向通訳・文字起こし</title>
+<title>Duo Interpreter — 多言語 双方向通訳・文字起こし</title>
 
 <!-- ===== iPhone（ホーム画面に追加）用の設定 ===== -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -78,6 +78,8 @@
   .feed{flex:1;min-height:0;overflow-y:auto;padding:10px 18px 16px;display:flex;flex-direction:column;gap:9px;position:relative}
   .feed::-webkit-scrollbar{width:6px}
   .feed::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+  /* 画面外カードの描画だけを遅延する。会話データは削除せず、議事録・DLに全件残す。 */
+  .feed .bubble{content-visibility:auto;contain-intrinsic-size:0 120px}
   .bubble{border-radius:14px;padding:9px 15px;background:var(--panel-2);border-left:4px solid var(--line);animation:pop .16s ease-out}
   @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   .bubble.from-A{border-left-color:var(--a)}
@@ -735,7 +737,7 @@
       <button class="headbtn" id="flipBtnB" title="相手側のパネルを180°回転（対面で端末を挟むとき）">⇅<span class="lbl"> 反転</span></button>
       <button class="headbtn" id="swapBtnB" title="AとBの表示位置を入れ替える">⇄<span class="lbl"> 入替</span></button>
     </div>
-    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.13 Phase 4</span><span class="build-id">Build: 20260911-v14413-bounded-layout</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedB"><div class="empty"><b>Duo Interpreter <span class="app-version" style="font-size:12px;color:var(--dim)"></span><span class="build-id"></span></b>⚙ から設定してください。<br><span class="empty-note">スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</span></div></div>
   </section>
 
   <!-- 下：Speaker A（自分） -->
@@ -745,7 +747,7 @@
       <span class="restore">タップで2分割に戻す</span>
       <span style="margin-left:auto" id="statusA"></span>
     </div>
-    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span style="font-size:12px;color:var(--dim)">v1.44.13 Phase 4</span><span class="build-id">Build: 20260911-v14413-bounded-layout</span></b>⚙ から設定してください。<br>スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</div></div>
+    <div class="feed" id="feedA"><div class="empty"><b>Duo Interpreter <span class="app-version" style="font-size:12px;color:var(--dim)"></span><span class="build-id"></span></b>⚙ から設定してください。<br><span class="empty-note">スマホは共有ボタン→「ホーム画面に追加」で全画面表示、PCはブックマークが便利です。</span></div></div>
   </section>
 </div>
 
@@ -1201,16 +1203,7 @@
       <div id="ttsSettings">
       <div class="provider-stack">
       <div class="sublabel">サービス</div>
-      <select id="ttsMode">
-        <option value="off">なし</option>
-        <option value="browser">🆓 ブラウザ内蔵音声（無料・即時）</option>
-        <option value="openai">OpenAI 音声（自然）</option>
-        <option value="xai">xAI Grok Voice（多言語・低遅延）</option>
-        <option value="voicevox">🫛 VOICEVOX WEB版（ずんだもん等・日本語のみ／お遊び）</option>
-        <option value="eleven">ElevenLabs（自分の声をクローン・多言語・低遅延）</option>
-        <option value="aivis">Aivis Cloud API（高品質・低遅延・日本語のみ）</option>
-        <option value="localvv">🖥 ローカルエンジン（AivisSpeech / VOICEVOX・日本語のみ）</option>
-      </select>
+      <select id="ttsMode"></select>
       <div id="ttsProviderHost"></div>
       </div>
       <div class="tts-target-field" id="ttsWhoField">
@@ -1720,8 +1713,12 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_BUILD = '20260911-v14413-bounded-layout';
+var APP_VERSION = 'v1.45.0 Phase 5';
+var APP_BUILD = '20260913-v1450-maintainability';
+var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
+  document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
+  document.querySelectorAll('.app-version').forEach(function(el){el.textContent=APP_VERSION;});
   document.documentElement.setAttribute('data-duo-build', APP_BUILD);
   document.querySelectorAll('.build-id').forEach(function(el){
     el.textContent = 'Build: ' + APP_BUILD;
@@ -1852,13 +1849,7 @@ function pref(key, embedKey, def){
 
 /* v1.32.9 ui3.8: Realtimeの方向設定を1つの3択へ統合する。
    新設定が無い場合だけ旧 rtDir + rtBoth を読み、既存ユーザーの選択を移行する。 */
-function realtimeDirectionPref(){
-  var current = pref('di.rtdirection','rtDirection',null);
-  if (current === 'A2B' || current === 'B2A' || current === 'both') return current;
-  var oldBoth = pref('di.rtboth','rtBoth','0');
-  if (String(oldBoth) === '1') return 'both';
-  return pref('di.rtdir','rtDir','B') === 'A' ? 'B2A' : 'A2B';
-}
+
 function realtimeDirectionLabel(v){
   return v === 'B2A' ? 'B（相手）→ A（自分）'
        : v === 'both' ? '両方向（A→B / B→A、2接続・料金2倍）'
@@ -1895,164 +1886,204 @@ function mergeKeyMap(dst,src,scope){
   });
 }
 
-function loadCfg(){
-  CFG = {
-    provider:  pref('di.prov','provider','free'),
-    baseUrl:   pref('di.base','baseUrl',''),
-    model:     pref('di.model','model',''),
-    tone:      pref('di.tone','tone','business'),
-    ctx:       pref('di.ctx','ctx',''),
-    sttProvider: pref('di.sttp','sttProvider','webspeech'),
-    sttModel:  pref('di.sttm','sttModel',''),
-    fourOSeconds:fourOSeconds(pref('di.fourOSeconds','fourOSeconds','10')),
-    fourOCarry:pref('di.fourOCarry','fourOCarry','1')+''==='1',
-    sttPunct:  true,
-    segmentMode:pref('di.segmentMode','segmentMode','balanced'),
-    segmentBoundary:pref('di.segmentBoundary','segmentBoundary','semantic'),
-    segmentOverlap:pref('di.segmentOverlap','segmentOverlap','allow'),
-    segmentMin:pref('di.segmentMin','segmentMin','0'),
-    segmentStability:pref('di.segmentStability','segmentStability','0'),
-    segmentSilence:pref('di.segmentSilence','segmentSilence','0'),
-    segmentDebt:pref('di.segmentDebt','segmentDebt','8'),
-    ttsMode:   pref('di.tts','ttsMode','off'),
-    ttsWho:    pref('di.ttsw','ttsWho','B2A'),
-    focus:     pref('di.focus','focus','split'),
-    rtDirection: realtimeDirectionPref(),
-    rtVolume: realtimeVolume(pref('di.rtVolume','rtVolume',100)),
-    rtCardSeconds: realtimeCardSeconds(pref('di.rtCardSeconds','rtCardSeconds',10)),
-    ttsModel:  pref('di.ttsm','ttsModel',''),
-    camModel:  pref('di.cam','camModel','gpt-4o-mini'),   // カメラ翻訳用（画像を読めるモデル）
-    voiceA:    pref('di.va','voiceA','alloy'),
-    voiceB:    pref('di.vb','voiceB','ash'),
-    oaiRate:   pref('di.oairt','oaiRate','0'),
-    oaiEmotion:pref('di.oaiem','oaiEmotion','0'),
-    oaiIntonation:pref('di.oaiin','oaiIntonation','0'),
-    oaiDynamics:pref('di.oaidy','oaiDynamics','0'),
-    oaiPause:  pref('di.oaipa','oaiPause','0'),
-    oaiVolume: pref('di.oaivo','oaiVolume','0'),
-    oaiStyle:  pref('di.oaistyle','oaiStyle',''),
-    oaiStream: pref('di.oaistream','oaiStream','1')+'' === '1',
-    browserRate:pref('di.brrt','browserRate','0'),
-    browserPitch:pref('di.brpt','browserPitch','0'),
-    browserVolume:pref('di.brvo','browserVolume','0'),
-    vad:       parseInt(pref('di.vad','vad','35'),10),
-    langA:     pref('di.la','langA','ja'),
-    langB:     pref('di.lb','langB','en'),
-    srcA:      pref('di.sa','srcA','mic'),
-    srcB:      pref('di.sb','srcB','mic'),
-    displaySttRoute:(function(){var v=pref('di.audio.displayRoute','displaySttRoute','auto');return /^(direct|vb)$/.test(v)?v:'auto';})(),
-    preventSelfRecognition:pref('di.audio.preventLoop','preventSelfRecognition','1')+'' === '1',
-    nameA:     pref('di.na','nameA',''),
-    nameB:     pref('di.nb','nameB',''),
-    fsize:     pref('di.fs','fsize', (window.innerWidth <= 480 ? '22' : '30')),
-    flipTop:   pref('di.flip','flipTop','0')+'' === '1',
-    showSrc:   pref('di.src','showSrc','1')+'' === '1',
-    swap:      pref('di.swap','swap','0')+'' === '1',
-    interimOn: pref('di.itm','interimOn','1')+'' === '1',
-    prosodyOn: pref('di.prosody','prosodyOn','0')+'' === '1',
-    echoGuard: pref('di.echo','echoGuard','1')+'' === '1',
-    syncScroll:pref('di.sync','syncScroll','1')+'' === '1',
-    /* 旧・背景透過オーバーレイの di.ovl* は意図的に読み込まない。
-       新方式は画面取込専用プロファイルとして独立保存する。 */
-    ovCapLayout:pref('di.overlay.layout','ovCapLayout','right'),
-    ovCapWidth: pref('di.overlay.width','ovCapWidth','28'),
-    ovCapResolution:pref('di.overlay.resolution','ovCapResolution','native'),
-    ovCapAudio:pref('di.overlay.audio','ovCapAudio','target')==='system'?'system':'target',
-    ovCapTextA: pref('di.overlay.textA','ovCapTextA','#FFFFFF'),
-    ovCapTextB: pref('di.overlay.textB','ovCapTextB','#A7E8FF'),
-    ovCapSrcA:  pref('di.overlay.srcA','ovCapSrcA','#D4E8DE'),
-    ovCapSrcB:  pref('di.overlay.srcB','ovCapSrcB','#E7D3DA'),
-    ovCapBg:    pref('di.overlay.bg','ovCapBg','#000000'),
-    ovCapTextOpacity:pref('di.overlay.textOpacity','ovCapTextOpacity','92'),
-    ovCapBgOpacity:pref('di.overlay.bgOpacity','ovCapBgOpacity','35'),
-    ovCapFont:  pref('di.overlay.font','ovCapFont','26'),
-    ovCapLine:  pref('di.overlay.line','ovCapLine','1.35'),
-    ovCapItemWidth:pref('di.overlay.itemWidth','ovCapItemWidth','100'),
-    ovCapItems: pref('di.overlay.items','ovCapItems','4'),
-    ovCapHold:  pref('di.overlay.hold','ovCapHold','18'),
-    ovCapShadow:pref('di.overlay.shadow','ovCapShadow','1')+'' === '1',
-    ovCapOutline:pref('di.overlay.outline','ovCapOutline','0')+'' === '1',
-    ovCapRound: pref('di.overlay.round','ovCapRound','1')+'' === '1',
-    ovCapX:     pref('di.overlay.x','ovCapX','68'),
-    ovCapY:     pref('di.overlay.y','ovCapY','18'),
-    ovCapFreeWidth:pref('di.overlay.freeWidth','ovCapFreeWidth','28'),
-    ovCapFreeHeight:pref('di.overlay.freeHeight','ovCapFreeHeight','55'),
-    ovCapSideHeight:pref('di.overlay.sideHeight','ovCapSideHeight','80'),
-    ovCapBottomWidth:pref('di.overlay.bottomWidth','ovCapBottomWidth','80'),
-    ovCapBottomHeight:pref('di.overlay.bottomHeight','ovCapBottomHeight','42'),
-    ovInteraction:pref('di.overlay.interaction','ovInteraction','locked'),
-    vvSpeaker: pref('di.vvsp','vvSpeaker','3'),
-    /* 既存の設定はそのまま「相手(B)」として使い続ける。
-       既定の読み上げ対象が B2A（相手のみ）なので、こう対応させれば
-       バージョンアップで急に別の声になることがない。A席は新しい枠に持つ。 */
-    vvSpeakerA:pref('di.vvspa','vvSpeakerA','2'),
-    vvRate:    pref('di.vvrt','vvRate','1'),
-    vvPitch:   pref('di.vvpt','vvPitch','0'),
-    vvIntonation:pref('di.vvin','vvIntonation','1'),
-    aivisModel:pref('di.aim','aivisModel','a59cb814-0083-4369-8542-f51a29e72af7'),  /* 既定はAnneli */
-    aivisModelB:pref('di.aima','aivisModelB',''),          /* 空なら自分(A)と同じ声 */
-    aivisStyle: pref('di.aist','aivisStyle',''),           /* 空なら既定スタイル */
-    aivisStyleB:pref('di.aista','aivisStyleB',''),
-    aivisRate:  pref('di.airt','aivisRate','1'),
-    /* 以下は Aivis 側の既定値と同じ。既定のままなら送らないので音は変わらない */
-    aivisEmo:   pref('di.aiem','aivisEmo','1'),
-    aivisTempo: pref('di.aitp','aivisTempo','1'),
-    aivisVol:   pref('di.aivo','aivisVol','1'),
-    aivisBreak: pref('di.aibr','aivisBreak','0.4'),
-    aivisNorm:  pref('di.ainm','aivisNorm','1')+'' === '1',
-    aivisDict:  pref('di.aidc','aivisDict',''),
-    aivisStream:pref('di.aistr','aivisStream','0')+'' === '1',   /* 既定OFF。様子を見てから使う */
-    aivisSpk:   pref('di.aisp','aivisSpk',''),                   /* 複数話者モデル向け */
-    aivisSpkB:  pref('di.aispa','aivisSpkB',''),
-    elModel:   pref('di.elm','elModel','eleven_flash_v2_5'),
-    elVoice:   pref('di.elv','elVoice',''),                /* 自分(A)の基準声 */
-    elVoiceLbl:pref('di.elvl','elVoiceLbl',''),
-    elVoiceB:  pref('di.elva','elVoiceB',''),              /* 空なら自分(A)と同じ声 */
-    elVoiceBLbl:pref('di.elval','elVoiceBLbl',''),
-    elRate:    pref('di.elrt','elRate','0'),
-    elEmotion: pref('di.elem','elEmotion','0'),
-    elIntonation:pref('di.elin','elIntonation','0'),
-    elDynamics:pref('di.eldy','elDynamics','0'),
-    elPause:   pref('di.elpa','elPause','0'),
-    elVolume:  pref('di.elvo','elVolume','0'),
-    elSimilarity:pref('di.elsi','elSimilarity','0'),
-    elSpeakerBoost:pref('di.elsb','elSpeakerBoost','1')+'' === '1',
-    xaiVoice:  pref('di.xav','xaiVoice','eve'),            /* 自分(A)の基準声 */
-    xaiVoiceB: pref('di.xava','xaiVoiceB',''),             /* 空なら自分(A)と同じ声 */
-    xaiRate:   pref('di.xart','xaiRate','0'),
-    xaiEmotion:pref('di.xaem','xaiEmotion','0'),
-    xaiIntonation:pref('di.xain','xaiIntonation','0'),
-    xaiDynamics:pref('di.xady','xaiDynamics','0'),
-    xaiPause:  pref('di.xapa','xaiPause','0'),
-    xaiVolume: pref('di.xavo','xaiVolume','0'),
-    lvvBase:   pref('di.lvb','lvvBase','http://127.0.0.1:10101'),
-    lvvSpeaker:pref('di.lvs','lvvSpeaker',''),
-    lvvSpeakerLbl:pref('di.lvsl','lvvSpeakerLbl',''),
-    lvvSpeakerB:pref('di.lvsa','lvvSpeakerB',''),          /* 空なら自分(A)と同じ声 */
-    lvvSpeakerBLbl:pref('di.lvsal','lvvSpeakerBLbl',''),
-    ttsSrc:    pref('di.ttssrc','ttsSrc','0')+'' === '1',
-    ttsPad:    pref('di.ttspad','ttsPad','300'),
-    ttsStale:  pref('di.ttsstale','ttsStale','auto'),
-    /* 旧1系統の出力先は「会議へ流す」用途だったため相手向けへ移行する。 */
-    outDevLocal:store.get('di.outdev.local',''),
-    outDevLocalLbl:store.get('di.outdevl.local',''),
-    outDevRemote:store.get('di.outdev.remote',store.get('di.outdev','')),
-    outDevRemoteLbl:store.get('di.outdevl.remote',store.get('di.outdevl','')),
-    micDev:    store.get('di.indev.mic',''),
-    micDevLbl: store.get('di.indevl.mic',''),
-    vbDev:     store.get('di.indev.vb',''),
-    vbDevLbl:  store.get('di.indevl.vb',''),
-    rememberTrans:store.get('di.remember.trans',store.get('di.remember','1')) === '1',
-    rememberStt:  store.get('di.remember.stt',store.get('di.remember','1')) === '1',
-    rememberTts:  store.get('di.remember.tts',store.get('di.remember','1')) === '1',
-    glossary:  []
-  };
-  // 用語集
-  var gs = store.get('di.gloss', null);
-  if (gs !== null){ try{ CFG.glossary = JSON.parse(gs); }catch(e){ CFG.glossary = []; } }
-  else if (EMBED.glossary) CFG.glossary = EMBED.glossary.slice();
-  if (!CFG.glossary.length) CFG.glossary = [];
+/* =========================================================================
+   設定スキーマ — 保存キー・埋め込み名・既定値・可搬性はここだけに定義する。
+   elを指定すると標準の変更イベントを配線する。再接続やデバイス選択など
+   専用処理を持つ既存UIはbind:'custom'で明示し、同じ設定を二重配線しない。
+   localOnlyは従来どおり端末の保存値だけを読む。portable:falseには理由を残す。
+   新しい保存キーはdi.に続けて設定名を省略せず書く。旧キーは改名しない。
+   ========================================================================= */
+var CONFIG_SCHEMA = [
+  { prop:"provider", key:'di.prov', embed:'provider', def:'free', portable:true, el:"provider", bind:'custom' },
+  { prop:"baseUrl", key:'di.base', embed:'baseUrl', def:'', portable:true, el:"baseUrl", bind:'custom' },
+  { prop:"model", key:'di.model', embed:'model', def:'', portable:true, el:"model", bind:'custom' },
+  { prop:"tone", key:'di.tone', embed:'tone', def:'business', portable:true, el:"tone" },
+  { prop:"ctx", key:'di.ctx', embed:'ctx', def:'', portable:true, el:"ctx" },
+  { prop:"sttProvider", key:'di.sttp', embed:'sttProvider', def:'webspeech', portable:true, el:"sttProvider", bind:'custom' },
+  { prop:"sttModel", key:'di.sttm', embed:'sttModel', def:'', portable:true, el:"sttModel", bind:'custom' },
+  { prop:"fourOSeconds", key:'di.fourOSeconds', embed:'fourOSeconds', def:'10', coerce:function(raw){ return fourOSeconds(raw); }, portable:true, el:"fourOSeconds", bind:'custom' },
+  { prop:"fourOCarry", key:'di.fourOCarry', embed:'fourOCarry', def:'1', type:'bool', portable:true, el:"fourOCarry", bind:'custom' },
+  { prop:"segmentMode", key:'di.segmentMode', embed:'segmentMode', def:'balanced', portable:true, el:"segmentMode", bind:'custom' },
+  { prop:"segmentBoundary", key:'di.segmentBoundary', embed:'segmentBoundary', def:'semantic', portable:true, el:"segmentBoundary", bind:'custom' },
+  { prop:"segmentOverlap", key:'di.segmentOverlap', embed:'segmentOverlap', def:'allow', portable:true, el:"segmentOverlap", bind:'custom' },
+  { prop:"segmentMin", key:'di.segmentMin', embed:'segmentMin', def:'0', portable:true, el:"segmentMin", bind:'custom' },
+  { prop:"segmentStability", key:'di.segmentStability', embed:'segmentStability', def:'0', portable:true, el:"segmentStability", bind:'custom' },
+  { prop:"segmentSilence", key:'di.segmentSilence', embed:'segmentSilence', def:'0', portable:true, el:"segmentSilence", bind:'custom' },
+  { prop:"segmentDebt", key:'di.segmentDebt', embed:'segmentDebt', def:'8', portable:true, el:"segmentDebt", bind:'custom' },
+  { prop:"ttsMode", key:'di.tts', embed:'ttsMode', def:'off', portable:true, el:"ttsMode" },
+  { prop:"ttsWho", key:'di.ttsw', embed:'ttsWho', def:'B2A', portable:true, el:"ttsWho" },
+  { prop:"focus", key:'di.focus', embed:'focus', def:'split', portable:true },
+  { prop:"rtDirection", key:'di.rtdirection', embed:'rtDirection', def:null, legacy:[{key:'di.rtboth',embed:'rtBoth',def:'0'},{key:'di.rtdir',embed:'rtDir',def:'B'}], coerce:function(raw,s){ if(raw==='A2B'||raw==='B2A'||raw==='both')return raw; return String(readConfigValue(s.legacy[0]))==='1'?'both':(readConfigValue(s.legacy[1])==='A'?'B2A':'A2B'); }, portable:true, el:"rtDirection" },
+  { prop:"rtVolume", key:'di.rtVolume', embed:'rtVolume', def:100, coerce:function(raw){ return realtimeVolume(raw); }, portable:true, el:"rtVolume", bind:'custom' },
+  { prop:"rtCardSeconds", key:'di.rtCardSeconds', embed:'rtCardSeconds', def:10, coerce:function(raw){ return realtimeCardSeconds(raw); }, portable:true, el:"rtCardSeconds", bind:'custom' },
+  { prop:"ttsModel", key:'di.ttsm', embed:'ttsModel', def:'', portable:true, el:"ttsModel", bind:'custom' },
+  { prop:"camModel", key:'di.cam', embed:'camModel', def:'gpt-4o-mini', portable:true, note:"端末IDを含まない動作設定としてHTMLへ引き継ぐ", el:"camModel" },
+  { prop:"voiceA", key:'di.va', embed:'voiceA', def:'alloy', portable:true, el:"voiceA" },
+  { prop:"voiceB", key:'di.vb', embed:'voiceB', def:'ash', portable:true, el:"voiceB" },
+  { prop:"oaiRate", key:'di.oairt', embed:'oaiRate', def:'0', portable:true, el:"oaiRate" },
+  { prop:"oaiEmotion", key:'di.oaiem', embed:'oaiEmotion', def:'0', portable:true, el:"oaiEmotion" },
+  { prop:"oaiIntonation", key:'di.oaiin', embed:'oaiIntonation', def:'0', portable:true, el:"oaiIntonation" },
+  { prop:"oaiDynamics", key:'di.oaidy', embed:'oaiDynamics', def:'0', portable:true, el:"oaiDynamics" },
+  { prop:"oaiPause", key:'di.oaipa', embed:'oaiPause', def:'0', portable:true, el:"oaiPause" },
+  { prop:"oaiVolume", key:'di.oaivo', embed:'oaiVolume', def:'0', portable:true, el:"oaiVolume" },
+  { prop:"oaiStyle", key:'di.oaistyle', embed:'oaiStyle', def:'', portable:true, el:"oaiStyle" },
+  { prop:"oaiStream", key:'di.oaistream', embed:'oaiStream', def:'1', type:'bool', portable:true },
+  { prop:"browserRate", key:'di.brrt', embed:'browserRate', def:'0', portable:true, el:"browserRate" },
+  { prop:"browserPitch", key:'di.brpt', embed:'browserPitch', def:'0', portable:true, el:"browserPitch" },
+  { prop:"browserVolume", key:'di.brvo', embed:'browserVolume', def:'0', portable:true, el:"browserVolume" },
+  { prop:"vad", key:'di.vad', embed:'vad', def:'35', type:'int', portable:true, el:"vad", bind:'custom', encode:String },
+  { prop:"langA", key:'di.la', embed:'langA', def:'ja', portable:true, el:"langA", bind:'custom' },
+  { prop:"langB", key:'di.lb', embed:'langB', def:'en', portable:true, el:"langB", bind:'custom' },
+  { prop:"srcA", key:'di.sa', embed:'srcA', def:'mic', portable:true, el:"srcA", bind:'custom' },
+  { prop:"srcB", key:'di.sb', embed:'srcB', def:'mic', portable:true, el:"srcB", bind:'custom' },
+  { prop:"displaySttRoute", key:'di.audio.displayRoute', embed:'displaySttRoute', def:'auto', coerce:function(raw){ return /^(direct|vb)$/.test(raw) ? raw : 'auto'; }, portable:true, note:"端末IDを含まない動作設定としてHTMLへ引き継ぐ", el:"displaySttRoute", bind:'custom' },
+  { prop:"preventSelfRecognition", key:'di.audio.preventLoop', embed:'preventSelfRecognition', def:'1', type:'bool', portable:true, note:"端末IDを含まない動作設定としてHTMLへ引き継ぐ", el:"preventSelfRecognition", bind:'custom' },
+  { prop:"nameA", key:'di.na', embed:'nameA', def:'', portable:true, el:"nameA" },
+  { prop:"nameB", key:'di.nb', embed:'nameB', def:'', portable:true, el:"nameB" },
+  { prop:"fsize", key:'di.fs', embed:'fsize', def:function(){ return window.innerWidth <= 480 ? '22' : '30'; }, portable:true, el:"fsize", bind:'custom' },
+  { prop:"flipTop", key:'di.flip', embed:'flipTop', def:'0', type:'bool', portable:true, el:"flipTop" },
+  { prop:"showSrc", key:'di.src', embed:'showSrc', def:'1', type:'bool', portable:true, el:"showSrc" },
+  { prop:"swap", key:'di.swap', embed:'swap', def:'0', type:'bool', portable:true, el:"swapSides" },
+  { prop:"interimOn", key:'di.itm', embed:'interimOn', def:'1', type:'bool', portable:true, el:"interimOn" },
+  { prop:"prosodyOn", key:'di.prosody', embed:'prosodyOn', def:'0', type:'bool', portable:true, el:"prosodyOn" },
+  { prop:"echoGuard", key:'di.echo', embed:'echoGuard', def:'1', type:'bool', portable:true, el:"echoGuard" },
+  { prop:"syncScroll", key:'di.sync', embed:'syncScroll', def:'1', type:'bool', portable:true, el:"syncScroll" },
+  { prop:"ovCapLayout", key:'di.overlay.layout', embed:'ovCapLayout', def:'right', portable:true, group:'capture', el:"ovCapLayout", bind:'custom' },
+  { prop:"ovCapWidth", key:'di.overlay.width', embed:'ovCapWidth', def:'28', portable:true, group:'capture', el:"ovCapWidth", bind:'custom' },
+  { prop:"ovCapResolution", key:'di.overlay.resolution', embed:'ovCapResolution', def:'native', portable:true, group:'capture', el:"ovCapResolution", bind:'custom' },
+  { prop:"ovCapAudio", key:'di.overlay.audio', embed:'ovCapAudio', def:'target', coerce:function(raw){ return raw==='system'?'system':'target'; }, portable:true, group:'capture', el:"ovCapAudio", bind:'custom' },
+  { prop:"ovCapTextA", key:'di.overlay.textA', embed:'ovCapTextA', def:'#FFFFFF', portable:true, group:'capture', el:"ovCapTextA", bind:'custom' },
+  { prop:"ovCapTextB", key:'di.overlay.textB', embed:'ovCapTextB', def:'#A7E8FF', portable:true, group:'capture', el:"ovCapTextB", bind:'custom' },
+  { prop:"ovCapSrcA", key:'di.overlay.srcA', embed:'ovCapSrcA', def:'#D4E8DE', portable:true, group:'capture', el:"ovCapSrcA", bind:'custom' },
+  { prop:"ovCapSrcB", key:'di.overlay.srcB', embed:'ovCapSrcB', def:'#E7D3DA', portable:true, group:'capture', el:"ovCapSrcB", bind:'custom' },
+  { prop:"ovCapBg", key:'di.overlay.bg', embed:'ovCapBg', def:'#000000', portable:true, group:'capture', el:"ovCapBg", bind:'custom' },
+  { prop:"ovCapTextOpacity", key:'di.overlay.textOpacity', embed:'ovCapTextOpacity', def:'92', portable:true, group:'capture', el:"ovCapTextOpacity", bind:'custom' },
+  { prop:"ovCapBgOpacity", key:'di.overlay.bgOpacity', embed:'ovCapBgOpacity', def:'35', portable:true, group:'capture', el:"ovCapBgOpacity", bind:'custom' },
+  { prop:"ovCapFont", key:'di.overlay.font', embed:'ovCapFont', def:'26', portable:true, group:'capture', el:"ovCapFont", bind:'custom' },
+  { prop:"ovCapLine", key:'di.overlay.line', embed:'ovCapLine', def:'1.35', portable:true, group:'capture', el:"ovCapLine", bind:'custom' },
+  { prop:"ovCapItemWidth", key:'di.overlay.itemWidth', embed:'ovCapItemWidth', def:'100', portable:true, group:'capture', el:"ovCapItemWidth", bind:'custom' },
+  { prop:"ovCapItems", key:'di.overlay.items', embed:'ovCapItems', def:'4', portable:true, group:'capture', el:"ovCapItems", bind:'custom' },
+  { prop:"ovCapHold", key:'di.overlay.hold', embed:'ovCapHold', def:'18', portable:true, group:'capture', el:"ovCapHold", bind:'custom' },
+  { prop:"ovCapShadow", key:'di.overlay.shadow', embed:'ovCapShadow', def:'1', type:'bool', portable:true, group:'capture', el:"ovCapShadow", bind:'custom' },
+  { prop:"ovCapOutline", key:'di.overlay.outline', embed:'ovCapOutline', def:'0', type:'bool', portable:true, group:'capture', el:"ovCapOutline", bind:'custom' },
+  { prop:"ovCapRound", key:'di.overlay.round', embed:'ovCapRound', def:'1', type:'bool', portable:true, group:'capture', el:"ovCapRound", bind:'custom' },
+  { prop:"ovCapX", key:'di.overlay.x', embed:'ovCapX', def:'68', portable:true, group:'capture' },
+  { prop:"ovCapY", key:'di.overlay.y', embed:'ovCapY', def:'18', portable:true, group:'capture' },
+  { prop:"ovCapFreeWidth", key:'di.overlay.freeWidth', embed:'ovCapFreeWidth', def:'28', portable:true, group:'capture' },
+  { prop:"ovCapFreeHeight", key:'di.overlay.freeHeight', embed:'ovCapFreeHeight', def:'55', portable:true, group:'capture' },
+  { prop:"ovCapSideHeight", key:'di.overlay.sideHeight', embed:'ovCapSideHeight', def:'80', portable:true, group:'capture' },
+  { prop:"ovCapBottomWidth", key:'di.overlay.bottomWidth', embed:'ovCapBottomWidth', def:'80', portable:true, group:'capture' },
+  { prop:"ovCapBottomHeight", key:'di.overlay.bottomHeight', embed:'ovCapBottomHeight', def:'42', portable:true, group:'capture' },
+  { prop:"ovInteraction", key:'di.overlay.interaction', embed:'ovInteraction', def:'locked', portable:true, group:'capture' },
+  { prop:"vvSpeaker", key:'di.vvsp', embed:'vvSpeaker', def:'3', portable:true, note:"既存の声はB席として維持。既定のB2A読み上げで声が変わらないようにする", el:"vvSpeaker" },
+  { prop:"vvSpeakerA", key:'di.vvspa', embed:'vvSpeakerA', def:'2', portable:true, note:"A席専用。既存のB席の声とは独立", el:"vvSpeakerA" },
+  { prop:"vvRate", key:'di.vvrt', embed:'vvRate', def:'1', portable:true, el:"vvRate", bind:'custom', slider:{group:"voicevox",min:0.5,max:2,fmt:function(v){ return v.toFixed(2)+'×'; }} },
+  { prop:"vvPitch", key:'di.vvpt', embed:'vvPitch', def:'0', portable:true, el:"vvPitch", bind:'custom', slider:{group:"voicevox",min:-0.15,max:0.15,fmt:function(v){ return (v>0?'+':'')+v.toFixed(2); }} },
+  { prop:"vvIntonation", key:'di.vvin', embed:'vvIntonation', def:'1', portable:true, el:"vvIntonation", bind:'custom', slider:{group:"voicevox",min:0,max:2,fmt:function(v){ return v.toFixed(2); }} },
+  { prop:"aivisModel", key:'di.aim', embed:'aivisModel', def:'a59cb814-0083-4369-8542-f51a29e72af7', portable:true, el:"aivisModel", bind:'custom' },
+  { prop:"aivisModelB", key:'di.aima', embed:'aivisModelB', def:'', portable:true, el:"aivisModelB", bind:'custom' },
+  { prop:"aivisStyle", key:'di.aist', embed:'aivisStyle', def:'', portable:true, el:"aivisStyle", bind:'custom' },
+  { prop:"aivisStyleB", key:'di.aista', embed:'aivisStyleB', def:'', portable:true, el:"aivisStyleB", bind:'custom' },
+  { prop:"aivisRate", key:'di.airt', embed:'aivisRate', def:'1', portable:true, el:"aivisRate", bind:'custom', slider:{group:"aivis",fmt:function(v){ return v.toFixed(2) + '×'; }} },
+  { prop:"aivisEmo", key:'di.aiem', embed:'aivisEmo', def:'1', portable:true, el:"aivisEmo", bind:'custom', slider:{group:"aivis",fmt:function(v){ return v.toFixed(2); }} },
+  { prop:"aivisTempo", key:'di.aitp', embed:'aivisTempo', def:'1', portable:true, el:"aivisTempo", bind:'custom', slider:{group:"aivis",fmt:function(v){ return v.toFixed(2); }} },
+  { prop:"aivisVol", key:'di.aivo', embed:'aivisVol', def:'1', portable:true, el:"aivisVol", bind:'custom', slider:{group:"aivis",fmt:function(v){ return v.toFixed(2); }} },
+  { prop:"aivisBreak", key:'di.aibr', embed:'aivisBreak', def:'0.4', portable:true, el:"aivisBreak", bind:'custom', slider:{group:"aivis",fmt:function(v){ return v.toFixed(2) + '秒'; }} },
+  { prop:"aivisNorm", key:'di.ainm', embed:'aivisNorm', def:'1', type:'bool', portable:true, el:"aivisNorm", bind:'custom' },
+  { prop:"aivisDict", key:'di.aidc', embed:'aivisDict', def:'', portable:true, el:"aivisDict", bind:'custom' },
+  { prop:"aivisStream", key:'di.aistr', embed:'aivisStream', def:'0', type:'bool', portable:true },
+  { prop:"aivisSpk", key:'di.aisp', embed:'aivisSpk', def:'', portable:true },
+  { prop:"aivisSpkB", key:'di.aispa', embed:'aivisSpkB', def:'', portable:true },
+  { prop:"elModel", key:'di.elm', embed:'elModel', def:'eleven_flash_v2_5', portable:true, el:"elModel", bind:'custom' },
+  { prop:"elVoice", key:'di.elv', embed:'elVoice', def:'', portable:true, el:"elVoice", bind:'custom' },
+  { prop:"elVoiceLbl", key:'di.elvl', embed:'elVoiceLbl', def:'', portable:true },
+  { prop:"elVoiceB", key:'di.elva', embed:'elVoiceB', def:'', portable:true, el:"elVoiceB", bind:'custom' },
+  { prop:"elVoiceBLbl", key:'di.elval', embed:'elVoiceBLbl', def:'', portable:true },
+  { prop:"elRate", key:'di.elrt', embed:'elRate', def:'0', portable:true, el:"elRate" },
+  { prop:"elEmotion", key:'di.elem', embed:'elEmotion', def:'0', portable:true, el:"elEmotion" },
+  { prop:"elIntonation", key:'di.elin', embed:'elIntonation', def:'0', portable:true, el:"elIntonation" },
+  { prop:"elDynamics", key:'di.eldy', embed:'elDynamics', def:'0', portable:true, el:"elDynamics" },
+  { prop:"elPause", key:'di.elpa', embed:'elPause', def:'0', portable:true, el:"elPause" },
+  { prop:"elVolume", key:'di.elvo', embed:'elVolume', def:'0', portable:true, el:"elVolume" },
+  { prop:"elSimilarity", key:'di.elsi', embed:'elSimilarity', def:'0', portable:true, el:"elSimilarity" },
+  { prop:"elSpeakerBoost", key:'di.elsb', embed:'elSpeakerBoost', def:'1', type:'bool', portable:true, el:"elSpeakerBoost" },
+  { prop:"xaiVoice", key:'di.xav', embed:'xaiVoice', def:'eve', portable:true, el:"xaiVoice", bind:'custom' },
+  { prop:"xaiVoiceB", key:'di.xava', embed:'xaiVoiceB', def:'', portable:true, el:"xaiVoiceB", bind:'custom' },
+  { prop:"xaiRate", key:'di.xart', embed:'xaiRate', def:'0', portable:true, el:"xaiRate" },
+  { prop:"xaiEmotion", key:'di.xaem', embed:'xaiEmotion', def:'0', portable:true, el:"xaiEmotion" },
+  { prop:"xaiIntonation", key:'di.xain', embed:'xaiIntonation', def:'0', portable:true, el:"xaiIntonation" },
+  { prop:"xaiDynamics", key:'di.xady', embed:'xaiDynamics', def:'0', portable:true, el:"xaiDynamics" },
+  { prop:"xaiPause", key:'di.xapa', embed:'xaiPause', def:'0', portable:true, el:"xaiPause" },
+  { prop:"xaiVolume", key:'di.xavo', embed:'xaiVolume', def:'0', portable:true, el:"xaiVolume" },
+  { prop:"lvvBase", key:'di.lvb', embed:'lvvBase', def:'http://127.0.0.1:10101', portable:true, el:"lvvBase", bind:'custom' },
+  { prop:"lvvSpeaker", key:'di.lvs', embed:'lvvSpeaker', def:'', portable:true, el:"lvvSpeaker", bind:'custom' },
+  { prop:"lvvSpeakerLbl", key:'di.lvsl', embed:'lvvSpeakerLbl', def:'', portable:true },
+  { prop:"lvvSpeakerB", key:'di.lvsa', embed:'lvvSpeakerB', def:'', portable:true, el:"lvvSpeakerB", bind:'custom' },
+  { prop:"lvvSpeakerBLbl", key:'di.lvsal', embed:'lvvSpeakerBLbl', def:'', portable:true },
+  { prop:"ttsSrc", key:'di.ttssrc', embed:'ttsSrc', def:'0', type:'bool', portable:true, el:"ttsSrc" },
+  { prop:"ttsPad", key:'di.ttspad', embed:'ttsPad', def:'300', portable:true, el:"ttsPad" },
+  { prop:"ttsStale", key:'di.ttsstale', embed:'ttsStale', def:'auto', portable:true, el:"ttsStale" },
+  { prop:"outDevLocal", key:"di.outdev.local", def:"", localOnly:true, portable:false, note:"端末固有の音声デバイスID・名称のため書き出さない", el:"outDevLocal", bind:'custom' },
+  { prop:"outDevLocalLbl", key:"di.outdevl.local", def:"", localOnly:true, portable:false, note:"端末固有の音声デバイスID・名称のため書き出さない" },
+  { prop:"outDevRemote", key:"di.outdev.remote", def:"", localOnly:true, legacyKey:"di.outdev", portable:false, note:"端末固有の音声デバイスID・名称のため書き出さない", el:"outDevRemote", bind:'custom' },
+  { prop:"outDevRemoteLbl", key:"di.outdevl.remote", def:"", localOnly:true, legacyKey:"di.outdevl", portable:false, note:"端末固有の音声デバイスID・名称のため書き出さない" },
+  { prop:"micDev", key:"di.indev.mic", def:"", localOnly:true, portable:false, note:"端末固有の音声デバイスID・名称のため書き出さない", el:"micDev", bind:'custom' },
+  { prop:"micDevLbl", key:"di.indevl.mic", def:"", localOnly:true, portable:false, note:"端末固有の音声デバイスID・名称のため書き出さない" },
+  { prop:"vbDev", key:"di.indev.vb", def:"", localOnly:true, portable:false, note:"端末固有の音声デバイスID・名称のため書き出さない", el:"vbDev", bind:'custom' },
+  { prop:"vbDevLbl", key:"di.indevl.vb", def:"", localOnly:true, portable:false, note:"端末固有の音声デバイスID・名称のため書き出さない" },
+  { prop:"rememberTrans", key:"di.remember.trans", def:"1", localOnly:true, legacyKey:"di.remember", coerce:function(raw){ return raw==='1'; }, type:'bool', portable:false, note:"APIキーをブラウザへ保存する同意は端末ごとのため書き出さない", el:"rememberTrans", bind:'custom' },
+  { prop:"rememberStt", key:"di.remember.stt", def:"1", localOnly:true, legacyKey:"di.remember", coerce:function(raw){ return raw==='1'; }, type:'bool', portable:false, note:"APIキーをブラウザへ保存する同意は端末ごとのため書き出さない", el:"rememberStt", bind:'custom' },
+  { prop:"rememberTts", key:"di.remember.tts", def:"1", localOnly:true, legacyKey:"di.remember", coerce:function(raw){ return raw==='1'; }, type:'bool', portable:false, note:"APIキーをブラウザへ保存する同意は端末ごとのため書き出さない", el:"rememberTts", bind:'custom' },
+  { prop:"glossary", key:'di.gloss', embed:'glossary', def:function(){ return []; }, type:'json', coerce:function(raw){ return Array.isArray(raw) ? raw.slice() : []; }, encode:function(value){ return value.filter(function(r){ return r.s || r.t; }); }, portable:true }
+];
+var CONFIG_BY_PROP = {};
+CONFIG_SCHEMA.forEach(function(s){ CONFIG_BY_PROP[s.prop]=s; });
+function configDefault(s){ return typeof s.def==='function' ? s.def() : s.def; }
+function readConfigValue(s){
+  var def=configDefault(s), raw;
+  if(s.localOnly)raw=store.get(s.key,s.legacyKey?store.get(s.legacyKey,def):def);
+  else if(s.type==='json'){
+    raw=store.get(s.key,null);
+    if(raw!==null){try{raw=JSON.parse(raw);}catch(err){raw=def;}}
+    else raw=EMBED[s.embed] || def;
+  }else raw=pref(s.key,s.embed,def);
+  if(s.coerce)return s.coerce(raw,s);
+  if(s.type==='bool')return raw+''==='1';
+  if(s.type==='int')return parseInt(raw,10);
+  return raw;
+}
+function encodeConfigValue(s,value){
+  if(s.encode)return s.encode(value);
+  return s.type==='bool' ? (value?'1':'0') : value;
+}
+function persistSetting(prop,value){
+  var s=CONFIG_BY_PROP[prop];
+  if(!s)throw new Error('Unknown setting: '+prop);
+  store.set(s.key,value===undefined?encodeConfigValue(s,CFG[prop]):value);
+}
+function exportData(){
+  var data={};
+  CONFIG_SCHEMA.forEach(function(s){ if(s.portable)data[s.embed||s.prop]=encodeConfigValue(s,CFG[s.prop]); });
+  data.savedAt=new Date().toISOString();
+  return data;
+}
+function bindSettings(){
+  CONFIG_SCHEMA.forEach(function(s){ if(s.el && s.bind!=='custom' && $(s.el))simple(s); });
+}
+function applySchemaControls(){
+  CONFIG_SCHEMA.forEach(function(s){
+    var el=s.el && s.bind!=='custom' && $(s.el);
+    if(el){if(s.type==='bool')el.checked=!!CFG[s.prop];else el.value=CFG[s.prop];}
+  });
+}
+function configSliders(group){
+  return CONFIG_SCHEMA.filter(function(s){return s.slider&&s.slider.group===group;})
+    .map(function(s){return Object.assign({id:s.el,key:s.prop,def:Number(configDefault(s))},s.slider);});
+}
 
+function loadCfg(){
+  CFG = {};
+  CONFIG_SCHEMA.forEach(function(s){ CFG[s.prop]=readConfigValue(s); });
   // APIキー。旧di.keysは初回だけ3区分へ安全に移行する。
   var legacyRaw=store.get('di.keys',null), legacy=legacyRaw===null?{}:readKeyMap('di.keys');
   KEYS={};
@@ -2087,11 +2118,11 @@ function saveKeys(){
 function setKeyRemember(scope,on){
   var spec=KEY_SCOPES[scope]; if(!spec)return;
   CFG[spec.flag]=!!on;
-  store.set('di.remember.'+scope,on?'1':'0');
+  persistSetting(spec.flag,on?'1':'0');
   if(on) store.set(spec.store,JSON.stringify(keyMapFor(scope)));
   else store.del(spec.store);
 }
-function saveGloss(){ store.set('di.gloss', JSON.stringify(CFG.glossary)); }
+function saveGloss(){ persistSetting("glossary", JSON.stringify(CFG.glossary)); }
 
 /* ---------------- 状態 ---------------- */
 var S = { running:false, entries:[], seq:0, speaking:false, listenSeat:'A', autoMode:true };
@@ -2120,7 +2151,7 @@ function seatName(s){
    split（左右2分割） / splitV（上下2分割） / A（Bを最小化） / B（Aを最小化） */
 function setFocus(mode){
   CFG.focus = mode;
-  store.set('di.focus', mode);
+  persistSetting("focus", mode);
   var stage = $('stage'), A = $('sideA'), B = $('sideB');
   stage.classList.remove('splitV','focusA','focusB');
   A.classList.remove('mini'); B.classList.remove('mini');
@@ -2767,7 +2798,7 @@ var OverlayStage = {
     [['captureModeNavigate','navigate'],['captureModeAnnotate','annotate'],['captureModeLock','locked']].forEach(function(x){
       var b=$(x[0]);if(!b)return;b.classList.toggle('active',mode===x[1]);b.classList.toggle('locked',mode==='locked'&&x[1]==='locked');
     });
-    if(save!==false){CFG.ovInteraction=mode;store.set('di.overlay.interaction',mode);}
+    if(save!==false){CFG.ovInteraction=mode;persistSetting("ovInteraction", mode);}
     this.draft=null;this.pan=null;this.pinch=null;this.pointers={};this.render();
     dlog('overlay','interaction',{mode:mode});
   },
@@ -3413,13 +3444,12 @@ function captureFullscreen(){
   }
 }
 function resetCaptureProfile(){
-  var d={ovCapLayout:'right',ovCapWidth:'28',ovCapResolution:'native',ovCapAudio:'target',ovCapTextA:'#FFFFFF',ovCapTextB:'#A7E8FF',ovCapSrcA:'#D4E8DE',ovCapSrcB:'#E7D3DA',ovCapBg:'#000000',ovCapTextOpacity:'92',ovCapBgOpacity:'35',ovCapFont:'26',ovCapLine:'1.35',ovCapItemWidth:'100',ovCapItems:'4',ovCapHold:'18',ovCapShadow:true,ovCapOutline:false,ovCapRound:true,ovCapX:'68',ovCapY:'18',ovCapFreeWidth:'28',ovCapFreeHeight:'55',ovCapSideHeight:'80',ovCapBottomWidth:'80',ovCapBottomHeight:'42',ovInteraction:'locked'};
-  Object.keys(d).forEach(function(k){ CFG[k]=d[k]; }); saveCaptureProfile(); applyCaptureControls(); applyCaptureProfile(); renderOverlayRail();
+  CONFIG_SCHEMA.forEach(function(s){if(s.group==='capture'){var raw=configDefault(s);CFG[s.prop]=s.type==='bool'?raw+''==='1':raw;}});
+  saveCaptureProfile(); applyCaptureControls(); applyCaptureProfile(); renderOverlayRail();
   OverlayStage.setMode('locked');
 }
 function saveCaptureProfile(){
-  var keys={ovCapLayout:'layout',ovCapWidth:'width',ovCapResolution:'resolution',ovCapAudio:'audio',ovCapTextA:'textA',ovCapTextB:'textB',ovCapSrcA:'srcA',ovCapSrcB:'srcB',ovCapBg:'bg',ovCapTextOpacity:'textOpacity',ovCapBgOpacity:'bgOpacity',ovCapFont:'font',ovCapLine:'line',ovCapItemWidth:'itemWidth',ovCapItems:'items',ovCapHold:'hold',ovCapShadow:'shadow',ovCapOutline:'outline',ovCapRound:'round',ovCapX:'x',ovCapY:'y',ovCapFreeWidth:'freeWidth',ovCapFreeHeight:'freeHeight',ovCapSideHeight:'sideHeight',ovCapBottomWidth:'bottomWidth',ovCapBottomHeight:'bottomHeight',ovInteraction:'interaction'};
-  Object.keys(keys).forEach(function(k){ store.set('di.overlay.'+keys[k],typeof CFG[k]==='boolean'?(CFG[k]?'1':'0'):CFG[k]); });
+  CONFIG_SCHEMA.forEach(function(s){if(s.group==='capture')persistSetting(s.prop);});
 }
 function currentCaptureRailWidth(){
   if(CFG.ovCapLayout==='free')return CFG.ovCapFreeWidth;
@@ -4232,12 +4262,8 @@ function updateProsodyStatus(){
   if (pi) pi.textContent = !on ? '待機' : (PROSODY_CAPS.pitch ? '取得可' : (PROSODY_CAPS.running ? '検出待ち' : '未検出'));
   if (en) en.textContent = !on ? '待機' : (PROSODY_CAPS.energy ? '取得可' : (PROSODY_CAPS.running ? '検出待ち' : '未検出'));
   if (ti) ti.textContent = !on ? '待機' : (PROSODY_CAPS.timing ? '取得可' : (PROSODY_CAPS.running ? '発話待ち' : '未検出'));
-  if (tt) tt.textContent = !on ? 'OFF'
-    : CFG.ttsMode==='browser' ? '速度・音量・語尾傾向'
-    : CFG.ttsMode==='openai' ? '速度・抑揚・緩急・間・音量'
-    : CFG.ttsMode==='aivis' ? '速度・緩急・音量'
-    : CFG.ttsMode==='voicevox' ? '速度（声高・抑揚は解析のみ）'
-    : '解析のみ（未対応）';
+  var p=ttsProv().prosody;
+  if(tt)tt.textContent=!on?'OFF':(p.axes.length?p.axes.join('・')+p.suffix:'解析のみ（未対応）');
 }
 function resetProsodyCaps(running, clearObserved){
   PROSODY_CAPS = {
@@ -4713,7 +4739,7 @@ function hasSpeechContent(s){
    API型STTには別途、自然な句読点を含む逐語書き起こしを指示する。 */
 function punctuateTranscript(text, lang){
   text=String(text||'').trim();
-  if (!CFG.sttPunct || !text || !hasSpeechContent(text)) return text;
+  if (!text || !hasSpeechContent(text)) return text;
   var closing='', m=text.match(/([」』】）\]\}"']+)$/);
   if (m){ closing=m[1]; text=text.slice(0,-closing.length).trim(); }
   if (!text || /[。！？.!?…]$/.test(text)) return text+closing;
@@ -4780,7 +4806,7 @@ function refreshTtsBtn(){
   var isRT = (CFG.sttProvider === 'realtime');
   b.style.display = isRT ? 'none' : '';
   if (isRT) return;
-  var off = (CFG.ttsMode === 'off');
+  var off = (!ttsProv().enabled);
   b.style.opacity = '';                 // 斜線まで薄くならないよう、要素全体の透過はやめる
   b.classList.toggle('muted', off);
   b.title = off ? '読み上げ OFF（押すとON）' : '読み上げ ON（押すとOFF）';
@@ -4888,8 +4914,8 @@ function browserSpeak(text, tag, prosody, onFinish){
       ttsSilentFails++;
       dlog('tts','browser-SILENT',{ lang: tag, fails: ttsSilentFails, voices: ttsVoices().length });
       // 鳴らない読み上げを試し続けても邪魔なだけなので、続くようなら自動でOFFにする
-      if (ttsSilentFails >= 2 && CFG.ttsMode === 'browser'){
-        CFG.ttsMode = 'off'; store.set('di.tts','off');
+      if (ttsSilentFails >= 2 && !ttsProv().canRouteOutput){
+        CFG.ttsMode = 'off'; persistSetting("ttsMode", 'off');
         var sel = $('ttsMode'); if (sel) sel.value = 'off';
         refreshTtsBtn();
         // 設定を勝手に変えた以上、これは必ず伝える（1回だけの抑制対象にしない）
@@ -5484,7 +5510,7 @@ function outNoteText(){
   return t;
 }
 function outputSeatEnabled(seat){
-  return CFG.ttsMode!=='off' && CFG.sttProvider!=='realtime' && seatUsed(seat);
+  return ttsProv().enabled && CFG.sttProvider!=='realtime' && seatUsed(seat);
 }
 function renderOneOutDev(id, cfgId, cfgLabel, storeId, storeLabel, seat, buttonId){
   var sel=$(id);if(!sel)return;
@@ -5578,14 +5604,14 @@ function applySink(seat,announce){
     dlog('audio','sink-ok',{seat:seat||'A',target:sink.target,dev:sink.label||'(既定)'});
     if (announce){
       toast(sink.target+'の出力先を「' + (sink.label || '既定のスピーカー') + '」にしました。'
-          + (CFG.ttsMode === 'browser' ? '<br>※ ブラウザ内蔵音声はこの設定の対象外です。' : ''), true);
+          + (!ttsProv().canRouteOutput ? '<br>※ ブラウザ内蔵音声はこの設定の対象外です。' : ''), true);
     }
     return true;
   }).catch(function(err){
     var m = String((err && err.message) || err);
     dlog('audio','sink-FAIL',{ err:m.slice(0,140) });
-    if((seat||'A')==='A'){CFG.outDevRemote='';CFG.outDevRemoteLbl='';store.set('di.outdev.remote','');store.set('di.outdevl.remote','');}
-    else{CFG.outDevLocal='';CFG.outDevLocalLbl='';store.set('di.outdev.local','');store.set('di.outdevl.local','');}
+    if((seat||'A')==='A'){CFG.outDevRemote='';CFG.outDevRemoteLbl='';persistSetting("outDevRemote", '');persistSetting("outDevRemoteLbl", '');}
+    else{CFG.outDevLocal='';CFG.outDevLocalLbl='';persistSetting("outDevLocal", '');persistSetting("outDevLocalLbl", '');}
     renderOutDevs(); refreshVvUI();
     toast('その出力先には切り替えられませんでした。既定のスピーカーに戻します。<br><small>' + m.slice(0,90) + '</small>');
     return false;
@@ -5603,7 +5629,7 @@ function ensureSink(seat){
 /* ---------------- 日本語専用エンジン共通の下ごしらえ ----------------
    VOICEVOX・Aivis Cloud・ローカルエンジンはいずれも日本語専用。
    日本語以外や設定不足のときは、黙って止まらずブラウザ内蔵音声に逃がす。 */
-function jaOnlyMode(m){ return m === 'voicevox' || m === 'aivis' || m === 'localvv'; }
+function jaOnlyMode(mode){ return ttsProv(mode).jaOnly; }
 function ttsFallback(text, lang, why, warnMsg, flagName, prosody){
   dlog('tts','fallback',{ mode: CFG.ttsMode, why: why, lang: lang });
   if (warnMsg && !window[flagName]){
@@ -5629,7 +5655,7 @@ function silentWavUrl(ms){
   return URL.createObjectURL(new Blob([buf], { type:'audio/wav' }));
 }
 function primeOutput(seat){
-  if (CFG.ttsMode === 'off') return;
+  if (!ttsProv().enabled) return;
   /* HTMLAudioElementの無音呼び水はiOSの出力経路維持専用。Windowsでは一部の
      オーディオドライバが無音ストリームの開始自体をビープで通知するため使わない。 */
   if (!IS_IOS){
@@ -6101,7 +6127,9 @@ function seatUsed(seat){
   if (CFG.ttsWho === 'A2B') return seat === 'A';
   return true;
 }
-function seatPick(seat, subVal, mainVal){
+function seatPick(seat, subVal, mainVal, inherit){
+  /* OpenAIは両席とも必須の独立した声。空欄をAへ継承する方式と混同しない。 */
+  if(inherit===false)return seat==='B'?subVal:mainVal;
   var sub = String(subVal || '').trim(), main = String(mainVal || '').trim();
   return (seat === 'B') ? (sub || main) : main;
 }
@@ -6687,16 +6715,16 @@ function aivisSyncSpeaker(sel){
   if (key){
     for (var i=0;i<list.length;i++) if (list[i].key === key) spk = list[i].spk || '';
   }
-  if (sel.id === 'aivisStyleB'){ CFG.aivisSpkB = spk; store.set('di.aispa', spk); }   /* 相手(B)側 */
-  else                         { CFG.aivisSpk  = spk; store.set('di.aisp',  spk); }
+  if (sel.id === 'aivisStyleB'){ CFG.aivisSpkB = spk; persistSetting("aivisSpkB", spk); }   /* 相手(B)側 */
+  else                         { CFG.aivisSpk  = spk; persistSetting("aivisSpk", spk); }
 }
 /* モデルが変わったら、選択済みのスタイルも一覧もいったん白紙に戻す。
    別モデルの番号をそのまま使うと、意図しない演技で鳴ってしまう。 */
 function aivisResetStyles(){
   CFG.aivisStyle = ''; CFG.aivisStyleB = '';
   CFG.aivisSpk = ''; CFG.aivisSpkB = '';
-  store.set('di.aist', ''); store.set('di.aista', '');
-  store.set('di.aisp', ''); store.set('di.aispa', '');
+  persistSetting("aivisStyle", ''); persistSetting("aivisStyleB", '');
+  persistSetting("aivisSpk", ''); persistSetting("aivisSpkB", '');
   ['aivisStyle','aivisStyleB'].forEach(function(id){
     var sl = $(id); if (sl) sl.innerHTML = '';
     AIVIS_STYLES[id] = [];
@@ -6708,13 +6736,7 @@ function aivisResetStyles(){
    候補は作らず、理由をその場に短く出すだけにする。 */
 /* スライダーと数値表示、設定値を1か所で同期させる。
    3か所に散ると必ずどこかがずれるので、更新はここだけを通す。 */
-var AIVIS_SLIDERS = [
-  { id:'aivisRate',  key:'aivisRate',  store:'di.airt', def:1,   fmt:function(v){ return v.toFixed(2) + '×'; } },
-  { id:'aivisEmo',   key:'aivisEmo',   store:'di.aiem', def:1,   fmt:function(v){ return v.toFixed(2); } },
-  { id:'aivisTempo', key:'aivisTempo', store:'di.aitp', def:1,   fmt:function(v){ return v.toFixed(2); } },
-  { id:'aivisVol',   key:'aivisVol',   store:'di.aivo', def:1,   fmt:function(v){ return v.toFixed(2); } },
-  { id:'aivisBreak', key:'aivisBreak', store:'di.aibr', def:0.4, fmt:function(v){ return v.toFixed(2) + '秒'; } }
-];
+var AIVIS_SLIDERS = configSliders("aivis");
 function aivisAdvSync(){
   AIVIS_SLIDERS.forEach(function(s){
     var el = $(s.id), out = $(s.id + 'V'); if (!el) return;
@@ -6730,9 +6752,9 @@ function aivisAdvSync(){
   if (msg){ msg.className = 'keychk'; msg.textContent = aivisTweaks(); }
 }
 function aivisAdvReset(){
-  AIVIS_SLIDERS.forEach(function(s){ CFG[s.key] = String(s.def); store.set(s.store, String(s.def)); });
-  CFG.aivisNorm = true;  store.set('di.ainm', '1');
-  CFG.aivisDict = '';    store.set('di.aidc', '');
+  AIVIS_SLIDERS.forEach(function(s){ CFG[s.key] = String(s.def); persistSetting(s.key, String(s.def)); });
+  CFG.aivisNorm = true;  persistSetting("aivisNorm", '1');
+  CFG.aivisDict = '';    persistSetting("aivisDict", '');
   aivisAdvSync(); refreshVvUI();
 }
 
@@ -7251,14 +7273,14 @@ function elFetchVoices(){
       if (n){
         CFG.elVoice = sel.value;
         CFG.elVoiceLbl = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
-        store.set('di.elv', CFG.elVoice); store.set('di.elvl', CFG.elVoiceLbl);
+        persistSetting("elVoice", CFG.elVoice); persistSetting("elVoiceLbl", CFG.elVoiceLbl);
       }
     }
     if (selB){
       elFillVoiceSelect(selB, list, CFG.elVoiceB, true);
       CFG.elVoiceB = selB.value;
       CFG.elVoiceBLbl = selB.selectedIndex >= 0 ? selB.options[selB.selectedIndex].textContent : '';
-      store.set('di.elva', CFG.elVoiceB); store.set('di.elval', CFG.elVoiceBLbl);
+      persistSetting("elVoiceB", CFG.elVoiceB); persistSetting("elVoiceBLbl", CFG.elVoiceBLbl);
     }
     var cloned = list.filter(function(v){ return v.category === 'cloned' || v.category === 'professional'; }).length;
     dlog('tts','eleven-voices',{ n:list.length, cloned:cloned });
@@ -7338,7 +7360,7 @@ function lvvFetchSpeakers(){
     if (n){
       CFG.lvvSpeaker = sel.value;
       CFG.lvvSpeakerLbl = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
-      store.set('di.lvs', CFG.lvvSpeaker); store.set('di.lvsl', CFG.lvvSpeakerLbl);
+      persistSetting("lvvSpeaker", CFG.lvvSpeaker); persistSetting("lvvSpeakerLbl", CFG.lvvSpeakerLbl);
     }
     var selB = $('lvvSpeakerB');
     if (selB){
@@ -7346,7 +7368,7 @@ function lvvFetchSpeakers(){
       fillLvvSelect(selB, list, CFG.lvvSpeakerB, true);
       CFG.lvvSpeakerB = selB.value;
       CFG.lvvSpeakerBLbl = selB.selectedIndex >= 0 ? selB.options[selB.selectedIndex].textContent : '';
-      store.set('di.lvsa', CFG.lvvSpeakerB); store.set('di.lvsal', CFG.lvvSpeakerBLbl);
+      persistSetting("lvvSpeakerB", CFG.lvvSpeakerB); persistSetting("lvvSpeakerBLbl", CFG.lvvSpeakerBLbl);
     }
     dlog('tts','local-speakers',{ n: n, base: base });
     toast('話者を ' + n + ' 件取得しました。', true);
@@ -7466,11 +7488,7 @@ function vvLoadSpeakers(force){
 }
 var vvWarned = false;
 function vvKey(){ return (KEYS['voicevox'] || '').trim(); }
-var VV_SLIDERS = [
-  { id:'vvRate', key:'vvRate', store:'di.vvrt', def:1, min:0.5, max:2, fmt:function(v){ return v.toFixed(2)+'×'; } },
-  { id:'vvPitch', key:'vvPitch', store:'di.vvpt', def:0, min:-0.15, max:0.15, fmt:function(v){ return (v>0?'+':'')+v.toFixed(2); } },
-  { id:'vvIntonation', key:'vvIntonation', store:'di.vvin', def:1, min:0, max:2, fmt:function(v){ return v.toFixed(2); } }
-];
+var VV_SLIDERS = configSliders("voicevox");
 function vvNumber(key, def, min, max){
   var v=parseFloat(CFG[key]); if (isNaN(v)) v=def;
   return Math.max(min,Math.min(max,v));
@@ -7510,7 +7528,7 @@ function vvAdvSync(){
   var msg=$('vvAdvMsg'); if (msg){ msg.className='keychk'; msg.textContent=vvTweaks(); }
 }
 function vvAdvReset(){
-  VV_SLIDERS.forEach(function(s){ CFG[s.key]=String(s.def); store.set(s.store,String(s.def)); });
+  VV_SLIDERS.forEach(function(s){ CFG[s.key]=String(s.def); persistSetting(s.key,String(s.def)); });
   vvAdvSync(); refreshVvUI();
 }
 /* VOICEVOX は A席・B席とも既定値を持つ（空欄で相手に合わせる仕組みが無い）ので、
@@ -7870,62 +7888,105 @@ function ttsPlanRows(){
   return rows;
 }
 /* 選んだエンジンを実際に鳴らせる状態かどうか。足りない設定を文章で返す */
-function ttsSetupMissing(){
-  if (CFG.ttsMode === 'openai' && !openaiTtsKey()) return 'OpenAIのAPIキーが未設定です。';
-  if (CFG.ttsMode === 'voicevox' && !vvKey())  return 'VOICEVOXのAPIキーが未設定です。';
-  if (CFG.ttsMode === 'aivis'){
-    if (!aivisKey())                    return 'Aivis Cloud API のキーが未設定です。';
-    if (seatUsed('A') && !aivisModelFor('A')) return 'Aivis Cloud API の「自分(A)の発言」のキャラが未設定です。';
-    if (seatUsed('B') && !aivisModelFor('B')) return 'Aivis Cloud API の「相手(B)の発言」のキャラが未設定です。';
-  }
-  if (CFG.ttsMode === 'localvv' && !(CFG.lvvBase||'').trim()) return 'ローカルエンジンのURLが未設定です。';
-  if (CFG.ttsMode === 'eleven'){
-    if (!elKey())                       return 'ElevenLabs のAPIキーが未設定です。';
-    if (seatUsed('A') && !elVoiceId('A')) return 'ElevenLabs の「自分(A)の発言」の声が未選択です（「🔄 声を取得」を押してください）。';
-    if (seatUsed('B') && !elVoiceId('B')) return 'ElevenLabs の「相手(B)の発言」の声が未選択です。';
-  }
-  if (CFG.ttsMode === 'xai' && !xaiKey()) return 'xAI のAPIキーが未設定です。';
-  return '';
-}
-function ttsPlanText(){
-  if (CFG.ttsMode === 'off') return { html:'読み上げは <b>OFF</b> です。', warn:false };
-  var rows = ttsPlanRows(), what = CFG.ttsSrc ? '原文' : '訳文', warn = false;
-  var t = 'いまの設定：' + rows.map(function(r){
-            return r.who + 'の発言の' + what + '（' + L(r.lang).name + '）';
-          }).join(' と ') + ' を <b>' + ttsModeLabel(CFG.ttsMode) + '</b> で読み上げます。';
-  var hasLocalSink=seatUsed('B')&&!!CFG.outDevLocal;
-  var hasRemoteSink=seatUsed('A')&&!!CFG.outDevRemote;
-  var hasSplitSink=!!(hasLocalSink||hasRemoteSink);
-  if (hasSplitSink && CFG.ttsMode === 'browser'){
-    t += '<br>⚠ 出力先を分けていますが、'
-       + 'ブラウザ内蔵音声は出力先を変えられません。既定のスピーカーから鳴ります。';
-    warn = true;
-  } else if (hasSplitSink){
-    var sinks=[];
-    if(seatUsed('B'))sinks.push('自分向け：<b>'+(CFG.outDevLocalLbl||'既定')+'</b>');
-    if(seatUsed('A'))sinks.push('相手向け：<b>'+(CFG.outDevRemoteLbl||'既定')+'</b>');
-    t += '<br>'+sinks.join('／');
-  }
-  if (CFG.ttsMode === 'openai'){
+/* =========================================================================
+   TTSプロバイダ定義 — 表示・設定パネル・発話・診断はこの表を参照する。
+   新しい方式は1エントリと合成関数を追加する。speakの引数は常に
+   (text, languageCode, seat, prosody)。ブラウザの言語タグ変換もここで行う。
+   offの手動再生は従来どおりブラウザ音声。自動再生はenabledで抑制する。
+   streamは実行時に環境と設定を読むので、設定変更後も古い値が残らない。
+   ========================================================================= */
+var TTS_PROVIDERS = {
+  off: {
+    label:"なし",
+    optionLabel:"なし",
+    uiField:null,
+    enabled:false,
+    jaOnly:false,
+    canRouteOutput:true,
+    needsKey:null,
+    speak:function(text,lang,seat,prosody){ return browserSpeak(text,L(lang).tts,prosody); },
+    seatVoice:function(){ return '(なし)'; },
+    setupMissing:function(){ return ''; },
+    planNote:function(){ return {html:'',warn:false}; },
+    stream:function(){ return {kind:'off',checked:false,text:'常時OFF（読み上げなし）。'}; },
+    diagModel:function(){ return '(未使用)'; },
+    prosody:{axes:[],suffix:'',note:"解析のみ（現在のTTSは未対応）"}
+  },
+  browser: {
+    label:"ブラウザ内蔵音声",
+    optionLabel:"🆓 ブラウザ内蔵音声（無料・即時）",
+    uiField:"browserOnly",
+    enabled:true,
+    jaOnly:false,
+    canRouteOutput:false,
+    needsKey:null,
+    speak:function(text,lang,seat,prosody){ return browserSpeak(text,L(lang).tts,prosody); },
+    seatVoice:function(seat){ return '(言語で自動選択)'; },
+    setupMissing:function(){ return ''; },
+    planNote:function(){ return {html:'',warn:false}; },
+    stream:function(){ return {kind:'on',checked:true,text:'常時ON（ブラウザが音声を逐次再生します）。'}; },
+    diagModel:function(){ return '(ブラウザ内蔵)'; },
+    prosody:{axes:["速度","音量","語尾傾向"],suffix:'',note:'ブラウザ標準：設定値を基準に速度・声高・音量を相対補正'},
+    diagRows:[
+    {section:"settings",order:36,label:'ブラウザ内蔵音声 話し方の調整',value:function(){ return browserTweaks(); },inactive:'(未使用)'}
+  ]
+  },
+  openai: {
+    label:"OpenAI音声",
+    optionLabel:"OpenAI 音声（自然）",
+    uiField:"oaiOnly",
+    enabled:true,
+    jaOnly:false,
+    canRouteOutput:true,
+    needsKey:'tts:openai',
+    speak:function(text,lang,seat,prosody){ return apiSpeak(text,lang,seat,prosody); },
+    seatVoice:function(seat){ return seatPick(seat,CFG.voiceB,CFG.voiceA,false); },
+    setupMissing:function(){ if (!openaiTtsKey()) return 'OpenAIのAPIキーが未設定です。'; return ''; },
+    planNote:function(rows){ var t='',warn=false; 
     var missO=ttsSetupMissing();
     if(missO){t+='<br><b>⚠ '+missO+'</b>';warn=true;}
+   return {html:t,warn:warn}; },
+    stream:function(){ 
+    var ok=!!window.ReadableStream&&oaiPcmStreamAllowed();
+    return ok
+      ? {kind:'select',checked:!!CFG.oaiStream,text:'ON／OFFを選択できます（PCM低遅延再生）。'}
+      : {kind:'off',checked:false,text:'常時OFF（この環境はPCM連続再生に対応していません）。'};
+   },
+    streamProp:'oaiStream',
+    refreshUI:function(active){
+  var oo = $('oaiOnly');
+  if (oo){
+    var ok=$('oaiTtsKey'); if(ok&&ok!==document.activeElement) ok.value=KEYS['tts:openai']||'';
+    var instructable=oaiInstructionsSupported(CFG.ttsModel), ids=['oaiEmotion','oaiIntonation','oaiDynamics','oaiPause','oaiStyle'];
+    ids.forEach(function(id){ var el=$(id); if(el) el.disabled=!instructable; });
+    var orate=$('oaiRate'); if(orate) orate.disabled=false; /* speedは旧tts-1系でもAPI対応 */
+    var on=$('oaiStyleNote');
+    if(on) on.innerHTML=instructable
+      ? '<code>gpt-4o-mini-tts</code>へ、話速はAPIの数値<code>speed</code>、音量はWeb Audioで反映し、感情・抑揚・緩急・間は段階別の強い指示文として送ります。'
+      : '⚠ 選択中のモデルは話し方の<code>instructions</code>に対応しません。話速（API speed）・音量・ストリーミングは適用します。感情・抑揚・緩急・間を変えるには<code>gpt-4o-mini-tts</code>を選んでください。';
   }
-  if (CFG.ttsMode === 'eleven'){
-    var missEl = ttsSetupMissing();
-    if (missEl){
-      t += '<br><b>⚠ ' + missEl + '</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';
-      warn = true;
-    } else {
-      var ep=[];
-      if (seatUsed('A')) ep.push('自分(A)は <b>' + (CFG.elVoiceLbl || elVoiceId('A')) + '</b>');
-      if (seatUsed('B')){
-        var ebid=elVoiceId('B'), ebl=(ebid===CFG.elVoice ? CFG.elVoiceLbl : CFG.elVoiceBLbl) || ebid;
-        ep.push('相手(B)は <b>' + ebl + '</b>');
-      }
-      t += '<br>' + ep.join('／') + ' の声です。ElevenLabs は多言語なので、どの言語もこの声で読み上げます。';
-    }
-  }
-  if (CFG.ttsMode === 'xai'){
+
+  },
+    diagModel:function(){ return CFG.ttsModel||'gpt-4o-mini-tts'; },
+    prosody:{axes:["速度","抑揚","緩急","間","音量"],suffix:'',note:'OpenAI：速度（API speed）＋感情・抑揚・緩急・間（instructions）＋音量（Web Audio）'},
+    diagRows:[
+    {section:"settings",order:33,label:'OpenAI 話し方の調整',value:function(){ return oaiManualTweaks(); },inactive:'(未使用)'},
+    {section:"settings",order:34,label:'OpenAI API speed',value:function(){ return String(OAI_RATE_FACTORS[oaiRateLevel(CFG.oaiRate)+2]); },inactive:'(未使用)'},
+    {section:"settings",order:35,label:'OpenAI instructions',value:function(){ return oaiInstructionsSupported(CFG.ttsModel) ? '対応（発話ごとに動的生成）' : '非対応モデルのため未適用'; },inactive:'(未使用)'}
+  ]
+  },
+  xai: {
+    label:"xAI Grok Voice",
+    optionLabel:"xAI Grok Voice（多言語・低遅延）",
+    uiField:"xaiField",
+    enabled:true,
+    jaOnly:false,
+    canRouteOutput:true,
+    needsKey:'tts:xai',
+    speak:function(text,lang,seat,prosody){ return xaiSpeak(text,lang,seat,prosody); },
+    seatVoice:function(seat){ return xaiVoiceId(seat); },
+    setupMissing:function(){ if (!xaiKey()) return 'xAI のAPIキーが未設定です。'; return ''; },
+    planNote:function(rows){ var t='',warn=false; 
     var missX = ttsSetupMissing();
     if (missX){
       t += '<br><b>⚠ ' + missX + '</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';
@@ -7944,7 +8005,290 @@ function ttsPlanText(){
         warn = true;
       }
     }
+   return {html:t,warn:warn}; },
+    stream:function(){ return {kind:'off',checked:false,text:'常時OFF（現在の実装は音声を一括生成してから再生します）。'}; },
+    refreshUI:function(active){
+  var xf = $('xaiField');
+  if (xf){
+    var xk = $('xaiTtsKey'); if (xk && xk !== document.activeElement) xk.value = KEYS['tts:xai'] || '';
+    var xv = $('xaiVoice'), xvb = $('xaiVoiceB');
+    if (xv && !xv.options.length){
+      XAI_VOICES.forEach(function(v){
+        var o = document.createElement('option'); o.value = v; o.textContent = v; xv.appendChild(o);
+      });
+    }
+    if (xvb && !xvb.options.length){
+      var xzb = document.createElement('option'); xzb.value = ''; xzb.textContent = inheritedVoiceLabel();
+      xvb.appendChild(xzb);
+      XAI_VOICES.forEach(function(v){
+        var o = document.createElement('option'); o.value = v; o.textContent = v; xvb.appendChild(o);
+      });
+    }
+    if (xv)  xv.value  = CFG.xaiVoice || 'eve';
+    if (xvb) xvb.value = CFG.xaiVoiceB || '';
+    ['Rate','Emotion','Intonation','Dynamics','Pause','Volume'].forEach(function(k){
+      var el=$('xai'+k), prop='xai'+k;
+      if(el) el.value=String(CFG[prop]);
+    });
   }
+
+  },
+    diagModel:function(){ return '(xAI Voice API)'; },
+    prosody:{axes:[],suffix:'',note:'xAI：速度（API speed）＋感情・抑揚・緩急・間（音声タグ）＋音量（Web Audio）'},
+    diagRows:[
+    {section:"settings",order:39,label:'xAIの声 A / B',value:function(){ return ttsSeatVoices(); },inactive:'(未使用)'},
+    {section:"settings",order:40,label:'xAI 話し方の調整',value:function(){ return xaiManualTweaks(); },inactive:'(未使用)'},
+    {section:"settings",order:41,label:'xAI API speed',value:function(){ return String(XAI_RATE_FACTORS[xaiRateLevel(CFG.xaiRate)+2]); },inactive:'(未使用)'}
+  ]
+  },
+  voicevox: {
+    label:"VOICEVOX WEB版",
+    optionLabel:"🫛 VOICEVOX WEB版（ずんだもん等・日本語のみ／お遊び）",
+    uiField:"vvField",
+    enabled:true,
+    jaOnly:true,
+    canRouteOutput:true,
+    needsKey:'voicevox',
+    speak:function(text,lang,seat,prosody){ return vvSpeak(text,lang,seat,prosody); },
+    seatVoice:function(seat){  var v = vvSpeakerInfo(vvSpeakerId(seat)); return v.name + '/' + v.style;  },
+    setupMissing:function(){ if (!vvKey())  return 'VOICEVOXのAPIキーが未設定です。'; return ''; },
+    planNote:function(){ return {html:'',warn:false}; },
+    stream:function(){ return {kind:'on',checked:true,text:'常時ON（配信音声を順次読み込みながら再生します）。'}; },
+    refreshUI:function(active){
+  var f = $('vvField');
+  if (!f)return;
+  var k = $('vvKey'); if (k && k !== document.activeElement) k.value = KEYS['voicevox'] || '';
+  refreshTtsStreamUI();
+  var sel = $('vvSpeaker'), selA = $('vvSpeakerA');
+  if (sel && !sel.options.length) vvFillSpeakerSelect(sel,CFG.vvSpeaker||'3');
+  if (selA && !selA.options.length) vvFillSpeakerSelect(selA,CFG.vvSpeakerA||'2');
+  if (sel) sel.value = String(CFG.vvSpeaker || '3');
+  if (selA) selA.value = String(CFG.vvSpeakerA || '2');
+  if (active && !vvSpeakersLoaded && !vvSpeakersLoading) vvLoadSpeakers(false);
+  vvAdvSync();
+  var c = $('vvCredit');
+  if (c) c.innerHTML = '規約により、この音声を含む録音・書き起こしを公開・配布する場合は'
+                     + 'クレジット表記が必要です　→　<b>VOICEVOX:' + vvCreditNames() + '</b>';
+
+  },
+    diagModel:function(){ return '(VOICEVOX WEB版)'; },
+    prosody:{axes:["速度"],suffix:"（声高・抑揚は解析のみ）",note:'VOICEVOX：速度（声高・抑揚は解析のみ）'},
+    diagRows:[
+    {section:"settings",order:47,label:'VOICEVOX 話し方の調整',value:function(){ return vvTweaks(); },inactive:'(未使用)'},
+    {section:"settings",order:48,label:'VOICEVOX処理',value:function(){ return '最大4件並列合成（429時は現在'+vvSynthLimit+'件へ自動抑制） / 発話順に1件ずつ再生 / 最大6件保持 / 8秒超は破棄 / 高速再生は先読み保護'; },inactive:'(未使用)'}
+  ]
+  },
+  eleven: {
+    label:"ElevenLabs",
+    optionLabel:"ElevenLabs（自分の声をクローン・多言語・低遅延）",
+    uiField:"elField",
+    enabled:true,
+    jaOnly:false,
+    canRouteOutput:true,
+    needsKey:'eleven',
+    speak:function(text,lang,seat,prosody){ return elSpeak(text,lang,seat,prosody); },
+    seatVoice:function(seat){ 
+      /* B席が「Aと同じ」のときは、その選択肢の文言ではなく実際に鳴る声の名前を出す */
+      var vid = elVoiceId(seat);
+      var lbl = (vid && vid === CFG.elVoice) ? CFG.elVoiceLbl : CFG.elVoiceBLbl;
+      return lbl || vid || '(未設定)';
+     },
+    setupMissing:function(){ 
+    if (!elKey())                       return 'ElevenLabs のAPIキーが未設定です。';
+    if (seatUsed('A') && !elVoiceId('A')) return 'ElevenLabs の「自分(A)の発言」の声が未選択です（「🔄 声を取得」を押してください）。';
+    if (seatUsed('B') && !elVoiceId('B')) return 'ElevenLabs の「相手(B)の発言」の声が未選択です。';
+   return ''; },
+    planNote:function(rows){ var t='',warn=false; 
+    var missEl = ttsSetupMissing();
+    if (missEl){
+      t += '<br><b>⚠ ' + missEl + '</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';
+      warn = true;
+    } else {
+      var ep=[];
+      if (seatUsed('A')) ep.push('自分(A)は <b>' + (CFG.elVoiceLbl || elVoiceId('A')) + '</b>');
+      if (seatUsed('B')){
+        var ebid=elVoiceId('B'), ebl=(ebid===CFG.elVoice ? CFG.elVoiceLbl : CFG.elVoiceBLbl) || ebid;
+        ep.push('相手(B)は <b>' + ebl + '</b>');
+      }
+      t += '<br>' + ep.join('／') + ' の声です。ElevenLabs は多言語なので、どの言語もこの声で読み上げます。';
+    }
+   return {html:t,warn:warn}; },
+    stream:function(){ return {kind:'off',checked:false,text:'常時OFF（現在の実装は音声を一括生成してから再生します）。'}; },
+    refreshUI:function(active){
+  var ef = $('elField');
+  if (ef){
+    var ek = $('elKey');   if (ek && ek !== document.activeElement) ek.value = KEYS['eleven'] || '';
+    var em = $('elModel'); if (em) em.value = CFG.elModel || 'eleven_flash_v2_5';
+    var ev = $('elVoice');
+    if (ev && !ev.options.length && CFG.elVoice){      /* 取得前でも前回の声を出しておく */
+      var eo = document.createElement('option');
+      eo.value = CFG.elVoice; eo.textContent = CFG.elVoiceLbl || CFG.elVoice;
+      ev.appendChild(eo); ev.value = CFG.elVoice;
+    }
+    var evid=$('elVoiceId'); if (evid && evid !== document.activeElement) evid.value=CFG.elVoice || '';
+    var evb = $('elVoiceB');
+    if (evb && !evb.options.length){
+      var ez = document.createElement('option'); ez.value = ''; ez.textContent = inheritedVoiceLabel();
+      evb.appendChild(ez);
+      if (CFG.elVoiceB){
+        var eob = document.createElement('option');
+        eob.value = CFG.elVoiceB; eob.textContent = CFG.elVoiceBLbl || CFG.elVoiceB;
+        evb.appendChild(eob);
+      }
+      evb.value = CFG.elVoiceB || '';
+    }
+    var evidb=$('elVoiceIdB'); if (evidb && evidb !== document.activeElement) evidb.value=CFG.elVoiceB || '';
+  }
+
+  },
+    diagModel:function(){ return CFG.elModel||'(ElevenLabs)'; },
+    prosody:{axes:[],suffix:'',note:'ElevenLabs：速度（API＋ピッチ保持再生）＋感情幅・抑揚・緩急（voice_settings）＋間（SSML）＋音量（Web Audio）'},
+    diagRows:[
+    {section:"settings",order:37,label:'ElevenLabs 話し方の調整',value:function(){ return elManualTweaks(); },inactive:'(未使用)'},
+    {section:"settings",order:38,label:'ElevenLabs 話速処理',value:function(){ return (function(){var p=elBuildPlan(CFG.langA,null);return '実効 '+p.desiredRate+'倍 / API '+p.apiSpeed+'倍 / ピッチ保持再生 '+p.playbackRate+'倍';})(); },inactive:'(未使用)'}
+  ]
+  },
+  aivis: {
+    label:"Aivis Cloud API",
+    optionLabel:"Aivis Cloud API（高品質・低遅延・日本語のみ）",
+    uiField:"aivisField",
+    enabled:true,
+    jaOnly:true,
+    canRouteOutput:true,
+    needsKey:'aivis',
+    speak:function(text,lang,seat,prosody){ return aivisSpeak(text,lang,seat,prosody); },
+    seatVoice:function(seat){ 
+      var st = aivisStyleFor(seat);
+      return (aivisModelFor(seat) || '(未設定)').slice(0, 8) + (st !== '' ? ('/style' + st) : '');
+     },
+    setupMissing:function(){ 
+    if (!aivisKey())                    return 'Aivis Cloud API のキーが未設定です。';
+    if (seatUsed('A') && !aivisModelFor('A')) return 'Aivis Cloud API の「自分(A)の発言」のキャラが未設定です。';
+    if (seatUsed('B') && !aivisModelFor('B')) return 'Aivis Cloud API の「相手(B)の発言」のキャラが未設定です。';
+   return ''; },
+    planNote:function(){ return {html:'',warn:false}; },
+    stream:function(){ 
+    return window.ReadableStream
+      ? {kind:'select',checked:!!CFG.aivisStream,text:'ON／OFFを選択できます（混雑時は一括再生へ自動切替）。'}
+      : {kind:'off',checked:false,text:'常時OFF（この環境はストリーム受信に対応していません）。'};
+   },
+    streamProp:'aivisStream',
+    onSelect:aivisNameLater,
+    refreshUI:function(active){
+  var af = $('aivisField');
+  if (af){
+    var ak = $('aivisKey');   if (ak && ak !== document.activeElement) ak.value = KEYS['aivis'] || '';
+    aivisSyncModel('A'); aivisSyncModel('B');
+    if(aivisAllShown)aivisSyncModel('A'); /* Bだけ追加キャラでもA側へ完全一覧を反映 */
+    aivisAdvSync();
+    [['aivisStyle', CFG.aivisStyle], ['aivisStyleB', CFG.aivisStyleB]].forEach(function(pair){
+      var sl = $(pair[0]); if (!sl || sl.options.length) return;   /* 取得前でも選択済みの値は残す */
+      var z = document.createElement('option'); z.value = ''; z.textContent = '既定（ノーマル）';
+      sl.appendChild(z);
+      if (pair[1]){
+        var o = document.createElement('option');
+        o.value = pair[1]; o.textContent = 'スタイル ' + pair[1];
+        sl.appendChild(o);
+      }
+      sl.value = pair[1] || '';
+    });
+  }
+
+  },
+    diagModel:function(){ return (aivisNameOf(aivisModelFor('A'))||'Aivis Cloud API')+' / '+String(aivisModelFor('A')||'').slice(0,8); },
+    prosody:{axes:["速度","緩急","音量"],suffix:'',note:'Aivis：速度・緩急・音量'},
+    diagRows:[
+    {section:"settings",order:42,label:'Aivisスタイル A / B',value:function(){ return (CFG.aivisStyleB === '' ? '既定' : CFG.aivisStyleB) + ' / ' + (CFG.aivisStyle === '' ? '既定' : CFG.aivisStyle)
+         + (CFG.aivisSpk || CFG.aivisSpkB ? '（話者指定あり）' : ''); },inactive:'(未使用)'},
+    {section:"settings",order:43,label:'Aivisのキャラ名 A / B',value:function(){ return (aivisNameOf(aivisModelFor('A')) || '(未設定)') + ' / ' + (aivisNameOf(aivisModelFor('B')) || '(未設定)'); },inactive:'(未使用)'},
+    {section:"settings",order:44,label:'Aivis 話し方の調整',value:function(){ return aivisTweaks(); },inactive:'(未使用)'},
+    {section:"settings",order:45,label:'Aivis APIキー同期',value:function(){ return aivisKeyState(); },inactive:'(未使用)'},
+    {section:"settings",order:46,label:'Aivis課金モード（直近応答）',value:function(){ return AIVIS_LAST_BILLING ? ((AIVIS_LAST_BILLING.mode||'(headerなし)')
+         +(AIVIS_LAST_BILLING.creditsRemaining?' / 残クレジット '+AIVIS_LAST_BILLING.creditsRemaining:'')
+         +(AIVIS_LAST_BILLING.rateRemaining?' / 残リクエスト '+AIVIS_LAST_BILLING.rateRemaining:'')) : '(まだAivis応答なし)'; },inactive:'(未使用)'}
+  ],
+    segmentJapaneseBatch:true,
+    segmentStatus:function(){return ' ／ Aivis 10回/分 · '+(aivisRateWait()>0?'次の送信まで '+(aivisRateWait()/1000).toFixed(1)+'秒':'送信可能');}
+  },
+  localvv: {
+    label:"ローカルエンジン",
+    optionLabel:"🖥 ローカルエンジン（AivisSpeech / VOICEVOX・日本語のみ）",
+    uiField:"lvvField",
+    enabled:true,
+    jaOnly:true,
+    canRouteOutput:true,
+    needsKey:null,
+    speak:function(text,lang,seat,prosody){ return lvvSpeak(text,lang,seat); },
+    seatVoice:function(seat){ return String(lvvSpeakerId(seat)); },
+    setupMissing:function(){ if (!(CFG.lvvBase||'').trim()) return 'ローカルエンジンのURLが未設定です。'; return ''; },
+    planNote:function(){ return {html:'',warn:false}; },
+    stream:function(){ return {kind:'off',checked:false,text:'常時OFF（現在の実装は音声を一括生成してから再生します）。'}; },
+    refreshUI:function(active){
+  var lf = $('lvvField');
+  if (lf){
+    var lb = $('lvvBase'); if (lb && lb !== document.activeElement) lb.value = CFG.lvvBase || '';
+    var ls = $('lvvSpeaker');
+    if (ls && !ls.options.length && CFG.lvvSpeaker){      /* 取得前でも前回の話者を出しておく */
+      var o = document.createElement('option');
+      o.value = CFG.lvvSpeaker; o.textContent = CFG.lvvSpeakerLbl || ('話者 ' + CFG.lvvSpeaker);
+      ls.appendChild(o); ls.value = CFG.lvvSpeaker;
+    }
+    var lsb = $('lvvSpeakerB');
+    if (lsb && !lsb.options.length){
+      var z = document.createElement('option'); z.value = ''; z.textContent = inheritedVoiceLabel();
+      lsb.appendChild(z);
+      if (CFG.lvvSpeakerB){
+        var oa = document.createElement('option');
+        oa.value = CFG.lvvSpeakerB; oa.textContent = CFG.lvvSpeakerBLbl || ('話者 ' + CFG.lvvSpeakerB);
+        lsb.appendChild(oa);
+      }
+      lsb.value = CFG.lvvSpeakerB || '';
+    }
+  }
+
+  },
+    diagModel:function(){ return '(ローカルエンジン)'; },
+    prosody:{axes:[],suffix:'',note:"解析のみ（現在のTTSは未対応）"},
+    diagRows:[
+    {section:"settings",order:56,label:'ローカルエンジンURL',value:function(){ return CFG.lvvBase; },inactive:'(未使用)'}
+  ]
+  }
+};
+function ttsProv(mode){
+  var key=mode==null?CFG.ttsMode:mode;
+  return Object.prototype.hasOwnProperty.call(TTS_PROVIDERS,key)?TTS_PROVIDERS[key]:TTS_PROVIDERS.browser;
+}
+function renderTtsOptions(){
+  var el=$('ttsMode'); if(!el)return;
+  el.innerHTML='';
+  Object.keys(TTS_PROVIDERS).forEach(function(mode){
+    var o=document.createElement('option');o.value=mode;o.textContent=TTS_PROVIDERS[mode].optionLabel||TTS_PROVIDERS[mode].label;el.appendChild(o);
+  });
+  el.value=CFG.ttsMode;
+}
+
+function ttsSetupMissing(){ return ttsProv().setupMissing(); }
+function ttsPlanText(){
+  if (!ttsProv().enabled) return { html:'読み上げは <b>OFF</b> です。', warn:false };
+  var rows = ttsPlanRows(), what = CFG.ttsSrc ? '原文' : '訳文', warn = false;
+  var t = 'いまの設定：' + rows.map(function(r){
+            return r.who + 'の発言の' + what + '（' + L(r.lang).name + '）';
+          }).join(' と ') + ' を <b>' + ttsModeLabel(CFG.ttsMode) + '</b> で読み上げます。';
+  var hasLocalSink=seatUsed('B')&&!!CFG.outDevLocal;
+  var hasRemoteSink=seatUsed('A')&&!!CFG.outDevRemote;
+  var hasSplitSink=!!(hasLocalSink||hasRemoteSink);
+  if (hasSplitSink && !ttsProv().canRouteOutput){
+    t += '<br>⚠ 出力先を分けていますが、'
+       + 'ブラウザ内蔵音声は出力先を変えられません。既定のスピーカーから鳴ります。';
+    warn = true;
+  } else if (hasSplitSink){
+    var sinks=[];
+    if(seatUsed('B'))sinks.push('自分向け：<b>'+(CFG.outDevLocalLbl||'既定')+'</b>');
+    if(seatUsed('A'))sinks.push('相手向け：<b>'+(CFG.outDevRemoteLbl||'既定')+'</b>');
+    t += '<br>'+sinks.join('／');
+  }
+
+  var note=ttsProv().planNote(rows); t+=note.html; warn=warn||note.warn;
   if (jaOnlyMode(CFG.ttsMode)){
     var miss = ttsSetupMissing();
     if (miss){
@@ -7962,47 +8306,11 @@ function ttsPlanText(){
   return { html:t, warn:warn };
 }
 /* 診断用：いまA席・B席がどの声で鳴るのかを1行で表す */
-function ttsSeatVoices(){
-  var f = function(seat){
-    if (!seatUsed(seat)) return '(対象外)';
-    if (CFG.ttsMode === 'openai')   return seat === 'A' ? CFG.voiceA : CFG.voiceB;
-    if (CFG.ttsMode === 'voicevox'){ var v = vvSpeakerInfo(vvSpeakerId(seat)); return v.name + '/' + v.style; }
-    if (CFG.ttsMode === 'aivis'){
-      var st = aivisStyleFor(seat);
-      return (aivisModelFor(seat) || '(未設定)').slice(0, 8) + (st !== '' ? ('/style' + st) : '');
-    }
-    if (CFG.ttsMode === 'eleven'){
-      /* B席が「Aと同じ」のときは、その選択肢の文言ではなく実際に鳴る声の名前を出す */
-      var vid = elVoiceId(seat);
-      var lbl = (vid && vid === CFG.elVoice) ? CFG.elVoiceLbl : CFG.elVoiceBLbl;
-      return lbl || vid || '(未設定)';
-    }
-    if (CFG.ttsMode === 'xai')      return xaiVoiceId(seat);
-    if (CFG.ttsMode === 'localvv')  return String(lvvSpeakerId(seat));
-    if (CFG.ttsMode === 'browser')  return '(言語で自動選択)';
-    return '(なし)';
-  };
-  return f('A') + ' / ' + f('B');
+function ttsSeatVoices(seat){
+  function voice(s){return seatUsed(s)?ttsProv().seatVoice(s):'(対象外)';}
+  return seat ? voice(seat) : ['A','B'].map(voice).join(' / ');
 }
-function ttsStreamCapability(mode){
-  if(mode==='openai'){
-    var ok=!!window.ReadableStream&&oaiPcmStreamAllowed();
-    return ok
-      ? {kind:'select',checked:!!CFG.oaiStream,text:'ON／OFFを選択できます（PCM低遅延再生）。'}
-      : {kind:'off',checked:false,text:'常時OFF（この環境はPCM連続再生に対応していません）。'};
-  }
-  if(mode==='aivis'){
-    return window.ReadableStream
-      ? {kind:'select',checked:!!CFG.aivisStream,text:'ON／OFFを選択できます（混雑時は一括再生へ自動切替）。'}
-      : {kind:'off',checked:false,text:'常時OFF（この環境はストリーム受信に対応していません）。'};
-  }
-  if(mode==='browser') return {kind:'on',checked:true,text:'常時ON（ブラウザが音声を逐次再生します）。'};
-  if(mode==='voicevox') return {kind:'on',checked:true,text:'常時ON（配信音声を順次読み込みながら再生します）。'};
-  if(mode==='eleven') return {kind:'off',checked:false,text:'常時OFF（現在の実装は音声を一括生成してから再生します）。'};
-  if(mode==='xai') return {kind:'off',checked:false,text:'常時OFF（現在の実装は音声を一括生成してから再生します）。'};
-  if(mode==='localvv') return {kind:'off',checked:false,text:'常時OFF（現在の実装は音声を一括生成してから再生します）。'};
-  return {kind:'off',checked:false,text:'常時OFF（読み上げなし）。'};
-}
+function ttsStreamCapability(mode){ return ttsProv(mode).stream(); }
 function refreshTtsStreamUI(){
   var field=$('ttsStreamField'), box=$('ttsStream'), status=$('ttsStreamStatus');
   if(!field||!box||!status)return;
@@ -8017,12 +8325,11 @@ function refreshTtsStreamUI(){
 function placeTtsProviderUI(){
   var host=$('ttsProviderHost'), who=$('ttsWhoField'), remember=$('ttsRememberField'), stream=$('ttsStreamField');
   if(!host||!who||!remember||!stream)return;
-  var ids=['oaiOnly','browserOnly','elField','xaiField','aivisField','lvvField','vvField'];
+  var ids=Object.keys(TTS_PROVIDERS).map(function(mode){return TTS_PROVIDERS[mode].uiField;}).filter(Boolean);
   ids.forEach(function(id){var el=$(id);if(el&&el.parentNode!==host)host.appendChild(el);});
   [who,remember,stream].forEach(function(el){if(el.parentNode!==host)host.appendChild(el);});
-  var map={openai:'oaiOnly',browser:'browserOnly',eleven:'elField',xai:'xaiField',aivis:'aivisField',localvv:'lvvField',voicevox:'vvField'};
-  var active=$(map[CFG.ttsMode]||'');
-  who.style.display=(!active||CFG.ttsMode==='off')?'none':'';
+  var active=$(ttsProv().uiField||'');
+  who.style.display=(!active||!ttsProv().enabled)?'none':'';
   remember.style.display='none';
   if(active){
     host.appendChild(active); /* 非表示パネルの位置に関係なく、表示中パネルは常に同じ場所 */
@@ -8046,128 +8353,12 @@ function refreshVvUI(){
   var tn = $('rtTtsNotice');  if (tn) tn.style.display = isRT ? '' : 'none';
   $('rtPlaybackControls').style.display=isRT?'':'none';realtimePlaybackUI();
   var of = $('outField');      if (of) of.style.display = isRT ? 'none' : '';
-  var af = $('aivisField');
-  if (af){
-    af.style.display = (!isRT && CFG.ttsMode === 'aivis') ? '' : 'none';
-    var ak = $('aivisKey');   if (ak && ak !== document.activeElement) ak.value = KEYS['aivis'] || '';
-    aivisSyncModel('A'); aivisSyncModel('B');
-    if(aivisAllShown)aivisSyncModel('A'); /* Bだけ追加キャラでもA側へ完全一覧を反映 */
-    aivisAdvSync();
-    [['aivisStyle', CFG.aivisStyle], ['aivisStyleB', CFG.aivisStyleB]].forEach(function(pair){
-      var sl = $(pair[0]); if (!sl || sl.options.length) return;   /* 取得前でも選択済みの値は残す */
-      var z = document.createElement('option'); z.value = ''; z.textContent = '既定（ノーマル）';
-      sl.appendChild(z);
-      if (pair[1]){
-        var o = document.createElement('option');
-        o.value = pair[1]; o.textContent = 'スタイル ' + pair[1];
-        sl.appendChild(o);
-      }
-      sl.value = pair[1] || '';
-    });
-  }
-  /* OpenAI 音声を選んでいないときは、声とモデルの欄を隠す。
-     フォールバック時もこれらは使われない（鳴らない場合はブラウザ内蔵音声に回る）ので、
-     残しておくと「設定したのに効かない」誤解のもとになる。 */
-  var oo = $('oaiOnly');
-  if (oo) oo.style.display = (!isRT && CFG.ttsMode === 'openai') ? '' : 'none';
-  if (oo){
-    var ok=$('oaiTtsKey'); if(ok&&ok!==document.activeElement) ok.value=KEYS['tts:openai']||'';
-    var instructable=oaiInstructionsSupported(CFG.ttsModel), ids=['oaiEmotion','oaiIntonation','oaiDynamics','oaiPause','oaiStyle'];
-    ids.forEach(function(id){ var el=$(id); if(el) el.disabled=!instructable; });
-    var orate=$('oaiRate'); if(orate) orate.disabled=false; /* speedは旧tts-1系でもAPI対応 */
-    var on=$('oaiStyleNote');
-    if(on) on.innerHTML=instructable
-      ? '<code>gpt-4o-mini-tts</code>へ、話速はAPIの数値<code>speed</code>、音量はWeb Audioで反映し、感情・抑揚・緩急・間は段階別の強い指示文として送ります。'
-      : '⚠ 選択中のモデルは話し方の<code>instructions</code>に対応しません。話速（API speed）・音量・ストリーミングは適用します。感情・抑揚・緩急・間を変えるには<code>gpt-4o-mini-tts</code>を選んでください。';
-  }
-  var bo=$('browserOnly');
-  if(bo) bo.style.display=(!isRT&&CFG.ttsMode==='browser')?'':'none';
-  var ef = $('elField');
-  if (ef){
-    ef.style.display = (!isRT && CFG.ttsMode === 'eleven') ? '' : 'none';
-    var ek = $('elKey');   if (ek && ek !== document.activeElement) ek.value = KEYS['eleven'] || '';
-    var em = $('elModel'); if (em) em.value = CFG.elModel || 'eleven_flash_v2_5';
-    var ev = $('elVoice');
-    if (ev && !ev.options.length && CFG.elVoice){      /* 取得前でも前回の声を出しておく */
-      var eo = document.createElement('option');
-      eo.value = CFG.elVoice; eo.textContent = CFG.elVoiceLbl || CFG.elVoice;
-      ev.appendChild(eo); ev.value = CFG.elVoice;
-    }
-    var evid=$('elVoiceId'); if (evid && evid !== document.activeElement) evid.value=CFG.elVoice || '';
-    var evb = $('elVoiceB');
-    if (evb && !evb.options.length){
-      var ez = document.createElement('option'); ez.value = ''; ez.textContent = inheritedVoiceLabel();
-      evb.appendChild(ez);
-      if (CFG.elVoiceB){
-        var eob = document.createElement('option');
-        eob.value = CFG.elVoiceB; eob.textContent = CFG.elVoiceBLbl || CFG.elVoiceB;
-        evb.appendChild(eob);
-      }
-      evb.value = CFG.elVoiceB || '';
-    }
-    var evidb=$('elVoiceIdB'); if (evidb && evidb !== document.activeElement) evidb.value=CFG.elVoiceB || '';
-  }
-  var xf = $('xaiField');
-  if (xf){
-    xf.style.display = (!isRT && CFG.ttsMode === 'xai') ? '' : 'none';
-    var xk = $('xaiTtsKey'); if (xk && xk !== document.activeElement) xk.value = KEYS['tts:xai'] || '';
-    var xv = $('xaiVoice'), xvb = $('xaiVoiceB');
-    if (xv && !xv.options.length){
-      XAI_VOICES.forEach(function(v){
-        var o = document.createElement('option'); o.value = v; o.textContent = v; xv.appendChild(o);
-      });
-    }
-    if (xvb && !xvb.options.length){
-      var xzb = document.createElement('option'); xzb.value = ''; xzb.textContent = inheritedVoiceLabel();
-      xvb.appendChild(xzb);
-      XAI_VOICES.forEach(function(v){
-        var o = document.createElement('option'); o.value = v; o.textContent = v; xvb.appendChild(o);
-      });
-    }
-    if (xv)  xv.value  = CFG.xaiVoice || 'eve';
-    if (xvb) xvb.value = CFG.xaiVoiceB || '';
-    ['Rate','Emotion','Intonation','Dynamics','Pause','Volume'].forEach(function(k){
-      var el=$('xai'+k), prop='xai'+k;
-      if(el) el.value=String(CFG[prop]);
-    });
-  }
-  var lf = $('lvvField');
-  if (lf){
-    lf.style.display = (!isRT && CFG.ttsMode === 'localvv') ? '' : 'none';
-    var lb = $('lvvBase'); if (lb && lb !== document.activeElement) lb.value = CFG.lvvBase || '';
-    var ls = $('lvvSpeaker');
-    if (ls && !ls.options.length && CFG.lvvSpeaker){      /* 取得前でも前回の話者を出しておく */
-      var o = document.createElement('option');
-      o.value = CFG.lvvSpeaker; o.textContent = CFG.lvvSpeakerLbl || ('話者 ' + CFG.lvvSpeaker);
-      ls.appendChild(o); ls.value = CFG.lvvSpeaker;
-    }
-    var lsb = $('lvvSpeakerB');
-    if (lsb && !lsb.options.length){
-      var z = document.createElement('option'); z.value = ''; z.textContent = inheritedVoiceLabel();
-      lsb.appendChild(z);
-      if (CFG.lvvSpeakerB){
-        var oa = document.createElement('option');
-        oa.value = CFG.lvvSpeakerB; oa.textContent = CFG.lvvSpeakerBLbl || ('話者 ' + CFG.lvvSpeakerB);
-        lsb.appendChild(oa);
-      }
-      lsb.value = CFG.lvvSpeakerB || '';
-    }
-  }
-  var f = $('vvField');
-  if (!f){ applySeatCols(); return; }
-  f.style.display = (!isRT && CFG.ttsMode === 'voicevox') ? '' : 'none';
-  var k = $('vvKey'); if (k && k !== document.activeElement) k.value = KEYS['voicevox'] || '';
-  refreshTtsStreamUI();
-  var sel = $('vvSpeaker'), selA = $('vvSpeakerA');
-  if (sel && !sel.options.length) vvFillSpeakerSelect(sel,CFG.vvSpeaker||'3');
-  if (selA && !selA.options.length) vvFillSpeakerSelect(selA,CFG.vvSpeakerA||'2');
-  if (sel) sel.value = String(CFG.vvSpeaker || '3');
-  if (selA) selA.value = String(CFG.vvSpeakerA || '2');
-  if (CFG.ttsMode === 'voicevox' && !vvSpeakersLoaded && !vvSpeakersLoading) vvLoadSpeakers(false);
-  vvAdvSync();
-  var c = $('vvCredit');
-  if (c) c.innerHTML = '規約により、この音声を含む録音・書き起こしを公開・配布する場合は'
-                     + 'クレジット表記が必要です　→　<b>VOICEVOX:' + vvCreditNames() + '</b>';
+  Object.keys(TTS_PROVIDERS).forEach(function(mode){
+    var p=TTS_PROVIDERS[mode], active=p===ttsProv();
+    var field=p.uiField && $(p.uiField);
+    if(field)field.style.display=(!isRT&&active)?'':'none';
+    if(p.refreshUI)p.refreshUI(active);
+  });
   var p = $('ttsPlan');
   if (p){
     var plan = ttsPlanText();
@@ -8256,13 +8447,7 @@ function speakManual(text, lang, btn, seat, prosody,sayKey){
   primeOutput(seat);
   setSayBtn(btn,sayKey);
   withTtsSayKey(sayKey,function(){
-    if (CFG.ttsMode === 'openai') apiSpeak(text, lang, seat, prosody);
-    else if (CFG.ttsMode === 'voicevox') vvSpeak(text, lang, seat,prosody);
-    else if (CFG.ttsMode === 'aivis')    aivisSpeak(text, lang, seat,prosody);
-    else if (CFG.ttsMode === 'eleven')   elSpeak(text, lang, seat,prosody);
-    else if (CFG.ttsMode === 'xai')      xaiSpeak(text, lang, seat,prosody);
-    else if (CFG.ttsMode === 'localvv')  lvvSpeak(text, lang, seat);
-    else browserSpeak(text, L(lang).tts,prosody);
+    ttsProv().speak(text,lang,seat,prosody);
   });
 }
 
@@ -8271,7 +8456,7 @@ function speakManual(text, lang, btn, seat, prosody,sayKey){
 function speakSrcNow(e){ if(segEnabled())return; if (CFG.ttsSrc) speak(e); }
 
 function speak(e){
-  if (CFG.ttsMode === 'off'){ dlog('tts','skip',{ why:'読み上げOFF' }); return; }
+  if (!ttsProv().enabled){ dlog('tts','skip',{ why:'読み上げOFF' }); return; }
   var useSrc = !!CFG.ttsSrc;
   var sayText = useSrc ? e.srcText : e.dstText;
   var sayLang = useSrc ? e.srcLang : e.dstLang;
@@ -8299,13 +8484,7 @@ function speak(e){
   }
   var viewer=useSrc?e.seat:(e.seat==='A'?'B':'A'), autoSayKey=e.id+':'+viewer;
   withTtsSayKey(autoSayKey,function(){
-    if (CFG.ttsMode === 'browser') browserSpeak(sayText, L(sayLang).tts,e.prosody);
-    else if (CFG.ttsMode === 'voicevox') vvSpeak(sayText, sayLang, e.seat,e.prosody);
-    else if (CFG.ttsMode === 'aivis')    aivisSpeak(sayText, sayLang, e.seat,e.prosody);
-    else if (CFG.ttsMode === 'eleven')   elSpeak(sayText, sayLang, e.seat,e.prosody);
-    else if (CFG.ttsMode === 'xai')      xaiSpeak(sayText, sayLang, e.seat,e.prosody);
-    else if (CFG.ttsMode === 'localvv')  lvvSpeak(sayText, sayLang, e.seat);
-    else apiSpeak(sayText, sayLang, e.seat, e.prosody);
+    ttsProv().speak(sayText,sayLang,e.seat,e.prosody);
   });
 }
 
@@ -8331,7 +8510,7 @@ function ensureMic(){
     // 実際にどのマイクが使われ、ノイズ抑制が本当に効いているかを記録する
     try{
       var tr = st.getAudioTracks()[0], s = tr.getSettings ? tr.getSettings() : {};
-      CFG.micDevLbl=tr.label||CFG.micDevLbl||'';store.set('di.indevl.mic',CFG.micDevLbl);
+      CFG.micDevLbl=tr.label||CFG.micDevLbl||'';persistSetting("micDevLbl", CFG.micDevLbl);
       dlog('mic','acquired',{ label: tr.label || '(no label)', deviceId: (s.deviceId||'').slice(0,8),
         sampleRate: s.sampleRate, channels: s.channelCount,
         echoCancellation: s.echoCancellation, noiseSuppression: s.noiseSuppression, autoGainControl: s.autoGainControl });
@@ -8819,12 +8998,12 @@ function fourOSettingsUI(){
 }
 function fourOSetSeconds(value){
   var n=Number(value);if(!isFinite(n)||n<1||n>120||n!==Math.round(n)){toast('録音上限は1〜120秒の整数で指定してください');fourOSettingsUI();return;}
-  CFG.fourOSeconds=n;store.set('di.fourOSeconds',String(n));fourOSettingsUI();
+  CFG.fourOSeconds=n;persistSetting("fourOSeconds", String(n));fourOSettingsUI();
   dlog('stt','4o-interval-setting',{seconds:n,effective:'next-recording'});
 }
 function fourOSetModel(value){
   if(CFG.sttModel===value)return;var was=S.running;if(was)stopAll();
-  CFG.sttModel=value;store.set('di.sttm',value);fourOSettingsUI();renderAudioRouteWarning();
+  CFG.sttModel=value;persistSetting("sttModel", value);fourOSettingsUI();renderAudioRouteWarning();
   if(was)toast('認識モデルを変更しました。「開始」で再開してください。',true);
 }
 function fourOSentenceEnds(text){
@@ -9049,7 +9228,7 @@ function xaiSTT(blob, lang){
   var autoDetect = S.autoMode && micSeats().length > 1;
   var lc = autoDetect ? '' : (XAI_STT_LANGS[lang] || '');
   if (lc) fd.append('language', lc);
-  if (CFG.sttPunct) fd.append('format', 'true');
+  fd.append('format', 'true');
   /* 用語集は聞き取りのヒントとして渡せる（1語50字まで・最大100語） */
   CFG.glossary.slice(0, 100).forEach(function(r){
     var t = String(r.s || '').trim();
@@ -9072,7 +9251,7 @@ function sttCall(blob, lang,requestOptions){
   var mdl = (requestOptions.model||CFG.sttModel||'').trim();
   if (!mdl || mdl.charAt(0) === '('){
     mdl = defaultSttModel(p) || 'gpt-4o-mini-transcribe';
-    CFG.sttModel = mdl; store.set('di.sttm', mdl);
+    CFG.sttModel = mdl; persistSetting("sttModel", mdl);
   }
   if(p==='openai'&&/^gpt-live-transcribe(?:$|-)/.test(mdl))
     return Promise.reject(new Error('gpt-live-transcribe はRealtime WebRTC専用です。録音ファイルAPIでは利用できません'));
@@ -9087,7 +9266,7 @@ function sttCall(blob, lang,requestOptions){
   var autoDetect = S.autoMode && micSeats().length > 1;
   if (!autoDetect) fd.append('language', L(lang).g.split('-')[0]);
   var terms = CFG.glossary.slice(0,60).map(function(r){ return r.s; }).filter(Boolean).join(', '), hints=[];
-  if (CFG.sttPunct) hints.push('Transcribe verbatim with natural punctuation. Do not add, omit, paraphrase, or translate words.');
+  hints.push('Transcribe verbatim with natural punctuation. Do not add, omit, paraphrase, or translate words.');
   if (terms) hints.push('Terminology: '+terms);
   if (hints.length && !diarize) fd.append('prompt', hints.join('\n'));
   return fetch((STT_BASE[p]||STT_BASE.openai) + '/audio/transcriptions', {
@@ -9115,7 +9294,7 @@ function geminiSTT(blob, lang){
     return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ contents:[{ role:'user', parts:[
         { text:'Transcribe this '+L(lang).en+' audio verbatim. '
-              +(CFG.sttPunct?'Use natural punctuation without adding, omitting, paraphrasing, or translating words. ':'')
+              +'Use natural punctuation without adding, omitting, paraphrasing, or translating words. '
               +'Output only the transcript text. If there is no speech, output nothing.' },
         { inlineData:{ mimeType: blob.type.split(';')[0] || 'audio/webm', data: b64 } }
       ]}]})
@@ -9160,7 +9339,7 @@ RealtimeTranscriptionEngine.prototype.config=function(){
   var tr={model:'gpt-live-transcribe',delay:'low'};
   if(langs.length)tr.languages=langs;
   var hints=[];
-  if(CFG.sttPunct)hints.push('Transcribe verbatim with natural punctuation. Do not add, omit, paraphrase, or translate words.');
+  hints.push('Transcribe verbatim with natural punctuation. Do not add, omit, paraphrase, or translate words.');
   if(CFG.ctx)hints.push(String(CFG.ctx).slice(0,600));
   if(hints.length)tr.prompt=hints.join('\n');
   var kw=CFG.glossary.slice(0,60).map(function(r){return String(r.s||'').trim();})
@@ -9629,7 +9808,6 @@ function realtimeConnectionLabel(){
   return active.length?active.map(function(e){return e.srcSeat+'：'+realtimeInputLabel(e.opts.route)+' / '+(e.pc&&e.pc.connectionState==='disconnected'?'切断中':e.connected?'接続済み':e.connectStage+'待ち');}).join(' / '):'入力選択・取得待ち';
 }
 
-
 /* Native translation audio: local gain, independent of the translation session. */
 var RT_PLAYBACK=null;
 function realtimeVolume(value){
@@ -9668,7 +9846,7 @@ function realtimePlaybackUI(){
     :vol===0?'消音中です。字幕と翻訳は続きます。':'再生音量 '+vol+'%'+(vol>100?'（増幅・ピーク抑制あり）':'');
 }
 function realtimeSetVolume(value){
-  CFG.rtVolume=realtimeVolume(value);store.set('di.rtVolume',String(CFG.rtVolume));
+  CFG.rtVolume=realtimeVolume(value);persistSetting("rtVolume", String(CFG.rtVolume));
   var p=RT_PLAYBACK;
   if(p&&p.mode==='gain'){
     var gain=p.gain.gain;gain.cancelScheduledValues(p.ac.currentTime);
@@ -9787,7 +9965,6 @@ function realtimeCardLabel(entry){
   if(!entry.rtWindow)return '';
   return entry.interim?'● 受信中':'✓ 区切り'+(entry.rtWindow.estimated?'（受信時刻）':'');
 }
-
 
 RealtimeEngine.prototype.stop = function(){
   if(this.dead)return;this.closeCards('stop');this.dead=true;this.connected=false;
@@ -9978,7 +10155,7 @@ function startAll(){
       if(!CFG.vbDev){toast('⚙→音声でVB-CABLE入力デバイスを選んでください。');}
       else jobs.push(openInputDevice(CFG.vbDev,true).then(function(st){
         if(!captureCurrent(st,true))return;
-        var tr=st.getAudioTracks()[0];CFG.vbDevLbl=(tr&&tr.label)||CFG.vbDevLbl||'';store.set('di.indevl.vb',CFG.vbDevLbl);
+        var tr=st.getAudioTracks()[0];CFG.vbDevLbl=(tr&&tr.label)||CFG.vbDevLbl||'';persistSetting("vbDevLbl", CFG.vbDevLbl);
         if(!isVirtualDev(CFG.vbDevLbl))toast('選択した入力は仮想オーディオとして判定できません。経路を確認してください。');
         var eng;
         if(CFG.sttProvider==='webspeech'){eng=new WebSpeechTrackEngine(dispSeat,tr,{ownsStream:true,stream:st});engines.push(eng);eng.start();}
@@ -10184,59 +10361,18 @@ function stamp(){
    HTML 埋め込み書き出し
    ========================================================================= */
 function exportHtml(){
-  var data = {
-    glossary: CFG.glossary.filter(function(r){ return r.s || r.t; }),
-    ctx: CFG.ctx, provider: CFG.provider, baseUrl: CFG.baseUrl, model: CFG.model, tone: CFG.tone,
-    sttProvider: CFG.sttProvider, sttModel: CFG.sttModel, fourOSeconds:CFG.fourOSeconds, fourOCarry:CFG.fourOCarry?'1':'0', ttsModel: CFG.ttsModel,
-    segmentMode:CFG.segmentMode,segmentBoundary:CFG.segmentBoundary,segmentOverlap:CFG.segmentOverlap,segmentMin:CFG.segmentMin,segmentStability:CFG.segmentStability,segmentSilence:CFG.segmentSilence,segmentDebt:CFG.segmentDebt,
-    ttsMode: CFG.ttsMode, ttsWho: CFG.ttsWho, voiceA: CFG.voiceA, voiceB: CFG.voiceB, vad: String(CFG.vad),
-    oaiRate: CFG.oaiRate, oaiEmotion: CFG.oaiEmotion, oaiIntonation: CFG.oaiIntonation,
-    oaiDynamics: CFG.oaiDynamics, oaiPause: CFG.oaiPause, oaiVolume: CFG.oaiVolume,
-    oaiStyle: CFG.oaiStyle, oaiStream: CFG.oaiStream?'1':'0',
-    browserRate: CFG.browserRate, browserPitch: CFG.browserPitch, browserVolume: CFG.browserVolume,
-    langA: CFG.langA, langB: CFG.langB, srcA: CFG.srcA, srcB: CFG.srcB,
-    nameA: CFG.nameA, nameB: CFG.nameB, fsize: CFG.fsize,
-    flipTop: CFG.flipTop?'1':'0', showSrc: CFG.showSrc?'1':'0', swap: CFG.swap?'1':'0', interimOn: CFG.interimOn?'1':'0',
-    prosodyOn: CFG.prosodyOn?'1':'0', echoGuard: CFG.echoGuard?'1':'0', sttPunct: CFG.sttPunct?'1':'0',
-    syncScroll: CFG.syncScroll?'1':'0', vvSpeaker: CFG.vvSpeaker, vvSpeakerA: CFG.vvSpeakerA,
-    vvRate: CFG.vvRate, vvPitch: CFG.vvPitch, vvIntonation: CFG.vvIntonation, ttsSrc: CFG.ttsSrc?'1':'0',
-    ovCapLayout:CFG.ovCapLayout, ovCapWidth:CFG.ovCapWidth, ovCapResolution:CFG.ovCapResolution, ovCapAudio:CFG.ovCapAudio,
-    ovCapTextA:CFG.ovCapTextA, ovCapTextB:CFG.ovCapTextB,
-    ovCapSrcA:CFG.ovCapSrcA, ovCapSrcB:CFG.ovCapSrcB, ovCapBg:CFG.ovCapBg,
-    ovCapTextOpacity:CFG.ovCapTextOpacity, ovCapBgOpacity:CFG.ovCapBgOpacity,
-    ovCapFont:CFG.ovCapFont, ovCapLine:CFG.ovCapLine, ovCapItemWidth:CFG.ovCapItemWidth,
-    ovCapItems:CFG.ovCapItems, ovCapHold:CFG.ovCapHold,
-    ovCapShadow:CFG.ovCapShadow?'1':'0', ovCapOutline:CFG.ovCapOutline?'1':'0', ovCapRound:CFG.ovCapRound?'1':'0',
-    ovCapX:CFG.ovCapX, ovCapY:CFG.ovCapY, ovCapFreeWidth:CFG.ovCapFreeWidth,
-    ovCapFreeHeight:CFG.ovCapFreeHeight, ovCapSideHeight:CFG.ovCapSideHeight,
-    ovCapBottomWidth:CFG.ovCapBottomWidth, ovCapBottomHeight:CFG.ovCapBottomHeight,
-    ovInteraction:CFG.ovInteraction,
-    ttsPad: CFG.ttsPad, aivisModel: CFG.aivisModel, aivisModelB: CFG.aivisModelB, lvvBase: CFG.lvvBase,
-    ttsStale: CFG.ttsStale,
-    aivisStyle: CFG.aivisStyle, aivisStyleB: CFG.aivisStyleB, aivisRate: CFG.aivisRate,
-    aivisStream: CFG.aivisStream?'1':'0', aivisSpk: CFG.aivisSpk, aivisSpkB: CFG.aivisSpkB,
-    aivisEmo: CFG.aivisEmo, aivisTempo: CFG.aivisTempo, aivisVol: CFG.aivisVol,
-    aivisBreak: CFG.aivisBreak, aivisNorm: CFG.aivisNorm?'1':'0', aivisDict: CFG.aivisDict,
-    lvvSpeaker: CFG.lvvSpeaker, lvvSpeakerLbl: CFG.lvvSpeakerLbl,
-    lvvSpeakerB: CFG.lvvSpeakerB, lvvSpeakerBLbl: CFG.lvvSpeakerBLbl,
-    xaiVoice: CFG.xaiVoice, xaiVoiceB: CFG.xaiVoiceB, xaiRate: CFG.xaiRate,
-    xaiEmotion: CFG.xaiEmotion, xaiIntonation: CFG.xaiIntonation, xaiDynamics: CFG.xaiDynamics,
-    xaiPause: CFG.xaiPause, xaiVolume: CFG.xaiVolume,
-    elModel: CFG.elModel, elVoice: CFG.elVoice, elVoiceLbl: CFG.elVoiceLbl,
-    elVoiceB: CFG.elVoiceB, elVoiceBLbl: CFG.elVoiceBLbl,
-    elRate: CFG.elRate, elEmotion: CFG.elEmotion, elIntonation: CFG.elIntonation,
-    elDynamics: CFG.elDynamics, elPause: CFG.elPause, elVolume: CFG.elVolume,
-    elSimilarity: CFG.elSimilarity, elSpeakerBoost: CFG.elSpeakerBoost?'1':'0',
-    focus: CFG.focus, rtDirection: CFG.rtDirection, rtVolume: CFG.rtVolume, rtCardSeconds: CFG.rtCardSeconds,
-    savedAt: new Date().toISOString()
-  };
+  var data = exportData();
   if ($('embedKey').checked) data.keys = KEYS;
 
   var clone = document.documentElement.cloneNode(true);
   // 動的要素を掃除
   ['feedA','feedB'].forEach(function(id){
     var f = clone.querySelector('#'+id);
-    if (f) f.innerHTML = '<div class="empty"><b>Duo Interpreter <span style=\"font-size:12px;color:var(--dim)\">v1.44.13 Phase 4</span><span class="build-id">Build: '+APP_BUILD+'</span></b>⚙ から設定してください。<br>設定と用語集はこのファイルに保存済みです。</div>';
+    if(f){
+      var empty=INITIAL_FEED_EMPTY.cloneNode(true);
+      empty.querySelector('.empty-note').textContent='設定と用語集はこのファイルに保存済みです。';
+      f.replaceChildren(empty);
+    }
   });
   var gb = clone.querySelector('#glBody'); if (gb) gb.innerHTML = '';
   var dw = clone.querySelector('#drawer'); if (dw) dw.classList.remove('open');
@@ -10250,7 +10386,7 @@ function exportHtml(){
   clone.querySelectorAll('#model, #sttModel, #ttsModel').forEach(function(d){ d.innerHTML=''; });
   clone.querySelectorAll('#langA, #langB, #srcA, #srcB').forEach(function(s){ s.innerHTML=''; });
   var ec = clone.querySelector('#embedded-config');
-  if (ec) ec.textContent = '\n' + JSON.stringify(data, null, 1) + '\n';
+  if (ec) ec.textContent = '\n' + JSON.stringify(data, null, 1).replace(/</g, '\\u003c') + '\n';
 
   var html = '<!DOCTYPE html>\n' + clone.outerHTML;
   download('duo-interpreter-' + stamp() + '.html', html, 'text/html;charset=utf-8');
@@ -10692,7 +10828,7 @@ function refreshProviderUI(){
   $('model').disabled = isFree||noTranslation;
   $('fetchModels').disabled = isFree||noTranslation;
   renderModelCombo(chatModelsFor(CFG.provider), CFG.model, function(v){
-    if(CFG.model===v)return;CFG.model = v; store.set('di.model', v);segRefreshTranslations();
+    if(CFG.model===v)return;CFG.model = v; persistSetting("model", v);segRefreshTranslations();
   });
 
   $('sttModel').disabled = (CFG.sttProvider === 'webspeech');
@@ -10704,7 +10840,7 @@ function refreshProviderUI(){
   $('fetchSttModels').style.display = sttFetchable ? '' : 'none';
 
   renderCombo('ttsModel','ttsModelCustom', ttsModelsFor(), CFG.ttsModel, function(v){
-    CFG.ttsModel = v; store.set('di.ttsm', v);
+    CFG.ttsModel = v; persistSetting("ttsModel", v);
     refreshVvUI();
   });
 
@@ -10736,65 +10872,29 @@ function refreshProviderUI(){
 }
 
 function applyCfg(){
+  renderTtsOptions();
+  applySchemaControls();
   fillSelect($('langA'), langOptions(), CFG.langA);
   fillSelect($('langB'), langOptions(), CFG.langB);
   fillSelect($('srcA'),  srcOptions(),  CFG.srcA);
   fillSelect($('srcB'),  srcOptions(),  CFG.srcB);
   $('provider').value = CFG.provider;
-  $('tone').value = CFG.tone;
-  $('camModel').value = CFG.camModel;
-  $('ctx').value = CFG.ctx;
+
   $('sttProvider').value = CFG.sttProvider;
   $('displaySttRoute').value = CFG.displaySttRoute;
   $('preventSelfRecognition').checked = !!CFG.preventSelfRecognition;
   ['segmentMode','segmentBoundary','segmentOverlap','segmentMin','segmentStability','segmentSilence','segmentDebt'].forEach(function(k){$(k).value=CFG[k];});segStatus();
-  $('ttsMode').value = CFG.ttsMode;
-  $('ttsWho').value = CFG.ttsWho;
-  $('voiceA').value = CFG.voiceA;
-  $('voiceB').value = CFG.voiceB;
-  $('oaiRate').value = String(CFG.oaiRate);
-  $('oaiEmotion').value = String(CFG.oaiEmotion);
-  $('oaiIntonation').value = String(CFG.oaiIntonation);
-  $('oaiDynamics').value = String(CFG.oaiDynamics);
-  $('oaiPause').value = String(CFG.oaiPause);
-  $('oaiVolume').value = String(CFG.oaiVolume);
-  $('oaiStyle').value = CFG.oaiStyle || '';
-  $('browserRate').value = String(CFG.browserRate);
-  $('browserPitch').value = String(CFG.browserPitch);
-  $('browserVolume').value = String(CFG.browserVolume);
-  $('xaiRate').value = String(CFG.xaiRate);
-  $('xaiEmotion').value = String(CFG.xaiEmotion);
-  $('xaiIntonation').value = String(CFG.xaiIntonation);
-  $('xaiDynamics').value = String(CFG.xaiDynamics);
-  $('xaiPause').value = String(CFG.xaiPause);
-  $('xaiVolume').value = String(CFG.xaiVolume);
-  $('elRate').value = String(CFG.elRate);
-  $('elEmotion').value = String(CFG.elEmotion);
-  $('elIntonation').value = String(CFG.elIntonation);
-  $('elDynamics').value = String(CFG.elDynamics);
-  $('elPause').value = String(CFG.elPause);
-  $('elVolume').value = String(CFG.elVolume);
-  $('elSimilarity').value = String(CFG.elSimilarity);
-  $('elSpeakerBoost').checked = !!CFG.elSpeakerBoost;
+
   $('vad').value = CFG.vad;
   $('fsize').value = CFG.fsize;
-  $('flipTop').checked = CFG.flipTop;
-  $('showSrc').checked = CFG.showSrc;
-  $('swapSides').checked = CFG.swap;
-  $('interimOn').checked = CFG.interimOn;
-  $('prosodyOn').checked = CFG.prosodyOn;
-  $('echoGuard').checked = CFG.echoGuard;
-  $('syncScroll').checked = CFG.syncScroll;
+
   applyCaptureControls();
   applyCaptureProfile();
-  $('ttsSrc').checked = CFG.ttsSrc;
-  $('ttsPad').value = String(CFG.ttsPad);
-  $('ttsStale').value = String(CFG.ttsStale);
+
   $('rememberTrans').checked = CFG.rememberTrans;
   $('rememberStt').checked = CFG.rememberStt;
   $('rememberTts').checked = CFG.rememberTts;
-  $('nameA').value = CFG.nameA;
-  $('nameB').value = CFG.nameB;
+
   document.documentElement.style.setProperty('--fs', CFG.fsize+'px');
   refreshProviderUI();
   glRender();
@@ -11171,7 +11271,7 @@ $('clearBtn').onclick = function(){
 
 function setFs(v){
   v = Math.max(16, Math.min(72, v));
-  CFG.fsize = String(v); store.set('di.fs', CFG.fsize);
+  CFG.fsize = String(v); persistSetting("fsize", CFG.fsize);
   document.documentElement.style.setProperty('--fs', v+'px');
   $('fsize').value = v;
 }
@@ -11201,26 +11301,18 @@ $('fsize').oninput  = function(){ setFs(parseInt($('fsize').value,10)); };
 
 /* OFFにする前のモードを覚えておき、ONに戻すときはそれを復元する
    （VOICEVOXを選んでいたのに毎回ブラウザ内蔵音声へ戻ってしまうのを防ぐ） */
-var ttsLastMode = (CFG.ttsMode && CFG.ttsMode !== 'off') ? CFG.ttsMode : 'browser';
-function ttsModeLabel(m){
-  return m === 'openai'   ? 'OpenAI音声'
-       : m === 'voicevox' ? 'VOICEVOX WEB版'
-       : m === 'aivis'    ? 'Aivis Cloud API'
-       : m === 'eleven'   ? 'ElevenLabs'
-       : m === 'xai'      ? 'xAI Grok Voice'
-       : m === 'localvv'  ? 'ローカルエンジン'
-       : 'ブラウザ内蔵音声';
-}
+var ttsLastMode = (CFG.ttsMode && ttsProv().enabled) ? CFG.ttsMode : 'browser';
+function ttsModeLabel(mode){ return ttsProv(mode).label; }
 $('ttsToggle').onclick = function(){
   stopSpeaking('読み上げON/OFFを変更');
-  if (CFG.ttsMode === 'off') CFG.ttsMode = ttsLastMode || 'browser';
+  if (!ttsProv().enabled) CFG.ttsMode = ttsLastMode || 'browser';
   else { ttsLastMode = CFG.ttsMode; CFG.ttsMode = 'off'; }
-  store.set('di.tts', CFG.ttsMode); $('ttsMode').value = CFG.ttsMode;
+  persistSetting("ttsMode", CFG.ttsMode); $('ttsMode').value = CFG.ttsMode;
   refreshTtsBtn(); refreshVvUI();
   ttsSkipStreak = 0; ttsSkipHinted = false;
   dlog('tts','toggle',{ mode: CFG.ttsMode, who: CFG.ttsWho });
   // 「誰の発言を読むか」を一緒に出す。ここが分からないと鳴らない理由に気づけないため
-  toast(CFG.ttsMode==='off' ? '読み上げ OFF'
+  toast(!ttsProv().enabled ? '読み上げ OFF'
       : '読み上げ ON（' + whoLabel() + ' / ' + ttsModeLabel(CFG.ttsMode) + '）', true);
 };
 
@@ -11235,11 +11327,11 @@ function changeInputLanguage(seat,value){
 }
 $('langA').onchange=function(){changeInputLanguage('A',this.value);};
 $('langB').onchange=function(){changeInputLanguage('B',this.value);};
-$('srcA').onchange  = function(){ CFG.srcA=this.value;  store.set('di.sa',this.value); seatChanged(true); };
+$('srcA').onchange  = function(){ CFG.srcA=this.value;  persistSetting("srcA", this.value); seatChanged(true); };
 $('srcB').onchange  = function(){
-  CFG.srcB=this.value;  store.set('di.sb',this.value);
+  CFG.srcB=this.value;  persistSetting("srcB", this.value);
   if (this.value === 'display'){
-    if (CFG.flipTop){ CFG.flipTop=false; store.set('di.flip','0'); $('flipTop').checked=false; }
+    if (CFG.flipTop){ CFG.flipTop=false; persistSetting("flipTop", '0'); $('flipTop').checked=false; }
     if(effectiveDisplaySttRoute()==='vb')toast('会議アプリの音声出力と、設定の仮想ケーブル入力を確認してください。');
     else toast('オンライン会議モード：開始時の共有ダイアログで<b>音声の共有</b>をONにしてください。共有音声の認識方法は⚙→音声で確認できます。', true);
   }
@@ -11248,8 +11340,8 @@ $('srcB').onchange  = function(){
 
 /* プロバイダ関連 */
 $('provider').onchange = function(){
-  CFG.provider = this.value; store.set('di.prov', CFG.provider);
-  CFG.model = defaultModel(CFG.provider); store.set('di.model', CFG.model);
+  CFG.provider = this.value; persistSetting("provider", CFG.provider);
+  CFG.model = defaultModel(CFG.provider); persistSetting("model", CFG.model);
   refreshProviderUI();
   segRefreshTranslations();
   S.entries.forEach(function(e){render(e);});
@@ -11285,11 +11377,11 @@ $('sttKey').oninput = function(){
   keyChkShow('chkSttMsg','','');
   clearTimeout(sttKeyTimer); sttKeyTimer = setTimeout(autoFetchSttModels, 1200);
 };
-$('baseUrl').oninput = function(){ CFG.baseUrl = this.value.trim(); store.set('di.base', CFG.baseUrl); };
+$('baseUrl').oninput = function(){ CFG.baseUrl = this.value.trim(); persistSetting("baseUrl", CFG.baseUrl); };
 $('sttProvider').onchange = function(){
   var wasRunning=S.running;if(wasRunning)stopAll();
-  CFG.sttProvider = this.value; store.set('di.sttp', CFG.sttProvider);
-  CFG.sttModel = defaultSttModel(CFG.sttProvider); store.set('di.sttm', CFG.sttModel);
+  CFG.sttProvider = this.value; persistSetting("sttProvider", CFG.sttProvider);
+  CFG.sttModel = defaultSttModel(CFG.sttProvider); persistSetting("sttModel", CFG.sttModel);
   // 無料モードに切り替えたら手動固定、API側に戻したら元のAUTO設定を復帰させる
   setMode(store.get('di.automode','1') === '1');
   refreshProviderUI();
@@ -11301,19 +11393,20 @@ $('fourOSeconds').onchange=function(){
   fourOSetSeconds(this.value);
 };
 $('fourOCustom').onchange=function(){fourOSetSeconds(this.value);};
-$('fourOCarry').onchange=function(){CFG.fourOCarry=this.checked;store.set('di.fourOCarry',this.checked?'1':'0');};
+$('fourOCarry').onchange=function(){CFG.fourOCarry=this.checked;persistSetting("fourOCarry", this.checked?'1':'0');};
 $('rememberTrans').onchange = function(){ setKeyRemember('trans',this.checked); };
 $('rememberStt').onchange   = function(){ setKeyRemember('stt',this.checked); };
 $('rememberTts').onchange   = function(){ setKeyRemember('tts',this.checked); };
 
-function simple(id, key, prop, isCheck){
+function simple(spec){
+  var id=spec.el, prop=spec.prop, isCheck=spec.type==='bool';
   $(id).onchange = function(){
     var v = isCheck ? this.checked : this.value;
     var old = CFG[prop];
     /* TTS方式を変えたあとに旧方式の音声が割り込まないよう、変更前の要求・再生・待ち列を止める。 */
     if (prop==='ttsMode' && old!==v) stopSpeaking('TTS方式を変更');
     CFG[prop] = v;
-    store.set(key, isCheck ? (v?'1':'0') : v);
+    persistSetting(prop, isCheck ? (v?'1':'0') : v);
     if (prop==='flipTop'||prop==='swap'||prop==='nameA'||prop==='nameB') layout();
     if (prop==='showSrc') S.entries.forEach(render);
     if (prop==='showSrc'||prop==='interimOn') renderCaptionPip();
@@ -11328,14 +11421,7 @@ function simple(id, key, prop, isCheck){
       }
     }
     if (prop==='echoGuard') dlog('stt','echo-guard',{on:!!v});
-    if (prop==='sttPunct'){
-      dlog('stt','punctuation',{on:!!v,localTerminal:true,apiPrompt:CFG.sttProvider!=='webspeech'});
-      /* Realtimeは開始時のsession設定へ指示を埋め込むため、途中変更時だけ接続を張り直す。 */
-      if(S.running&&isLiveTranscribe()){
-        stopAll();setTimeout(startAll,300);
-        toast('句読点設定をRealtime音声認識へ反映するため、接続を張り直します。',true);
-      }
-    }
+    
     if (prop==='rtDirection'){
       dlog('realtime','direction',{from:old,to:v,label:realtimeDirectionLabel(v)});
       if (S.running){
@@ -11349,7 +11435,7 @@ function simple(id, key, prop, isCheck){
       refreshTtsBtn(); refreshVvUI(); ttsLastMode = (v==='off') ? ttsLastMode : v;
       updateProsodyStatus();
       /* Aivis に切り替えた時点で、まだ名前を知らないモデルなら取りにいく */
-      if (v === 'aivis') aivisNameLater();
+      if(ttsProv().onSelect)ttsProv().onSelect();
     }
     if (prop==='vvSpeaker' || prop==='vvSpeakerA' || prop==='ttsWho' || prop==='ttsSrc') refreshVvUI();
     if (prop==='ttsMode' || prop==='ttsWho') renderOutDevs();
@@ -11373,64 +11459,26 @@ function simple(id, key, prop, isCheck){
     }
   };
 }
-simple('tone','di.tone','tone');
-simple('camModel','di.cam','camModel');
-simple('ctx','di.ctx','ctx');
+bindSettings();
+
 ['segmentMode','segmentBoundary','segmentOverlap','segmentMin','segmentStability','segmentSilence','segmentDebt'].forEach(function(k){
-  $(k).onchange=function(){var wasRunning=S.running;stopSpeaking('逐次読み上げ設定変更');if(wasRunning)stopAll();CFG[k]=this.value;store.set('di.'+k,this.value);segStatus();if(wasRunning)toast('逐次読み上げ設定を変更しました。「開始」で認識を再開してください。');};
+  $(k).onchange=function(){var wasRunning=S.running;stopSpeaking('逐次読み上げ設定変更');if(wasRunning)stopAll();CFG[k]=this.value;persistSetting(k,this.value);segStatus();if(wasRunning)toast('逐次読み上げ設定を変更しました。「開始」で認識を再開してください。');};
 });
-simple('ttsMode','di.tts','ttsMode');
-simple('ttsWho','di.ttsw','ttsWho');
-simple('rtDirection','di.rtdirection','rtDirection');
+
 $('rtVolume').oninput=function(){realtimeSetVolume(this.value);};
 $('rtVolume').onchange=function(){dlog('rt','volume-change',{percent:realtimeVolume(CFG.rtVolume),output:realtimeOutputLabel()});};
 $('rtVolumeReset').onclick=function(){realtimeSetVolume(100);dlog('rt','volume-change',{percent:100});};
 $('rtAudioResume').onclick=realtimeResumePlayback;
 $('rtCardSeconds').onchange=function(){
-  CFG.rtCardSeconds=realtimeCardSeconds(this.value);store.set('di.rtCardSeconds',String(CFG.rtCardSeconds));
+  CFG.rtCardSeconds=realtimeCardSeconds(this.value);persistSetting("rtCardSeconds", String(CFG.rtCardSeconds));
   dlog('rt','card-duration',{seconds:CFG.rtCardSeconds});
   if(S.running&&CFG.sttProvider==='realtime')toast('会話カードの区切りは、次回の開始から'+CFG.rtCardSeconds+'秒ごとになります。',true);
 };
-simple('voiceA','di.va','voiceA');
-simple('voiceB','di.vb','voiceB');
+
 $('oaiTtsKey').oninput=function(){KEYS['tts:openai']=this.value.trim();saveKeys();openaiTtsWarned=false;refreshVvUI();};
-simple('oaiRate','di.oairt','oaiRate');
-simple('oaiEmotion','di.oaiem','oaiEmotion');
-simple('oaiIntonation','di.oaiin','oaiIntonation');
-simple('oaiDynamics','di.oaidy','oaiDynamics');
-simple('oaiPause','di.oaipa','oaiPause');
-simple('oaiVolume','di.oaivo','oaiVolume');
-simple('oaiStyle','di.oaistyle','oaiStyle');
-simple('browserRate','di.brrt','browserRate');
-simple('browserPitch','di.brpt','browserPitch');
-simple('browserVolume','di.brvo','browserVolume');
-simple('elRate','di.elrt','elRate');
-simple('elEmotion','di.elem','elEmotion');
-simple('elIntonation','di.elin','elIntonation');
-simple('elDynamics','di.eldy','elDynamics');
-simple('elPause','di.elpa','elPause');
-simple('elVolume','di.elvo','elVolume');
-simple('elSimilarity','di.elsi','elSimilarity');
-simple('elSpeakerBoost','di.elsb','elSpeakerBoost',true);
-simple('xaiRate','di.xart','xaiRate');
-simple('xaiEmotion','di.xaem','xaiEmotion');
-simple('xaiIntonation','di.xain','xaiIntonation');
-simple('xaiDynamics','di.xady','xaiDynamics');
-simple('xaiPause','di.xapa','xaiPause');
-simple('xaiVolume','di.xavo','xaiVolume');
-simple('flipTop','di.flip','flipTop',true);
-simple('showSrc','di.src','showSrc',true);
-simple('swapSides','di.swap','swap',true);
-simple('interimOn','di.itm','interimOn',true);
-simple('prosodyOn','di.prosody','prosodyOn',true);
-simple('echoGuard','di.echo','echoGuard',true);
-simple('syncScroll','di.sync','syncScroll',true);
-simple('vvSpeaker','di.vvsp','vvSpeaker');
-simple('vvSpeakerA','di.vvspa','vvSpeakerA');
+
 $('vvSpeakerFetch').onclick=function(){ vvLoadSpeakers(true); };
-simple('ttsSrc','di.ttssrc','ttsSrc',true);
-simple('ttsPad','di.ttspad','ttsPad');
-simple('ttsStale','di.ttsstale','ttsStale');
+
 $('vvKey').oninput = function(){
   KEYS['voicevox'] = this.value.trim(); saveKeys();
   keyChkShow('chkVvMsg','','');
@@ -11439,7 +11487,7 @@ $('vvKey').oninput = function(){
 };
 VV_SLIDERS.forEach(function(s){
   var el=$(s.id); if (!el) return;
-  el.oninput=function(){ CFG[s.key]=this.value; store.set(s.store,this.value); vvAdvSync(); };
+  el.oninput=function(){ CFG[s.key]=this.value; persistSetting(s.key,this.value); vvAdvSync(); };
   el.onchange=function(){ refreshVvUI(); };
 });
 $('vvAdvReset').onclick=function(){ vvAdvReset(); };
@@ -11476,8 +11524,8 @@ function aivisNameLater(){
 function aivisSetModel(seat, uuid){
   uuid = String(uuid || '').trim();
   /* 保存キーは据え置き（di.aima は「相手(B)側」を指す） */
-  if (seat === 'B'){ CFG.aivisModelB = uuid; store.set('di.aima', uuid); }
-  else             { CFG.aivisModel  = uuid; store.set('di.aim',  uuid); }
+  if (seat === 'B'){ CFG.aivisModelB = uuid; persistSetting("aivisModelB", uuid); }
+  else             { CFG.aivisModel  = uuid; persistSetting("aivisModel", uuid); }
   aivisWarned = false; keyChkShow('chkAivisMsg','','');
   aivisResetStyles();                    /* 別モデルのスタイル一覧は当てにならない */
   refreshVvUI(); aivisNameLater();
@@ -11501,18 +11549,18 @@ $('aivisModelBCustom').oninput = function(){ aivisSetModel('B', this.value); };
 $('aivisName').oninput  = function(){ aivisNameSet(CFG.aivisModel,  this.value); refreshVvUI(); };
 $('aivisNameB').oninput = function(){ aivisNameSet(CFG.aivisModelB, this.value); refreshVvUI(); };
 $('lvvBase').oninput = function(){
-  CFG.lvvBase = this.value.trim(); store.set('di.lvb', CFG.lvvBase);
+  CFG.lvvBase = this.value.trim(); persistSetting("lvvBase", CFG.lvvBase);
   lvvWarned = false; keyChkShow('chkLvvMsg','',''); refreshVvUI();
 };
 $('lvvSpeaker').onchange = function(){
   CFG.lvvSpeaker = this.value;
   CFG.lvvSpeakerLbl = this.options[this.selectedIndex] ? this.options[this.selectedIndex].textContent : '';
-  store.set('di.lvs', CFG.lvvSpeaker); store.set('di.lvsl', CFG.lvvSpeakerLbl);
+  persistSetting("lvvSpeaker", CFG.lvvSpeaker); persistSetting("lvvSpeakerLbl", CFG.lvvSpeakerLbl);
 };
 $('lvvSpeakerB').onchange = function(){
   CFG.lvvSpeakerB = this.value;
   CFG.lvvSpeakerBLbl = this.selectedIndex >= 0 ? this.options[this.selectedIndex].textContent : '';
-  store.set('di.lvsa', CFG.lvvSpeakerB); store.set('di.lvsal', CFG.lvvSpeakerBLbl);
+  persistSetting("lvvSpeakerB", CFG.lvvSpeakerB); persistSetting("lvvSpeakerBLbl", CFG.lvvSpeakerBLbl);
 };
 $('lvvFetch').onclick = function(){ lvvFetchSpeakers(); };
 $('chkTrans').onclick = function(){ verifyTransKey(); };
@@ -11525,35 +11573,32 @@ $('elFetch').onclick  = function(){ elFetchVoices(); };
 $('elTest').onclick   = function(){ verifyElTts(); };
 $('aivisFetch').onclick = function(){ aivisFetchStyles(); };
 $('aivisStyle').onchange = function(){
-  CFG.aivisStyle = this.value; store.set('di.aist', CFG.aivisStyle);
+  CFG.aivisStyle = this.value; persistSetting("aivisStyle", CFG.aivisStyle);
   aivisSyncSpeaker(this); refreshVvUI();
 };
 $('aivisStyleB').onchange = function(){
-  CFG.aivisStyleB = this.value; store.set('di.aista', CFG.aivisStyleB);
+  CFG.aivisStyleB = this.value; persistSetting("aivisStyleB", CFG.aivisStyleB);
   aivisSyncSpeaker(this); refreshVvUI();
 };
 $('ttsStream').onchange=function(){
-  if(CFG.ttsMode==='openai'){
-    CFG.oaiStream=this.checked; store.set('di.oaistream',this.checked?'1':'0');
-  }else if(CFG.ttsMode==='aivis'){
-    CFG.aivisStream=this.checked; store.set('di.aistr',this.checked?'1':'0');
-  }
+  var prop=ttsProv().streamProp;
+  if(prop){CFG[prop]=this.checked;persistSetting(prop);}
   refreshTtsStreamUI(); refreshVvUI();
 };
 AIVIS_SLIDERS.forEach(function(s){
   var el = $(s.id); if (!el) return;
   el.oninput = function(){
-    CFG[s.key] = this.value; store.set(s.store, this.value);
+    CFG[s.key] = this.value; persistSetting(s.key, this.value);
     aivisAdvSync();                       /* 動かしている間も数値をついてこさせる */
   };
   el.onchange = function(){ refreshVvUI(); };
 });
 $('aivisNorm').onchange = function(){
-  CFG.aivisNorm = this.checked; store.set('di.ainm', this.checked ? '1' : '0');
+  CFG.aivisNorm = this.checked; persistSetting("aivisNorm", this.checked ? '1' : '0');
   aivisAdvSync(); refreshVvUI();
 };
 $('aivisDict').oninput = function(){
-  CFG.aivisDict = this.value.trim(); store.set('di.aidc', CFG.aivisDict);
+  CFG.aivisDict = this.value.trim(); persistSetting("aivisDict", CFG.aivisDict);
   aivisAdvSync();
 };
 $('aivisAdvReset').onclick = function(){ aivisAdvReset(); };
@@ -11562,10 +11607,10 @@ $('xaiTtsKey').oninput = function(){
   xaiWarned = false; keyChkShow('chkXaiTtsMsg','',''); refreshVvUI();
 };
 $('xaiVoice').onchange = function(){
-  CFG.xaiVoice = this.value; store.set('di.xav', CFG.xaiVoice); refreshVvUI();
+  CFG.xaiVoice = this.value; persistSetting("xaiVoice", CFG.xaiVoice); refreshVvUI();
 };
 $('xaiVoiceB').onchange = function(){
-  CFG.xaiVoiceB = this.value; store.set('di.xava', CFG.xaiVoiceB); refreshVvUI();
+  CFG.xaiVoiceB = this.value; persistSetting("xaiVoiceB", CFG.xaiVoiceB); refreshVvUI();
 };
 $('chkXaiTts').onclick = function(){ verifyXaiTtsKey(); };
 $('elKey').oninput = function(){
@@ -11573,20 +11618,20 @@ $('elKey').oninput = function(){
   elWarned = false; keyChkShow('chkElMsg','',''); refreshVvUI();
 };
 $('elModel').onchange = function(){
-  CFG.elModel = this.value; store.set('di.elm', CFG.elModel);
+  CFG.elModel = this.value; persistSetting("elModel", CFG.elModel);
   elWarned = false; refreshVvUI();
 };
 $('elVoice').onchange = function(){
   CFG.elVoice = this.value;
   CFG.elVoiceLbl = this.options[this.selectedIndex] ? this.options[this.selectedIndex].textContent : '';
-  store.set('di.elv', CFG.elVoice); store.set('di.elvl', CFG.elVoiceLbl);
+  persistSetting("elVoice", CFG.elVoice); persistSetting("elVoiceLbl", CFG.elVoiceLbl);
   if ($('elVoiceId')) $('elVoiceId').value=CFG.elVoice;
   refreshVvUI();
 };
 $('elVoiceB').onchange = function(){
   CFG.elVoiceB = this.value;
   CFG.elVoiceBLbl = this.selectedIndex >= 0 ? this.options[this.selectedIndex].textContent : '';
-  store.set('di.elva', CFG.elVoiceB); store.set('di.elval', CFG.elVoiceBLbl);
+  persistSetting("elVoiceB", CFG.elVoiceB); persistSetting("elVoiceBLbl", CFG.elVoiceBLbl);
   if ($('elVoiceIdB')) $('elVoiceIdB').value=CFG.elVoiceB;
   refreshVvUI();
 };
@@ -11596,10 +11641,10 @@ function elSetManualVoice(seat, value){
   var label=value ? '直接指定：' + value : (isB ? inheritedVoiceLabel() : '');
   if (isB){
     CFG.elVoiceB=value; CFG.elVoiceBLbl=label;
-    store.set('di.elva', value); store.set('di.elval', label);
+    persistSetting("elVoiceB", value); persistSetting("elVoiceBLbl", label);
   } else {
     CFG.elVoice=value; CFG.elVoiceLbl=label;
-    store.set('di.elv', value); store.set('di.elvl', label);
+    persistSetting("elVoice", value); persistSetting("elVoiceLbl", label);
   }
   if (sel){
     var found=false;
@@ -11635,8 +11680,8 @@ function bindInDev(id,cfgId,cfgLbl,keyId,keyLbl){
 }
 bindInDev('micDev','micDev','micDevLbl','di.indev.mic','di.indevl.mic');
 bindInDev('vbDev','vbDev','vbDevLbl','di.indev.vb','di.indevl.vb');
-$('displaySttRoute').onchange=function(){if(S.running)stopAll();CFG.displaySttRoute=this.value;store.set('di.audio.displayRoute',this.value);renderAudioRouteWarning();};
-$('preventSelfRecognition').onchange=function(){CFG.preventSelfRecognition=this.checked;store.set('di.audio.preventLoop',this.checked?'1':'0');renderAudioRouteWarning();};
+$('displaySttRoute').onchange=function(){if(S.running)stopAll();CFG.displaySttRoute=this.value;persistSetting("displaySttRoute", this.value);renderAudioRouteWarning();};
+$('preventSelfRecognition').onchange=function(){CFG.preventSelfRecognition=this.checked;persistSetting("preventSelfRecognition", this.checked?'1':'0');renderAudioRouteWarning();};
 $('inRefresh').onclick=function(){loadInDevs().then(function(ds){toast(ds.length?'入力デバイスを '+ds.length+' 件見つけました。':'入力デバイスを取得できませんでした。',!!ds.length);});};
 loadOutDevs().then(function(){
   if(CFG.outDevLocal)applySink('B',false);
@@ -11647,9 +11692,8 @@ foldLongNotes();
 if (navigator.mediaDevices && navigator.mediaDevices.addEventListener){
   navigator.mediaDevices.addEventListener('devicechange', function(){ loadOutDevs();loadInDevs(); });
 }
-simple('nameA','di.na','nameA');
-simple('nameB','di.nb','nameB');
-$('vad').oninput = function(){ CFG.vad = parseInt(this.value,10); store.set('di.vad', this.value); };
+
+$('vad').oninput = function(){ CFG.vad = parseInt(this.value,10); persistSetting("vad", this.value); };
 
 /* 用語集ボタン */
 $('glAdd').onclick = function(){ CFG.glossary.push({s:'',t:'',n:''}); saveGloss(); glRender();
@@ -11690,7 +11734,7 @@ $('loadEmbedded').onclick = function(){
   if (!EMBED.glossary && !EMBED.ctx){ toast('このファイルには埋め込みデータがありません'); return; }
   if (EMBED.glossary) CFG.glossary = EMBED.glossary.slice();
   if (EMBED.ctx) CFG.ctx = EMBED.ctx;
-  saveGloss(); store.set('di.ctx', CFG.ctx);
+  saveGloss(); persistSetting("ctx", CFG.ctx);
   $('ctx').value = CFG.ctx; glRender();
   toast('埋め込みデータを読み込みました', true);
 };
@@ -11698,49 +11742,7 @@ $('loadEmbedded').onclick = function(){
 /* ===== 診断ログの書き出し =====
    Claudeにそのまま貼れるよう、環境・設定・マイク・動作ログ・会話ログを1つの
    Markdownにまとめる。APIキーは必ず伏せ字にする。                       */
-function diagText(devices){
-  var out = [], now = new Date();
-  var pad = function(s,n){ s=String(s); while(s.length<n) s+=' '; return s; };
-  var lpad = function(s,n){ s=String(s); while(s.length<n) s=' '+s; return s; };   // 時刻は右寄せで桁を揃える
-  var cell = function(v){ return String(v==null?'':v).replace(/\|/g,'\\|').replace(/\n/g,' '); };
-
-  out.push('# Duo Interpreter 診断ログ', '');
-  out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
-  out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
-  out.push('- 生成日時: ' + now.toLocaleString());
-  out.push('- バージョン: Duo Interpreter v1.44.13 Phase 4');
-  out.push('- ビルドID: ' + APP_BUILD);
-  out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
-  out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
-
-  var isPWA = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
-  out.push('## 環境', '', '| 項目 | 値 |', '|---|---|');
-  [['UserAgent', navigator.userAgent],
-   ['言語設定', navigator.language],
-   ['画面', window.innerWidth + '×' + window.innerHeight + ' / dpr ' + (window.devicePixelRatio||1)],
-   ['プロトコル', location.protocol + ' (' + (location.host || 'ローカルファイル') + ')'],
-   ['ホーム画面に追加(PWA)', isPWA ? 'はい' : 'いいえ'],
-   ['オンライン', navigator.onLine ? 'はい' : 'いいえ'],
-   ['内蔵音声認識(SpeechRecognition)', SR ? '利用可' : '利用不可'],
-   ['読み上げ音声の数', (function(){ try{ return ttsVoices().length; }catch(e){ return '?'; } })()],
-   ['画面スリープ防止(WakeLock)', ('wakeLock' in navigator) ? '対応' : '非対応']
-  ].forEach(function(r){ out.push('| ' + cell(r[0]) + ' | ' + cell(r[1]) + ' |'); });
-  out.push('');
-
-  out.push('## 設定', '', '| 項目 | 値 |', '|---|---|');
-  var rtNativeAudio = (CFG.sttProvider === 'realtime');
-  function diagTtsModel(){
-    if (CFG.ttsMode==='off') return '(未使用)';
-    if (CFG.ttsMode==='browser') return '(ブラウザ内蔵)';
-    if (CFG.ttsMode==='openai') return CFG.ttsModel||'gpt-4o-mini-tts';
-    if (CFG.ttsMode==='aivis') return (aivisNameOf(aivisModelFor('A'))||'Aivis Cloud API')+' / '+String(aivisModelFor('A')||'').slice(0,8);
-    if (CFG.ttsMode==='xai') return '(xAI Voice API)';
-    if (CFG.ttsMode==='eleven') return CFG.elModel||'(ElevenLabs)';
-    if (CFG.ttsMode==='voicevox') return '(VOICEVOX WEB版)';
-    if (CFG.ttsMode==='localvv') return '(ローカルエンジン)';
-    return '(不明)';
-  }
-  function diagSttTransport(){
+function diagSttTransport(){
     if(CFG.sttProvider==='realtime')return 'OpenAI Realtime WebRTC（同時通訳）';
     var routes=[];
     if(CFG.srcA==='mic'||CFG.srcB==='mic')routes.push(isLiveTranscribe()?'マイク=Realtime WebRTC':(CFG.sttProvider==='webspeech'?'マイク=Web Speech':'マイク=録音分割REST'));
@@ -11751,116 +11753,134 @@ function diagText(devices){
     }
     return routes.join(' / ')||'(入力なし)';
   }
-  [['翻訳プロバイダ', CFG.provider], ['翻訳モデル', translationDisabled() ? '(未使用)' : CFG.model],
-   ['音声認識(STT)', CFG.sttProvider], ['STTモデル', CFG.sttModel],
-   ['4o系の録音上限', fourOFileModel()?fourOSeconds(CFG.fourOSeconds)+'秒／末尾繰越 '+(CFG.fourOCarry!==false?'ON':'OFF')+'／録音ファイルAPI':'(未使用)'], ['句読点の自動補完', CFG.sttPunct ? 'ON' : 'OFF'],
-   ['有効なSTT通信方式', diagSttTransport()],
-   ['gpt-live発話確定', isLiveTranscribe() ? (segEnabled()?'逐次部分翻訳＋文脈・無音・文字停止でカード確定／TTS待ちとは独立':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）') : '(未使用)'],
-   ['共有音声STT経路', CFG.displaySttRoute+' → '+effectiveDisplaySttRoute()],
-   ['共有Track直接Web Speech候補', overlayCapabilities().speechTrackInput],
-   ['通常マイク入力', CFG.micDevLbl || (CFG.micDev ? '(名称不明)' : '既定')],
-   ['VB-CABLE入力', CFG.vbDevLbl || (CFG.vbDev ? '(名称不明)' : '(未選択)')],
-   ['TTS自己認識防止', CFG.preventSelfRecognition ? 'ON' : 'OFF'],
-   ['リアルタイム翻訳方向', rtNativeAudio ? realtimeDirectionLabel(CFG.rtDirection) : '(未使用)'],
-   ['読み上げ', rtNativeAudio ? 'gpt-realtime-translate 内蔵音声（自動再生）' : CFG.ttsMode],
-   ['読み上げモデル', rtNativeAudio ? 'gpt-realtime-translate' : diagTtsModel()],
-   ['Realtime音量', rtNativeAudio ? realtimeVolume(CFG.rtVolume)+'% / '+realtimeOutputLabel() : '(未使用)'],
-   ['Realtime話し方調整', rtNativeAudio ? '抑揚・声の高さ・話速・声指定：公開APIに設定なし' : '(未使用)'],
-   ['Realtimeカード区切り', rtNativeAudio ? realtimeCardSeconds(CFG.rtCardSeconds)+'秒（開始時に適用） / 3秒の受信停止で確定 / 時間帯に遅延追記' : '(未使用)'],
-   ['読み上げ対象', rtNativeAudio ? '訳す方向に従う' : CFG.ttsWho],
-   ['声 A / B', rtNativeAudio ? '(外部TTS設定は未使用)' : ttsSeatVoices()],
-   ['認識文字表示','STT受信ごとにカードへ反映／確定・翻訳・TTSは独立したタイマーで進行'],
-   ['逐次エコー除外','部分単位の自動音声のみ抑制（認識文字表示は維持）'],
-   ['Aivis送信制御','全合成経路で直近60秒10回（境界余裕0.1秒）・固定間隔なし／429はサーバー指定待機・再試行2回／同声・同言語・同一音声設定を最大500文字でまとめる'],
-   ['翻訳の区切り',segSemanticEnabled()?'文末優先（言語別ルール・文字数上限・最大3秒の文字停止待ち）':'速度優先（従来）'],
-   ['翻訳の文脈','対象より前の原文のみ／現在カードの全文と未来の発話は含めない'],
-   ['自動適応',CFG.segmentMode==='adaptive'?segAdaptiveLabel():'OFF（固定モード）'],
-   ['再生操作','カード全体・部分ごとの原文／訳文再生・部分再翻訳／古い訳の手動再生を防止／一括合成は範囲を強調'],
-   ['再生順序','カード受付順＋部分seq／送信本文・結合した部分IDをdispatchに記録'],
-   ['TTS逐次読み上げ',CFG.segmentMode+' / 重なり '+CFG.segmentOverlap],
-   ['逐次確定・訂正',SEG.committed+' / '+SEG.corrected+'（訂正率 '+(SEG.committed?(100*SEG.corrected/SEG.committed).toFixed(1):'0')+'%）'],
-   ['逐次TTS待ち音声',segDebt().toFixed(1)+'秒（文字数による推定）'],
-   ['逐次計測の定義','L1=最初の認識文字から、L2=commitからの代理値。音響的な意味単位終了時刻は未計測。'],
-   ['TTSストリーミング', rtNativeAudio ? '(外部TTS設定は未使用)' : ttsStreamCapability(CFG.ttsMode).text],
-   ['OpenAI 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'openai' ? oaiManualTweaks() : '(未使用)'],
-   ['OpenAI API speed', !rtNativeAudio && CFG.ttsMode === 'openai'
-      ? String(OAI_RATE_FACTORS[oaiRateLevel(CFG.oaiRate)+2]) : '(未使用)'],
-   ['OpenAI instructions', !rtNativeAudio && CFG.ttsMode === 'openai'
-      ? (oaiInstructionsSupported(CFG.ttsModel) ? '対応（発話ごとに動的生成）' : '非対応モデルのため未適用') : '(未使用)'],
-   ['ブラウザ内蔵音声 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'browser' ? browserTweaks() : '(未使用)'],
-   ['ElevenLabs 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'eleven' ? elManualTweaks() : '(未使用)'],
-   ['ElevenLabs 話速処理', !rtNativeAudio && CFG.ttsMode === 'eleven'
-      ? (function(){var p=elBuildPlan(CFG.langA,null);return '実効 '+p.desiredRate+'倍 / API '+p.apiSpeed+'倍 / ピッチ保持再生 '+p.playbackRate+'倍';})()
-      : '(未使用)'],
-   ['xAIの声 A / B', !rtNativeAudio && CFG.ttsMode === 'xai' ? ttsSeatVoices() : '(未使用)'],
-   ['xAI 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'xai' ? xaiManualTweaks() : '(未使用)'],
-   ['xAI API speed', !rtNativeAudio && CFG.ttsMode === 'xai'
-      ? String(XAI_RATE_FACTORS[xaiRateLevel(CFG.xaiRate)+2]) : '(未使用)'],
-   ['Aivisスタイル A / B', !rtNativeAudio && CFG.ttsMode === 'aivis'
-      ? ((CFG.aivisStyleB === '' ? '既定' : CFG.aivisStyleB) + ' / ' + (CFG.aivisStyle === '' ? '既定' : CFG.aivisStyle)
-         + (CFG.aivisSpk || CFG.aivisSpkB ? '（話者指定あり）' : ''))
-      : '(未使用)'],
-   ['Aivisのキャラ名 A / B', !rtNativeAudio && CFG.ttsMode === 'aivis'
-      ? ((aivisNameOf(aivisModelFor('A')) || '(未設定)') + ' / ' + (aivisNameOf(aivisModelFor('B')) || '(未設定)'))
-      : '(未使用)'],
-   ['Aivis 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'aivis' ? aivisTweaks() : '(未使用)'],
-   ['Aivis APIキー同期', !rtNativeAudio && CFG.ttsMode === 'aivis' ? aivisKeyState() : '(未使用)'],
-   ['Aivis課金モード（直近応答）', !rtNativeAudio && CFG.ttsMode === 'aivis'
-      ? (AIVIS_LAST_BILLING ? ((AIVIS_LAST_BILLING.mode||'(headerなし)')
-         +(AIVIS_LAST_BILLING.creditsRemaining?' / 残クレジット '+AIVIS_LAST_BILLING.creditsRemaining:'')
-         +(AIVIS_LAST_BILLING.rateRemaining?' / 残リクエスト '+AIVIS_LAST_BILLING.rateRemaining:'')) : '(まだAivis応答なし)') : '(未使用)'],
-   ['VOICEVOX 話し方の調整', !rtNativeAudio && CFG.ttsMode === 'voicevox' ? vvTweaks() : '(未使用)'],
-   ['VOICEVOX処理', !rtNativeAudio && CFG.ttsMode === 'voicevox' ? '最大4件並列合成（429時は現在'+vvSynthLimit+'件へ自動抑制） / 発話順に1件ずつ再生 / 最大6件保持 / 8秒超は破棄 / 高速再生は先読み保護' : '(未使用)'],
-   ['原文読み上げ', rtNativeAudio ? '(外部TTS設定は未使用)' : (CFG.ttsSrc ? 'ON' : 'OFF')],
-   ['鳴り始めの無音', rtNativeAudio ? '(外部TTS設定は未使用)' : (CFG.ttsPad + ' ms')],
-   ['読み上げ待ち上限', rtNativeAudio ? '(外部TTS設定は未使用)' : ttsQueueWaitLabel()],
-   ['再生経路', rtNativeAudio ? 'WebRTCリモート音声 → '+realtimeOutputLabel() : (waMode ? 'Web Audio（開きっぱなし）' : '<audio>')],
-   ['出力先の指定を守れるか', rtNativeAudio ? '(外部TTSの出力先設定は未使用)' : (!(CFG.outDevLocal||CFG.outDevRemote) ? '(既定なので指定なし)'
+
+/* 診断項目は値を取得する時点まで評価しない。非選択プロバイダのAPIや
+   音声処理を診断だけで起動しないため、when/プロバイダ判定の後にvalueを呼ぶ。 */
+var DIAG_ROWS = [
+  {section:"environment",order:0,label:'UserAgent',value:function(ctx){ return navigator.userAgent; }},
+  {section:"environment",order:1,label:'言語設定',value:function(ctx){ return navigator.language; }},
+  {section:"environment",order:2,label:'画面',value:function(ctx){ return window.innerWidth + '×' + window.innerHeight + ' / dpr ' + (window.devicePixelRatio||1); }},
+  {section:"environment",order:3,label:'プロトコル',value:function(ctx){ return location.protocol + ' (' + (location.host || 'ローカルファイル') + ')'; }},
+  {section:"environment",order:4,label:'ホーム画面に追加(PWA)',value:function(ctx){ return ctx.isPWA ? 'はい' : 'いいえ'; }},
+  {section:"environment",order:5,label:'オンライン',value:function(ctx){ return navigator.onLine ? 'はい' : 'いいえ'; }},
+  {section:"environment",order:6,label:'内蔵音声認識(SpeechRecognition)',value:function(ctx){ return SR ? '利用可' : '利用不可'; }},
+  {section:"environment",order:7,label:'読み上げ音声の数',value:function(ctx){ return (function(){ try{ return ttsVoices().length; }catch(e){ return '?'; } })(); }},
+  {section:"environment",order:8,label:'画面スリープ防止(WakeLock)',value:function(ctx){ return ('wakeLock' in navigator) ? '対応' : '非対応'; }},
+  {section:"settings",order:0,label:'翻訳プロバイダ',value:function(ctx){ return CFG.provider; }},
+  {section:"settings",order:1,label:'翻訳モデル',value:function(ctx){ return translationDisabled() ? '(未使用)' : CFG.model; }},
+  {section:"settings",order:2,label:'音声認識(STT)',value:function(ctx){ return CFG.sttProvider; }},
+  {section:"settings",order:3,label:'STTモデル',value:function(ctx){ return CFG.sttModel; }},
+  {section:"settings",order:4,label:'4o系の録音上限',value:function(ctx){ return fourOFileModel()?fourOSeconds(CFG.fourOSeconds)+'秒／末尾繰越 '+(CFG.fourOCarry!==false?'ON':'OFF')+'／録音ファイルAPI':'(未使用)'; }},
+  {section:"settings",order:5,label:'有効なSTT通信方式',value:function(ctx){ return diagSttTransport(); }},
+  {section:"settings",order:6,label:'gpt-live発話確定',value:function(ctx){ return isLiveTranscribe() ? (segEnabled()?'逐次部分翻訳＋文脈・無音・文字停止でカード確定／TTS待ちとは独立':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）') : '(未使用)'; }},
+  {section:"settings",order:7,label:'共有音声STT経路',value:function(ctx){ return CFG.displaySttRoute+' → '+effectiveDisplaySttRoute(); }},
+  {section:"settings",order:8,label:'共有Track直接Web Speech候補',value:function(ctx){ return overlayCapabilities().speechTrackInput; }},
+  {section:"settings",order:9,label:'通常マイク入力',value:function(ctx){ return CFG.micDevLbl || (CFG.micDev ? '(名称不明)' : '既定'); }},
+  {section:"settings",order:10,label:'VB-CABLE入力',value:function(ctx){ return CFG.vbDevLbl || (CFG.vbDev ? '(名称不明)' : '(未選択)'); }},
+  {section:"settings",order:11,label:'TTS自己認識防止',value:function(ctx){ return CFG.preventSelfRecognition ? 'ON' : 'OFF'; }},
+  {section:"settings",order:12,label:'リアルタイム翻訳方向',value:function(ctx){ return ctx.rtNativeAudio ? realtimeDirectionLabel(CFG.rtDirection) : '(未使用)'; }},
+  {section:"settings",order:13,label:'読み上げ',value:function(ctx){ return ctx.rtNativeAudio ? 'gpt-realtime-translate 内蔵音声（自動再生）' : CFG.ttsMode; }},
+  {section:"settings",order:14,label:'読み上げモデル',value:function(ctx){ return ctx.rtNativeAudio ? 'gpt-realtime-translate' : ttsProv().diagModel(); }},
+  {section:"settings",order:15,label:'Realtime音量',value:function(ctx){ return ctx.rtNativeAudio ? realtimeVolume(CFG.rtVolume)+'% / '+realtimeOutputLabel() : '(未使用)'; }},
+  {section:"settings",order:16,label:'Realtime話し方調整',value:function(ctx){ return ctx.rtNativeAudio ? '抑揚・声の高さ・話速・声指定：公開APIに設定なし' : '(未使用)'; }},
+  {section:"settings",order:17,label:'Realtimeカード区切り',value:function(ctx){ return ctx.rtNativeAudio ? realtimeCardSeconds(CFG.rtCardSeconds)+'秒（開始時に適用） / 3秒の受信停止で確定 / 時間帯に遅延追記' : '(未使用)'; }},
+  {section:"settings",order:18,label:'読み上げ対象',value:function(ctx){ return ctx.rtNativeAudio ? '訳す方向に従う' : CFG.ttsWho; }},
+  {section:"settings",order:19,label:'声 A / B',value:function(ctx){ return ctx.rtNativeAudio ? '(外部TTS設定は未使用)' : ttsSeatVoices(); }},
+  {section:"settings",order:20,label:'認識文字表示',value:function(ctx){ return 'STT受信ごとにカードへ反映／確定・翻訳・TTSは独立したタイマーで進行'; }},
+  {section:"settings",order:21,label:'逐次エコー除外',value:function(ctx){ return '部分単位の自動音声のみ抑制（認識文字表示は維持）'; }},
+  {section:"settings",order:22,label:'Aivis送信制御',value:function(ctx){ return '全合成経路で直近60秒10回（境界余裕0.1秒）・固定間隔なし／429はサーバー指定待機・再試行2回／同声・同言語・同一音声設定を最大500文字でまとめる'; }},
+  {section:"settings",order:23,label:'翻訳の区切り',value:function(ctx){ return segSemanticEnabled()?'文末優先（言語別ルール・文字数上限・最大3秒の文字停止待ち）':'速度優先（従来）'; }},
+  {section:"settings",order:24,label:'翻訳の文脈',value:function(ctx){ return '対象より前の原文のみ／現在カードの全文と未来の発話は含めない'; }},
+  {section:"settings",order:25,label:'自動適応',value:function(ctx){ return CFG.segmentMode==='adaptive'?segAdaptiveLabel():'OFF（固定モード）'; }},
+  {section:"settings",order:26,label:'再生操作',value:function(ctx){ return 'カード全体・部分ごとの原文／訳文再生・部分再翻訳／古い訳の手動再生を防止／一括合成は範囲を強調'; }},
+  {section:"settings",order:27,label:'再生順序',value:function(ctx){ return 'カード受付順＋部分seq／送信本文・結合した部分IDをdispatchに記録'; }},
+  {section:"settings",order:28,label:'TTS逐次読み上げ',value:function(ctx){ return CFG.segmentMode+' / 重なり '+CFG.segmentOverlap; }},
+  {section:"settings",order:29,label:'逐次確定・訂正',value:function(ctx){ return SEG.committed+' / '+SEG.corrected+'（訂正率 '+(SEG.committed?(100*SEG.corrected/SEG.committed).toFixed(1):'0')+'%）'; }},
+  {section:"settings",order:30,label:'逐次TTS待ち音声',value:function(ctx){ return segDebt().toFixed(1)+'秒（文字数による推定）'; }},
+  {section:"settings",order:31,label:'逐次計測の定義',value:function(ctx){ return 'L1=最初の認識文字から、L2=commitからの代理値。音響的な意味単位終了時刻は未計測。'; }},
+  {section:"settings",order:32,label:'TTSストリーミング',value:function(ctx){ return ctx.rtNativeAudio ? '(外部TTS設定は未使用)' : ttsStreamCapability(CFG.ttsMode).text; }},
+  {section:"settings",order:49,label:'原文読み上げ',value:function(ctx){ return ctx.rtNativeAudio ? '(外部TTS設定は未使用)' : (CFG.ttsSrc ? 'ON' : 'OFF'); }},
+  {section:"settings",order:50,label:'鳴り始めの無音',value:function(ctx){ return ctx.rtNativeAudio ? '(外部TTS設定は未使用)' : (CFG.ttsPad + ' ms'); }},
+  {section:"settings",order:51,label:'読み上げ待ち上限',value:function(ctx){ return ctx.rtNativeAudio ? '(外部TTS設定は未使用)' : ttsQueueWaitLabel(); }},
+  {section:"settings",order:52,label:'再生経路',value:function(ctx){ return ctx.rtNativeAudio ? 'WebRTCリモート音声 → '+realtimeOutputLabel() : (waMode ? 'Web Audio（開きっぱなし）' : '<audio>'); }},
+  {section:"settings",order:53,label:'出力先の指定を守れるか',value:function(ctx){ return ctx.rtNativeAudio ? '(外部TTSの出力先設定は未使用)' : (!(CFG.outDevLocal||CFG.outDevRemote) ? '(既定なので指定なし)'
       : (ttsCtx ? (ttsCtxCanRoute(ttsCtx,'A')&&ttsCtxCanRoute(ttsCtx,'B') ? 'Web Audio でも守れる' : '一部を<audio>に回す')
-                : '(再生経路が未使用のため不明)'))],
-   ['再生経路の状態', rtNativeAudio ? (S.running?realtimeConnectionLabel():'(停止中)') : (ttsCtx ? (ttsCtx.state + ' / ' + ttsCtx.sampleRate + 'Hz') : '(未使用)')],
-   ['読み上げの設定不足', rtNativeAudio ? 'なし（モデル内蔵音声）' : (ttsSetupMissing() || 'なし')],
-   ['ローカルエンジンURL', !rtNativeAudio && CFG.ttsMode === 'localvv' ? CFG.lvvBase : '(未使用)'],
-   ['読み上げ出力 自分向け(B→A)', rtNativeAudio ? 'ブラウザの既定出力（WebRTC）' : (OUT_SUPPORTED ? (CFG.outDevLocalLbl || (CFG.outDevLocal ? '(名称不明)' : '既定')) : '(このブラウザは非対応)')],
-   ['読み上げ出力 相手向け(A→B)', rtNativeAudio ? 'ブラウザの既定出力（WebRTC）' : (OUT_SUPPORTED ? (CFG.outDevRemoteLbl || (CFG.outDevRemote ? '(名称不明)' : '既定')) : '(このブラウザは非対応)')],
-   ['TTS自己認識リスク', ttsLoopRisk('A') ? 'あり（同じ仮想経路）' : '検出なし'],
-   ['言語A / B', CFG.langA + ' / ' + CFG.langB],
-   ['入力元A / B', CFG.srcA + ' / ' + CFG.srcB],
-   ['言語切替', S.autoMode ? 'AUTO' : '手動'], ['認識中の席', S.listenSeat],
-   ['Prosody解析', CFG.prosodyOn ? 'ON（実験）' : 'OFF'],
-   ['Prosody音声判定', CFG.prosodyOn ? 'ノイズ床から自動（STT用VADとは分離）' : '(未使用)'],
-   ['Prosody取得状態', CFG.prosodyOn
+                : '(再生経路が未使用のため不明)')); }},
+  {section:"settings",order:54,label:'再生経路の状態',value:function(ctx){ return ctx.rtNativeAudio ? (S.running?realtimeConnectionLabel():'(停止中)') : (ttsCtx ? (ttsCtx.state + ' / ' + ttsCtx.sampleRate + 'Hz') : '(未使用)'); }},
+  {section:"settings",order:55,label:'読み上げの設定不足',value:function(ctx){ return ctx.rtNativeAudio ? 'なし（モデル内蔵音声）' : (ttsSetupMissing() || 'なし'); }},
+  {section:"settings",order:57,label:'読み上げ出力 自分向け(B→A)',value:function(ctx){ return ctx.rtNativeAudio ? 'ブラウザの既定出力（WebRTC）' : (OUT_SUPPORTED ? (CFG.outDevLocalLbl || (CFG.outDevLocal ? '(名称不明)' : '既定')) : '(このブラウザは非対応)'); }},
+  {section:"settings",order:58,label:'読み上げ出力 相手向け(A→B)',value:function(ctx){ return ctx.rtNativeAudio ? 'ブラウザの既定出力（WebRTC）' : (OUT_SUPPORTED ? (CFG.outDevRemoteLbl || (CFG.outDevRemote ? '(名称不明)' : '既定')) : '(このブラウザは非対応)'); }},
+  {section:"settings",order:59,label:'TTS自己認識リスク',value:function(ctx){ return ttsLoopRisk('A') ? 'あり（同じ仮想経路）' : '検出なし'; }},
+  {section:"settings",order:60,label:'言語A / B',value:function(ctx){ return CFG.langA + ' / ' + CFG.langB; }},
+  {section:"settings",order:61,label:'入力元A / B',value:function(ctx){ return CFG.srcA + ' / ' + CFG.srcB; }},
+  {section:"settings",order:62,label:'言語切替',value:function(ctx){ return S.autoMode ? 'AUTO' : '手動'; }},
+  {section:"settings",order:63,label:'認識中の席',value:function(ctx){ return S.listenSeat; }},
+  {section:"settings",order:64,label:'Prosody解析',value:function(ctx){ return CFG.prosodyOn ? 'ON（実験）' : 'OFF'; }},
+  {section:"settings",order:65,label:'Prosody音声判定',value:function(ctx){ return CFG.prosodyOn ? 'ノイズ床から自動（STT用VADとは分離）' : '(未使用)'; }},
+  {section:"settings",order:66,label:'Prosody取得状態',value:function(ctx){ return CFG.prosodyOn
       ? ('Pitch='+(PROSODY_CAPS.pitch?'可':'未検出')+' / Energy='+(PROSODY_CAPS.energy?'可':'未検出')+' / Timing='+(PROSODY_CAPS.timing?'可':'未検出'))
-      : '(未使用)'],
-   ['Prosody TTS反映', !CFG.prosodyOn ? 'OFF'
-      : rtNativeAudio ? '解析のみ（モデル内蔵音声へは未反映）'
-      : CFG.ttsMode==='browser' ? 'ブラウザ標準：設定値を基準に速度・声高・音量を相対補正'
-      : CFG.ttsMode==='openai' ? 'OpenAI：速度（API speed）＋感情・抑揚・緩急・間（instructions）＋音量（Web Audio）'
-      : CFG.ttsMode==='eleven' ? 'ElevenLabs：速度（API＋ピッチ保持再生）＋感情幅・抑揚・緩急（voice_settings）＋間（SSML）＋音量（Web Audio）'
-      : CFG.ttsMode==='xai' ? 'xAI：速度（API speed）＋感情・抑揚・緩急・間（音声タグ）＋音量（Web Audio）'
-      : CFG.ttsMode==='aivis' ? 'Aivis：速度・緩急・音量'
-      : CFG.ttsMode==='voicevox' ? 'VOICEVOX：速度（声高・抑揚は解析のみ）'
-      : '解析のみ（現在のTTSは未対応）'],
-   ['エコー除外', CFG.echoGuard ? 'ON' : 'OFF'],
-   ['翻訳スタイル', translationDisabled()?'(未使用)':CFG.tone], ['VADしきい値', CFG.vad],
-   ['表示', CFG.focus + (CFG.swap?' / 入替':'') + (CFG.flipTop?' / 反転':'')],
-   ['画面取込オーバーレイ', overlaySession.opened
+      : '(未使用)'; }},
+  {section:"settings",order:67,label:'Prosody TTS反映',value:function(ctx){ return !CFG.prosodyOn?'OFF':ctx.rtNativeAudio?'解析のみ（モデル内蔵音声へは未反映）':ttsProv().prosody.note; }},
+  {section:"settings",order:68,label:'エコー除外',value:function(ctx){ return CFG.echoGuard ? 'ON' : 'OFF'; }},
+  {section:"settings",order:69,label:'翻訳スタイル',value:function(ctx){ return translationDisabled()?'(未使用)':CFG.tone; }},
+  {section:"settings",order:70,label:'VADしきい値',value:function(ctx){ return CFG.vad; }},
+  {section:"settings",order:71,label:'表示',value:function(ctx){ return CFG.focus + (CFG.swap?' / 入替':'') + (CFG.flipTop?' / 反転':''); }},
+  {section:"settings",order:72,label:'画面取込オーバーレイ',value:function(ctx){ return overlaySession.opened
       ? (overlaySession.state+' / '+(overlaySession.sourceInfo ? (overlaySession.sourceInfo.surface+' / '+(overlaySession.sourceInfo.audio===true?'映像＋音声':(overlaySession.sourceInfo.audioTrack?'映像のみ（音声Trackあり・信号未検出）':'映像のみ'))+
           (overlaySession.sourceInfo.audioRequested?' / 要求='+overlaySession.sourceInfo.audioRequested:'')+
           (overlaySession.sourceInfo.width&&overlaySession.sourceInfo.height?' / '+overlaySession.sourceInfo.width+'×'+overlaySession.sourceInfo.height:'')+
           (overlaySession.sourceInfo.frameRate?' / '+Math.round(overlaySession.sourceInfo.frameRate)+'fps':'')) : '共有元なし'))
-      : '閉じています'],
-   ['画面取込解像度', overlayResolutionProfile(CFG.ovCapResolution).label+'（取込時の希望上限）'],
-   ['字幕小窓', captionPip&&captionPip.win&&!captionPip.win.closed?'表示中（HTML本体で認識）':('documentPictureInPicture' in window?'閉じています':'このブラウザでは非対応')],
-   ['画面取込音声', overlayAudioProfile(CFG.ovCapAudio).label+' / systemAudio='+overlayAudioProfile(CFG.ovCapAudio).systemAudio+' / windowAudio='+overlayAudioProfile(CFG.ovCapAudio).windowAudio],
-   ['オーバーレイ操作', OverlayStage.mode+' / '+OverlayStage.view+' / '+Math.round(OverlayStage.zoom*100)+'% / 注釈'+OverlayStage.annotations.length+'件 / 元タブ操作='+(overlaySession.forwardWheelOn?'ON':'OFF')],
-   ['オーバーレイ音声境界', OverlayAudioRoutes.sttInput().kind+' / TTS sink分離='+
-      (OverlayAudioRoutes.ttsOutput('A').split?'ON':'Phase 2')],
-   ['オーバーレイ字幕設定', CFG.ovCapLayout+' / '+Math.round(overlayNum(currentCaptureRailWidth(),28,12,96)*10)/10+'%×'+Math.round(overlayNum(currentCaptureRailHeight(),55,12,88)*10)/10+'vh / '+CFG.ovCapItems+'件 / '+(CFG.ovCapHold==='0'?'保持':'保持'+CFG.ovCapHold+'秒')+' / 文字'+CFG.ovCapFont+'px / 行間'+CFG.ovCapLine],
-   ['用語集', (CFG.glossary||[]).length + ' 件'],
-   ['コンテキスト', (CFG.ctx||'').length + ' 文字'],
-   ['APIキーのブラウザ保存', '翻訳='+(CFG.rememberTrans?'ON':'OFF')+' / STT='+(CFG.rememberStt?'ON':'OFF')+' / TTS='+(CFG.rememberTts?'ON':'OFF')]
-  ].forEach(function(r){ out.push('| ' + cell(r[0]) + ' | ' + cell(r[1]) + ' |'); });
+      : '閉じています'; }},
+  {section:"settings",order:73,label:'画面取込解像度',value:function(ctx){ return overlayResolutionProfile(CFG.ovCapResolution).label+'（取込時の希望上限）'; }},
+  {section:"settings",order:74,label:'字幕小窓',value:function(ctx){ return captionPip&&captionPip.win&&!captionPip.win.closed?'表示中（HTML本体で認識）':('documentPictureInPicture' in window?'閉じています':'このブラウザでは非対応'); }},
+  {section:"settings",order:75,label:'画面取込音声',value:function(ctx){ return overlayAudioProfile(CFG.ovCapAudio).label+' / systemAudio='+overlayAudioProfile(CFG.ovCapAudio).systemAudio+' / windowAudio='+overlayAudioProfile(CFG.ovCapAudio).windowAudio; }},
+  {section:"settings",order:76,label:'オーバーレイ操作',value:function(ctx){ return OverlayStage.mode+' / '+OverlayStage.view+' / '+Math.round(OverlayStage.zoom*100)+'% / 注釈'+OverlayStage.annotations.length+'件 / 元タブ操作='+(overlaySession.forwardWheelOn?'ON':'OFF'); }},
+  {section:"settings",order:77,label:'オーバーレイ音声境界',value:function(ctx){ return OverlayAudioRoutes.sttInput().kind+' / TTS sink分離='+
+      (OverlayAudioRoutes.ttsOutput('A').split?'ON':'Phase 2'); }},
+  {section:"settings",order:78,label:'オーバーレイ字幕設定',value:function(ctx){ return CFG.ovCapLayout+' / '+Math.round(overlayNum(currentCaptureRailWidth(),28,12,96)*10)/10+'%×'+Math.round(overlayNum(currentCaptureRailHeight(),55,12,88)*10)/10+'vh / '+CFG.ovCapItems+'件 / '+(CFG.ovCapHold==='0'?'保持':'保持'+CFG.ovCapHold+'秒')+' / 文字'+CFG.ovCapFont+'px / 行間'+CFG.ovCapLine; }},
+  {section:"settings",order:79,label:'用語集',value:function(ctx){ return (CFG.glossary||[]).length + ' 件'; }},
+  {section:"settings",order:80,label:'コンテキスト',value:function(ctx){ return (CFG.ctx||'').length + ' 文字'; }},
+  {section:"settings",order:81,label:'APIキーのブラウザ保存',value:function(ctx){ return '翻訳='+(CFG.rememberTrans?'ON':'OFF')+' / STT='+(CFG.rememberStt?'ON':'OFF')+' / TTS='+(CFG.rememberTts?'ON':'OFF'); }}
+];
+function diagnosticRows(section,ctx){
+  var rows=DIAG_ROWS.slice();
+  Object.keys(TTS_PROVIDERS).forEach(function(mode){
+    (TTS_PROVIDERS[mode].diagRows||[]).forEach(function(row){
+      rows.push(Object.assign({provider:mode},row));
+    });
+  });
+  return rows.filter(function(r){return r.section===section&&(!r.when||r.when(ctx));})
+    .sort(function(a,b){return (a.order==null?999:a.order)-(b.order==null?999:b.order);})
+    .map(function(r){
+      var active=!r.provider||(!ctx.rtNativeAudio&&TTS_PROVIDERS[r.provider]===ttsProv());
+      return [r.label,active?r.value(ctx):(r.inactive||'(未使用)')];
+    });
+}
+
+function diagText(devices){
+  var out = [], now = new Date();
+  var pad = function(s,n){ s=String(s); while(s.length<n) s+=' '; return s; };
+  var lpad = function(s,n){ s=String(s); while(s.length<n) s=' '+s; return s; };   // 時刻は右寄せで桁を揃える
+  var cell = function(v){ return String(v==null?'':v).replace(/\|/g,'\\|').replace(/\n/g,' '); };
+
+  out.push('# Duo Interpreter 診断ログ', '');
+  out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
+  out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
+  out.push('- 生成日時: ' + now.toLocaleString());
+  out.push('- バージョン: Duo Interpreter '+APP_VERSION);
+  out.push('- ビルドID: ' + APP_BUILD);
+  out.push('- 記録時間: ' + ((Date.now()-DLOG_T0)/1000).toFixed(1) + ' 秒（ページを開いてから）');
+  out.push('- 記録件数: ' + DLOG.length + (DLOG.length>=DLOG_MAX ? '（上限に達したため古い分は破棄されています）' : ''), '');
+
+  var isPWA = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+  var diagContext={isPWA:isPWA,rtNativeAudio:CFG.sttProvider==='realtime'};
+  out.push('## 環境', '', '| 項目 | 値 |', '|---|---|');
+  diagnosticRows('environment',diagContext).forEach(function(r){ out.push('| ' + cell(r[0]) + ' | ' + cell(r[1]) + ' |'); });
+  out.push('');
+
+  out.push('## 設定', '', '| 項目 | 値 |', '|---|---|');
+
+  diagnosticRows('settings',diagContext).forEach(function(r){ out.push('| ' + cell(r[0]) + ' | ' + cell(r[1]) + ' |'); });
   var ks = Object.keys(KEYS||{}).filter(function(k){ return String(KEYS[k]||'').trim(); });
   out.push('| APIキー設定済み | ' + (ks.length ? cell(ks.join(', ')) : 'なし') + ' |');
   out.push('| Base URL | ' + cell(CFG.baseUrl ? redact(CFG.baseUrl) : '(未設定)') + ' |', '');
@@ -12026,7 +12046,8 @@ window.addEventListener('beforeunload', function(){ if (S.running) stopAll(); ca
 
 /* 初期化 */
 syncBuildBadges();
-/* Duo Segment pipeline v1.44.13 / Phase 4B minutes linkage.
+INITIAL_FEED_EMPTY=document.querySelector('#feedA .empty').cloneNode(true);
+/* Duo Segment pipeline / minutes linkage.
  * Provider-neutral commit logic; adapters keep the existing output routing.
  * TTS requests are dispatched serially, translations run at most two at a time.
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
@@ -12318,7 +12339,7 @@ function segRefreshTranslations(){
   });
   dlog('segment','translation-settings-changed',{provider:CFG.provider,model:CFG.model||''});segWake();
 }
-function segAudioAllowed(e){return CFG.ttsMode!=='off' && !(CFG.ttsWho==='B2A'&&e.seat!=='B') && !(CFG.ttsWho==='A2B'&&e.seat!=='A') &&
+function segAudioAllowed(e){return ttsProv().enabled && !(CFG.ttsWho==='B2A'&&e.seat!=='B') && !(CFG.ttsWho==='A2B'&&e.seat!=='A') &&
   !(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat));}
 function segQueueCompare(a,b){
   if(a.manual||b.manual)return a.manual&&b.manual?a.segment.seq-b.segment.seq:(a.manual?-1:1);
@@ -12364,7 +12385,7 @@ function segPump(){
     if(overlap==='avoid'&&!e.segment.final&&(silence===null||silence<segPolicyFor(e,segDebt()).silence)){segTtsWait(j,'input-silence');return;}
     var useSource=j.manual||CFG.ttsSrc,lang=useSource?e.srcLang:e.dstLang;
     var group=[j],source=s.sourceText,target=s.translationText||'';
-    if(CFG.ttsMode==='aivis'&&lang==='ja'){
+    if(ttsProv().segmentJapaneseBatch&&lang==='ja'){
       var rateWait=aivisRateWait();
       if(rateWait>0){segTtsWait(j,AIVIS_RATE.blockedUntil>Date.now()?'aivis-server-limit':'aivis-window-limit',
         {waitMs:rateWait,count60s:AIVIS_RATE.sent.length,limit:10});return;}
@@ -12391,7 +12412,7 @@ function segPump(){
       source=group.map(function(q){return q.segment.sourceText;}).join('');
       target=group.map(function(q){return q.segment.translationText||'';}).filter(Boolean).join(' ');
     }
-    var rate=e.segment.mode==='adaptive'&&CFG.ttsMode==='aivis'&&lang==='ja'?segAdaptiveState(e,segDebt()).rate:1;
+    var rate=e.segment.mode==='adaptive'&&ttsProv().segmentJapaneseBatch&&lang==='ja'?segAdaptiveState(e,segDebt()).rate:1;
     segTtsResume(j);
     j.group=group;
     j.dispatchOrder=++SEG.dispatchOrder;
@@ -12407,9 +12428,8 @@ function segPump(){
     try{
       if(j.manual){
         if(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat)){j.finished=true;s.audio.error='loop-prevention';return;}
-        var mode=CFG.ttsMode,fn=mode==='openai'?apiSpeak:mode==='voicevox'?vvSpeak:mode==='aivis'?aivisSpeak:mode==='eleven'?elSpeak:mode==='xai'?xaiSpeak:mode==='localvv'?lvvSpeak:null;
         withTtsSayKey(j.sayKey||e.id+':'+j.viewer,function(){
-          if(fn)fn(source,e.srcLang,e.seat,e.prosody);else browserSpeak(source,L(e.srcLang).tts,e.prosody);
+          ttsProv().speak(source,e.srcLang,e.seat,e.prosody);
         });
       }else speak(proxy);
     }catch(err){s.audio.error=String(err.message||err);j.finished=true;}finally{SEG.dispatchRate=1;}
@@ -12462,14 +12482,14 @@ function segTick(){
     if(!SEG.cards.length&&!SEG.queue.length&&!SEG.translations&&!SEG.retranslations.length){clearInterval(SEG.timer);SEG.timer=null;}
   }catch(err){
     dlog('segment','scheduler-error',{error:String(err.message||err)});
-    segCancelAll('scheduler-error');CFG.segmentMode='off';store.set('di.segmentMode','off');
+    segCancelAll('scheduler-error');CFG.segmentMode='off';persistSetting("segmentMode", 'off');
     var select=$('segmentMode');if(select)select.value='off';
     toast('逐次読み上げをOFFへ戻しました。診断ログを確認してください。');
   }
 }
 function segStatus(){var el=$('segmentStatus');if(!el)return;
   el.textContent='モード '+(CFG.segmentMode||'off')+' ／ 待ち音声 約'+segDebt().toFixed(1)+'秒（推定） ／ 確定 '+SEG.committed+'部分 ／ 確定後訂正 '+SEG.corrected+'/'+SEG.committed+' ／ '+SEG.lastReason+
-    segAdaptiveLabel()+(CFG.ttsMode==='aivis'?' ／ Aivis 10回/分 · '+(aivisRateWait()>0?'次の送信まで '+(aivisRateWait()/1000).toFixed(1)+'秒':'送信可能'):'');
+    segAdaptiveLabel()+(ttsProv().segmentStatus?ttsProv().segmentStatus():'');
 }
 function segCancelAudio(why){
   // Output settings must not invalidate source cards or in-flight translations.
@@ -12742,7 +12762,6 @@ function segRenderControls(el,e,viewer){
   });
   Array.prototype.slice.call(list.children).forEach(function(row){if(seen.indexOf(row.getAttribute('data-part-id'))<0)row.remove();});
 }
-
 
 /* Phase 4A: batch-aware playback indication.
  * A batched synthesis has no word alignment. Highlight its range, not fake per-word timing.
@@ -13030,16 +13049,16 @@ function iosSetup(){
       if (o.value === 'display'){ o.disabled = true; o.textContent = '🖥 タブ音声（iPhone非対応）'; }
     });
   });
-  if (CFG.srcA === 'display'){ CFG.srcA='mic'; store.set('di.sa','mic'); $('srcA').value='mic'; }
-  if (CFG.srcB === 'display'){ CFG.srcB='mic'; store.set('di.sb','mic'); $('srcB').value='mic'; }
+  if (CFG.srcA === 'display'){ CFG.srcA='mic'; persistSetting("srcA", 'mic'); $('srcA').value='mic'; }
+  if (CFG.srcB === 'display'){ CFG.srcB='mic'; persistSetting("srcB", 'mic'); $('srcB').value='mic'; }
   document.body.classList.add('ios-mic-only');   // バーの音声入力元セレクトを隠して省スペース化
 
   // 2) 内蔵音声認識が無い場合は API 側の認識に切り替える
   if (CFG.sttProvider === 'webspeech' && !SR){
     CFG.sttProvider = 'openai';
-    store.set('di.sttp','openai');
+    persistSetting("sttProvider", 'openai');
     CFG.sttModel = defaultSttModel('openai');
-    store.set('di.sttm', CFG.sttModel);
+    persistSetting("sttModel", CFG.sttModel);
     refreshProviderUI();
   }
 
