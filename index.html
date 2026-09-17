@@ -80,6 +80,8 @@
   .feed::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
   /* 画面外カードの描画だけを遅延する。会話データは削除せず、議事録・DLに全件残す。 */
   .feed .bubble{content-visibility:auto;contain-intrinsic-size:0 120px}
+  .feed{overflow-anchor:none}
+  .feed .bubble.interim{content-visibility:visible}
   .bubble{border-radius:14px;padding:9px 15px;background:var(--panel-2);border-left:4px solid var(--line);animation:pop .16s ease-out}
   @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   .bubble.from-A{border-left-color:var(--a)}
@@ -2222,15 +2224,52 @@ function addEntry(seat, text, interim){
 function removeEntry(e){
   if(!e)return;segRemove(e);
   var n = document.querySelectorAll('[data-eid="'+e.id+'"]');
-  for (var i=0;i<n.length;i++) n[i].remove();
+  for (var i=0;i<n.length;i++){
+    var parent=n[i].parentNode,follow=parent&&parent._liveFollow;
+    if(follow&&follow.observer)follow.observer.unobserve(n[i]);
+    n[i].remove();
+    if(follow)follow.schedule();
+  }
   S.entries = S.entries.filter(function(x){ return x.id !== e.id; });
   renderOverlayRail();
 }
 function render(e){ clearEmpty(); paint('feedA', e, 'A'); paint('feedB', e, 'B'); renderOverlayRail(); }
 
+/* Keep following growing live cards until the reader scrolls upward.
+   Height changes alone must never cancel follow mode. */
+function feedFollowState(feed){
+  if(feed._liveFollow)return feed._liveFollow;
+  var state={following:feed.scrollHeight-feed.scrollTop-feed.clientHeight<48,
+    top:feed.scrollTop,frame:0,observer:null};
+  feed._liveFollow=state;
+  state.pin=function(){
+    if(!state.following||!feed.clientHeight)return;
+    feed.scrollTop=feed.scrollHeight;
+    state.top=feed.scrollTop;
+  };
+  state.schedule=function(){
+    if(state.frame)return;
+    state.frame=requestAnimationFrame(function(){state.frame=0;state.pin();});
+  };
+  feed.addEventListener('wheel',function(ev){
+    if(ev.deltaY<0)state.following=false;
+  },{passive:true});
+  feed.addEventListener('scroll',function(){
+    var top=feed.scrollTop;
+    if(top<state.top-1)state.following=false;
+    else if(feed.scrollHeight-top-feed.clientHeight<48)state.following=true;
+    state.top=top;
+  },{passive:true});
+  if(typeof ResizeObserver==='function'){
+    state.observer=new ResizeObserver(state.schedule);
+    state.observer.observe(feed);
+  }
+  return state;
+}
+
 function paint(feedId, e, viewer){
   var feed = $(feedId);
-  var follow=feed.scrollHeight-feed.scrollTop-(feed.clientHeight||0)<48;
+  var followState=feedFollowState(feed);
   var el = feed.querySelector('[data-eid="'+e.id+'"]');
   if (!el){
     el = document.createElement('div');
@@ -2285,7 +2324,9 @@ function paint(feedId, e, viewer){
   if(CFG.showSrc)segPaintText(s,e,!noTranslation&&!isSelf,sub);else s.textContent='';
   s.style.display = (CFG.showSrc && sub) ? '' : 'none';
   segRenderControls(el,e,viewer);
-  if(follow)feed.scrollTop = feed.scrollHeight;
+  if(followState.observer)followState.observer.observe(el);
+  followState.pin();
+  followState.schedule();
 }
 
 /* =========================================================================
