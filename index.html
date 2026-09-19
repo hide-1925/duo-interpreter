@@ -725,6 +725,27 @@
 .segment-part-actions button[hidden]{display:none}
 .segment-part-actions button:hover:enabled{border-color:var(--a)}
 
+
+
+#bar #mic,#bar #duoPreset{box-sizing:border-box;flex:0 0 76px;width:76px;min-width:76px;max-width:76px;height:48px;min-height:48px;padding:4px 8px;font-size:12px}
+#duoPresetWrap{position:relative;flex:0 0 76px;width:76px;height:48px}
+#bar #duoPreset{position:relative;padding-right:17px;white-space:normal;line-height:16px}
+#duoPreset>span{white-space:pre}#duoPreset>b{position:absolute;right:5px;top:15px;font-size:10px}
+#bar #listenBtn{flex:0 0 118px;width:118px;min-width:118px;max-width:118px}#bar #modeBtn{flex:0 0 54px;width:54px;min-width:54px;max-width:54px}
+#duoPresetMenu{position:absolute;bottom:54px;left:0;z-index:120;width:165px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:5px;box-shadow:0 6px 24px #0008}
+#duoPresetMenu button{display:block;width:100%;padding:10px;text-align:left;background:transparent;color:var(--txt);border:0;cursor:pointer}
+#duoPresetMenu button:hover,#duoPresetMenu button:focus-visible{background:var(--panel-2)}
+#bar #srcA,#bar #srcB{display:none!important}
+.duo-disclosure{position:relative;display:flex;align-items:center;gap:5px;flex:none}
+.duo-detail-controls{position:absolute;right:0;bottom:calc(100% + 5px);display:flex;gap:5px;padding:9px;z-index:110;border:1px solid var(--line);border-radius:9px;background:var(--panel);box-shadow:0 5px 22px #0008;max-width:calc(100vw - 16px);flex-wrap:wrap;width:max-content}
+.duo-detail-controls::after{content:'';position:absolute;top:100%;left:0;right:0;height:10px}
+.duo-detail-controls[hidden],#duoPresetMenu[hidden]{display:none!important}
+.side-head .duo-detail-controls{top:calc(100% + 5px);bottom:auto}
+.duo-favorite-row{display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid var(--line)}
+.duo-favorite-row label{flex:1;display:flex;align-items:center;gap:8px;min-width:0;overflow-wrap:anywhere}
+#duoFavoriteList{max-height:320px;overflow:auto}#duoEndpointInfo{max-height:230px;overflow:auto;font-size:11px;white-space:pre-wrap}
+@media(max-width:600px){.duo-detail-controls{width:min(390px,calc(100vw - 16px));right:0;bottom:calc(100% + 4px)}.side-head .duo-detail-controls{width:auto;left:auto;right:0;bottom:auto;top:100%;min-width:90px}#bar .seatctl{min-width:0;flex-shrink:1}#bar .seatctl select{max-width:88px}}
+
 </style>
 </head>
 <body>
@@ -895,15 +916,16 @@
 
 <div id="bar">
   <button class="cbtn" id="mic">● 開始</button>
+  <div id="duoPresetWrap"><button class="cbtn" id="duoPreset" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="duoPresetMenu"><span>1 on 1</span><b aria-hidden="true">▼</b></button><div id="duoPresetMenu" role="menu" hidden></div></div>
 
   <div class="seatctl a">
     <span class="tag">A</span>
-    <select id="srcA" title="Aの音声入力元"></select>
+    <select hidden aria-hidden="true" tabindex="-1" id="srcA" title="Aの音声入力元"></select>
     <select id="langA" title="Aの言語"></select>
   </div>
   <div class="seatctl b">
     <span class="tag">B</span>
-    <select id="srcB" title="Bの音声入力元"></select>
+    <select hidden aria-hidden="true" tabindex="-1" id="srcB" title="Bの音声入力元"></select>
     <select id="langB" title="Bの言語"></select>
   </div>
 
@@ -966,6 +988,7 @@
 
   <!-- ===== タブ1: 翻訳 ===== -->
   <div class="pane on" id="p1">
+    <details class="adv"><summary>音声入力の詳細（Session / Endpoint）</summary><label>ローカル参加者 <select id="duoLocalParticipant"><option value="p1">Participant 1（表示A）</option><option value="p2">Participant 2（表示B）</option></select></label><p>音声入力はPresetで設定します。Many to Manyの話者分離・参加者追加UIは今後の拡張です。</p><pre id="duoEndpointInfo"></pre></details>
     <div class="provider-stack">
     <div class="field" id="translationProviderField">
       <label>AIプロバイダ</label>
@@ -1118,7 +1141,7 @@
         ・翻訳プロバイダの設定（モデル・用語集・背景）は<b>使われません</b><br>
         ・料金は音声1分あたり $0.034 程度（従量課金）<br>
         ・音声認識用のAPIキー、またはOpenAIのAPIキーを使います<br>
-        ・A→Bは入力元A、B→Aは入力元Bを使います。タブ／システム音声を選ぶと、開始時に音声の共有画面が開きます
+        ・音声入力はPresetで設定します。Webでは開始時に会議音声の共有画面が開きます
       </div>
       <div class="field" id="rtCardsField" style="display:none" data-fold="off">
         <label for="rtCardSeconds">会話カードの区切り</label>
@@ -1145,7 +1168,7 @@
       <label>音声入力元の設定</label>
       <div class="note">
         <b>対面で使う</b>：A・B とも「マイク」。1本のマイクで両言語を交互に待ち受けます。<br><br>
-        <b>Zoom / Teams で使う</b>：A =「マイク」（自分）、B =「タブ／システム音声」（相手）。開始時に画面共有ダイアログが出るので、<b>会議のタブ（またはウィンドウ／画面全体）を選び「タブの音声も共有」を必ずON</b>にしてください。オーバーレイで既に取り込んでいる場合は、その音声Trackを再利用します。
+        <b>Zoom / Teams で使う</b>：「Web」プリセットを選びます。ローカルマイクと会議音声を自動設定します。開始時に画面共有ダイアログが出るので、<b>会議のタブ（またはウィンドウ／画面全体）を選び「タブの音声も共有」を必ずON</b>にしてください。オーバーレイで既に取り込んでいる場合は、その音声Trackを再利用します。
       </div>
       <div id="phase2AudioRoutes" data-fold="off">
         <div class="row" style="margin-top:6px">
@@ -1448,7 +1471,8 @@
           <input type="text" id="aivisNameB" class="mname" placeholder="キャラ名" autocomplete="off">
         </div></label>
       </div>
-      <button class="btn ghost" id="aivisShowAll" type="button">その他のキャラを表示</button>
+      <button class="btn ghost" id="aivisShowAll" type="button" aria-expanded="false">その他のキャラを表示</button>
+      <details class="adv" id="aivisFavorites"><summary>お気に入り・表示順を編集</summary><p>チェックしたキャラを最小表示します。↑ ↓で順番を変更できます。選択中のキャラも表示を維持します。</p><div id="duoFavoriteList"></div><div class="row wrap"><input id="duoFavoriteUuid" placeholder="登録したモデルのUUID"><input id="duoFavoriteName" placeholder="キャラ名"><button type="button" class="btn ghost" id="duoFavoriteAdd">お気に入りに追加</button></div></details>
       <div class="tts-stream-anchor"></div>
       <small id="uuidHelp">よく使うキャラは名前で選べます。「↗」でそのモデルの AivisHub ページを開けます。<br>
       「<b>その他のキャラを表示</b>」を押すと、同じプルダウンへ「にせ」以降の候補を追加します。
@@ -1715,8 +1739,209 @@
 /* =========================================================================
    Duo Interpreter — 多言語リアルタイム双方向通訳（単一HTML / ビルド不要）
    ========================================================================= */
-var APP_VERSION = 'v1.45.0 Phase 5';
-var APP_BUILD = '20260913-v1450-maintainability';
+/* DUO session model: the A/B view is only a configurable projection. */
+var DUO_PRESETS = {
+  one_to_one:{label:'1 on 1',lines:['1 on 1'],kind:'conversation'},
+  web:{label:'Web',lines:['Web'],kind:'conference'},
+  many_to_many:{label:'Many to Many',lines:['Many to','Many'],kind:'group'},
+  one_to_many:{label:'1 to Many',lines:['1 to','Many'],kind:'broadcast'}
+};
+function duoId(prefix){return prefix+'-'+crypto.randomUUID();}
+function duoSessionConfig(presetId){
+  var web=presetId==='web',broadcast=presetId==='one_to_many';
+  return {sessionId:duoId('session'),presetId:presetId,
+    participants:{p1:{participantId:'p1'},p2:{participantId:'p2'}},
+    endpoints:{'local-mic':{endpointId:'local-mic',type:'microphone',scope:'local',enabled:true},
+      'conference-audio':{endpointId:'conference-audio',type:'system-audio',scope:'remote',enabled:web},
+      'local-text':{endpointId:'local-text',type:'text',scope:'local',enabled:true}},
+    bindings:{p1:'local-mic',p2:broadcast?null:web?'conference-audio':'local-mic'},
+    textParticipantId:'p1',view:{A:'p1',B:'p2'},direction:broadcast?'one-way':'bidirectional',
+    conferenceAvailable:web,expandable:presetId==='many_to_many'};
+}
+var duoSession=null;
+var AudioEndpointManager={
+  forParticipant:function(id,session){session=session||duoSession;return session&&session.endpoints[session.bindings[id]]||null;},
+  forView:function(view){return this.forParticipant(duoSession.view[view]);},
+  legacySource:function(view){var ep=this.forView(view);return !ep||!ep.enabled?'off':ep.type==='system-audio'?'display':'mic';},
+  origin:function(view,typed){
+    var participantId=typed?duoSession.textParticipantId:duoSession.view[view];
+    var ep=typed?duoSession.endpoints['local-text']:this.forParticipant(participantId);
+    return Object.freeze({sessionId:duoSession.sessionId,presetId:duoSession.presetId,
+      sourceParticipantId:participantId,sourceEndpointId:ep&&ep.endpointId||null,
+      sourceScope:ep&&ep.enabled?ep.scope:'unknown',sttAdapter:typed?'text':CFG.sttProvider});
+  },
+  apply:function(){['A','B'].forEach(function(view){var source=AudioEndpointManager.legacySource(view);CFG['src'+view]=source;var el=$('src'+view);if(el)el.value=source;});}
+};
+var STT_ADAPTER_CAPABILITIES={
+  webspeech:{microphone:true,systemAudio:false,arbitraryTrack:false},
+  openai:{microphone:true,systemAudio:true,arbitraryTrack:true},
+  xai:{microphone:true,systemAudio:true,arbitraryTrack:true},
+  groq:{microphone:true,systemAudio:true,arbitraryTrack:true},
+  gemini:{microphone:true,systemAudio:true,arbitraryTrack:true},
+  realtime:{microphone:true,systemAudio:true,arbitraryTrack:true}
+};
+var AudioRoutingPolicy={resolve:function(job){
+  return {localMonitor:true,conferenceMic:!!(job&&job.sourceScope==='local'&&job.sourceParticipantId&&job.sourceEndpointId&&job.utteranceId&&job.sessionId)};
+}};
+var ConferenceMicBus={context:null,destination:null,gate:null,enabled:false,
+  ensure:function(ctx){
+    if(!this.destination){this.context=ctx;this.destination=ctx.createMediaStreamDestination();this.gate=ctx.createGain();this.gate.gain.value=0;this.gate.connect(this.destination);}
+    if(this.context!==ctx)throw Error('会議音声のAudioContextが一致しません');
+    return this.destination.stream;
+  },
+  setEnabled:function(on){this.enabled=!!on;if(this.gate)this.gate.gain.value=on?1:0;},
+  connect:function(node,job){
+    var route=AudioRoutingPolicy.resolve(job);if(route.conferenceMic){this.ensure(node.context);node.connect(this.gate);}
+    if(job)dlog('audio-route','resolve',Object.assign({},job,{route:route,webConferenceMicEnabled:this.enabled,conferenceMicTrackId:this.destination&&this.destination.stream.getAudioTracks()[0].id}));
+    return route;
+  }
+};
+var LocalMonitorBus={connect:function(node){node.connect(ttsGain);}};
+function duoTtsJob(key){
+  key=String(key||'');var id=key.split(':')[0],e=S.entries.find(function(x){return x.id===id;});
+  var useSource=key.split(':')[1]===(e&&e.seat);
+  return Object.freeze(Object.assign({jobId:duoId('tts'),utteranceId:e&&e.utteranceId||null,seat:e&&e.seat,
+    sourceLanguage:e&&e.srcLang||'',outputLanguage:e?(useSource?e.srcLang:e.dstLang):'',ttsType:useSource?'original':'translated'},e&&e.origin||{sourceScope:'unknown'}));
+}
+function duoRouteNode(node,job){LocalMonitorBus.connect(node);ConferenceMicBus.connect(node,job);}
+var duoMediaRoutes=new WeakMap();
+function duoRouteMedia(el,job){
+  var ctx=ttsAudioCtx();if(!ctx)return;
+  var route=duoMediaRoutes.get(el);
+  if(!route){route={source:ctx.createMediaElementSource(el),gate:ctx.createGain()};route.source.connect(route.gate);duoMediaRoutes.set(el,route);}
+  route.gate.disconnect();duoRouteNode(route.gate,job);ensureCtxSink(ctx,job&&job.seat);
+}
+function duoApplyPreset(id,initial){
+  if(!DUO_PRESETS[id])return;
+  if(!initial){if(S.running)stopAll();stopSpeaking('Preset変更');duoConferenceStop('preset-change');}
+  duoSession=duoSessionConfig(id);AudioEndpointManager.apply();store.set('di.preset',id);
+  if($('duoLocalParticipant'))$('duoLocalParticipant').value=duoSession.textParticipantId;
+  if(!initial)applyCfg();
+  var button=$('duoPreset');button.querySelector('span').textContent=DUO_PRESETS[id].lines.join('\n');
+  button.setAttribute('aria-label','Preset: '+DUO_PRESETS[id].label);duoRefreshEndpoints();
+  dlog('session','preset',{presetId:id,sessionId:duoSession.sessionId});
+}
+function duoRefreshEndpoints(){var el=$('duoEndpointInfo');if(el)el.textContent=JSON.stringify(duoSession,null,2);}
+function duoValidateInputs(){
+  AudioEndpointManager.apply();
+  var caps=STT_ADAPTER_CAPABILITIES[CFG.sttProvider]||STT_ADAPTER_CAPABILITIES.openai;
+  if(Object.values(duoSession.endpoints).some(function(ep){return ep.enabled&&ep.type==='system-audio';})&&!caps.systemAudio){
+    toast('Webプリセットの共有音声にはOpenAI / Groq / Geminiの音声認識を選んでください。Web Speechは通常のマイク入力で使用できます。');return false;
+  }
+  return true;
+}
+/* Local WebRTC transport carries only ConferenceMicBus; messaging carries SDP. */
+var duoConferencePeer=null,duoConferenceToken='',duoConferenceTimer=null;
+function duoConferenceSend(data){window.dispatchEvent(new CustomEvent('duo-conference-out',{detail:JSON.stringify(data)}));}
+function duoConferenceStop(reason){
+  ConferenceMicBus.setEnabled(false);clearTimeout(duoConferenceTimer);
+  var token=duoConferenceToken;duoConferenceToken='';
+  if(duoConferencePeer){duoConferencePeer.close();duoConferencePeer=null;}
+  if(token)duoConferenceSend({kind:'stopped',token:token,reason:reason||'stopped'});
+}
+async function duoConferenceCommand(data){
+  if(data.kind==='stop'){duoConferenceStop('extension-stop');return;}
+  if(data.kind==='answer'){
+    if(data.token!==duoConferenceToken||!duoConferencePeer)return;
+    await duoConferencePeer.setRemoteDescription(data.description);return;
+  }
+  if(data.kind!=='start')return;
+  duoConferenceStop('new-request');duoConferenceToken=data.token;
+  try{
+    if(!duoSession.conferenceAvailable)throw Error('HTML本体でWebプリセットを選んでください');
+    if(CFG.sttProvider==='realtime'||['off','browser'].indexOf(CFG.ttsMode)>=0)throw Error('会議送出にはAivis・OpenAI等の音声生成TTSを選んでください。ブラウザ内蔵音声とRealtime直結音声は送出できません');
+    var ctx=ttsAudioCtx();if(!ctx)throw Error('Web Audioに対応していません');await ctx.resume();
+    if(data.token!==duoConferenceToken)return;
+    if(ctx.state!=='running')throw Error('HTML本体を一度クリックして音声を許可してください');
+    var stream=ConferenceMicBus.ensure(ctx),pc=new RTCPeerConnection({iceServers:[]});duoConferencePeer=pc;
+    pc.addTrack(stream.getAudioTracks()[0],stream);
+    pc.onconnectionstatechange=function(){if(pc!==duoConferencePeer)return;
+      if(pc.connectionState==='connected'){clearTimeout(duoConferenceTimer);ConferenceMicBus.setEnabled(true);}
+      if(['failed','disconnected','closed'].indexOf(pc.connectionState)>=0)duoConferenceStop('transport-'+pc.connectionState);
+    };
+    duoConferenceTimer=setTimeout(function(){if(pc===duoConferencePeer)duoConferenceStop('connection-timeout');},15000);
+    await pc.setLocalDescription(await pc.createOffer());await duoIceComplete(pc);
+    if(pc===duoConferencePeer)duoConferenceSend({kind:'offer',token:data.token,description:pc.localDescription.toJSON()});
+  }catch(error){duoConferenceSend({kind:'error',token:data.token,error:String(error.message||error)});duoConferenceStop('error');}
+}
+function duoIceComplete(pc){return new Promise(function(resolve,reject){
+  if(pc.iceGatheringState==='complete'){resolve();return;}
+  var timer=setTimeout(function(){pc.removeEventListener('icegatheringstatechange',change);reject(Error('ICE収集がタイムアウトしました'));},8000);
+  function change(){if(pc.iceGatheringState==='complete'){clearTimeout(timer);pc.removeEventListener('icegatheringstatechange',change);resolve();}}
+  pc.addEventListener('icegatheringstatechange',change);
+});}
+window.addEventListener('duo-conference-in',function(event){try{var data=JSON.parse(event.detail);duoConferenceCommand(data).catch(function(){duoConferenceStop('command-error');});}catch(_){} });
+window.addEventListener('pagehide',function(){duoConferenceStop('pagehide');});
+
+function duoInstallDisclosure(anchor,items,id){
+  var host=document.createElement('div');host.className='duo-disclosure';anchor.parentNode.insertBefore(host,anchor);host.appendChild(anchor);
+  var trigger=document.createElement('button');trigger.type='button';trigger.className='cbtn duo-more';trigger.textContent='•••';trigger.setAttribute('aria-label','詳細操作');trigger.setAttribute('aria-expanded','false');trigger.setAttribute('aria-controls',id);host.appendChild(trigger);
+  var panel=document.createElement('div');panel.className='duo-detail-controls';panel.id=id;panel.hidden=true;host.appendChild(panel);items.forEach(function(el){panel.appendChild(el);});
+  var enter,leave,pinned=false;
+  function show(on){clearTimeout(enter);clearTimeout(leave);panel.hidden=!on;trigger.setAttribute('aria-expanded',String(on));host.classList.toggle('expanded',on);
+    panel.style.transform='';if(on&&id==='duoBarDetails'){var r=panel.getBoundingClientRect(),shift=r.left<8?8-r.left:r.right>innerWidth-8?innerWidth-8-r.right:0;if(shift)panel.style.transform='translateX('+shift+'px)';}
+  }
+  window.addEventListener('resize',function(){if(!panel.hidden)show(true);});
+  trigger.onclick=function(){pinned=!pinned;show(pinned);};
+  host.addEventListener('pointerenter',function(e){if(e.pointerType==='mouse'&&matchMedia('(any-hover:hover) and (any-pointer:fine)').matches){clearTimeout(leave);enter=setTimeout(function(){show(true);},130);}});
+  host.addEventListener('pointerleave',function(){clearTimeout(enter);if(!pinned)leave=setTimeout(function(){if(!host.contains(document.activeElement))show(false);},380);});
+  host.addEventListener('focusin',function(){show(true);});
+  host.addEventListener('focusout',function(){setTimeout(function(){if(!pinned&&!host.contains(document.activeElement)&&!host.matches(':hover'))show(false);},0);});
+  host.addEventListener('keydown',function(e){if(e.key==='Escape'){e.stopPropagation();pinned=false;trigger.focus();show(false);}});
+  document.addEventListener('pointerdown',function(e){if(!host.contains(e.target)){pinned=false;show(false);}});
+}
+function duoInstallUI(){
+  var menu=$('duoPresetMenu'),trigger=$('duoPreset');
+  Object.keys(DUO_PRESETS).forEach(function(id){var b=document.createElement('button');b.type='button';b.textContent=DUO_PRESETS[id].label;b.setAttribute('role','menuitem');b.onclick=function(){duoApplyPreset(id);menu.hidden=true;trigger.setAttribute('aria-expanded','false');trigger.focus();};menu.appendChild(b);});
+  trigger.onclick=function(){menu.hidden=!menu.hidden;trigger.setAttribute('aria-expanded',String(!menu.hidden));if(!menu.hidden)menu.firstChild.focus();};
+  document.addEventListener('pointerdown',function(e){if(!$('duoPresetWrap').contains(e.target)){menu.hidden=true;trigger.setAttribute('aria-expanded','false');}});
+  $('duoPresetWrap').addEventListener('keydown',function(e){if(e.key==='Escape'){menu.hidden=true;trigger.setAttribute('aria-expanded','false');trigger.focus();}if((e.key==='ArrowDown'||e.key==='ArrowUp')&&!menu.hidden){e.preventDefault();var list=Array.from(menu.children),i=list.indexOf(document.activeElement);list[(i+(e.key==='ArrowDown'?1:list.length-1))%list.length].focus();}});
+  var items=[],next=$('focusBtn').nextElementSibling;while(next){items.push(next);next=next.nextElementSibling;}duoInstallDisclosure($('focusBtn'),items,'duoBarDetails');
+  var swap=$('swapBtnB'),flip=$('flipBtnB');if(swap&&flip)duoInstallDisclosure(swap,[flip],'duoBDetails');
+  var savedPreset=store.get('di.preset','one_to_one');duoApplyPreset(DUO_PRESETS[savedPreset]?savedPreset:'one_to_one',true);
+  $('duoLocalParticipant').onchange=function(){if(S.running)stopAll();stopSpeaking('Endpoint変更');duoConferenceStop('endpoint-change');
+    var local=this.value,remote=local==='p1'?'p2':'p1';duoSession.bindings[local]='local-mic';duoSession.bindings[remote]=duoSession.presetId==='web'?'conference-audio':duoSession.presetId==='one_to_many'?null:'local-mic';duoSession.textParticipantId=local;AudioEndpointManager.apply();applyCfg();duoRefreshEndpoints();};
+  $('aivisFavorites').addEventListener('toggle',function(){if(this.open)duoRenderFavorites();});
+  ['ttsMode','sttProvider'].forEach(function(id){$(id).addEventListener('change',function(){if(CFG.sttProvider==='realtime'||['off','browser'].indexOf(CFG.ttsMode)>=0)duoConferenceStop('audio-provider-change');});});
+  $('duoFavoriteAdd').onclick=function(){var u=$('duoFavoriteUuid').value.trim(),n=$('duoFavoriteName').value.trim();
+    if(!/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(u)||!n){toast('モデルUUIDとキャラ名を入力してください');return;}
+    aivisNameSet(u,n);if(duoFavoriteIds.indexOf(u)<0)duoFavoriteIds.push(u);duoSaveFavorites();$('duoFavoriteUuid').value='';$('duoFavoriteName').value='';};
+}
+var duoFavoriteIds=null,duoFavoriteConfig=null;
+function duoLoadFavorites(){var raw=CFG.aivisFavorites||'null';if(duoFavoriteIds&&duoFavoriteConfig===raw)return;duoFavoriteConfig=raw;duoFavoriteIds=null;try{var value=JSON.parse(raw);if(Array.isArray(value))duoFavoriteIds=Array.from(new Set(value.filter(function(x){return typeof x==='string';})));}catch(_){}if(!duoFavoriteIds)duoFavoriteIds=AIVIS_MODELS.slice(0,AIVIS_PRIMARY_COUNT).map(function(x){return x.u;});}
+function duoAivisCatalog(){var list=AIVIS_MODELS.slice();Object.keys(AIVIS_NAMES).concat([CFG.aivisModel,CFG.aivisModelB]).forEach(function(u){if(u&&!list.some(function(x){return x.u===u;}))list.push({u:u,n:aivisNameOf(u)||u});});return list;}
+function duoAivisOptions(){duoLoadFavorites();var list=duoAivisCatalog();if(aivisAllShown)return list;var ids=duoFavoriteIds.slice();[CFG.aivisModel,CFG.aivisModelB].forEach(function(u){if(u&&ids.indexOf(u)<0)ids.push(u);});return ids.map(function(u){return list.find(function(x){return x.u===u;})||{u:u,n:aivisNameOf(u)||u};});}
+function duoSaveFavorites(){CFG.aivisFavorites=JSON.stringify(duoFavoriteIds);persistSetting('aivisFavorites',CFG.aivisFavorites);aivisSyncModel('A');aivisSyncModel('B');duoRenderFavorites();}
+function duoRenderFavorites(){
+  duoLoadFavorites();var list=$('duoFavoriteList');list.replaceChildren();var catalog=duoAivisCatalog();var ordered=duoFavoriteIds.map(function(u){return catalog.find(function(x){return x.u===u;})||{u:u,n:u};}).concat(catalog.filter(function(x){return duoFavoriteIds.indexOf(x.u)<0;}));
+  ordered.forEach(function(model){var row=document.createElement('div');row.className='duo-favorite-row';var label=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=duoFavoriteIds.indexOf(model.u)>=0;check.onchange=function(){if(check.checked)duoFavoriteIds.push(model.u);else duoFavoriteIds=duoFavoriteIds.filter(function(u){return u!==model.u;});duoSaveFavorites();};label.append(check,document.createTextNode(aivisNameOf(model.u)||model.n));row.appendChild(label);
+    [-1,1].forEach(function(delta){var b=document.createElement('button'),index=duoFavoriteIds.indexOf(model.u);b.type='button';b.className='btn ghost';b.textContent=delta<0?'↑':'↓';b.setAttribute('aria-label',(model.n||model.u)+(delta<0?'を上へ':'を下へ'));b.disabled=index<0||index+delta<0||index+delta>=duoFavoriteIds.length;b.onclick=function(){var other=duoFavoriteIds[index+delta];duoFavoriteIds[index+delta]=model.u;duoFavoriteIds[index]=other;duoSaveFavorites();};row.appendChild(b);});list.appendChild(row);
+  });
+}
+/* Each submission is processed by the same HTML text pipeline. Never overwrite a draft. */
+var duoTextRequestIds=new Map();
+function duoSubmitExternalText(text,mode,requestId){
+  text=String(text||'').trim();if(!text||text.length>12000)throw Error('1〜12000文字で入力してください');
+  if(requestId&&duoTextRequestIds.has(requestId))return duoTextRequestIds.get(requestId);
+  var task=duoSubmitText(text,mode||'auto');if(requestId){duoTextRequestIds.set(requestId,task);if(duoTextRequestIds.size>200)duoTextRequestIds.delete(duoTextRequestIds.keys().next().value);}return task;
+}
+function duoSubmitText(text,mode){
+  return (mode==='A'||mode==='B'?Promise.resolve(mode):txtDetectSeat(text,'auto')).then(function(seat){var e=addEntry(seat,text,false);e.typed=true;e.origin=AudioEndpointManager.origin(seat,true);speakSrcNow(e);return Promise.resolve(translate(e)).then(function(){return {ok:true,entryId:e.id};});});
+}
+function duoPipText(doc,header){
+  var button=doc.createElement('button');button.type='button';button.textContent='テキスト';button.setAttribute('aria-expanded','false');header.appendChild(button);
+  var form=doc.createElement('form');form.hidden=true;form.style.cssText='padding:6px;flex:none';
+  var select=doc.createElement('select');[['auto','話者 自動'],['A','A'],['B','B']].forEach(function(x){var o=doc.createElement('option');o.value=x[0];o.textContent=x[1];select.appendChild(o);});
+  var input=doc.createElement('textarea');input.rows=2;input.maxLength=12000;input.placeholder='テキストを入力';input.setAttribute('aria-label','翻訳するテキスト');input.style.cssText='width:100%;font:14px system-ui;resize:vertical';
+  var send=doc.createElement('button');send.textContent='送信';var status=doc.createElement('span');status.setAttribute('role','status');
+  form.append(select,input,send,status);header.after(form);
+  button.onclick=function(){form.hidden=!form.hidden;button.setAttribute('aria-expanded',String(!form.hidden));if(!form.hidden)input.focus();};
+  form.onsubmit=async function(e){e.preventDefault();if(send.disabled||!input.value.trim())return;send.disabled=true;var text=input.value;try{await duoSubmitExternalText(text,select.value,duoId('text'));if(input.value===text)input.value='';status.textContent='';}catch(err){status.textContent=String(err.message||err);}finally{send.disabled=false;}};
+  input.onkeydown=function(e){if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();form.requestSubmit();}if(e.key==='Escape'){form.hidden=true;button.setAttribute('aria-expanded','false');button.focus();}};
+}
+
+var APP_VERSION = 'v1.46.0';
+var APP_BUILD = '20260920-v1460-session-routing';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -1982,6 +2207,7 @@ var CONFIG_SCHEMA = [
   { prop:"vvRate", key:'di.vvrt', embed:'vvRate', def:'1', portable:true, el:"vvRate", bind:'custom', slider:{group:"voicevox",min:0.5,max:2,fmt:function(v){ return v.toFixed(2)+'×'; }} },
   { prop:"vvPitch", key:'di.vvpt', embed:'vvPitch', def:'0', portable:true, el:"vvPitch", bind:'custom', slider:{group:"voicevox",min:-0.15,max:0.15,fmt:function(v){ return (v>0?'+':'')+v.toFixed(2); }} },
   { prop:"vvIntonation", key:'di.vvin', embed:'vvIntonation', def:'1', portable:true, el:"vvIntonation", bind:'custom', slider:{group:"voicevox",min:0,max:2,fmt:function(v){ return v.toFixed(2); }} },
+  { prop:"aivisFavorites", key:"di.aivisFavorites", embed:"aivisFavorites", def:"null", portable:true },
   { prop:"aivisModel", key:'di.aim', embed:'aivisModel', def:'a59cb814-0083-4369-8542-f51a29e72af7', portable:true, el:"aivisModel", bind:'custom' },
   { prop:"aivisModelB", key:'di.aima', embed:'aivisModelB', def:'', portable:true, el:"aivisModelB", bind:'custom' },
   { prop:"aivisStyle", key:'di.aist', embed:'aivisStyle', def:'', portable:true, el:"aivisStyle", bind:'custom' },
@@ -2217,6 +2443,7 @@ function addEntry(seat, text, interim){
   var e = { id:'e'+(++S.seq), seat:seat, srcText:text, dstText:'', time:nowStr(),
             ts:new Date().toISOString(), interim:!!interim,
             srcLang:(seat==='A'?CFG.langA:CFG.langB), dstLang:(seat==='A'?CFG.langB:CFG.langA) };
+  e.utteranceId=duoId("utterance");e.origin=AudioEndpointManager.origin(seat,false);
   S.entries.push(e);
   render(e);
   return e;
@@ -2612,8 +2839,8 @@ function txtDetectRemote(text){
     .then(function(j){ return (j && j[2]) ? String(j[2]) : null; })
     .catch(function(){ return null; });
 }
-function txtDetectSeat(text){
-  if (txtSeatMode !== 'auto') return Promise.resolve(txtSeatMode);
+function txtDetectSeat(text,mode){
+  mode=mode||txtSeatMode;if (mode !== 'auto') return Promise.resolve(mode);
   if (CFG.langA === CFG.langB) return Promise.resolve('A');
   var r = txtDetectLocal(text);
   if (r.margin >= 18 || translationDisabled()){
@@ -2664,13 +2891,7 @@ function txtSubmit(){
   txtBusy = true;
   var btn = $('txtSend'); if (btn) btn.disabled = true;
   var done = function(){ txtBusy = false; if (btn) btn.disabled = false; };
-  txtDetectSeat(text).then(function(seat){
-    var e = addEntry(seat, text, false);
-    e.typed = true;
-    dlog('text','send',{ seat:seat, mode:txtSeatMode, chars:text.length });
-    speakSrcNow(e);
-    return translate(e);
-  }).then(done, function(err){
+  duoSubmitText(text,txtSeatMode).then(done, function(err){
     done();
     dlog('text','FAIL',{ err:String((err && err.message) || err).slice(0,140) });
     toast('テキストの翻訳に失敗しました');
@@ -3590,7 +3811,7 @@ async function openCaptionPip(){
     var feed=doc.createElement('main');feed.id='pipFeed';feed.tabIndex=0;feed.setAttribute('aria-label','字幕履歴');
     feed.addEventListener('scroll',function(){captionPip.follow=feed.scrollHeight-feed.scrollTop-feed.clientHeight<36;});
     var footer=doc.createElement('footer');footer.textContent='位置はタイトルバーをドラッグして変更。Duo本体は開いたままに。';
-    doc.body.appendChild(header);doc.body.appendChild(feed);doc.body.appendChild(footer);
+    doc.body.appendChild(header);duoPipText(doc,header);doc.body.appendChild(feed);doc.body.appendChild(footer);
     w.addEventListener('resize',function(){if(captionPip.follow)feed.scrollTop=feed.scrollHeight;});
     renderCaptionPip();dlog('pip','opened',{width:w.innerWidth,height:w.innerHeight,recognitionContext:'html-main'});
   }catch(err){
@@ -5232,7 +5453,7 @@ function apiSpeakStreamWorklet(text,lang,seat,prosody,plan,ctx,key){
     if(myGen!==ttsGen)throw new Error('stopped');
     node=new AudioWorkletNode(ctx,'di-openai-pcm-player',{numberOfInputs:0,numberOfOutputs:1,
       outputChannelCount:[1],processorOptions:{sourceRate:24000,startSamples:Math.round(24000*0.35)}});
-    streamGain=ctx.createGain();streamGain.gain.value=plan.gain;node.connect(streamGain);streamGain.connect(ttsGain);
+    streamGain=ctx.createGain();streamGain.gain.value=plan.gain;node.connect(streamGain);duoRouteNode(streamGain,finish.routeJob);
     node.onprocessorerror=function(){dlog('tts','openai-worklet-FAIL',{why:'processorerror'});streamEnd('processorerror');};
     node.port.onmessage=function(ev){
       var m=ev.data||{};
@@ -5308,7 +5529,7 @@ function apiSpeakStream(text, lang, seat, prosody, plan, ctx, key){
   var ctrl=null;try{ctrl=new AbortController();}catch(e){}
   openaiTtsAbort=ctrl;ensureCtxSink(ctx,seat);oaiLogRequest(body,plan,text,seat,true);
   var pend=new Uint8Array(0),next=0,minBytes=Math.round(24000*2*0.12),LEAD=Math.max(0.15,ttsPadMs()/1000);
-  streamGain=ctx.createGain();streamGain.gain.value=plan.gain;streamGain.connect(ttsGain);
+  streamGain=ctx.createGain();streamGain.gain.value=plan.gain;duoRouteNode(streamGain,finish.routeJob);
   var endAfterBuffered=function(why){
     var remainMs=Math.max(0,next-ctx.currentTime)*1000;
     clearTimeout(streamWatchdog);clearTimeout(streamEndTimer);
@@ -5907,7 +6128,7 @@ function playBlob(blob, finish, tag, opts){
   }
   var order = (finish && finish.order != null) ? finish.order : ++ttsOrderSeq;
   ttsQueue.push({ blob:blob, finish:finish, tag:tag||'', at:readyAt, requestAt:requestAt, gen:g, order:order,seat:(opts.seat||(finish&&finish.seat)||'A'),
-                  chars:chars,staleMs:staleMs,gain:prosodyClamp(parseFloat(opts.gain)||1,0.5,1.5),
+                  routeJob:finish&&finish.routeJob,chars:chars,staleMs:staleMs,gain:prosodyClamp(parseFloat(opts.gain)||1,0.5,1.5),
                   playbackRate:prosodyClamp(parseFloat(opts.playbackRate)||1,0.5,2) });
   ttsQueue.sort(function(a,b){ return a.order-b.order; });
   /* API合成は完了した。ここからは短文用の合成Watchdogではなく、設定画面に表示した
@@ -6018,10 +6239,11 @@ function playJob(job, end){
     })
     .then(function(ab){return ensureCtxSink(ctx,job.seat).then(function(){return ab;});})
     .then(function(ab){
+      if(job.gen!==ttsGen||(job.finish&&job.finish.done)){end();return;}
       var srcNode = ctx.createBufferSource(), jobGain = ctx.createGain();
       srcNode.buffer = ab;
       jobGain.gain.value = job.gain || 1;
-      srcNode.connect(jobGain); jobGain.connect(ttsGain);
+      srcNode.connect(jobGain); duoRouteNode(jobGain,job.routeJob);
       /* 少しだけ先の時刻に鳴らす。設定の「鳴り始めの無音」はここで効かせる
          （音声を作り直す必要がないので、その分の処理も要らなくなる） */
       var lead = Math.max(0.06, ttsPadMs() / 1000);
@@ -6063,6 +6285,7 @@ function playViaPitchRate(job, end, ctx){
   var t0=Date.now(), rate=prosodyClamp(job.playbackRate||1,0.5,2);
   padAudioBlob(job.blob, ttsPadMs()).then(function(b){
     var routed=ensureRateMediaRoute(ctx,job.gain,job.seat), el=routed?rateAudioEl:rateDirectEl;
+    if(routed){ttsRateGain.disconnect();duoRouteNode(ttsRateGain,job.routeJob);}else if(ConferenceMicBus.enabled)duoRouteMedia(el,job.routeJob);
     var rateDone=false, rateTimer=0;
     ttsRateElNow=el;
     if (!routed){
@@ -6100,6 +6323,7 @@ function playViaPitchRate(job, end, ctx){
   });
 }
 function playViaAudioEl(job, end){
+  if(ConferenceMicBus.enabled||duoMediaRoutes.has(audioEl))duoRouteMedia(audioEl,job.routeJob);
   var t0 = Date.now();
   padAudioBlob(job.blob, ttsPadMs()).then(function(b){
     ensureSink(job.seat);
@@ -6151,6 +6375,7 @@ function ttsGuard(text, ms,seat){
   finish.textChars = String(text||'').length;
   finish.seat = seat || 'A';
   finish.sayKey = sayKey;
+  finish.routeJob=duoTtsJob(sayKey);
   ttsRegisterOrder(finish);        /* 合成完了時ではなく受付時の順番を確保する */
   rememberSpoken(text);
   ttsBegin(sayKey);
@@ -6470,7 +6695,7 @@ function aivisSpeakStream(text, lang, seat, prosody){
     pend = pend.slice(usable);
     if (!buf) return;
     var src = ctx.createBufferSource();
-    src.buffer = buf; src.connect(ttsGain);
+    src.buffer = buf; duoRouteNode(src,finish.routeJob);
     var now = ctx.currentTime;
     if (next < now + 0.02){
       /* 次の音が間に合わなかった。ここで無理につなぐと重なるので、少し先へ置き直す */
@@ -6590,13 +6815,13 @@ var AIVIS_KNOWN = (function(){
 function aivisFillModels(sel, isA){
   if (!sel) return;
   var mode = aivisAllShown ? 'all' : 'primary';
-  if (sel.getAttribute('data-model-range') === mode && sel.options.length) return;
+
   sel.innerHTML = '';
   var add = function(v, t){
     var o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o);
   };
   if (!isA) add('', inheritedVoiceLabel());
-  AIVIS_MODELS.slice(0, aivisAllShown ? AIVIS_MODELS.length : AIVIS_PRIMARY_COUNT)
+  duoAivisOptions()
     .forEach(function(x){ add(x.u, x.n); });
   add(AIVIS_CUSTOM, '── その他（モデル UUID を貼り付け）──');
   sel.setAttribute('data-model-range', mode);
@@ -6616,12 +6841,12 @@ function aivisSyncModel(seat){
   var modelIndex = -1;
   for (var ai=0; ai<AIVIS_MODELS.length; ai++) if (AIVIS_MODELS[ai].u === uuid){ modelIndex=ai; break; }
   /* 保存済みの追加キャラは切替時に消さず、そのキャラを含む完全一覧へ自動展開する。 */
-  if (modelIndex >= AIVIS_PRIMARY_COUNT) aivisAllShown = true;
+
   aivisFillModels(sel, isA);
   if (!isA && sel.options.length && sel.options[0].value==='') sel.options[0].textContent=inheritedVoiceLabel();
   /* 一覧に無いUUIDが入っているなら当然「その他」。
      空でも、利用者が「その他」を選んだ直後なら入力欄を閉じない。 */
-  var known = !AIVIS_OTHER[seat] && ((uuid === '') || !!AIVIS_KNOWN[uuid]);
+  var known = !AIVIS_OTHER[seat] && ((uuid === '') || duoAivisCatalog().some(function(x){return x.u===uuid;}));
   if (uuid && AIVIS_KNOWN[uuid]) AIVIS_OTHER[seat] = false;
   sel.value = known ? uuid : AIVIS_CUSTOM;
   if (row) row.style.display = known ? 'none' : '';
@@ -6632,7 +6857,7 @@ function aivisSyncModel(seat){
     link.style.visibility = uuid ? '' : 'hidden';
   }
   var showAll=$('aivisShowAll');
-  if(showAll){showAll.style.display=aivisAllShown?'none':'';showAll.disabled=aivisAllShown;}
+  if(showAll){showAll.style.display='';showAll.disabled=false;showAll.textContent=aivisAllShown?'最小限表示に戻す':'その他のキャラを表示';showAll.setAttribute('aria-expanded',String(aivisAllShown));}
 }
 function aivisNameOf(uuid){
   uuid = String(uuid || '').trim();
@@ -7863,6 +8088,7 @@ function vvPlayReady(job){
   audioEl.defaultPlaybackRate=desiredRate; audioEl.playbackRate=desiredRate;
   try{ audioEl.preservesPitch=true; audioEl.webkitPreservesPitch=true; }catch(e){}
   audioEl.preload='auto';
+  if(ConferenceMicBus.enabled||duoMediaRoutes.has(audioEl)){audioEl.crossOrigin='anonymous';duoRouteMedia(audioEl,job.routeJob);}
   audioEl.src=job.data.mp3StreamingUrl;
   try{ audioEl.load(); }catch(e){}
   /* preloadを抑制するブラウザでも停止しないよう、最長8秒で従来の即時再生へ戻す。 */
@@ -7905,7 +8131,7 @@ function vvSpeak(text, lang, seat, prosody){
   var sayKey=String(ttsDispatchSayKey||'');
   ttsBegin(sayKey);
   var ctrl=new AbortController(), job={text:text,lang:lang,seat:seat||'A',prosody:prosody,effective:effective,
-    tweaks:tweaks,manualTweaks:manualTweaks,at:Date.now(),gen:ttsGen,ctrl:ctrl,state:'waiting',done:false,sayKey:sayKey};
+    tweaks:tweaks,manualTweaks:manualTweaks,at:Date.now(),gen:ttsGen,ctrl:ctrl,state:'waiting',done:false,sayKey:sayKey,routeJob:duoTtsJob(sayKey)};
   vvJobs.push(job); vvControllers.push(ctrl);
   job.watchdog=setTimeout(function(){
     if (job.done) return;
@@ -8624,6 +8850,7 @@ function langOf(seat){ return seat==='A' ? CFG.langA : CFG.langB; }
 
 /* 聞き取り対象の話者を切り替える（手動ボタン・パネルタップ・AUTOから共通で使用） */
 function setListenSeat(seat, quiet){
+  if(micSeats().indexOf(seat)<0)return;
   if (S.listenSeat === seat) { updateStatus(); return; }
   dlog('lang','listenSeat',{ from: S.listenSeat, to: seat, auto: S.autoMode });
   S.listenSeat = seat;
@@ -10072,6 +10299,7 @@ function getDisplayAudioForStt(){
 
 function startAll(){
   if(S.running)return;
+  if(!duoValidateInputs())return;
   if (CFG.srcA==='off' && CFG.srcB==='off'){ toast('音声入力元がどちらも「使わない」になっています'); return; }
   var p = PROVIDERS[CFG.provider];
   if (CFG.sttProvider!=='realtime' && p.key && !transKey()){ toast('APIキーを設定してください（⚙ → 翻訳）'); openDrawer(true); return; }
@@ -10327,14 +10555,14 @@ function refreshListenBtn(){
   // 言語切替（手動 ⇄ AUTO）。AUTOが使えないモードでは出さない
   var mb = $('modeBtn');
   if (mb){
-    mb.style.display = (two && autoAvailable()) ? '' : 'none';
+    mb.style.display='';mb.style.visibility=autoAvailable()?'visible':'hidden';mb.disabled=!two;
     $('modeTxt').textContent = S.autoMode ? 'AUTO' : '手動';
     mb.title = S.autoMode
       ? 'AUTO：話し始めれば言語を自動で判定します（押すと手動に切替）'
       : '手動：話す前に「認識中言語」を自分の言語に合わせます（押すとAUTOに切替）';
   }
 
-  btn.style.display = two ? '' : 'none';
+  btn.style.display='';btn.disabled=!two;
   var seat = S.listenSeat || 'A';
   txt.textContent = L(langOf(seat)).name + (S.autoMode ? '' : ' ⇄');
   btn.classList.toggle('langA', seat==='A');
@@ -11581,7 +11809,7 @@ $('aivisModelB').onchange = function(){
   aivisSetModel('B', AIVIS_OTHER.B ? ($('aivisModelBCustom').value || '') : this.value);
 };
 $('aivisShowAll').onclick = function(){
-  aivisAllShown=true;
+  aivisAllShown=!aivisAllShown;
   ['aivisModel','aivisModelB'].forEach(function(id){var s=$(id);if(s)s.removeAttribute('data-model-range');});
   aivisSyncModel('A'); aivisSyncModel('B');
 };
@@ -12436,7 +12664,7 @@ function segPump(){
         var next=SEG.queue[n],ns=next.segment,ne=next.card;
         if(segEarlierOpen(next))break;
         if(next.partOnly||j.partOnly||!segManualJobValid(next)||next.cancelled||next.epoch!==j.epoch||ne.segment.cancelled||!!next.manual!==!!j.manual||
-          ne.seat!==e.seat||ne.srcLang!==e.srcLang||ne.dstLang!==e.dstLang||
+          ne.seat!==e.seat||ne.srcLang!==e.srcLang||ne.dstLang!==e.dstLang||JSON.stringify(ne.origin)!==JSON.stringify(e.origin)||
           segAivisVoiceKey(ne)!==voiceKey||
           (!useSource&&(!ns.translationReady||ns.translationError))||(!next.manual&&!segAudioAllowed(ne)))break;
         var more=useSource?ns.sourceText:ns.translationText||'';
@@ -12462,7 +12690,7 @@ function segPump(){
       q.segment.audio.dispatchOrder=j.dispatchOrder;q.segment.audio.schedulerRate=rate;});
     group.forEach(function(q){q.segment.state='tts_generating';q.segment.dispatched=true;q.segment.audio.status='generating';q.segment.audio.requestedAt=Date.now();});
     SEG.active=j;j.started=false;j.finished=false;segRefreshPlayback(j);
-    var proxy={id:e.id,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,srcText:source,dstText:target,prosody:e.prosody};
+    var proxy={id:e.id,utteranceId:e.utteranceId,origin:e.origin,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,srcText:source,dstText:target,prosody:e.prosody};
     dlog('segment','dispatch',{cardId:e.id,seq:s.seq,manualReplay:!!j.manual,order:j.dispatchOrder,members:group.map(function(q){return q.segment.id;}),
       text:j.speechText,parts:group.length,chars:j.speechText.length,debtEstimateSeconds:segDebt(),overlap:overlap,schedulerRate:rate});
     SEG.dispatchRate=rate;
@@ -13147,6 +13375,7 @@ function unlockAudioOnce(){
 
 iosSetup();
 unlockAudioOnce();
+duoInstallUI();
 
 /* 音声リストは遅れて読み込まれるので、先に一度読ませておく
    （最初の読み上げで声が選べずに失敗するのを防ぐ） */
