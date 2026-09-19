@@ -2000,8 +2000,8 @@ function duoAssignRecognizedLanguage(entry,text){
   return detected;
 }
 
-var APP_VERSION = 'v1.46.3';
-var APP_BUILD = '20260920-v1463-web-language-routing';
+var APP_VERSION = 'v1.46.4';
+var APP_BUILD = '20260920-v1464-feed-follow';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -2522,13 +2522,15 @@ function removeEntry(e){
 }
 function render(e){ clearEmpty(); paint('feedA', e, 'A'); paint('feedB', e, 'B'); renderOverlayRail(); }
 
-/* Keep following growing live cards until the reader scrolls upward.
-   Height changes alone must never cancel follow mode. */
+/* Keep following growing live cards until the reader explicitly scrolls upward.
+   Background-tab layout changes and synchronized/programmatic scrolling also emit
+   scroll events, so a bare scrollTop decrease must never cancel follow mode. */
 function feedFollowState(feed){
   if(feed._liveFollow)return feed._liveFollow;
   var state={following:feed.scrollHeight-feed.scrollTop-feed.clientHeight<48,
-    top:feed.scrollTop,frame:0,observer:null};
+    top:feed.scrollTop,frame:0,observer:null,pointerActive:false,userUntil:0,resumeOnVisible:false};
   feed._liveFollow=state;
+  state.nearBottom=function(){return feed.scrollHeight-feed.scrollTop-feed.clientHeight<48;};
   state.pin=function(){
     if(!state.following||!feed.clientHeight)return;
     feed.scrollTop=feed.scrollHeight;
@@ -2538,13 +2540,28 @@ function feedFollowState(feed){
     if(state.frame)return;
     state.frame=requestAnimationFrame(function(){state.frame=0;state.pin();});
   };
+  state.resume=function(){
+    if(state.frame){cancelAnimationFrame(state.frame);state.frame=0;}
+    state.following=true;state.pin();state.schedule();
+    setTimeout(state.schedule,80);
+  };
   feed.addEventListener('wheel',function(ev){
+    state.userUntil=performance.now()+350;
     if(ev.deltaY<0)state.following=false;
   },{passive:true});
+  feed.addEventListener('pointerdown',function(){state.pointerActive=true;state.userUntil=performance.now()+350;},{passive:true});
+  function pointerDone(){state.pointerActive=false;state.userUntil=performance.now()+350;}
+  feed.addEventListener('pointerup',pointerDone,{passive:true});
+  feed.addEventListener('pointercancel',pointerDone,{passive:true});
+  feed.addEventListener('keydown',function(ev){
+    if(ev.key==='ArrowUp'||ev.key==='PageUp'||ev.key==='Home')state.following=false;
+    else if(ev.key==='End'){state.following=true;state.schedule();}
+  });
   feed.addEventListener('scroll',function(){
     var top=feed.scrollTop;
-    if(top<state.top-1)state.following=false;
-    else if(feed.scrollHeight-top-feed.clientHeight<48)state.following=true;
+    var explicitUserScroll=state.pointerActive||performance.now()<state.userUntil;
+    if(explicitUserScroll&&top<state.top-1)state.following=false;
+    else if(state.nearBottom())state.following=true;
     state.top=top;
   },{passive:true});
   if(typeof ResizeObserver==='function'){
@@ -2552,6 +2569,15 @@ function feedFollowState(feed){
     state.observer.observe(feed);
   }
   return state;
+}
+
+function feedVisibilityChanged(){
+  ['feedA','feedB'].forEach(function(id){
+    var feed=$(id),state=feed&&feed._liveFollow;
+    if(!state)return;
+    if(document.hidden)state.resumeOnVisible=state.following||state.nearBottom();
+    else if(state.resumeOnVisible){state.resumeOnVisible=false;state.resume();}
+  });
 }
 
 function paint(feedId, e, viewer){
@@ -11585,7 +11611,7 @@ if(window.visualViewport){
 window.addEventListener('pageshow',settleViewportFit);
 document.addEventListener('focusin',settleViewportFit);
 document.addEventListener('focusout',settleViewportFit);
-document.addEventListener('visibilitychange',function(){if(!document.hidden)settleViewportFit();});
+document.addEventListener('visibilitychange',function(){feedVisibilityChanged();if(!document.hidden)settleViewportFit();});
 window.addEventListener('resize',function(){if(overlaySession.opened)OverlayStage.layout(false);});
 window.addEventListener('orientationchange',settleViewportFit);
 
