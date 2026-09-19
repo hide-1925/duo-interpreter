@@ -728,6 +728,7 @@
 
 
 #bar #mic,#bar #duoPreset{box-sizing:border-box;flex:0 0 76px;width:76px;min-width:76px;max-width:76px;height:48px;min-height:48px;padding:4px 8px;font-size:12px}
+#bar #mic{font-size:16px}
 #duoPresetWrap{position:relative;flex:0 0 76px;width:76px;height:48px}
 #bar #duoPreset{position:relative;padding-right:17px;white-space:normal;line-height:16px}
 #duoPreset>span{white-space:pre}#duoPreset>b{position:absolute;right:5px;top:15px;font-size:10px}
@@ -738,7 +739,7 @@
 #bar #srcA,#bar #srcB{display:none!important}
 .duo-disclosure{position:relative;display:flex;align-items:center;gap:5px;flex:none}
 .duo-detail-controls{position:absolute;right:0;bottom:calc(100% + 5px);display:flex;gap:5px;padding:9px;z-index:110;border:1px solid var(--line);border-radius:9px;background:var(--panel);box-shadow:0 5px 22px #0008;max-width:calc(100vw - 16px);flex-wrap:wrap;width:max-content}
-.duo-detail-controls::after{content:'';position:absolute;top:100%;left:0;right:0;height:10px}
+.duo-detail-controls::after{content:none}
 .duo-detail-controls[hidden],#duoPresetMenu[hidden]{display:none!important}
 .side-head .duo-detail-controls{top:calc(100% + 5px);bottom:auto}
 .duo-favorite-row{display:flex;align-items:center;gap:7px;padding:5px 0;border-bottom:1px solid var(--line)}
@@ -1873,15 +1874,28 @@ function duoIceComplete(pc){return new Promise(function(resolve,reject){
 window.addEventListener('duo-conference-in',function(event){try{var data=JSON.parse(event.detail);duoConferenceCommand(data).catch(function(){duoConferenceStop('command-error');});}catch(_){} });
 window.addEventListener('pagehide',function(){duoConferenceStop('pagehide');});
 
+// Keep menus in the browser top layer, outside the scrollable controls dock.
+function duoFloatPanel(panel,anchor,on){
+  if(!panel.hasAttribute('popover'))panel.setAttribute('popover','manual');
+  if(!on){if(panel.hidePopover&&panel.matches(':popover-open'))panel.hidePopover();panel.hidden=true;return;}
+  panel.hidden=false;if(panel.showPopover&&!panel.matches(':popover-open'))panel.showPopover();
+  var a=anchor.getBoundingClientRect();
+  panel.style.cssText='position:fixed;inset:auto;margin:0;box-sizing:border-box;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);overflow:auto;';
+  var r=panel.getBoundingClientRect(),below=innerHeight-a.bottom-6,above=a.top-6;
+  var top=above>=r.height||above>=below?a.top-r.height-6:a.bottom+6;
+  panel.style.left=Math.max(8,Math.min(a.left,innerWidth-r.width-8))+'px';
+  panel.style.top=Math.max(8,Math.min(top,innerHeight-r.height-8))+'px';
+}
 function duoInstallDisclosure(anchor,items,id){
-  var host=document.createElement('div');host.className='duo-disclosure';anchor.parentNode.insertBefore(host,anchor);host.appendChild(anchor);
+  var host=document.createElement('div');host.className='duo-disclosure';anchor.parentNode.insertBefore(host,anchor);
   var trigger=document.createElement('button');trigger.type='button';trigger.className='cbtn duo-more';trigger.textContent='•••';trigger.setAttribute('aria-label','詳細操作');trigger.setAttribute('aria-expanded','false');trigger.setAttribute('aria-controls',id);host.appendChild(trigger);
   var panel=document.createElement('div');panel.className='duo-detail-controls';panel.id=id;panel.hidden=true;host.appendChild(panel);items.forEach(function(el){panel.appendChild(el);});
   var enter,leave,pinned=false;
-  function show(on){clearTimeout(enter);clearTimeout(leave);panel.hidden=!on;trigger.setAttribute('aria-expanded',String(on));host.classList.toggle('expanded',on);
-    panel.style.transform='';if(on&&id==='duoBarDetails'){var r=panel.getBoundingClientRect(),shift=r.left<8?8-r.left:r.right>innerWidth-8?innerWidth-8-r.right:0;if(shift)panel.style.transform='translateX('+shift+'px)';}
+  function show(on){clearTimeout(enter);clearTimeout(leave);duoFloatPanel(panel,trigger,on);trigger.setAttribute('aria-expanded',String(on));host.classList.toggle('expanded',on);
+
   }
   window.addEventListener('resize',function(){if(!panel.hidden)show(true);});
+  document.addEventListener('scroll',function(e){if(!panel.hidden&&!panel.contains(e.target))duoFloatPanel(panel,trigger,true);},true);
   trigger.onclick=function(){pinned=!pinned;show(pinned);};
   host.addEventListener('pointerenter',function(e){if(e.pointerType==='mouse'&&matchMedia('(any-hover:hover) and (any-pointer:fine)').matches){clearTimeout(leave);enter=setTimeout(function(){show(true);},130);}});
   host.addEventListener('pointerleave',function(){clearTimeout(enter);if(!pinned)leave=setTimeout(function(){if(!host.contains(document.activeElement))show(false);},380);});
@@ -1892,12 +1906,14 @@ function duoInstallDisclosure(anchor,items,id){
 }
 function duoInstallUI(){
   var menu=$('duoPresetMenu'),trigger=$('duoPreset');
-  Object.keys(DUO_PRESETS).forEach(function(id){var b=document.createElement('button');b.type='button';b.textContent=DUO_PRESETS[id].label;b.setAttribute('role','menuitem');b.onclick=function(){duoApplyPreset(id);menu.hidden=true;trigger.setAttribute('aria-expanded','false');trigger.focus();};menu.appendChild(b);});
-  trigger.onclick=function(){menu.hidden=!menu.hidden;trigger.setAttribute('aria-expanded',String(!menu.hidden));if(!menu.hidden)menu.firstChild.focus();};
-  document.addEventListener('pointerdown',function(e){if(!$('duoPresetWrap').contains(e.target)){menu.hidden=true;trigger.setAttribute('aria-expanded','false');}});
-  $('duoPresetWrap').addEventListener('keydown',function(e){if(e.key==='Escape'){menu.hidden=true;trigger.setAttribute('aria-expanded','false');trigger.focus();}if((e.key==='ArrowDown'||e.key==='ArrowUp')&&!menu.hidden){e.preventDefault();var list=Array.from(menu.children),i=list.indexOf(document.activeElement);list[(i+(e.key==='ArrowDown'?1:list.length-1))%list.length].focus();}});
-  var items=[],next=$('focusBtn').nextElementSibling;while(next){items.push(next);next=next.nextElementSibling;}duoInstallDisclosure($('focusBtn'),items,'duoBarDetails');
-  var swap=$('swapBtnB'),flip=$('flipBtnB');if(swap&&flip)duoInstallDisclosure(swap,[flip],'duoBDetails');
+  Object.keys(DUO_PRESETS).forEach(function(id){var b=document.createElement('button');b.type='button';b.textContent=DUO_PRESETS[id].label;b.setAttribute('role','menuitem');b.onclick=function(){duoApplyPreset(id);duoFloatPanel(menu,trigger,false);trigger.setAttribute('aria-expanded','false');trigger.focus();};menu.appendChild(b);});
+  trigger.onclick=function(){duoFloatPanel(menu,trigger,menu.hidden);trigger.setAttribute('aria-expanded',String(!menu.hidden));if(!menu.hidden)menu.firstChild.focus();};
+  document.addEventListener('pointerdown',function(e){if(!$('duoPresetWrap').contains(e.target)){duoFloatPanel(menu,trigger,false);trigger.setAttribute('aria-expanded','false');}});
+  $('duoPresetWrap').addEventListener('keydown',function(e){if(e.key==='Escape'){duoFloatPanel(menu,trigger,false);trigger.setAttribute('aria-expanded','false');trigger.focus();}if((e.key==='ArrowDown'||e.key==='ArrowUp')&&!menu.hidden){e.preventDefault();var list=Array.from(menu.children),i=list.indexOf(document.activeElement);list[(i+(e.key==='ArrowDown'?1:list.length-1))%list.length].focus();}});
+  window.addEventListener('resize',function(){if(!menu.hidden)duoFloatPanel(menu,trigger,true);});
+  document.addEventListener('scroll',function(e){if(!menu.hidden&&!menu.contains(e.target))duoFloatPanel(menu,trigger,true);},true);
+  var items=[],next=$('focusBtn');while(next){items.push(next);next=next.nextElementSibling;}duoInstallDisclosure($('focusBtn'),items,'duoBarDetails');
+
   var savedPreset=store.get('di.preset','one_to_one');duoApplyPreset(DUO_PRESETS[savedPreset]?savedPreset:'one_to_one',true);
   $('duoLocalParticipant').onchange=function(){if(S.running)stopAll();stopSpeaking('Endpoint変更');duoConferenceStop('endpoint-change');
     var local=this.value,remote=local==='p1'?'p2':'p1';duoSession.bindings[local]='local-mic';duoSession.bindings[remote]=duoSession.presetId==='web'?'conference-audio':duoSession.presetId==='one_to_many'?null:'local-mic';duoSession.textParticipantId=local;AudioEndpointManager.apply();applyCfg();duoRefreshEndpoints();};
@@ -1940,8 +1956,8 @@ function duoPipText(doc,header){
   input.onkeydown=function(e){if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();form.requestSubmit();}if(e.key==='Escape'){form.hidden=true;button.setAttribute('aria-expanded','false');button.focus();}};
 }
 
-var APP_VERSION = 'v1.46.0';
-var APP_BUILD = '20260920-v1460-session-routing';
+var APP_VERSION = 'v1.46.1';
+var APP_BUILD = '20260920-v1461-menu-visibility';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -10555,7 +10571,7 @@ function refreshListenBtn(){
   // 言語切替（手動 ⇄ AUTO）。AUTOが使えないモードでは出さない
   var mb = $('modeBtn');
   if (mb){
-    mb.style.display='';mb.style.visibility=autoAvailable()?'visible':'hidden';mb.disabled=!two;
+    mb.style.display=(two&&autoAvailable())?'':'none';mb.style.visibility='';mb.disabled=!two;
     $('modeTxt').textContent = S.autoMode ? 'AUTO' : '手動';
     mb.title = S.autoMode
       ? 'AUTO：話し始めれば言語を自動で判定します（押すと手動に切替）'
