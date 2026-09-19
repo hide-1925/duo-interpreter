@@ -1817,7 +1817,7 @@ function duoApplyPreset(id,initial){
   if(!initial){if(S.running)stopAll();stopSpeaking('Preset変更');duoConferenceStop('preset-change');}
   duoSession=duoSessionConfig(id);AudioEndpointManager.apply();store.set('di.preset',id);
   if($('duoLocalParticipant'))$('duoLocalParticipant').value=duoSession.textParticipantId;
-  if(!initial)applyCfg();
+  if(!initial)applyCfg();else refreshListenBtn();
   var button=$('duoPreset');button.querySelector('span').textContent=DUO_PRESETS[id].lines.join('\n');
   button.setAttribute('aria-label','Preset: '+DUO_PRESETS[id].label);duoRefreshEndpoints();
   dlog('session','preset',{presetId:id,sessionId:duoSession.sessionId});
@@ -1945,7 +1945,7 @@ function duoSubmitText(text,mode){
   return (mode==='A'||mode==='B'?Promise.resolve(mode):txtDetectSeat(text,'auto')).then(function(seat){var e=addEntry(seat,text,false);e.typed=true;e.origin=AudioEndpointManager.origin(seat,true);speakSrcNow(e);return Promise.resolve(translate(e)).then(function(){return {ok:true,entryId:e.id};});});
 }
 function duoPipText(doc,header){
-  var button=doc.createElement('button');button.type='button';button.textContent='テキスト';button.setAttribute('aria-expanded','false');header.appendChild(button);
+  var button=doc.createElement('button');button.type='button';button.textContent='⌨';button.title='テキスト入力';button.setAttribute('aria-label','テキスト入力');button.setAttribute('aria-expanded','false');header.appendChild(button);
   var form=doc.createElement('form');form.hidden=true;form.style.cssText='padding:6px;flex:none';
   var select=doc.createElement('select');[['auto','話者 自動'],['A','A'],['B','B']].forEach(function(x){var o=doc.createElement('option');o.value=x[0];o.textContent=x[1];select.appendChild(o);});
   var input=doc.createElement('textarea');input.rows=2;input.maxLength=12000;input.placeholder='テキストを入力';input.setAttribute('aria-label','翻訳するテキスト');input.style.cssText='width:100%;font:14px system-ui;resize:vertical';
@@ -1956,8 +1956,21 @@ function duoPipText(doc,header){
   input.onkeydown=function(e){if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();form.requestSubmit();}if(e.key==='Escape'){form.hidden=true;button.setAttribute('aria-expanded','false');button.focus();}};
 }
 
-var APP_VERSION = 'v1.46.1';
-var APP_BUILD = '20260920-v1461-menu-visibility';
+// Classify provisional cards repeatedly; never relabel already dispatched translation/audio.
+function duoLiveAssignSeat(engine,entry,text){
+  if(!S.autoMode||micSeats().length<2||(engine.seat&&!(engine.opts&&engine.opts.isMic)))return;
+  if((entry.segments||[]).some(function(part){return !!part.committedAt;}))return;
+  if(!String(text||'').trim())return;
+  var seat=guessSeatFromText(text);
+  if(entry.seat===seat)return;
+  entry.seat=seat;entry.srcLang=langOf(seat);entry.dstLang=langOf(seat==='A'?'B':'A');
+  entry.origin=AudioEndpointManager.origin(seat,false);
+  S.listenSeat=seat;updateStatus();
+  dlog('stt','live-language-seat',{cardId:entry.id,seat:seat,lang:entry.srcLang,chars:text.length});
+}
+
+var APP_VERSION = 'v1.46.2';
+var APP_BUILD = '20260920-v1462-live-language';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -10578,7 +10591,7 @@ function refreshListenBtn(){
       : '手動：話す前に「認識中言語」を自分の言語に合わせます（押すとAUTOに切替）';
   }
 
-  btn.style.display='';btn.disabled=!two;
+  btn.style.display=(two&&!S.autoMode)?'':'none';btn.disabled=!two||S.autoMode;
   var seat = S.listenSeat || 'A';
   txt.textContent = L(langOf(seat)).name + (S.autoMode ? '' : ' ⇄');
   btn.classList.toggle('langA', seat==='A');
@@ -12854,11 +12867,11 @@ function segLiveReconcile(engine,x,text){
   var old=x.text||'',ranges=x.segmentRanges||[],ends=segMapCardEnds(old,text,ranges.map(function(r){return r.end;})),at=0;
   ranges.forEach(function(r,i){
     var end=Math.max(at,Math.min(text.length,ends[i]));
-    if(!r.entry.segment.cancelled)segUpdate(r.entry,text.slice(at,end),true);
+    if(!r.entry.segment.cancelled){duoLiveAssignSeat(engine,r.entry,text.slice(at,end));segUpdate(r.entry,text.slice(at,end),true);}
     r.end=end;at=end;
   });
   x.cardOffset=at;x.text=text;
-  if(x.entry||at<text.length){var e=engine.ensureEntry(x);segUpdate(e,text.slice(at),true);}
+  if(x.entry||at<text.length){var e=engine.ensureEntry(x);duoLiveAssignSeat(engine,e,text.slice(at));segUpdate(e,text.slice(at),true);}
 }
 function segMapCardEnds(old,text,ends){
   var prefix=0,suffix=0;
@@ -12909,9 +12922,7 @@ function segLiveEvent(engine,event,id){
   if(!x.segmentLogAt||now-x.segmentLogAt>=1000){
     dlog('stt','live-segment-delta',{item:id,cardId:entry.id,chars:local.length,deltaChars:String(event.delta||'').length,arrivalGapMs:previousDeltaAt?now-previousDeltaAt:null});x.segmentLogAt=now;
   }
-  if(!entry.segment&&((S.autoMode&&micSeats().length>1)||!engine.seat)&&local.length>=8){
-    var seat=guessSeatFromText(local);entry.seat=seat;entry.srcLang=langOf(seat);entry.dstLang=langOf(seat==='A'?'B':'A');
-  }
+  duoLiveAssignSeat(engine,entry,local);
   segUpdate(entry,local,false);return true;
 }
 function segFinalizeEntry(e){
