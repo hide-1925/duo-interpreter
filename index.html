@@ -1958,9 +1958,15 @@ function duoPipText(doc,header){
 
 // Classify provisional cards repeatedly; never relabel already dispatched translation/audio.
 function duoLiveAssignSeat(engine,entry,text){
-  if(!S.autoMode||micSeats().length<2||(engine.seat&&!(engine.opts&&engine.opts.isMic)))return;
+  if(!S.autoMode)return;
+  var conference=duoShouldAutoDetectInput(entry.seat),shared=micSeats().length>1&&(!engine.seat||(engine.opts&&engine.opts.isMic));
+  if(!conference&&!shared)return;
   if((entry.segments||[]).some(function(part){return !!part.committedAt;}))return;
   if(!String(text||'').trim())return;
+  if(conference){
+    duoAssignRecognizedLanguage(entry,text);
+    return;
+  }
   var seat=guessSeatFromText(text);
   if(entry.seat===seat)return;
   entry.seat=seat;entry.srcLang=langOf(seat);entry.dstLang=langOf(seat==='A'?'B':'A');
@@ -1969,8 +1975,33 @@ function duoLiveAssignSeat(engine,entry,text){
   dlog('stt','live-language-seat',{cardId:entry.id,seat:seat,lang:entry.srcLang,chars:text.length});
 }
 
-var APP_VERSION = 'v1.46.2';
-var APP_BUILD = '20260920-v1462-live-language';
+/* Web会議・動画の入力元（B）と、実際に話されている言語は別の属性。
+   カードの話者はBのまま保ち、認識本文から言語だけを更新する。 */
+function duoShouldAutoDetectInput(seat){
+  if(!S.autoMode||!duoSession||duoSession.presetId!=='web')return false;
+  var endpoint=AudioEndpointManager.forView(seat);
+  return !!(endpoint&&endpoint.enabled&&endpoint.type==='system-audio');
+}
+function duoDetectConfiguredLanguage(text,fallback){
+  text=String(text||'');var a=CFG.langA,b=CFG.langB;
+  if(!text.trim()||a===b)return fallback||a;
+  var ta=SCRIPT_TEST[a],tb=SCRIPT_TEST[b],ma=ta?ta(text):false,mb=tb?tb(text):false;
+  if(ma&&!mb)return a;if(mb&&!ma)return b;
+  var sa=latinScore(text,a),sb=latinScore(text,b);
+  if(sa>sb)return a;if(sb>sa)return b;
+  return fallback||a;
+}
+function duoAssignRecognizedLanguage(entry,text){
+  var before=entry.srcLang||langOf(entry.seat),detected=duoDetectConfiguredLanguage(text,before);
+  if(!detected||detected===before)return detected;
+  entry.srcLang=detected;
+  entry.dstLang=detected===CFG.langA?CFG.langB:detected===CFG.langB?CFG.langA:entry.dstLang;
+  dlog('stt','detected-language',{cardId:entry.id,seat:entry.seat,from:before,to:detected,chars:String(text||'').length,input:'conference-audio'});
+  return detected;
+}
+
+var APP_VERSION = 'v1.46.3';
+var APP_BUILD = '20260920-v1463-web-language-routing';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -9350,7 +9381,7 @@ function FourOFileBuffer(engine){
 FourOFileBuffer.prototype.alive=function(){return !this.dead&&S.running&&this.session===sessionGen;};
 FourOFileBuffer.prototype.submit=function(blob,seat,prosody,meta){
   if(!this.alive())return;
-  var self=this,e=addEntry(seat,'',true),q={id:++this.serial,entry:e,seat:seat,lang:langOf(seat),
+  var self=this,e=addEntry(seat,'',true),q={id:++this.serial,entry:e,seat:seat,lang:langOf(seat),autoLanguage:duoShouldAutoDetectInput(seat),
     srcLang:langOf(seat),dstLang:langOf(seat==='A'?'B':'A'),prosody:prosody,meta:meta,done:false,
     created:Date.now(),text:'',controller:new AbortController()};
   e.fourOState={pending:true,reason:'recognizing',model:this.model,request:q.id};
@@ -9362,14 +9393,14 @@ FourOFileBuffer.prototype.submit=function(blob,seat,prosody,meta){
     else{
       q.text=String(text||'').trim();
       if(S.autoMode&&micSeats().length>1&&q.text){q.seat=guessSeatFromText(q.text);q.srcLang=langOf(q.seat);q.dstLang=langOf(q.seat==='A'?'B':'A');}
-      e.seat=q.seat;e.srcLang=q.srcLang;e.dstLang=q.dstLang;
+      e.seat=q.seat;e.srcLang=q.srcLang;e.dstLang=q.dstLang;if(q.autoLanguage){duoAssignRecognizedLanguage(e,q.text);q.srcLang=e.srcLang;q.dstLang=e.dstLang;}
       if(S.entries.indexOf(e)>=0)fourOCardText(e,q.text,false,'ordered-result-wait');
       dlog('stt','4o-file-result',{request:q.id,model:self.model,cardId:e.id,chars:q.text.length,ms:Date.now()-q.created,cut:meta.reason,seconds:meta.seconds});
     }
     self.drain();
   }
   q.timer=setTimeout(function(){q.controller.abort();settle('',new Error('音声認識が20秒でタイムアウトしました'));},20000);
-  try{Promise.resolve(sttCall(blob,q.lang,{model:this.model,signal:q.controller.signal})).then(function(text){settle(text,null);},function(err){settle('',err);});}
+  try{Promise.resolve(sttCall(blob,q.lang,{model:this.model,signal:q.controller.signal,autoLanguage:q.autoLanguage})).then(function(text){settle(text,null);},function(err){settle('',err);});}
   catch(err){settle('',err);}
 };
 FourOFileBuffer.prototype.release=function(reason,muted){
@@ -9421,13 +9452,15 @@ function transcribeBlob(blob, seat, prosody){
   var lang = langOf(seat);
   var holder = addEntry(seat, '（認識中…）', true);
   var t0 = Date.now(), reqSessionGen = sessionGen;
-  sttCall(blob, lang).then(function(text){
+  var autoLanguage=duoShouldAutoDetectInput(seat);
+  sttCall(blob, lang,{autoLanguage:autoLanguage}).then(function(text){
     text = (text||'').trim();
     /* 停止後、または次の開始後に遅れて返った結果を新しい会話へ混ぜない */
     if (!S.running || reqSessionGen !== sessionGen){
       dlog('stt','stale-result-drop',{ seat:seat, chars:text.length, requestGen:reqSessionGen, currentGen:sessionGen });
       removeEntry(holder); return;
     }
+    if(autoLanguage){duoAssignRecognizedLanguage(holder,text);lang=holder.srcLang;}
     var rawText=text;
     text=punctuateTranscript(text,lang);
     if (text!==rawText) dlog('stt','punctuated',{provider:CFG.sttProvider,seat:seat,mode:'terminal',from:rawText.slice(-20),to:text.slice(-20)});
@@ -9516,13 +9549,14 @@ function guessSeatFromText(text){
 /* xAI の音声認識。/v1/stt はモデル名を取らず、file は最後に付ける決まりがある。
    language を送ると数字や単位の書き起こしが整うが、対応外の言語で送ると弾かれるため
    一覧にあるときだけ添える。 */
-function xaiSTT(blob, lang){
+function xaiSTT(blob, lang,requestOptions){
+  requestOptions=requestOptions||{};
   var key = sttKey();
   if (!key) return Promise.reject(new Error('xAI のAPIキーが未設定です'));
   var ext = blob.type.indexOf('mp4')>=0 ? 'mp4' : (blob.type.indexOf('ogg')>=0 ? 'ogg' : 'webm');
   var fd = new FormData();
   /* AUTO かつマイクを2人で共有している場合は言語を固定しない */
-  var autoDetect = S.autoMode && micSeats().length > 1;
+  var autoDetect = !!requestOptions.autoLanguage || (S.autoMode && micSeats().length > 1);
   var lc = autoDetect ? '' : (XAI_STT_LANGS[lang] || '');
   if (lc) fd.append('language', lc);
   fd.append('format', 'true');
@@ -9540,8 +9574,8 @@ function xaiSTT(blob, lang){
 function sttCall(blob, lang,requestOptions){
   requestOptions=requestOptions||{};
   var p = CFG.sttProvider;
-  if (p === 'gemini') return geminiSTT(blob, lang);
-  if (p === 'xai')    return xaiSTT(blob, lang);
+  if (p === 'gemini') return geminiSTT(blob, lang,requestOptions);
+  if (p === 'xai')    return xaiSTT(blob, lang,requestOptions);
   var key = sttKey();
   if (!key) return Promise.reject(new Error('音声認識用のAPIキーが未設定です'));
   // モデル名が空だと OpenAI が 400「you must provide a model parameter」を返すため必ず補う
@@ -9560,7 +9594,7 @@ function sttCall(blob, lang,requestOptions){
   /* 話者ラベルを受け取るにはdiarized_jsonが必須。promptはこのモデルでは非対応。 */
   if (diarize) fd.append('response_format','diarized_json');
   // AUTO かつマイクを2人で共有している場合は language を送らず、AI側に言語を自動判定させる
-  var autoDetect = S.autoMode && micSeats().length > 1;
+  var autoDetect = !!requestOptions.autoLanguage || (S.autoMode && micSeats().length > 1);
   if (!autoDetect) fd.append('language', L(lang).g.split('-')[0]);
   var terms = CFG.glossary.slice(0,60).map(function(r){ return r.s; }).filter(Boolean).join(', '), hints=[];
   hints.push('Transcribe verbatim with natural punctuation. Do not add, omit, paraphrase, or translate words.');
@@ -9582,7 +9616,8 @@ function sttCall(blob, lang,requestOptions){
   });
 }
 
-function geminiSTT(blob, lang){
+function geminiSTT(blob, lang,requestOptions){
+  requestOptions=requestOptions||{};
   var key = sttKey();
   if (!key) return Promise.reject(new Error('Gemini APIキーが未設定です'));
   return blobToB64(blob).then(function(b64){
@@ -9590,7 +9625,7 @@ function geminiSTT(blob, lang){
               ':generateContent?key=' + encodeURIComponent(key);
     return fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ contents:[{ role:'user', parts:[
-        { text:'Transcribe this '+L(lang).en+' audio verbatim. '
+        { text:'Transcribe this '+(requestOptions.autoLanguage?(L(CFG.langA).en+' or '+L(CFG.langB).en):L(lang).en)+' audio verbatim. '
               +'Use natural punctuation without adding, omitting, paraphrasing, or translating words. '
               +'Output only the transcript text. If there is no speech, output nothing.' },
         { inlineData:{ mimeType: blob.type.split(';')[0] || 'audio/webm', data: b64 } }
@@ -9626,7 +9661,7 @@ function RealtimeTranscriptionEngine(seat,stream,opts){
 }
 RealtimeTranscriptionEngine.prototype.config=function(){
   var langs=[];
-  if(S.autoMode&&micSeats().length>1)langs=[CFG.langA,CFG.langB];
+  if((S.autoMode&&micSeats().length>1)||duoShouldAutoDetectInput(this.seat))langs=[CFG.langA,CFG.langB];
   else langs=[langOf(this.seat||S.listenSeat||'A')];
   langs=langs.map(function(x){return String(x||'').toLowerCase().split('-')[0];});
   langs=langs.filter(function(x,i,a){return x&&a.indexOf(x)===i;});
