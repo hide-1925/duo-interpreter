@@ -15,7 +15,7 @@
     if(data.kind!=='offer')return;
     await stop('new-offer');token=data.token;const gen=++generation;renew();
     const adapter=window.DuoTeamsAdapter;if(!adapter)throw Error('この会議サービスはまだ音声送出に対応していません');
-    const peer=new adapter.NativePC({iceServers:[]});pc=peer;
+    const peer=adapter.createRelayPeer({iceServers:[]});pc=peer;
     peer.ontrack=async event=>{if(gen!==generation)return;try{
       event.track.addEventListener('ended',()=>{if(gen===generation)stop('track-ended');},{once:true});
       // Keep Chromium's remote audio decoder consuming the stream. This sink is

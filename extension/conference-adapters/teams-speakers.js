@@ -1,7 +1,7 @@
 /* Isolated, metadata-only Teams DOM sensor. Never reads captions or transcript. */
 (() => {
   'use strict';
-  if(window.__duoTeamsSpeakers)return;window.__duoTeamsSpeakers=true;
+  if(window!==window.top||window.__duoTeamsSpeakers)return;window.__duoTeamsSpeakers=true;
   const START_MS=200,END_MS=300,OUTLINE='[data-tid="voice-level-stream-outline"]';
   const TILE='[data-participant-id],[data-tid="participant-tile"],[data-tid="video-tile"],[data-tid="roster-list-item"]';
   const NAME='[data-tid="participant-name"],[data-tid="display-name"],[data-tid="roster-list-item-name"]';

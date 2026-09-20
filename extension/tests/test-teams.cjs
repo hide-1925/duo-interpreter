@@ -4,8 +4,9 @@ let serial=0;
 class Track{constructor(kind='audio'){this.id='t'+(++serial);this.kind=kind;this.readyState='live';this._enabled=true;this.muted=false;}get enabled(){return this._enabled;}set enabled(v){this._enabled=v;}clone(){const t=new Track(this.kind);t.enabled=this.enabled;return t;}stop(){this.readyState='ended';}}
 class Sender{constructor(track){this.track=track;this.history=[];}async replaceTrack(track){this.history.push(track);if(this.fail){this.fail=false;throw Error('replace fail');}this.track=track;}}
 class PC{constructor(){this.senders=[];this.connectionState='connected';}addEventListener(){}addTrack(t){const s=new Sender(t);this.senders.push(s);return s;}addTransceiver(t){return {sender:this.addTrack(t)};}getSenders(){return this.senders;}}
-const media={async getUserMedia(){const tracks=[new Track()];return {getAudioTracks:()=>tracks};}},window={RTCPeerConnection:PC,RTCRtpSender:Sender},timers=[];
+const media={async getUserMedia(){const tracks=[new Track()];return {getAudioTracks:()=>tracks};}},window={RTCPeerConnection:PC,RTCRtpSender:Sender,MediaStreamTrack:Track},timers=[];
 const c=vm.createContext({window,navigator:{mediaDevices:media},MediaStreamTrack:Track,setInterval:fn=>{timers.push(fn);return 1;},clearInterval(){},addEventListener(){},console});
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../conference-adapters/mic-provenance.js'),'utf8'),c);
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../conference-adapters/teams.js'),'utf8'),c);
 (async()=>{
  const tests=[],adapter=window.DuoTeamsAdapter,events=[];

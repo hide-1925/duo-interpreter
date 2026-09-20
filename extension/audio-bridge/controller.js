@@ -17,19 +17,28 @@ async function conferenceToggle(sender){
   conferenceError='';
   const state=await getState();if(!state.htmlTabId||!state.targetTabId)throw Error('HTML本体と会議タブを接続してください');
   const target=await chrome.tabs.get(state.targetTabId);if(!/^https:\/\/(?:teams\.(?:microsoft|live)\.com|teams\.cloud\.microsoft)\//.test(target.url||''))throw Error('会議マイク送出は現在TeamsのWeb版に対応しています');
-  const [probe]=await chrome.scripting.executeScript({target:{tabId:state.targetTabId},world:'MAIN',func:()=>({ready:!!window.DuoTeamsAdapter})});
-  if(!probe?.result?.ready)throw Error('拡張を更新した後、Teamsタブを再読み込みして会議に参加してください');
-  const session={token:crypto.randomUUID(),htmlTabId:state.htmlTabId,htmlDocumentId:state.htmlDocumentId,targetTabId:state.targetTabId,targetDocumentId:probe.documentId,phase:'pending'};conferenceSession=session;
+  const frames=await chrome.webNavigation.getAllFrames({tabId:state.targetTabId});
+  const teamsFrames=(frames||[]).filter(f=>/^https:\/\/(?:teams\.(?:microsoft|live)\.com|teams\.cloud\.microsoft)\//.test(f.url||''));
+  if(!teamsFrames.length)throw Error('Teamsの会議ページを検出できません。対象タブを選び直してください');
+  const frameTarget=teamsFrames.every(f=>f.documentId)?{tabId:state.targetTabId,documentIds:teamsFrames.map(f=>f.documentId)}:{tabId:state.targetTabId,frameIds:teamsFrames.map(f=>f.frameId)};
+  const probes=await chrome.scripting.executeScript({target:frameTarget,world:'MAIN',func:()=>({ready:!!window.DuoTeamsAdapter,discovery:window.DuoTeamsAdapter?.discovery?.()||null})});
+  conferenceDiagnostic({event:'frame-discovery',frames:probes.map(p=>({frameId:p.frameId??0,documentId:p.documentId,ready:!!p.result?.ready,discovery:p.result?.discovery||null}))});
+  const ready=probes.filter(p=>p.result?.ready),eligible=ready.filter(p=>p.result?.discovery?.eligibleCount>0);
+  if(!ready.length)throw Error('拡張を更新した後、Teamsタブを再読み込みして会議に参加してください');
+  if(eligible.length>1)throw Error('複数の会議音声を検出しました。対象タブで使う会議を1つにしてください');
+  const withAudio=ready.filter(p=>p.result?.discovery?.audioSenderCount>0);
+  const probe=eligible[0]||(withAudio.length===1?withAudio[0]:ready.find(p=>(p.frameId??0)===0))||ready[0];
+  const session={token:crypto.randomUUID(),htmlTabId:state.htmlTabId,htmlDocumentId:state.htmlDocumentId,targetTabId:state.targetTabId,targetDocumentId:probe.documentId,targetFrameId:probe.frameId??0,phase:'pending'};conferenceSession=session;
   session.timeout=setTimeout(()=>conferenceQueue(()=>conferenceStop('connection-timeout','接続がタイムアウトしました。HTML本体のWebプリセットとTTS設定を確認してください')),20000);
   try{const r=await chrome.tabs.sendMessage(session.htmlTabId,{type:'DUO_CONFERENCE_HTML',data:{kind:'start',token:session.token}},{documentId:session.htmlDocumentId});if(!r?.ok)throw Error('HTML本体を再接続してください');}
   catch(error){await conferenceStop('start-error');throw error;}
   await conferenceNotify();return {ok:true,...conferencePublic()};
 }
 async function conferenceSignal(data,sender){
-  if(data?.kind==='diagnostic'&&data.token===lastStoppedConference?.token&&sender.tab?.id===lastStoppedConference.targetTabId&&sender.documentId===lastStoppedConference.targetDocumentId&&sender.frameId===0){conferenceDiagnostic(data);if(data.error){conferenceError=data.error;await conferenceNotify();}return {ok:true};}
+  if(data?.kind==='diagnostic'&&data.token===lastStoppedConference?.token&&sender.tab?.id===lastStoppedConference.targetTabId&&sender.documentId===lastStoppedConference.targetDocumentId&&sender.frameId===lastStoppedConference.targetFrameId){conferenceDiagnostic(data);if(data.error){conferenceError=data.error;await conferenceNotify();}return {ok:true};}
   const s=conferenceSession;if(!s||data?.token!==s.token)throw Error('会議音声の接続は無効です');
   const fromHtml=sender.tab?.id===s.htmlTabId&&sender.documentId===s.htmlDocumentId&&sender.frameId===0;
-  const fromTarget=sender.tab?.id===s.targetTabId&&sender.documentId===s.targetDocumentId&&sender.frameId===0;
+  const fromTarget=sender.tab?.id===s.targetTabId&&sender.documentId===s.targetDocumentId&&sender.frameId===s.targetFrameId;
   if(!fromHtml&&!fromTarget)throw Error('会議音声の送信元が一致しません');
   if(data.kind==='error'||data.kind==='stopped'){conferenceDiagnostic({error:data.error||'',reason:data.reason||data.kind});await conferenceStop(data.kind,data.error||(data.reason==='connection-timeout'?'接続がタイムアウトしました':''));return {ok:true};}
   if(data.kind==='offer'&&fromHtml){if(!data.description||JSON.stringify(data.description).length>100000)throw Error('不正なSDPです');await chrome.tabs.sendMessage(s.targetTabId,{type:'DUO_CONFERENCE_TARGET',data},{documentId:s.targetDocumentId});}
@@ -39,7 +48,7 @@ async function conferenceSignal(data,sender){
   else if((data.kind==='diagnostic'||data.kind==='mode-applied')&&fromTarget){conferenceDiagnostic(data);await chrome.tabs.sendMessage(s.htmlTabId,{type:'DUO_CONFERENCE_HTML',data},{documentId:s.htmlDocumentId});}
   else throw Error('不正な会議音声メッセージです');return {ok:true};
 }
-async function conferenceLease(message,sender){const s=conferenceSession;if(!s||message.token!==s.token||sender.tab?.id!==s.targetTabId||sender.documentId!==s.targetDocumentId||sender.frameId!==0)return {ok:false};return {ok:true};}
+async function conferenceLease(message,sender){const s=conferenceSession;if(!s||message.token!==s.token||sender.tab?.id!==s.targetTabId||sender.documentId!==s.targetDocumentId||sender.frameId!==s.targetFrameId)return {ok:false};return {ok:true};}
 async function teamsSpeakerSignal(data,sender){
   const state=await getState();if(sender.tab?.id!==state.targetTabId||sender.frameId!==0||!/^https:\/\/(?:teams\.(?:microsoft|live)\.com|teams\.cloud\.microsoft)\//.test(sender.url||''))return {ok:false};
   if(!data||JSON.stringify(data).length>250000||!Array.isArray(data.events)||!Array.isArray(data.participants))return {ok:false};

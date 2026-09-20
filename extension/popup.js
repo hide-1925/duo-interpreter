@@ -27,7 +27,7 @@ function send(message) {
 $('downloadInteraction').addEventListener('click', async () => {
   try {
     const response=await send({type:'DUO_GET_STATE'});
-    const report={extensionVersion:chrome.runtime.getManifest().version,workerVersion:response.workerVersion||'unknown',generatedAt:new Date().toISOString(),responseFields:Object.keys(response),overlay:response.overlay||{ready:false,error:'バックグラウンドから字幕情報が返されていません。拡張ファイルの混在を確認してください'}};
+    const report={extensionVersion:chrome.runtime.getManifest().version,workerVersion:response.workerVersion||'unknown',generatedAt:new Date().toISOString(),responseFields:Object.keys(response),conference:response.conference||null,overlay:response.overlay||{ready:false,error:'バックグラウンドから字幕情報が返されていません。拡張ファイルの混在を確認してください'}};
     const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));
     const link=document.createElement('a');link.href=url;link.download='duo-subtitle-interaction.json';
     document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
