@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.0",
-  "version_name": "1.4.0 Teams話者帰属・会議音声モード",
+  "version": "1.4.1",
+  "version_name": "1.4.1 Teamsマイク接続修正",
   "optional_host_permissions": [
     "https://*/*"
   ],
@@ -69,11 +69,13 @@
         "https://teams.cloud.microsoft/*"
       ],
       "js": [
+        "conference-adapters/mic-provenance.js",
         "conference-adapters/teams.js",
         "audio-bridge/target.js"
       ],
       "run_at": "document_start",
-      "world": "MAIN"
+      "world": "MAIN",
+      "all_frames": true
     },
     {
       "matches": [
@@ -86,7 +88,8 @@
         "conference-adapters/teams-speakers.js"
       ],
       "run_at": "document_start",
-      "world": "ISOLATED"
+      "world": "ISOLATED",
+      "all_frames": true
     }
   ]
 }
