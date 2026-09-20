@@ -1,0 +1,5 @@
+# 拡張のソースは改行をLFに固定する。
+# v1.4.0はCRLF、v1.4.1以降はLFで配布されており、
+# 正規化しないと版間の差分が行末変更で埋もれるため。
+extension/** text=auto eol=lf
+*.zip binary
