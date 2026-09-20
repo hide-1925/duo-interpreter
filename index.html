@@ -747,6 +747,16 @@
 #duoFavoriteList{max-height:320px;overflow:auto}#duoEndpointInfo{max-height:230px;overflow:auto;font-size:11px;white-space:pre-wrap}
 @media(max-width:600px){.duo-detail-controls{width:min(390px,calc(100vw - 16px));right:0;bottom:calc(100% + 4px)}.side-head .duo-detail-controls{width:auto;left:auto;right:0;bottom:auto;top:100%;min-width:90px}#bar .seatctl{min-width:0;flex-shrink:1}#bar .seatctl select{max-width:88px}}
 
+
+.duo-speaker-name{font:inherit;color:inherit;border:0;background:transparent;padding:2px;cursor:pointer}
+.duo-speaker-menu{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:6px;min-width:210px;z-index:9999}
+.duo-speaker-menu button{display:block;width:100%;background:transparent;color:inherit;border:0;padding:8px;text-align:left;cursor:pointer}
+.duo-speaker-menu button:hover,.duo-speaker-menu button:focus-visible{background:var(--panel-2)}
+#ttsToggle .conference-badge{position:absolute;right:1px;bottom:0;font-size:9px;line-height:11px;width:24px;text-align:center;background:var(--panel);border-radius:3px}
+.conference-badge[hidden],#conferenceMixLevels[hidden],#conferenceRelayParticipants[hidden]{display:none!important}
+.preset-description{display:block;font-size:11px;opacity:.75;font-weight:normal}
+@media(hover:hover) and (pointer:fine){.preset-description{visibility:hidden;max-height:0;overflow:hidden}#duoPresetMenu button:hover .preset-description,#duoPresetMenu button:focus .preset-description{visibility:visible;max-height:40px;transition:visibility 0s .4s,max-height 0s .4s}}
+#conferenceRelayParticipants label{display:block}
 </style>
 </head>
 <body>
@@ -1749,7 +1759,7 @@ var DUO_PRESETS = {
 };
 function duoId(prefix){return prefix+'-'+crypto.randomUUID();}
 function duoSessionConfig(presetId){
-  var web=presetId==='web',broadcast=presetId==='one_to_many';
+  var web=presetId==='web'||presetId==='many_to_many',broadcast=presetId==='one_to_many';
   return {sessionId:duoId('session'),presetId:presetId,
     participants:{p1:{participantId:'p1'},p2:{participantId:'p2'}},
     endpoints:{'local-mic':{endpointId:'local-mic',type:'microphone',scope:'local',enabled:true},
@@ -1782,7 +1792,11 @@ var STT_ADAPTER_CAPABILITIES={
   realtime:{microphone:true,systemAudio:true,arbitraryTrack:true}
 };
 var AudioRoutingPolicy={resolve:function(job){
-  return {localMonitor:true,conferenceMic:!!(job&&job.sourceScope==='local'&&job.sourceParticipantId&&job.sourceEndpointId&&job.utteranceId&&job.sessionId)};
+  var valid=job&&job.sourceParticipantId&&job.sourceEndpointId&&job.utteranceId&&job.sessionId;
+  var automatic=job&&job.playbackIntent==='automatic';
+  var remote=valid&&job.sourceScope==='remote'&&conferenceAudioState.relay&&job.speakerId&&conferenceAudioState.relayParticipants.has(job.speakerId)&&job.ttsType==='translated';
+  var allowed=!!(valid&&automatic&&conferenceAudioState.mode!=='original-only'&&(job.sourceScope==='local'||remote));
+  return {localMonitor:true,conferenceMic:allowed};
 }};
 var ConferenceMicBus={context:null,destination:null,gate:null,enabled:false,
   ensure:function(ctx){
@@ -1790,9 +1804,10 @@ var ConferenceMicBus={context:null,destination:null,gate:null,enabled:false,
     if(this.context!==ctx)throw Error('会議音声のAudioContextが一致しません');
     return this.destination.stream;
   },
-  setEnabled:function(on){this.enabled=!!on;if(this.gate)this.gate.gain.value=on?1:0;},
+  setEnabled:function(on){this.enabled=!!on;if(this.gate)this.gate.gain.value=on?1:0;duoRefreshRouteGates();},
   connect:function(node,job){
-    var route=AudioRoutingPolicy.resolve(job);if(route.conferenceMic){this.ensure(node.context);node.connect(this.gate);}
+    var route=AudioRoutingPolicy.resolve(job);if(route.conferenceMic){this.ensure(node.context);var jobGate=node.context.createGain();jobGate.gain.value=1;node.connect(jobGate);jobGate.connect(this.gate);duoRouteGates.push({gate:jobGate,job:job,at:Date.now()});}
+    if(job)dlog('conference',route.conferenceMic?(job.sourceScope==='remote'?'conference-route-remote-relay':'conference-route-tts-only'):'conference-route-rejected',{jobId:job.jobId,playbackIntent:job.playbackIntent,speakerId:job.speakerId,at:Date.now()});
     if(job)dlog('audio-route','resolve',Object.assign({},job,{route:route,webConferenceMicEnabled:this.enabled,conferenceMicTrackId:this.destination&&this.destination.stream.getAudioTracks()[0].id}));
     return route;
   }
@@ -1801,8 +1816,9 @@ var LocalMonitorBus={connect:function(node){node.connect(ttsGain);}};
 function duoTtsJob(key){
   key=String(key||'');var id=key.split(':')[0],e=S.entries.find(function(x){return x.id===id;});
   var useSource=key.split(':')[1]===(e&&e.seat);
+  var manual=!!(manualSayKey===key||(SEG.active&&SEG.active.manual));
   return Object.freeze(Object.assign({jobId:duoId('tts'),utteranceId:e&&e.utteranceId||null,seat:e&&e.seat,
-    sourceLanguage:e&&e.srcLang||'',outputLanguage:e?(useSource?e.srcLang:e.dstLang):'',ttsType:useSource?'original':'translated'},e&&e.origin||{sourceScope:'unknown'}));
+    playbackIntent:manual?'manual-replay':'automatic',speakerId:e&&e.speaker&&e.speaker.id||null,sourceLanguage:e&&e.srcLang||'',outputLanguage:e?(useSource?e.srcLang:e.dstLang):'',ttsType:useSource?'original':'translated'},e&&e.origin||{sourceScope:'unknown'}));
 }
 function duoRouteNode(node,job){LocalMonitorBus.connect(node);ConferenceMicBus.connect(node,job);}
 var duoMediaRoutes=new WeakMap();
@@ -1836,11 +1852,13 @@ var duoConferencePeer=null,duoConferenceToken='',duoConferenceTimer=null;
 function duoConferenceSend(data){window.dispatchEvent(new CustomEvent('duo-conference-out',{detail:JSON.stringify(data)}));}
 function duoConferenceStop(reason){
   ConferenceMicBus.setEnabled(false);clearTimeout(duoConferenceTimer);
+  duoConferenceStateEvent({kind:'stop'});
   var token=duoConferenceToken;duoConferenceToken='';
   if(duoConferencePeer){duoConferencePeer.close();duoConferencePeer=null;}
   if(token)duoConferenceSend({kind:'stopped',token:token,reason:reason||'stopped'});
 }
 async function duoConferenceCommand(data){
+  if(['active','mode-applied','diagnostic'].includes(data.kind)){if(data.token===duoConferenceToken)duoConferenceStateEvent(data);return;}
   if(data.kind==='stop'){duoConferenceStop('extension-stop');return;}
   if(data.kind==='answer'){
     if(data.token!==duoConferenceToken||!duoConferencePeer)return;
@@ -1857,7 +1875,7 @@ async function duoConferenceCommand(data){
     var stream=ConferenceMicBus.ensure(ctx),pc=new RTCPeerConnection({iceServers:[]});duoConferencePeer=pc;
     pc.addTrack(stream.getAudioTracks()[0],stream);
     pc.onconnectionstatechange=function(){if(pc!==duoConferencePeer)return;
-      if(pc.connectionState==='connected'){clearTimeout(duoConferenceTimer);ConferenceMicBus.setEnabled(true);}
+      if(pc.connectionState==='connected'){clearTimeout(duoConferenceTimer);/* Wait for Teams adapter acknowledgement before enabling outbound audio. */}
       if(['failed','disconnected','closed'].indexOf(pc.connectionState)>=0)duoConferenceStop('transport-'+pc.connectionState);
     };
     duoConferenceTimer=setTimeout(function(){if(pc===duoConferencePeer)duoConferenceStop('connection-timeout');},15000);
@@ -1916,7 +1934,7 @@ function duoInstallUI(){
 
   var savedPreset=store.get('di.preset','one_to_one');duoApplyPreset(DUO_PRESETS[savedPreset]?savedPreset:'one_to_one',true);
   $('duoLocalParticipant').onchange=function(){if(S.running)stopAll();stopSpeaking('Endpoint変更');duoConferenceStop('endpoint-change');
-    var local=this.value,remote=local==='p1'?'p2':'p1';duoSession.bindings[local]='local-mic';duoSession.bindings[remote]=duoSession.presetId==='web'?'conference-audio':duoSession.presetId==='one_to_many'?null:'local-mic';duoSession.textParticipantId=local;AudioEndpointManager.apply();applyCfg();duoRefreshEndpoints();};
+    var local=this.value,remote=local==='p1'?'p2':'p1';duoSession.bindings[local]='local-mic';duoSession.bindings[remote]=['web','many_to_many'].includes(duoSession.presetId)?'conference-audio':duoSession.presetId==='one_to_many'?null:'local-mic';duoSession.textParticipantId=local;AudioEndpointManager.apply();applyCfg();duoRefreshEndpoints();};
   $('aivisFavorites').addEventListener('toggle',function(){if(this.open)duoRenderFavorites();});
   ['ttsMode','sttProvider'].forEach(function(id){$(id).addEventListener('change',function(){if(CFG.sttProvider==='realtime'||['off','browser'].indexOf(CFG.ttsMode)>=0)duoConferenceStop('audio-provider-change');});});
   $('duoFavoriteAdd').onclick=function(){var u=$('duoFavoriteUuid').value.trim(),n=$('duoFavoriteName').value.trim();
@@ -1978,7 +1996,7 @@ function duoLiveAssignSeat(engine,entry,text){
 /* Web会議・動画の入力元（B）と、実際に話されている言語は別の属性。
    カードの話者はBのまま保ち、認識本文から言語だけを更新する。 */
 function duoShouldAutoDetectInput(seat){
-  if(!S.autoMode||!duoSession||duoSession.presetId!=='web')return false;
+  if(!S.autoMode||!duoSession||!['web','many_to_many'].includes(duoSession.presetId))return false;
   var endpoint=AudioEndpointManager.forView(seat);
   return !!(endpoint&&endpoint.enabled&&endpoint.type==='system-audio');
 }
@@ -2000,8 +2018,145 @@ function duoAssignRecognizedLanguage(entry,text){
   return detected;
 }
 
-var APP_VERSION = 'v1.46.4';
-var APP_BUILD = '20260920-v1464-feed-follow';
+/* Speaker identity is independent of seat, language and routing origin. */
+var DuoSpeakers={registry:new Map(),timeline:[],active:new Map(),available:false,session:null,lastSeen:0};
+var SPEAKER_WINDOW={before:400,after:600,pending:2500};
+function duoSpeakerEligible(e){return !!(e.origin&&e.origin.sourceEndpointId==='conference-audio'&&['web','many_to_many'].includes(e.origin.presetId));}
+function duoSpeakerDefault(){return {id:null,displayName:null,autoId:null,autoDisplayName:null,source:'unknown',confidence:0,manuallyLocked:false,revision:0,candidates:[],assignedAt:null};}
+function duoSpeakerName(e){return e.speaker&&e.speaker.displayName||seatName(e.seat);}
+function duoSpeakerResolve(e,now){
+  now=now||Date.now();var start=e.startedAt||Date.parse(e.ts)||now,end=e.audioEndedAt||e.endedAt||now;
+  end=Math.max(start+1,end);var scores=new Map(),spans=[];
+  DuoSpeakers.timeline.forEach(function(t){if(e.speakerSession&&t.session!==e.speakerSession)return;
+    var stop=t.end||now,overlap=Math.max(0,Math.min(end,stop+SPEAKER_WINDOW.after)-Math.max(start,t.start-SPEAKER_WINDOW.before));
+    if(overlap){scores.set(t.id,(scores.get(t.id)||0)+overlap);spans.push(t);}
+  });
+  var simultaneous=new Set();spans.forEach(function(a,i){spans.slice(i+1).forEach(function(b){
+    if(a.id!==b.id&&Math.min(end,a.end||now,b.end||now)-Math.max(start,a.start,b.start)>100){simultaneous.add(a.id);simultaneous.add(b.id);}
+  });});
+  if(simultaneous.size>1)return {id:null,displayName:'複数話者',source:'teams-dom',confidence:0,candidates:Array.from(simultaneous),quality:'ambiguous'};
+  var ranked=Array.from(scores).sort(function(a,b){return b[1]-a[1];});
+  if(ranked.length){var best=ranked[0],ratio=Math.min(1,best[1]/(end-start)),p=DuoSpeakers.registry.get(best[0]);
+    if(ranked[1]&&ranked[1][1]>=best[1]*.8)return {id:null,displayName:'複数話者',source:'teams-dom',confidence:0,candidates:ranked.map(function(x){return x[0];}),quality:'ambiguous'};
+    var raw=spans.filter(function(t){return t.id===best[0];}).reduce(function(n,t){return n+Math.max(0,Math.min(end,t.end||now)-Math.max(start,t.start));},0);
+    return {id:best[0],displayName:p&&p.displayName||'話者判定中…',source:'teams-dom',confidence:raw===0?.2:ratio>=.6?.87:.5,candidates:ranked.map(function(x){return x[0];}),quality:raw===0?'low':ratio>=.6?'high':'medium'};
+  }
+  return {id:null,displayName:now-end<SPEAKER_WINDOW.pending?'話者判定中…':'話者不明',source:'unknown',confidence:0,candidates:[],quality:'unknown'};
+}
+function duoSpeakerUpdate(e){
+  if(!duoSpeakerEligible(e))return;
+  if(!e.speaker)e.speaker=duoSpeakerDefault();
+  if(!e.speakerSession&&DuoSpeakers.session)e.speakerSession=DuoSpeakers.session;
+  if(!DuoSpeakers.available&&!e.speakerSession)return;
+  var auto=duoSpeakerResolve(e),s=e.speaker;
+  s.autoId=auto.id;s.autoDisplayName=auto.displayName;
+  if(s.manuallyLocked)return;
+  if(s.id===auto.id&&s.displayName===auto.displayName&&s.confidence===auto.confidence)return;
+  Object.assign(s,auto,{revision:s.revision+1,assignedAt:Date.now()});
+  dlog('speaker',auto.quality==='ambiguous'?'speaker-ambiguous':'speaker-attributed',{utteranceId:e.utteranceId,cardId:e.id,speaker:s,startedAt:e.startedAt,endedAt:e.audioEndedAt||e.endedAt,at:Date.now()});
+}
+function duoSpeakerEvent(data){
+  if(!data||!Array.isArray(data.participants)||!Array.isArray(data.events))return;
+  var session=String(data.session||'').slice(0,100);if(!session)return;
+  if(DuoSpeakers.session!==session){DuoSpeakers.active.forEach(function(t){t.end=data.observedAt||Date.now();});DuoSpeakers.active.clear();DuoSpeakers.session=session;}
+  DuoSpeakers.available=!!data.available;DuoSpeakers.lastSeen=Date.now();
+  data.participants.slice(0,500).forEach(function(p){var id=session+':'+String(p.speakerKey).slice(0,100);DuoSpeakers.registry.set(id,{speakerKey:id,displayName:String(p.displayName||'').slice(0,160),firstSeenAt:p.firstSeenAt,lastSeenAt:p.lastSeenAt,session:session});});
+  data.events.slice(0,200).forEach(function(ev){var id=session+':'+String(ev.speakerKey).slice(0,100),at=Number(ev.observedAt);if(!Number.isFinite(at))return;
+    if(ev.kind==='speaker-start'&&!DuoSpeakers.active.has(id)){var t={id:id,start:at,end:null,session:session};DuoSpeakers.timeline.push(t);DuoSpeakers.active.set(id,t);}
+    if(ev.kind==='speaker-end'&&DuoSpeakers.active.has(id)){DuoSpeakers.active.get(id).end=at;DuoSpeakers.active.delete(id);}
+    dlog('speaker','teams-'+ev.kind,{speakerId:id,observedAt:at,receivedAt:Date.now()});
+  });
+  // Heartbeats carry the active set so a newly attached HTML tab recovers starts.
+  if(Array.isArray(data.active)){var current=new Set(data.active.map(function(a){return session+':'+a.speakerKey;}));DuoSpeakers.active.forEach(function(t,id){if(t.session===session&&!current.has(id)){t.end=data.observedAt||Date.now();DuoSpeakers.active.delete(id);}});}
+  (data.active||[]).forEach(function(a){var id=session+':'+a.speakerKey;if(!DuoSpeakers.active.has(id)){var t={id:id,start:a.startedAt,end:null,session:session};DuoSpeakers.timeline.push(t);DuoSpeakers.active.set(id,t);}});
+  DuoSpeakers.timeline=DuoSpeakers.timeline.slice(-6000);
+  S.entries.forEach(function(e){if(duoSpeakerEligible(e)){duoSpeakerUpdate(e);duoSpeakerPaint(e);}});duoRelayList();minutesRefreshStatus();
+}
+function duoSpeakerSet(e,id){
+  var s=e.speaker||(e.speaker=duoSpeakerDefault());
+  if(id==='auto'){s.manuallyLocked=false;s.id=null;s.displayName=null;s.revision++;duoSpeakerUpdate(e);dlog('speaker','speaker-reset-auto',{cardId:e.id,at:Date.now()});}
+  else {var p=DuoSpeakers.registry.get(id);Object.assign(s,{id:p?id:null,displayName:p?p.displayName||'名前未取得':'話者不明',source:'manual',confidence:p?1:0,manuallyLocked:true,revision:s.revision+1,assignedAt:Date.now(),candidates:[]});dlog('speaker','speaker-manual',{cardId:e.id,speaker:s,at:Date.now()});}
+  duoSpeakerPaint(e);minutesRefreshStatus();
+}
+function duoSpeakerPaint(e){
+  document.querySelectorAll('[data-eid="'+e.id+'"] .whotxt').forEach(function(label){
+    if(!duoSpeakerEligible(e)||(!DuoSpeakers.available&&!e.speakerSession))return;
+    var text=label.dataset.speakerSuffix;
+    if(!text){var raw=label.textContent,at=raw.indexOf(' · ');text=at>=0?raw.slice(at):'';label.dataset.speakerSuffix=text;}
+    var existing=label.querySelector('.duo-speaker-name');if(existing){existing.textContent=duoSpeakerName(e)+' ▼';return;}
+    var button=document.createElement('button');button.type='button';button.className='duo-speaker-name';button.textContent=duoSpeakerName(e)+' ▼';button.setAttribute('aria-haspopup','menu');button.onclick=function(ev){ev.stopPropagation();duoSpeakerMenu(e,button);};label.replaceChildren(button,document.createTextNode(text));
+  });
+}
+function duoSpeakerMenu(e,button){
+  var old=$('duoSpeakerMenu');if(old)old.remove();var menu=document.createElement('div');menu.id='duoSpeakerMenu';menu.className='duo-speaker-menu';menu.setAttribute('role','menu');document.body.appendChild(menu);
+  function add(text,id){var b=document.createElement('button');b.type='button';b.setAttribute('role','menuitem');b.textContent=text;b.onclick=function(ev){ev.stopPropagation();duoSpeakerSet(e,id);close();};menu.appendChild(b);}
+  var at=S.entries.indexOf(e);[['← 前の発話者：',S.entries[at-1]],['→ 次の発話者：',S.entries[at+1]]].forEach(function(x){if(x[1]&&x[1].speaker&&x[1].speaker.id)add(x[0]+duoSpeakerName(x[1]),x[1].speaker.id);});
+  DuoSpeakers.registry.forEach(function(p,id){if(!e.speakerSession||p.session===e.speakerSession)add(p.displayName||'名前未取得 ('+id.split(':').pop()+')',id);});add('話者不明','unknown');add('自動判定に戻す','auto');
+  function close(){document.removeEventListener('pointerdown',outside);menu.remove();button.focus();}
+  function outside(ev){if(!menu.contains(ev.target)&&ev.target!==button)close();}document.addEventListener('pointerdown',outside);
+  menu.onkeydown=function(ev){if(ev.key==='Escape'){ev.stopPropagation();close();}if(['ArrowDown','ArrowUp'].includes(ev.key)){ev.preventDefault();var bs=Array.from(menu.children),i=bs.indexOf(document.activeElement);bs[(i+(ev.key==='ArrowDown'?1:bs.length-1))%bs.length].focus();}};
+  duoFloatPanel(menu,button,true);menu.firstChild.focus();
+}
+function duoSpeakerExport(e){var s=e.speaker||duoSpeakerDefault();return {speaker:duoSpeakerName(e),speakerId:s.id,speakerAttribution:{source:s.source,confidence:s.confidence,manuallyCorrected:s.manuallyLocked,revision:s.revision}};}
+
+var conferenceAudioState={mode:'tts-only',connected:false,micGain:.7,ttsGain:1,relay:false,relayParticipants:new Set(),resumeAfter:0,pending:false};
+var CONFERENCE_MODES=['tts-only','original-plus-tts','original-only'];
+function conferenceModeLabel(mode){return ['on','mix','off'][CONFERENCE_MODES.indexOf(mode)]||'on';}
+function duoConferenceApplicable(){return conferenceAudioState.connected&&duoSession&&['web','many_to_many'].includes(duoSession.presetId);}
+function duoAutomaticAllowed(e){return !duoConferenceApplicable()||(conferenceAudioState.mode!=='original-only'&&(!e||((e.startedAt||Date.parse(e.ts)||0)>conferenceAudioState.resumeAfter)));}
+function duoConferenceAudioUI(){
+  var st=conferenceAudioState,active=duoConferenceApplicable(),b=$('ttsToggle'),badge=b&&b.querySelector('.conference-badge');
+  if(b){if(!badge){badge=document.createElement('span');badge.className='conference-badge';b.appendChild(badge);}badge.hidden=!active;badge.textContent=conferenceModeLabel(st.mode);b.disabled=!!st.pending;
+    if(active){b.style.display='';b.classList.toggle('muted',st.mode==='original-only');b.querySelector('.ic').textContent=st.mode==='original-only'?'🔇':'🔊';b.title=['TTS音声のみ\nクリック：TTS音声 + オリジナル音声','TTS音声 + オリジナル音声\nクリック：TTSをOFFにしてオリジナル音声のみ','TTS OFF・オリジナル音声のみ\nクリック：TTS音声のみに戻る'][CONFERENCE_MODES.indexOf(st.mode)];}}
+  var select=$('conferenceMode');if(select){select.value=st.mode;select.disabled=!active||st.pending;$('conferenceMixLevels').hidden=st.mode!=='original-plus-tts';$('conferenceConnection').textContent=active?'':'Web会議マイク音声を接続すると変更できます。';}
+}
+function duoStopAutomatic(){
+  // Manual playback has its own queue intent; never stop it for mode changes.
+  if(!(manualSayKey||(SEG.active&&SEG.active.manual)))stopSpeaking('会議自動音声停止');
+  SEG.queue=SEG.queue.filter(function(j){if(j.manual)return true;if(j.segment.audio){j.segment.audio.status='cancelled';j.segment.audio.skipReason='conference-off';}return false;});
+}
+function duoSetConferenceMode(mode,trigger){
+  if(!CONFERENCE_MODES.includes(mode)||!duoConferenceApplicable()||conferenceAudioState.pending)return;
+  var st=conferenceAudioState,old=st.mode;if(old===mode)return;
+  st.mode=mode;st.pending=true;
+  if(mode==='original-only'){ConferenceMicBus.setEnabled(false);duoStopAutomatic();}
+  if(old==='original-only')st.resumeAfter=Date.now();
+  dlog('conference','conference-mode-change',{trigger:trigger,previousMode:old,previousLabel:conferenceModeLabel(old),nextMode:mode,nextLabel:conferenceModeLabel(mode),at:Date.now()});
+  duoConferenceSend({kind:'mode',token:duoConferenceToken,mode:mode,micGain:st.micGain,ttsGain:st.ttsGain});duoConferenceAudioUI();
+  clearTimeout(st.timer);st.timer=setTimeout(function(){if(st.pending){st.pending=false;duoConferenceStop('mode-timeout');toast('会議音声の切替応答がありません。再接続してください。');}},8000);
+}
+function duoConferenceStateEvent(data){
+  var st=conferenceAudioState;
+  if(data.kind==='active'){st.connected=true;st.mode='tts-only';st.pending=false;st.resumeAfter=Date.now();ConferenceMicBus.setEnabled(true);}
+  if(data.kind==='mode-applied'){if(!CONFERENCE_MODES.includes(data.mode))return;st.mode=data.mode;st.pending=false;clearTimeout(st.timer);ConferenceMicBus.setEnabled(st.mode!=='original-only');}
+  if(data.kind==='stop'){st.connected=false;st.mode='tts-only';st.pending=false;st.resumeAfter=0;clearTimeout(st.timer);}
+  if(data.kind==='diagnostic')dlog('conference',data.event||'adapter',data);
+  refreshTtsBtn();duoConferenceAudioUI();
+}
+function duoRelayList(){
+  duoRefreshRouteGates();
+  var host=$('conferenceRelayParticipants');if(!host)return;host.replaceChildren();
+  DuoSpeakers.registry.forEach(function(p,id){if(p.session!==DuoSpeakers.session)return;var l=document.createElement('label'),c=document.createElement('input');c.type='checkbox';c.checked=conferenceAudioState.relayParticipants.has(id);c.onchange=function(){if(c.checked)conferenceAudioState.relayParticipants.add(id);else conferenceAudioState.relayParticipants.delete(id);duoRefreshRouteGates();};l.append(c,document.createTextNode(p.displayName||'名前未取得'));host.appendChild(l);});host.hidden=!conferenceAudioState.relay;
+}
+var duoRouteGates=[];
+function duoRefreshRouteGates(){duoRouteGates=duoRouteGates.filter(function(r){if(Date.now()-r.at>600000){r.gate.disconnect();return false;}r.gate.gain.value=AudioRoutingPolicy.resolve(r.job).conferenceMic?1:0;return true;});}
+function duoSttTiming(e){if(!e)return;var now=Date.now();if(e.srcText&&e.srcText!=='（認識中…）'&&!e.firstPartialAt){e.firstPartialAt=now;dlog('speaker','stt-first-partial',{utteranceId:e.utteranceId,startedAt:e.startedAt,at:now});}if(!e.interim&&!e.sttFinalAt){e.sttFinalAt=now;dlog('speaker','stt-final',{utteranceId:e.utteranceId,startedAt:e.startedAt,endedAt:e.audioEndedAt||e.endedAt,at:now});}}
+function duoNextInstall(){
+  var descriptions=['対面会議','ブラウザから音声取り込み','Web会議（複数話者）','ショップツアーやプレゼン時'];
+  Array.from($('duoPresetMenu').children).forEach(function(b,i){var desc=document.createElement('small');desc.className='preset-description';desc.textContent=descriptions[i];b.appendChild(desc);b.setAttribute('aria-description',descriptions[i]);});
+  var box=document.createElement('details');box.className='adv';box.id='conferenceSettings';
+  box.innerHTML='<summary>Web会議への音声送出</summary><p id="conferenceConnection"></p><label>現在のモード <select id="conferenceMode"><option value="tts-only">on — TTS音声のみ</option><option value="original-plus-tts">mix — TTS音声 + オリジナル音声</option><option value="original-only">off — TTS OFF・オリジナル音声のみ</option></select></label><div id="conferenceMixLevels" hidden><label>オリジナル音声 <input id="conferenceMicGain" type="range" min="0" max="100" value="70"><output>70%</output></label><label>TTS音声 <input id="conferenceTtsGain" type="range" min="0" max="100" value="100"><output>100%</output></label></div><label>会議へ流す翻訳音声 <select id="conferenceRelay"><option value="local">自分の発言のみ（推奨）</option><option value="selected">選択した他の参加者も含む</option></select></label><p>他の参加者の翻訳音声を会議へ戻す場合、同じ会議では原則1台のDuoのみを中継役にしてください。</p><div id="conferenceRelayParticipants"></div>';
+  $('p2').prepend(box);$('conferenceMode').onchange=function(){duoSetConferenceMode(this.value,'drawer');};
+  [['conferenceMicGain','micGain'],['conferenceTtsGain','ttsGain']].forEach(function(pair){$(pair[0]).oninput=function(){conferenceAudioState[pair[1]]=Number(this.value)/100;this.nextElementSibling.textContent=this.value+'%';if(duoConferenceApplicable())duoConferenceSend({kind:'gain',token:duoConferenceToken,micGain:conferenceAudioState.micGain,ttsGain:conferenceAudioState.ttsGain});dlog('conference','conference-mix-gain',{micGain:conferenceAudioState.micGain,ttsGain:conferenceAudioState.ttsGain,at:Date.now()});};});
+  $('conferenceRelay').onchange=function(){conferenceAudioState.relay=this.value==='selected';duoRelayList();};
+  var oldClick=$('ttsToggle').onclick;$('ttsToggle').onclick=function(){if(duoConferenceApplicable()){duoSetConferenceMode(CONFERENCE_MODES[(CONFERENCE_MODES.indexOf(conferenceAudioState.mode)+1)%3],'speaker-button');return;}oldClick.call(this);};
+  window.addEventListener('duo-speakers-in',function(ev){try{duoSpeakerEvent(JSON.parse(ev.detail));}catch(err){dlog('speaker','sensor-error',{error:String(err)});}});
+  setInterval(function(){if(DuoSpeakers.lastSeen&&Date.now()-DuoSpeakers.lastSeen>6000){DuoSpeakers.available=false;DuoSpeakers.active.forEach(function(t){t.end=DuoSpeakers.lastSeen;});DuoSpeakers.active.clear();}S.entries.slice(-100).forEach(function(e){if(duoSpeakerEligible(e)){duoSpeakerUpdate(e);duoSpeakerPaint(e);}});},1000);
+  duoConferenceAudioUI();
+}
+
+var APP_VERSION = 'v1.47.0';
+var APP_BUILD = '20260920-v1470-teams-speakers-audio';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -2504,6 +2659,7 @@ function addEntry(seat, text, interim){
             ts:new Date().toISOString(), interim:!!interim,
             srcLang:(seat==='A'?CFG.langA:CFG.langB), dstLang:(seat==='A'?CFG.langB:CFG.langA) };
   e.utteranceId=duoId("utterance");e.origin=AudioEndpointManager.origin(seat,false);
+  e.startedAt=Date.now();e.speaker=duoSpeakerDefault();
   S.entries.push(e);
   render(e);
   return e;
@@ -2520,7 +2676,7 @@ function removeEntry(e){
   S.entries = S.entries.filter(function(x){ return x.id !== e.id; });
   renderOverlayRail();
 }
-function render(e){ clearEmpty(); paint('feedA', e, 'A'); paint('feedB', e, 'B'); renderOverlayRail(); }
+function render(e){ duoSttTiming(e);duoSpeakerUpdate(e);clearEmpty(); paint('feedA', e, 'A'); paint('feedB', e, 'B');duoSpeakerPaint(e);renderOverlayRail(); }
 
 /* Keep following growing live cards until the reader explicitly scrolls upward.
    Background-tab layout changes and synchronized/programmatic scrolling also emit
@@ -2603,6 +2759,7 @@ function paint(feedId, e, viewer){
   el.className = 'bubble from-' + e.seat +
                  (e.dstText || noTranslation ? '' : ' pending') + (e.interim ? ' interim' : '');
   var mainLang = noTranslation || isSelf ? e.srcLang : e.dstLang;
+  delete el.querySelector('.whotxt').dataset.speakerSuffix;
   el.querySelector('.whotxt').textContent =
     seatName(e.seat) + ' · ' + L(mainLang).name + ' · ' + e.time + (noTranslation ? ' · 文字起こし' : (isSelf ? ' · 原文' : ' · 訳')) +
     (!noTranslation && e.srcLang === e.dstLang ? '（同じ言語）' : '');
@@ -5150,7 +5307,9 @@ function ttsEnd(sayKey,requestGen){
 /* 読み上げボタンの見た目を更新する。4か所で個別に書いていたのを1つにまとめ、
    状態と表示がずれないようにする。 */
 function refreshTtsBtn(){
+  if(duoConferenceApplicable()){duoConferenceAudioUI();return;}
   var b = $('ttsToggle'); if (!b) return;
+  var badge=b.querySelector('.conference-badge');if(badge)badge.hidden=true;b.disabled=false;b.querySelector('.ic').textContent='🔊';
   var isRT = (CFG.sttProvider === 'realtime');
   b.style.display = isRT ? 'none' : '';
   if (isRT) return;
@@ -8809,6 +8968,7 @@ function speakManual(text, lang, btn, seat, prosody,sayKey){
 function speakSrcNow(e){ if(segEnabled())return; if (CFG.ttsSrc) speak(e); }
 
 function speak(e){
+  if(!duoAutomaticAllowed(e))return;
   if (!ttsProv().enabled){ dlog('tts','skip',{ why:'読み上げOFF' }); return; }
   var useSrc = !!CFG.ttsSrc;
   var sayText = useSrc ? e.srcText : e.dstText;
@@ -9290,7 +9450,7 @@ StreamEngine.prototype.newRec = function(){
   try{ this.rec = mime ? new MediaRecorder(this.stream,{mimeType:mime}) : new MediaRecorder(this.stream); }
   catch(e){ dlog('audio','recorder-FAIL',{ err:String((e&&e.message)||e) }); toast('録音を開始できません: '+e.message); return; }
   var recorder=this.rec,recordedChunks=this.chunks;
-  this.rec._fourOMeta={seconds:fourOSeconds(CFG.fourOSeconds),carry:CFG.fourOCarry!==false};
+  this.rec._fourOMeta={startedAt:this.segStart,seconds:fourOSeconds(CFG.fourOSeconds),carry:CFG.fourOCarry!==false};
   this.rec.ondataavailable = function(ev){ if (ev.data && ev.data.size) recordedChunks.push(ev.data); };
   this.rec.onstop = function(){
     var send = recorder && recorder._send;
@@ -9300,7 +9460,7 @@ StreamEngine.prototype.newRec = function(){
     if (send && blob.size > 6000){
       self.sent++;
       if(self.fourO)self.fourO.submit(blob,self.seat,prosody,recorder._fourOMeta);
-      else transcribeBlob(blob, self.seat, prosody);
+      else transcribeBlob(blob, self.seat, prosody,recorder._fourOMeta);
     } else {
       // これまで完全に無記録だった経路。捨てた理由が分からないと原因を追えない。
       dlog('audio','discard',{ seat:self.seat, why: (!send ? '発話を検出せず（無音扱い）' : 'データが小さすぎる'),
@@ -9315,7 +9475,7 @@ StreamEngine.prototype.cut = function(send,reason){
   if (!this.rec || this.rec.state==='inactive'){ if(!this.dead && S.running) this.newRec(); return; }
   this.rec._stopping=true;
   this.rec._send = !!send;
-  if(this.rec._fourOMeta){this.rec._fourOMeta.reason=reason||'silence';
+  if(this.rec._fourOMeta){this.rec._fourOMeta.endedAt=Date.now();this.rec._fourOMeta.reason=reason||'silence';
     if(this.fourO)dlog('stt','4o-recording-cut',{reason:this.rec._fourOMeta.reason,seconds:this.rec._fourOMeta.seconds,spanMs:Date.now()-this.segStart,send:!!send});}
   this.rec._peak = this.peak;
   if (send && this.prosody) this.rec._prosody = this.prosody.finalize();
@@ -9410,6 +9570,7 @@ FourOFileBuffer.prototype.submit=function(blob,seat,prosody,meta){
   var self=this,e=addEntry(seat,'',true),q={id:++this.serial,entry:e,seat:seat,lang:langOf(seat),autoLanguage:duoShouldAutoDetectInput(seat),
     srcLang:langOf(seat),dstLang:langOf(seat==='A'?'B':'A'),prosody:prosody,meta:meta,done:false,
     created:Date.now(),text:'',controller:new AbortController()};
+  e.startedAt=meta.startedAt||e.startedAt;e.audioEndedAt=meta.endedAt||Date.now();
   e.fourOState={pending:true,reason:'recognizing',model:this.model,request:q.id};
   if(segEnabled())segInit(e);render(e);this.queue.push(q);
   function settle(text,error){
@@ -9442,13 +9603,13 @@ FourOFileBuffer.prototype.drain=function(){
     if(held&&S.entries.indexOf(held.entry)<0)this.held=held=null;
     if(held&&(held.entry.seat!==q.seat||held.entry.srcLang!==q.srcLang||held.entry.dstLang!==q.dstLang)){this.release('speaker-language-change',false);held=null;}
     var text=q.text;
-    if(held){text=fourOJoin(held.entry.srcText,text);removeEntry(e);e=held.entry;e.prosody=null;this.held=null;}
+    if(held){held.entry.audioEndedAt=e.audioEndedAt;text=fourOJoin(held.entry.srcText,text);removeEntry(e);e=held.entry;e.prosody=null;this.held=null;}
     else if(CFG.prosodyOn&&q.prosody){e.srcText=text;attachProsody(e,q.prosody);}
     var parts=fourOSplit(text,q.meta.reason==='limit'&&q.meta.carry),tail;
     if(parts.ready){
       fourOCardText(e,parts.ready,true,'sentence-prefix');fourOFinalize(e,'sentence-prefix',false);
       if(parts.tail){
-        tail=addEntry(q.seat,'',true);tail.srcLang=q.srcLang;tail.dstLang=q.dstLang;
+        tail=addEntry(q.seat,'',true);tail.startedAt=e.startedAt;tail.audioEndedAt=e.audioEndedAt;tail.srcLang=q.srcLang;tail.dstLang=q.dstLang;
         tail.fourOState={pending:true,reason:'tail',model:this.model,request:q.id};
         if(segEnabled())segInit(tail);fourOPlaceAfter(tail,e);fourOCardText(tail,parts.tail,false,'tail');
       }
@@ -9474,9 +9635,10 @@ FourOFileBuffer.prototype.stop=function(){
   });this.queue=[];
 };
 
-function transcribeBlob(blob, seat, prosody){
+function transcribeBlob(blob, seat, prosody,recordingTimes){
   var lang = langOf(seat);
   var holder = addEntry(seat, '（認識中…）', true);
+  if(recordingTimes){holder.startedAt=recordingTimes.startedAt;holder.audioEndedAt=recordingTimes.endedAt;}
   var t0 = Date.now(), reqSessionGen = sessionGen;
   var autoLanguage=duoShouldAutoDetectInput(seat);
   sttCall(blob, lang,{autoLanguage:autoLanguage}).then(function(text){
@@ -9815,7 +9977,7 @@ RealtimeTranscriptionEngine.prototype.item=function(id){
 };
 RealtimeTranscriptionEngine.prototype.ensureEntry=function(x){
   if(x.entry)return x.entry;
-  var seat=this.seat||S.listenSeat||'A';x.entry=addEntry(seat,'',true);x.segmentStarted=Date.now();x.deltaCount=0;
+  var seat=this.seat||S.listenSeat||'A';x.entry=addEntry(seat,'',true);x.entry.startedAt=x.nextCardStartedAt||x.audioStartedAt||x.created||Date.now();if(x.audioEndedAt)x.entry.audioEndedAt=x.audioEndedAt;x.segmentStarted=Date.now();x.deltaCount=0;
   return x.entry;
 };
 /* 文章末尾だけを見る軽量な文脈境界判定。
@@ -9905,6 +10067,8 @@ RealtimeTranscriptionEngine.prototype.finalizeSegment=function(id,x,reason,meta)
 RealtimeTranscriptionEngine.prototype.onEvent=function(ev){
   if(this.dead||this.closing||!S.running||this.session!==sessionGen)return;
   var e;try{e=JSON.parse(ev.data);}catch(_){return;}var t=e.type||'',id=e.item_id||e.id||this.fallbackItemId;
+  if(t==='input_audio_buffer.speech_started'){var timed=this.item(id);timed.audioStartedAt=Date.now();if(timed.entry)timed.entry.startedAt=timed.audioStartedAt;dlog('speaker','stt-started',{item:id,at:timed.audioStartedAt,serverAudioStartMs:e.audio_start_ms});return;}
+  if(t==='input_audio_buffer.speech_stopped'){var timedEnd=this.item(id);timedEnd.audioEndedAt=Date.now();if(timedEnd.entry)timedEnd.entry.audioEndedAt=timedEnd.audioEndedAt;return;}
   if(segLiveEvent(this,e,id))return;
   if(t==='conversation.item.input_audio_transcription.delta'||t==='input_audio_transcription.delta'){
     var delta=String(e.delta||'');if(!delta)return;
@@ -10815,13 +10979,13 @@ function minutesSnapshot(entries,capturedAt){
     });
     if(confirmation==='in-progress')stats.activeCards++;
     if(confirmation==='stopped')stats.stoppedCards++;
-    cards.push({cardId:e.id,speaker:seatName(e.seat),seat:e.seat,sourceLanguage:e.srcLang,targetLanguage:e.dstLang,
+    cards.push(Object.assign(duoSpeakerExport(e),{cardId:e.id,seat:e.seat,sourceLanguage:e.srcLang,targetLanguage:e.dstLang,
       startedAt:minutesTime(e.startedAt||e.ts),endedAt:minutesTime(e.endedAt),displayTime:e.time,
       confirmation:confirmation,finalReason:b&&b.finalReason||e.rtWindow&&e.rtWindow.closedBy||null,
-      realtimeWindow:e.rtWindow?Object.assign({},e.rtWindow):null,parts:parts});
+      realtimeWindow:e.rtWindow?Object.assign({},e.rtWindow):null,parts:parts}));
   });
   stats.cards=cards.length;
-  return {schema:'duo.minutes-source',schemaVersion:1,appBuild:APP_BUILD,
+  return {schema:'duo.minutes-source',schemaVersion:2,appBuild:APP_BUILD,
     capturedAt:minutesTime(capturedAt||Date.now()),timingBasis:'application-events-not-acoustic-boundaries',stats:stats,cards:cards};
 }
 function minutesFingerprint(snapshot){return JSON.stringify({cards:snapshot.cards,stats:snapshot.stats});}
@@ -12281,6 +12445,7 @@ function diagText(devices){
     var b=e.segment;out.push('- '+cell(e.id)+' / '+cell(e.status)+' / 部分数 '+e.segments.length+' / overlap '+(b.playMs?(100*b.overlapMs/b.playMs).toFixed(1):'0')+'%（入力レベルからの推定）');
     e.segments.forEach(function(s){out.push('  - seq='+s.seq+' '+cell(s.state)+' / '+s.sourceText.length+'文字 / '+cell((s.commitReason||[]).join('+'))+' / 訂正 '+(s.corrected?'あり':'なし')+' / audio '+cell(s.audio?s.audio.status:'none'));});
   });out.push('');
+  out.push('## Speaker / Conference', '',JSON.stringify({conference:{mode:conferenceAudioState.mode,connected:conferenceAudioState.connected,relay:conferenceAudioState.relay,micGain:conferenceAudioState.micGain,ttsGain:conferenceAudioState.ttsGain},speakerAvailable:DuoSpeakers.available,participants:Array.from(DuoSpeakers.registry.values()),cards:S.entries.map(function(e){return {cardId:e.id,utteranceId:e.utteranceId,startedAt:e.startedAt,endedAt:e.audioEndedAt||e.endedAt,speaker:e.speaker};})},null,2),'');
   out.push('## 動作ログ', '');
   if (!DLOG.length){
     out.push('（記録なし。「開始」を押して操作したあとに書き出すと記録されます）', '');
@@ -12303,7 +12468,7 @@ function diagText(devices){
   if (!rows.length) out.push('（なし）', '');
   else {
     rows.forEach(function(e){
-      out.push('- `' + e.time + '` **' + seatName(e.seat) + '** (' + L(e.srcLang).name + ') ' + cell(e.srcText));
+      out.push('- `' + e.time + '` **' + duoSpeakerName(e) + '** (' + L(e.srcLang).name + ') ' + cell(e.srcText));
       if(!entryTranslationDisabled(e))out.push('  - → (' + L(e.dstLang).name + ') ' + cell(e.dstText || '(未翻訳)'));
     });
     out.push('');
@@ -12349,14 +12514,14 @@ $('copyDiag').onclick = function(){
 $('dlTxt').onclick = function(){
   var t = '# '+(logRows().some(function(e){return !entryTranslationDisabled(e);})?'通訳ログ ':'文字起こしログ ') + new Date().toLocaleString() + '\n\n' +
     logRows().map(function(e){
-      var source='[' + e.time + '] ' + seatName(e.seat) + ' (' + L(e.srcLang).name + ')\n  ' + e.srcText;
+      var source='[' + e.time + '] ' + duoSpeakerName(e) + ' (' + L(e.srcLang).name + ')\n  ' + e.srcText;
       return entryTranslationDisabled(e)?source:(source+'\n  → (' + L(e.dstLang).name + ') ' + (e.dstText||''));
     }).join('\n\n');
   download('interpret-log-'+stamp()+'.txt', t);
 };
 $('dlCsv').onclick = function(){
-  var rows = [['time','speaker','src_lang','source','dst_lang','translation']].concat(
-    logRows().map(function(e){ return [e.time, seatName(e.seat), e.srcLang, e.srcText, e.dstLang, e.dstText||'']; }));
+  var rows = [['time','speaker','src_lang','source','dst_lang','translation','speaker_id','speaker_name','speaker_source','speaker_confidence','speaker_revision']].concat(
+    logRows().map(function(e){ var s=e.speaker||duoSpeakerDefault();return [e.time, duoSpeakerName(e), e.srcLang, e.srcText, e.dstLang, e.dstText||'',s.id,s.displayName,s.source,s.confidence,s.revision]; }));
   var csv = '﻿' + rows.map(function(r){ return r.map(csvCell).join(','); }).join('\r\n');
   download('interpret-log-'+stamp()+'.csv', csv, 'text/csv;charset=utf-8');
 };
@@ -12456,7 +12621,7 @@ function segDecision(input){
 function segWake(){if(!SEG.timer)SEG.timer=setInterval(segTick,80);}
 function segInit(e){
   if(e.segment)return e;
-  e.startedAt=Date.parse(e.ts)||Date.now();e.status=e.interim?'active':'final';e.segments=[];
+  e.startedAt=e.startedAt||Date.parse(e.ts)||Date.now();e.status=e.interim?'active':'final';e.segments=[];
   e.segment={text:'',stableSince:[],revision:0,mode:CFG.segmentMode,epoch:SEG.epoch,
     order:++SEG.cardOrder,cancelled:false,final:false,deferred:false,lastUpdate:Date.now(),overlapMs:0,playMs:0};
   SEG.cards.push(e);segWake();return e;
@@ -12643,7 +12808,7 @@ function segCheck(e){
     s.echoSuppressed=segEchoCandidate(s.sourceText);
     if(s.echoSuppressed){s.audio.status='cancelled';s.audio.skipReason='echo';s.state='echo-suppressed';
       dlog('segment','echo-suppressed',{cardId:e.id,seq:s.seq,chars:s.sourceText.length,displayPreserved:true});
-    }else if(b.audioMuted){s.audio.status='cancelled';s.audio.skipReason='speech-stopped';}
+    }else if(!duoAutomaticAllowed(e)||b.audioMuted){s.audio.status='cancelled';s.audio.skipReason='speech-stopped';}
     else SEG.queue.push({card:e,segment:s,epoch:SEG.epoch,cancelled:false});
     SEG.committed++;
     SEG.lastReason=d.reasons.join(' + ');
@@ -12698,7 +12863,7 @@ function segRefreshTranslations(){
   });
   dlog('segment','translation-settings-changed',{provider:CFG.provider,model:CFG.model||''});segWake();
 }
-function segAudioAllowed(e){return ttsProv().enabled && !(CFG.ttsWho==='B2A'&&e.seat!=='B') && !(CFG.ttsWho==='A2B'&&e.seat!=='A') &&
+function segAudioAllowed(e){return duoAutomaticAllowed(e) && ttsProv().enabled && !(CFG.ttsWho==='B2A'&&e.seat!=='B') && !(CFG.ttsWho==='A2B'&&e.seat!=='A') &&
   !(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat));}
 function segQueueCompare(a,b){
   if(a.manual||b.manual)return a.manual&&b.manual?a.segment.seq-b.segment.seq:(a.manual?-1:1);
@@ -12754,7 +12919,7 @@ function segPump(){
         var next=SEG.queue[n],ns=next.segment,ne=next.card;
         if(segEarlierOpen(next))break;
         if(next.partOnly||j.partOnly||!segManualJobValid(next)||next.cancelled||next.epoch!==j.epoch||ne.segment.cancelled||!!next.manual!==!!j.manual||
-          ne.seat!==e.seat||ne.srcLang!==e.srcLang||ne.dstLang!==e.dstLang||JSON.stringify(ne.origin)!==JSON.stringify(e.origin)||
+          ne.seat!==e.seat||ne.srcLang!==e.srcLang||ne.dstLang!==e.dstLang||JSON.stringify(ne.origin)!==JSON.stringify(e.origin)||((ne.speaker&&ne.speaker.id)!==(e.speaker&&e.speaker.id))||
           segAivisVoiceKey(ne)!==voiceKey||
           (!useSource&&(!ns.translationReady||ns.translationError))||(!next.manual&&!segAudioAllowed(ne)))break;
         var more=useSource?ns.sourceText:ns.translationText||'';
@@ -12780,7 +12945,7 @@ function segPump(){
       q.segment.audio.dispatchOrder=j.dispatchOrder;q.segment.audio.schedulerRate=rate;});
     group.forEach(function(q){q.segment.state='tts_generating';q.segment.dispatched=true;q.segment.audio.status='generating';q.segment.audio.requestedAt=Date.now();});
     SEG.active=j;j.started=false;j.finished=false;segRefreshPlayback(j);
-    var proxy={id:e.id,utteranceId:e.utteranceId,origin:e.origin,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,srcText:source,dstText:target,prosody:e.prosody};
+    var proxy={id:e.id,utteranceId:e.utteranceId,origin:e.origin,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,srcText:source,dstText:target,prosody:e.prosody,speaker:e.speaker,startedAt:e.startedAt,ts:e.ts};
     dlog('segment','dispatch',{cardId:e.id,seq:s.seq,manualReplay:!!j.manual,order:j.dispatchOrder,members:group.map(function(q){return q.segment.id;}),
       text:j.speechText,parts:group.length,chars:j.speechText.length,debtEstimateSeconds:segDebt(),overlap:overlap,schedulerRate:rate});
     SEG.dispatchRate=rate;
@@ -12908,7 +13073,7 @@ function segLiveClose(engine,id,x,reason,meta){
   var e=x.entry;if(!e||!e.srcText.trim()||e.segment.cancelled)return;
   segUpdate(e,e.srcText,true);e.segment.finalReason=reason;
   x.segmentRanges=x.segmentRanges||[];
-  x.segmentRanges.push({entry:e,end:x.text.length});x.cardOffset=x.text.length;x.entry=null;
+  e.audioEndedAt=e.audioEndedAt||Date.now();x.nextCardStartedAt=e.audioEndedAt;duoSpeakerUpdate(e);duoSpeakerPaint(e);x.segmentRanges.push({entry:e,end:x.text.length});x.cardOffset=x.text.length;x.entry=null;
   dlog('stt','live-card-final',{item:id,cardId:e.id,reason:reason,chars:e.srcText.length,meta:meta||{}});
 }
 function segLiveBoundaries(engine){
@@ -13464,6 +13629,7 @@ function unlockAudioOnce(){
 iosSetup();
 unlockAudioOnce();
 duoInstallUI();
+duoNextInstall();
 
 /* 音声リストは遅れて読み込まれるので、先に一度読ませておく
    （最初の読み上げで声が選べずに失敗するのを防ぐ） */
