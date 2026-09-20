@@ -31,10 +31,20 @@
       if(track?.kind==='audio'&&track.readyState==='live')audio.push({pc,sender,track,provenance:provenance.inspect(track)});
     }}
     const known=audio.filter(x=>x.provenance.mic),d=provenance.diagnostics(),one=audio[0];
-    const fallback=!known.length&&audio.length===1&&one.pc.connectionState==='connected'&&one.provenance.processed&&!one.provenance.externalEvidence&&d.livePhysicalTracks===1&&d.activeDisplayTracks===0;
-    return {audio,selected:known.length?known:fallback?[one]:[],method:known.length?'microphone-provenance':fallback?'unique-processed-sender':'none'};
+    // Shared guards for every heuristic slot: one live audio sender on a connected
+    // peer, one live capture, no screen share. None of these prove provenance.
+    const unique=!known.length&&audio.length===1&&one.pc.connectionState==='connected'&&one.provenance.processed&&d.livePhysicalTracks===1&&d.activeDisplayTracks===0;
+    const fallback=unique&&!one.provenance.externalEvidence;
+    // Teams wires a received track into the same graph that carries the proven
+    // microphone: an echo-cancellation reference, or a stream holding more than
+    // the one track the source node reads. A far-end receiver in the graph does
+    // not make this someone else's slot, so it no longer vetoes selection on its
+    // own. Screen capture and generated audio still do.
+    const externals=unique?one.provenance.externalReasons||[]:[];
+    const micMix=unique&&!fallback&&!!one.provenance.micEvidence&&externals.length>0&&externals.every(r=>r==='remote-receiver');
+    return {audio,selected:known.length?known:fallback||micMix?[one]:[],method:known.length?'microphone-provenance':fallback?'unique-processed-sender':micMix?'mic-in-processed-mix':'none'};
   }
-  function usable(r){return isMic(r.original)||(r.selectionMethod==='unique-processed-sender'&&candidates().selected.some(x=>x.sender===r.sender&&x.track===r.original));}
+  function usable(r){return isMic(r.original)||(!!r.selectionMethod&&candidates().selected.some(x=>x.sender===r.sender&&x.track===r.original));}
   function discover(sender){
     if(!sender?.track||sender.track.kind!=='audio'||!isMic(sender.track))return null;
     let r=records.get(sender);if(!r){r={sender,original:sender.track,replacement:null,chain:Promise.resolve(),desiredVersion:0};records.set(sender,r);}
@@ -85,7 +95,7 @@
       senders.push({kind:track?.kind||null,readyState:track?.readyState||null,enabled:track?.enabled??null,...provenance.inspect(track),connectionState:pc.connectionState});
     }}
     const selection=candidates();
-    return {adapterVersion:'1.4.3',peerCount:[...peers].filter(p=>p.connectionState!=='closed').length,audioSenderCount:senders.filter(s=>s.kind==='audio').length,eligibleCount:selection.selected.length,selectionMethod:selection.method,senders,...provenance.diagnostics()};
+    return {adapterVersion:'1.4.4',peerCount:[...peers].filter(p=>p.connectionState!=='closed').length,audioSenderCount:senders.filter(s=>s.kind==='audio').length,eligibleCount:selection.selected.length,selectionMethod:selection.method,senders,...provenance.diagnostics()};
   }
   window.RTCPeerConnection=new Proxy(NativePC,{construct(target,args,newTarget){const pc=Reflect.construct(target,args,newTarget);capture(pc);return pc;}});
   function fail(error){report({kind:'error',error:String(error.message||error)});stop().catch(()=>{});}
@@ -105,7 +115,7 @@
       for(const item of selection.selected){if(!records.has(item.sender))records.set(item.sender,{sender:item.sender,original:item.track,replacement:null,chain:Promise.resolve(),desiredVersion:0});records.get(item.sender).selectionMethod=selection.method;}
       report({kind:'diagnostic',event:'microphone-discovery',...snapshot()});
       const eligible=selection.selected.map(x=>records.get(x.sender));
-      if(!eligible.length){activeTrack=null;const d=snapshot();throw Error(!d.peerCount?'Teamsの会議接続を検出できません。Teamsタブを再読み込みして会議へ参加してください':!d.audioSenderCount?'Teamsの送信音声がありません。Teamsでマイクを選択してください':'Teamsの送信音声をマイク由来と確認できません（診断JSONに検出結果を記録しました）');}
+      if(!eligible.length){activeTrack=null;const d=snapshot();throw Error(!d.peerCount?'Teamsの会議接続を検出できません。Teamsタブを再読み込みして会議へ参加してください':!d.audioSenderCount?'Teamsの送信音声がありません。Teamsでマイクを選択してください':(d.senders.find(x=>x.kind==='audio')?.externalReasons||[]).includes('display-capture')?'画面共有の音声がマイクと同じ経路に入っています。画面共有を停止してから会議マイク送出を選択してください':'Teamsの送信音声をマイク由来と確認できません（診断JSONに検出結果を記録しました）');}
       try{await Promise.all(eligible.map(apply));}catch(error){await stop().catch(()=>{});throw error;}
     },
     async setMode(next,levels={}){if(!activeTrack||!['tts-only','original-plus-tts','original-only'].includes(next))throw Error('会議音声モードが無効です');mode=next;this.setGains(levels);await Promise.all([...records.values()].filter(r=>r.original?.readyState==='live'&&usable(r)).map(apply));return mode;},

@@ -1,6 +1,6 @@
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 let serial=0;
-function environment(buggyExternalClassification=false){
+function environment(buggyExternalClassification=false,legacyExternalVeto=false){
  class Track {constructor(kind='audio'){this.kind=kind;this.id='track-'+ ++serial;this.readyState='live';this._enabled=true;this.muted=false;}get enabled(){return this._enabled;}set enabled(v){this._enabled=!!v;}clone(){const t=new Track(this.kind);t.enabled=this.enabled;return t;}stop(){this.readyState='ended';}}
  class Stream {constructor(tracks=[]){this.tracks=tracks;}getTracks(){return this.tracks.slice();}getAudioTracks(){return this.tracks.filter(t=>t.kind==='audio');}clone(){return new Stream(this.tracks.map(t=>new Track(t.kind)));}}
  class Sender {constructor(track){this.track=track;}async replaceTrack(track){this.track=track;}}
@@ -14,7 +14,13 @@ function environment(buggyExternalClassification=false){
  const window={MediaStreamTrack:Track,MediaStream:Stream,RTCPeerConnection:PC,RTCRtpSender:Sender,AudioContext:Context,AudioNode,MediaStreamAudioSourceNode:Source,MediaStreamAudioDestinationNode:Destination};
  const sandbox={window,navigator:{mediaDevices:media},MediaStreamTrack:Track,MediaStream:Stream,AudioContext:Context,setInterval(){return 1;},clearInterval(){},addEventListener(){}};
  const c=vm.createContext(sandbox);
- for(const name of ['mic-provenance','teams']){let source=fs.readFileSync(path.join(__dirname,'../conference-adapters/'+name+'.js'),'utf8');if(name==='mic-provenance'&&buggyExternalClassification)source=source.replace('external:results.some(r=>r.externalEvidence)','external:results.some(r=>!r.mic)');vm.runInContext(source,c);}
+ for(const name of ['mic-provenance','teams']){let source=fs.readFileSync(path.join(__dirname,'../conference-adapters/'+name+'.js'),'utf8');
+  if(name==='mic-provenance'&&buggyExternalClassification)source=source.replace('external:results.some(r=>r.externalEvidence)','external:results.some(r=>!r.mic)');
+  // Restore the pre-1.4.4 behaviour: a source node claimed every track in the
+  // stream, and any external evidence vetoed the slot outright.
+  if(legacyExternalVeto&&name==='mic-provenance')source=source.replace('sources.set(node,audio.slice(0,1));','sources.set(node,audio);');
+  if(legacyExternalVeto&&name==='teams')source=source.replace(/const micMix=unique[^;]*;/,'const micMix=false;');
+  vm.runInContext(source,c);}
  return {window,Track,Stream,PC,Context,media,adapter:window.DuoTeamsAdapter,provenance:window.DuoMicProvenance};
 }
 const passed=[];
@@ -103,6 +109,95 @@ async function test(name,fn){await fn(environment());passed.push(name);}
  });
  await test('Unknown stream is distinct from positively identified display audio',async e=>{
   const unknown=new e.Track();assert.equal(e.provenance.inspect(unknown).reason,'unobserved-origin');assert(!e.provenance.inspect(unknown).externalEvidence);const display=await e.media.getDisplayMedia(),clone=display.clone().getAudioTracks()[0];assert.equal(e.provenance.inspect(clone).reason,'display-capture');assert.equal(e.provenance.inspect(clone).externalEvidence,true);
+ });
+ // --- v1.4.4: the microphone sits in the same graph as a far-end receiver ---
+ // Real Teams (duo-subtitle-interaction (15).json, extension 1.4.3) reported
+ // sourceReasons ["get-user-media","remote-receiver"] on the only audio sender,
+ // so both selection paths rejected it and eligibleCount stayed 0.
+ await test('Observed v1.4.3 log topology: microphone mixed with a far-end receiver connects, mutes, and restores',async()=>{
+  const fixture=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/teams-v143-discovery.json'),'utf8'));
+  async function setup(e){
+   const mic=(await e.media.getUserMedia()).getAudioTracks()[0];for(let i=0;i<fixture.streamClones;i++)new e.Stream([mic]).clone();
+   const pc=new e.window.RTCPeerConnection(),remote=new e.Track();pc.receive(remote);
+   const ctx=new e.window.AudioContext(),dst=ctx.createMediaStreamDestination();
+   ctx.createMediaStreamSource(new e.Stream([mic])).connect(dst);
+   ctx.createMediaStreamSource(new e.Stream([remote])).connect(dst);
+   const original=dst.stream.getAudioTracks()[0],sender=pc.addTrack(original);
+   for(let i=0;i<fixture.nonAudioSenderCount;i++)pc.addTransceiver('video');
+   return {original,sender};
+  }
+  // The build the user ran reproduces the recorded rejection exactly.
+  const old=environment(false,true);await setup(old);const before=old.adapter.discovery();
+  for(const key of ['peerCount','audioSenderCount','eligibleCount','selectionMethod','getUserMediaCalls','getUserMediaSuccesses','livePhysicalTracks','activeDisplayTracks','streamClones','trackClones'])assert.equal(before[key],fixture[key],key);
+  const b0=before.senders.find(x=>x.kind==='audio');
+  assert.equal(b0.reason,fixture.senders[0].reason);assert.equal(b0.externalEvidence,true);
+  assert.deepEqual([...b0.sourceReasons].sort(),[...fixture.senders[0].sourceReasons].sort());
+  assert.deepEqual([...b0.nodeTypes].sort(),[...fixture.senders[0].nodeTypes].sort());
+  await assert.rejects(old.adapter.start(new old.Track(),()=>{}),/マイク由来/);
+  const e=environment(),{original,sender}=await setup(e);
+  const d=e.adapter.discovery(),s0=d.senders.find(x=>x.kind==='audio');
+  assert.deepEqual([...s0.sourceReasons].sort(),['get-user-media','remote-receiver']);
+  assert.equal(s0.micEvidence,true);assert.equal(s0.externalEvidence,true);
+  assert.deepEqual(Array.from(s0.externalReasons),['remote-receiver']);
+  assert.equal(d.selectionMethod,'mic-in-processed-mix');assert.equal(d.eligibleCount,1);
+  await e.adapter.start(new e.Track(),()=>{});assert.notEqual(sender.track,original);
+  // usable() must keep accepting the slot, or the 100ms watchdog tears it down.
+  await e.adapter.setMode('original-only');assert.equal(sender.track,original);
+  await e.adapter.setMode('tts-only');assert.notEqual(sender.track,original);
+  original.enabled=false;assert.equal(sender.track.enabled,false);
+  await e.adapter.stop();assert.equal(sender.track,original);assert.equal(sender.track.enabled,false);
+ });
+ await test('A source node reads one track, so extra tracks in the stream no longer forge provenance',async e=>{
+  const mic=(await e.media.getUserMedia()).getAudioTracks()[0],pc=new e.window.RTCPeerConnection(),remote=new e.Track();pc.receive(remote);
+  const ctx=new e.window.AudioContext(),dst=ctx.createMediaStreamDestination();
+  const tracks=[mic,remote].sort((a,b)=>String(a.id)<String(b.id)?-1:1);
+  ctx.createMediaStreamSource(new e.Stream(tracks)).connect(dst);
+  const original=dst.stream.getAudioTracks()[0],sender=pc.addTrack(original);
+  const d=e.adapter.discovery(),s0=d.senders.find(x=>x.kind==='audio');
+  // Only the track the node actually consumes counts.
+  assert.deepEqual(Array.from(s0.sourceReasons),[e.provenance.inspect(tracks[0]).reason]);
+  await e.adapter.start(new e.Track(),()=>{});assert.notEqual(sender.track,original);
+  await e.adapter.stop();assert.equal(sender.track,original);
+ });
+ await test('Screen capture mixed into the microphone graph is still rejected',async e=>{
+  const mic=(await e.media.getUserMedia()).getAudioTracks()[0],display=await e.media.getDisplayMedia();
+  const ctx=new e.window.AudioContext(),dst=ctx.createMediaStreamDestination();
+  ctx.createMediaStreamSource(new e.Stream([mic])).connect(dst);
+  ctx.createMediaStreamSource(new e.Stream([display.getAudioTracks()[0]])).connect(dst);
+  new e.window.RTCPeerConnection().addTrack(dst.stream.getAudioTracks()[0]);
+  const d=e.adapter.discovery();assert.equal(d.eligibleCount,0);assert.equal(d.selectionMethod,'none');
+  assert(d.senders.find(x=>x.kind==='audio').externalReasons.includes('display-capture'));
+  await assert.rejects(e.adapter.start(new e.Track(),()=>{}),/画面共有/);
+ });
+ await test('Generated audio mixed into the microphone graph is still rejected',async e=>{
+  const mic=(await e.media.getUserMedia()).getAudioTracks()[0];
+  const Osc=class extends e.window.AudioNode{};Object.defineProperty(Osc,'name',{value:'OscillatorNode'});
+  const ctx=new e.window.AudioContext(),dst=ctx.createMediaStreamDestination();
+  ctx.createMediaStreamSource(new e.Stream([mic])).connect(dst);new Osc().connect(dst);
+  new e.window.RTCPeerConnection().addTrack(dst.stream.getAudioTracks()[0]);
+  const d=e.adapter.discovery();assert.equal(d.eligibleCount,0);assert.equal(d.selectionMethod,'none');
+  assert.deepEqual(Array.from(d.senders.find(x=>x.kind==='audio').externalReasons),['generated-audio']);
+  await assert.rejects(e.adapter.start(new e.Track(),()=>{}),/マイク由来/);
+ });
+ await test('A far-end mix with no microphone evidence is still rejected',async e=>{
+  await e.media.getUserMedia();const pc=new e.window.RTCPeerConnection(),a=new e.Track(),b=new e.Track();pc.receive(a);pc.receive(b);
+  const ctx=new e.window.AudioContext(),dst=ctx.createMediaStreamDestination();
+  ctx.createMediaStreamSource(new e.Stream([a])).connect(dst);ctx.createMediaStreamSource(new e.Stream([b])).connect(dst);
+  pc.addTrack(dst.stream.getAudioTracks()[0]);
+  const d=e.adapter.discovery();assert.equal(d.eligibleCount,0);assert.equal(d.selectionMethod,'none');
+  assert.equal(d.senders.find(x=>x.kind==='audio').micEvidence,false);
+  await assert.rejects(e.adapter.start(new e.Track(),()=>{}),/マイク由来/);
+ });
+ await test('The far-end mix slot still requires a single audio sender and one live capture',async e=>{
+  const mic=(await e.media.getUserMedia()).getAudioTracks()[0],pc=new e.window.RTCPeerConnection(),remote=new e.Track();pc.receive(remote);
+  const ctx=new e.window.AudioContext(),dst=ctx.createMediaStreamDestination();
+  ctx.createMediaStreamSource(new e.Stream([mic])).connect(dst);ctx.createMediaStreamSource(new e.Stream([remote])).connect(dst);
+  pc.addTrack(dst.stream.getAudioTracks()[0]);
+  assert.equal(e.adapter.discovery().eligibleCount,1);
+  pc.addTrack(new e.window.AudioContext().createMediaStreamDestination().stream.getAudioTracks()[0]);
+  assert.equal(e.adapter.discovery().eligibleCount,0);  // two audio senders
+  pc.senders.pop();assert.equal(e.adapter.discovery().eligibleCount,1);
+  await e.media.getUserMedia();assert.equal(e.adapter.discovery().eligibleCount,0);  // two live captures
  });
  console.log(JSON.stringify({passed:passed.length,tests:passed},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1;});
