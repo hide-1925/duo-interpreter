@@ -70,11 +70,13 @@
     return apply(r);
   };
   function capture(pc){if(internalPeers.has(pc)||peers.has(pc))return;if(activeTrack)fail(Error('Teamsが再接続しました。会議マイク送出をもう一度選択してください'));peers.add(pc);
+    pc.addEventListener('track',event=>provenance.markRemote(event.track));
     pc.addEventListener('connectionstatechange',()=>{if(activeTrack&&['closed','failed','disconnected'].includes(pc.connectionState))fail(Error('Teamsの接続が切れました。再接続後に会議マイク送出を選択してください'));if(pc.connectionState==='closed'){peers.delete(pc);for(const s of pc.getSenders()){const r=records.get(s);if(r?.replacement)r.replacement.stop();records.delete(s);}}});
   }
   for(const name of ['addTrack','addTransceiver','getSenders']){
     const native=NativePC.prototype[name];if(!native)continue;
     NativePC.prototype[name]=function(...args){capture(this);const result=native.apply(this,args);
+      if(!internalPeers.has(this)&&this.getReceivers)for(const receiver of this.getReceivers())provenance.markRemote(receiver.track);
       if(name!=='getSenders'&&!internalPeers.has(this)){const r=discover(name==='addTrack'?result:result.sender);if(r&&activeTrack)apply(r).catch(fail);}return result;};
   }
   function snapshot(){const senders=[];
@@ -83,7 +85,7 @@
       senders.push({kind:track?.kind||null,readyState:track?.readyState||null,enabled:track?.enabled??null,...provenance.inspect(track),connectionState:pc.connectionState});
     }}
     const selection=candidates();
-    return {adapterVersion:'1.4.2',peerCount:[...peers].filter(p=>p.connectionState!=='closed').length,audioSenderCount:senders.filter(s=>s.kind==='audio').length,eligibleCount:selection.selected.length,selectionMethod:selection.method,senders,...provenance.diagnostics()};
+    return {adapterVersion:'1.4.3',peerCount:[...peers].filter(p=>p.connectionState!=='closed').length,audioSenderCount:senders.filter(s=>s.kind==='audio').length,eligibleCount:selection.selected.length,selectionMethod:selection.method,senders,...provenance.diagnostics()};
   }
   window.RTCPeerConnection=new Proxy(NativePC,{construct(target,args,newTarget){const pc=Reflect.construct(target,args,newTarget);capture(pc);return pc;}});
   function fail(error){report({kind:'error',error:String(error.message||error)});stop().catch(()=>{});}
