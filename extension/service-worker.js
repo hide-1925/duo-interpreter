@@ -37,14 +37,14 @@ async function injectOverlay(tabId,frameId=0,documentId) {
     pong = await chrome.tabs.sendMessage(tabId, { type: 'DUO_PING' },documentId?{frameId,documentId}:{frameId});
     overlayReady = !!(pong && pong.ok);
   } catch (_) {}
-  if(overlayReady && pong.htmlBridgeVersion !== '1.4.3')throw new Error('字幕対象タブに旧版が残っています。対象タブを再読み込みしてください');
+  if(overlayReady && pong.htmlBridgeVersion !== '1.4.4')throw new Error('字幕対象タブに旧版が残っています。対象タブを再読み込みしてください');
   if (!overlayReady) {
     // Keep dynamic inline !important geometry above our stylesheet defaults.
     const target=documentId?{tabId,documentIds:[documentId]}:{tabId,frameIds:[frameId]};
     await chrome.scripting.insertCSS({ target, files: ['content-overlay.css'], origin: 'AUTHOR' });
     await chrome.scripting.executeScript({ target, files: ['overlay-style.js','overlay-fullscreen.js','text-composer.js','content-overlay.js'] });
     const ready=await chrome.tabs.sendMessage(tabId,{type:'DUO_PING'},documentId?{frameId,documentId}:{frameId});
-    if(!ready?.ok||ready.htmlBridgeVersion!=='1.4.3')throw Error('字幕レイヤーの初期化が完了していません。拡張を最新版一式に更新し、対象タブを再読み込みしてください');
+    if(!ready?.ok||ready.htmlBridgeVersion!=='1.4.4')throw Error('字幕レイヤーの初期化が完了していません。拡張を最新版一式に更新し、対象タブを再読み込みしてください');
   }
   return tab;
 }
@@ -110,7 +110,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'DUO_CONFERENCE_SIGNAL':return conferenceQueue(()=>conferenceSignal(message.data,sender));
       case 'DUO_CONFERENCE_LEASE':return conferenceLease(message,sender);
       case 'DUO_GET_STATE':
-        return { ok: true, workerVersion:'1.4.3', conference:conferencePublic(), state: await getState(), htmlUrl:await getHtmlSourceUrl(), overlay:await getOverlayStatus() };
+        return { ok: true, workerVersion:'1.4.4', conference:conferencePublic(), state: await getState(), htmlUrl:await getHtmlSourceUrl(), overlay:await getOverlayStatus() };
 
       case 'DUO_FULLSCREEN_CHANGED':return syncDuoFullscreen(message,sender);
       case 'DUO_REFRESH_FRAMES': {

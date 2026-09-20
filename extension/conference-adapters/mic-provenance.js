@@ -10,24 +10,25 @@
   let lastError='';
   const nodeInputs=node=>edges.get(node)||[];
   function walkNode(node,seen,seenTracks){
-    if(seen.has(node))return {mic:false,unknown:true,external:true,reasons:['graph-cycle']};
+    if(seen.has(node))return {mic:false,unknown:true,external:true,externalReasons:['graph-cycle'],reasons:['graph-cycle']};
     const next=new Set(seen);next.add(node);
     const tracks=sources.get(node);
-    if(tracks){const results=tracks.map(t=>inspect(t,new Set(seenTracks)));return {mic:results.some(r=>r.mic),unknown:!results.length||results.some(r=>!r.mic),external:results.some(r=>r.externalEvidence),reasons:[...new Set(results.flatMap(r=>r.sourceReasons||[r.reason]))]};}
+    if(tracks){const results=tracks.map(t=>inspect(t,new Set(seenTracks)));return {mic:results.some(r=>r.mic),unknown:!results.length||results.some(r=>!r.mic),external:results.some(r=>r.externalEvidence),externalReasons:[...new Set(results.flatMap(r=>r.externalReasons||[]))],reasons:[...new Set(results.flatMap(r=>r.sourceReasons||[r.reason]))]};}
     const incoming=nodeInputs(node);
-    if(!incoming.length)return {mic:false,unknown:true,external:['OscillatorNode','AudioBufferSourceNode','ConstantSourceNode','MediaElementAudioSourceNode'].includes(node.constructor?.name),reasons:['node-without-observed-input']};
+    if(!incoming.length){const generated=['OscillatorNode','AudioBufferSourceNode','ConstantSourceNode','MediaElementAudioSourceNode'].includes(node.constructor?.name);
+      return {mic:false,unknown:true,external:generated,externalReasons:generated?['generated-audio']:[],reasons:['node-without-observed-input']};}
     const results=incoming.map(e=>walkNode(e.source,next,seenTracks));
-    return {mic:results.some(r=>r.mic),unknown:results.some(r=>r.unknown),external:results.some(r=>r.external),reasons:[...new Set(results.flatMap(r=>r.reasons||[]))]};
+    return {mic:results.some(r=>r.mic),unknown:results.some(r=>r.unknown),external:results.some(r=>r.external),externalReasons:[...new Set(results.flatMap(r=>r.externalReasons||[]))],reasons:[...new Set(results.flatMap(r=>r.reasons||[]))]};
   }
   function inspect(track,seen=new Set()){
     if(!track||track.kind!=='audio')return {mic:false,reason:'not-audio'};
     if(seen.has(track))return {mic:false,reason:'cycle'};
     seen.add(track);
-    if(external.has(track))return {mic:false,reason:external.get(track),externalEvidence:true};
+    if(external.has(track))return {mic:false,reason:external.get(track),externalEvidence:true,externalReasons:[external.get(track)]};
     if(physical.has(track))return {mic:true,reason:'get-user-media'};
     if(parents.has(track)){const r=inspect(parents.get(track),seen);return {...r,reason:r.mic?'microphone-clone':r.reason};}
     const node=destinations.get(track);
-    if(node){const r=walkNode(node,new Set(),seen);return {mic:r.mic&&!r.unknown,reason:r.mic&&!r.unknown?'microphone-web-audio':'unproven-web-audio',processed:true,externalEvidence:!!r.external,sourceReasons:r.reasons||[],nodeTypes:graphTypes(node)};}
+    if(node){const r=walkNode(node,new Set(),seen);return {mic:r.mic&&!r.unknown,reason:r.mic&&!r.unknown?'microphone-web-audio':'unproven-web-audio',processed:true,micEvidence:!!r.mic,externalEvidence:!!r.external,externalReasons:r.externalReasons||[],sourceReasons:r.reasons||[],nodeTypes:graphTypes(node)};}
     return {mic:false,reason:'unobserved-origin'};
   }
   const media=navigator.mediaDevices;
@@ -55,7 +56,11 @@
       const removed=e=>!args.length||(typeof args[0]==='number'?e.output===args[0]:e.destination===args[0]&&(args.length<2||e.output===args[1])&&(args.length<3||e.input===args[2]));
       for(const e of list.filter(removed))edges.set(e.destination,nodeInputs(e.destination).filter(x=>x!==e));outgoing.set(this,list.filter(e=>!removed(e)));return result;};
   }
-  function source(node,stream){if(stream)sources.set(node,stream.getAudioTracks());return node;}
+  // A MediaStreamAudioSourceNode reads exactly one track: the spec orders the
+  // stream's audio tracks by id and takes the first. Recording every track in the
+  // stream invents upstream sources the node never reads, which is enough to
+  // stamp a pure microphone graph with someone else's provenance.
+  function source(node,stream){if(stream){const audio=stream.getAudioTracks().slice().sort((a,b)=>String(a.id)<String(b.id)?-1:String(a.id)>String(b.id)?1:0);sources.set(node,audio.slice(0,1));}return node;}
   function destination(node){node.stream?.getAudioTracks().forEach(t=>destinations.set(t,node));return node;}
   const ctxProto=window.AudioContext?.prototype;
   for(const [name,record] of [['createMediaStreamSource',(n,args)=>source(n,args[0])],['createMediaStreamDestination',n=>destination(n)],['createMediaStreamTrackSource',(n,args)=>{sources.set(n,[args[0]]);return n;}]]){
