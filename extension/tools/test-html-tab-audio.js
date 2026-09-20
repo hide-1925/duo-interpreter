@@ -21,7 +21,7 @@ function harness(autoReply=true){
    const track={readyState:'live',stop(){this.readyState='ended';},addEventListener(k,f){this.ended=f;}};
    const stream={getTracks:()=>[track],getAudioTracks:()=>[track],getVideoTracks:()=>[]};streams.push(stream);return stream;
   }}},
-  AudioContext:class{constructor(){this.state='suspended';this.monitors=0;contexts.push(this);}createMediaStreamSource(){return {connect:()=>this.monitors++};}async resume(){if(resumeGate)await resumeGate.promise;if(this.state==='closed')throw Error('認識停止');if(resumeFail)throw Error('autoplay');this.state='running';}async close(){this.state='closed';}}
+  AudioContext:class{constructor(){this.state='suspended';this.monitors=0;this.currentTime=10;this.gainEvents=[];contexts.push(this);}createGain(){const events=this.gainEvents;return {gain:{value:0,setValueAtTime:(v,t)=>events.push(['set',v,t]),linearRampToValueAtTime:(v,t)=>events.push(['ramp',v,t])},connect(){}};}createMediaStreamSource(){return {connect:()=>this.monitors++};}async resume(){if(resumeGate)await resumeGate.promise;if(this.state==='closed')throw Error('認識停止');if(resumeFail)throw Error('autoplay');this.state='running';}async close(){this.state='closed';}}
  });vm.runInContext(source,c);
  if(autoReply)win.addEventListener('duo-html-audio-request',e=>{const {id}=JSON.parse(e.detail);win.dispatchEvent({type:'duo-html-audio-reply',detail:JSON.stringify({id,ok:true,streamId:'PRIVATE_STREAM_ID'})});});
  return {win,c,contexts,streams,requests,logs,original,enable:()=>c.configureHtmlTabAudio('https://duo.test/index.html',true),disable:()=>c.configureHtmlTabAudio('https://duo.test/index.html',false),
@@ -55,6 +55,7 @@ function harness(autoReply=true){
   state.htmlTabAudio=false;await assert.rejects(c.getHtmlTabAudioId(sender),/登録/);state.htmlTabAudio=true;
   gate=deferred();const p=c.getHtmlTabAudioId(sender);await flush();state.targetTabId=3;gate.resolve();await assert.rejects(p,/変更/);
  });
+ await test('Monitor fades in after resume without changing the STT track',async()=>{const h=harness();h.enable();const result=await h.win.getDisplayAudioForStt();assert.deepEqual(h.contexts[0].gainEvents,[['set',0,10],['ramp',1,10.05]]);assert.equal(result.track,h.streams[0].getAudioTracks()[0]);assert.equal(h.logs.at(-1)[2].monitorFadeInMs,50);});
  console.log(JSON.stringify({passed:passed.length,checks:passed},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1;});
 

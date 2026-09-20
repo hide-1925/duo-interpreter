@@ -21,6 +21,20 @@
   }
   function log(result,r,error){report({kind:'diagnostic',conferenceAdapter:'teams',replaceTrackResult:result,originalMicTrackId:r?.original?.id||null,conferenceMicTrackId:r?.replacement?.id||null,error:error?String(error.message||error):''});}
   function enqueue(r,fn){const task=r.chain.then(fn);r.chain=task.catch(()=>{});return task;}
+  // Teams may hand PCM to an AudioWorklet without a traceable AudioNode input.
+  // On explicit activation only, bind the unique connected outgoing audio slot.
+  // This is a slot identification heuristic, NOT a claim of proven provenance.
+  function candidates(){
+    const audio=[];
+    for(const pc of peers){if(['closed','failed'].includes(pc.connectionState))continue;for(const sender of pc.getSenders()){
+      const record=records.get(sender),track=record?record.original:sender.track;
+      if(track?.kind==='audio'&&track.readyState==='live')audio.push({pc,sender,track,provenance:provenance.inspect(track)});
+    }}
+    const known=audio.filter(x=>x.provenance.mic),d=provenance.diagnostics(),one=audio[0];
+    const fallback=!known.length&&audio.length===1&&one.pc.connectionState==='connected'&&one.provenance.processed&&!one.provenance.externalEvidence&&d.livePhysicalTracks===1&&d.activeDisplayTracks===0;
+    return {audio,selected:known.length?known:fallback?[one]:[],method:known.length?'microphone-provenance':fallback?'unique-processed-sender':'none'};
+  }
+  function usable(r){return isMic(r.original)||(r.selectionMethod==='unique-processed-sender'&&candidates().selected.some(x=>x.sender===r.sender&&x.track===r.original));}
   function discover(sender){
     if(!sender?.track||sender.track.kind!=='audio'||!isMic(sender.track))return null;
     let r=records.get(sender);if(!r){r={sender,original:sender.track,replacement:null,chain:Promise.resolve(),desiredVersion:0};records.set(sender,r);}
@@ -33,7 +47,7 @@
       for(const r of records.values())if(r.original===this||r.replacement===this)syncMute(r);}
   });
   async function apply(r){
-    if(!activeTrack||!r.original||r.original.readyState!=='live'||!isMic(r.original))return;
+    if(!activeTrack||!r.original||r.original.readyState!=='live'||!usable(r))return;
     const version=++r.desiredVersion,requestEpoch=epoch;
     return enqueue(r,async()=>{
       if(version!==r.desiredVersion||requestEpoch!==epoch||!activeTrack)return;
@@ -49,7 +63,7 @@
     if(!r&&track?.kind==='audio'&&isMic(track)){r={sender:this,original:track,replacement:null,chain:Promise.resolve(),desiredVersion:0};records.set(this,r);}
     if(!r)return nativeReplace.call(this,track);
     r.original=track;
-    if(!activeTrack||!track||track.kind!=='audio'||!isMic(track)){
+    if(!activeTrack||!track||track.kind!=='audio'||!usable(r)){
       ++r.desiredVersion;
       return enqueue(r,async()=>{await nativeReplace.call(r.sender,track);if(r.replacement){r.replacement.stop();r.replacement=null;}disposeMix(r.mix);r.mix=null;log('host-track',r);});
     }
@@ -68,7 +82,8 @@
       const track=records.get(sender)?.original||sender.track;
       senders.push({kind:track?.kind||null,readyState:track?.readyState||null,enabled:track?.enabled??null,...provenance.inspect(track),connectionState:pc.connectionState});
     }}
-    return {adapterVersion:'1.4.1',peerCount:[...peers].filter(p=>p.connectionState!=='closed').length,audioSenderCount:senders.filter(s=>s.kind==='audio').length,eligibleCount:senders.filter(s=>s.mic&&s.readyState==='live').length,senders,...provenance.diagnostics()};
+    const selection=candidates();
+    return {adapterVersion:'1.4.2',peerCount:[...peers].filter(p=>p.connectionState!=='closed').length,audioSenderCount:senders.filter(s=>s.kind==='audio').length,eligibleCount:selection.selected.length,selectionMethod:selection.method,senders,...provenance.diagnostics()};
   }
   window.RTCPeerConnection=new Proxy(NativePC,{construct(target,args,newTarget){const pc=Reflect.construct(target,args,newTarget);capture(pc);return pc;}});
   function fail(error){report({kind:'error',error:String(error.message||error)});stop().catch(()=>{});}
@@ -80,16 +95,18 @@
       }));}
     const results=await Promise.allSettled(tasks);if(results.some(x=>x.status==='rejected'))throw Error('元マイクの復帰に失敗しました。Teamsのマイクを選び直してください');
   }
-  const timer=setInterval(()=>{for(const r of records.values()){syncMute(r);if(activeTrack&&r.replacement&&(r.original?.readyState==='ended'||!isMic(r.original)))fail(Error('元のマイクが終了、または音声の経路が変更されました'));}},100);
+  const timer=setInterval(()=>{for(const r of records.values()){syncMute(r);if(activeTrack&&r.replacement&&(r.original?.readyState==='ended'||!usable(r)))fail(Error('元のマイクが終了、または音声の経路が変更されました'));}},100);
   window.DuoTeamsAdapter={NativePC,createRelayPeer(config){const pc=new NativePC(config);internalPeers.add(pc);return pc;},
     async start(track,callback){await stop();mode='tts-only';report=callback;activeTrack=track;++epoch;
       for(const pc of peers)for(const sender of pc.getSenders())discover(sender);
+      const selection=candidates();
+      for(const item of selection.selected){if(!records.has(item.sender))records.set(item.sender,{sender:item.sender,original:item.track,replacement:null,chain:Promise.resolve(),desiredVersion:0});records.get(item.sender).selectionMethod=selection.method;}
       report({kind:'diagnostic',event:'microphone-discovery',...snapshot()});
-      const eligible=[...records.values()].filter(r=>r.original?.readyState==='live'&&isMic(r.original));
+      const eligible=selection.selected.map(x=>records.get(x.sender));
       if(!eligible.length){activeTrack=null;const d=snapshot();throw Error(!d.peerCount?'Teamsの会議接続を検出できません。Teamsタブを再読み込みして会議へ参加してください':!d.audioSenderCount?'Teamsの送信音声がありません。Teamsでマイクを選択してください':'Teamsの送信音声をマイク由来と確認できません（診断JSONに検出結果を記録しました）');}
       try{await Promise.all(eligible.map(apply));}catch(error){await stop().catch(()=>{});throw error;}
     },
-    async setMode(next,levels={}){if(!activeTrack||!['tts-only','original-plus-tts','original-only'].includes(next))throw Error('会議音声モードが無効です');mode=next;this.setGains(levels);await Promise.all([...records.values()].filter(r=>r.original?.readyState==='live'&&isMic(r.original)).map(apply));return mode;},
+    async setMode(next,levels={}){if(!activeTrack||!['tts-only','original-plus-tts','original-only'].includes(next))throw Error('会議音声モードが無効です');mode=next;this.setGains(levels);await Promise.all([...records.values()].filter(r=>r.original?.readyState==='live'&&usable(r)).map(apply));return mode;},
     setGains(levels){if(Number.isFinite(levels.micGain))micLevel=Math.max(0,Math.min(1,levels.micGain));if(Number.isFinite(levels.ttsGain))ttsLevel=Math.max(0,Math.min(1,levels.ttsGain));for(const r of records.values())if(r.mix){r.mix.mic.gain.value=micLevel;r.mix.tts.gain.value=ttsLevel;}},
     stop,discovery:snapshot,diagnostics:()=>[...records.values()].map(r=>({originalMicTrackId:r.original?.id,conferenceMicTrackId:r.replacement?.id,mode}))};
   addEventListener('pagehide',()=>{clearInterval(timer);stop().catch(()=>{});},{once:true});
