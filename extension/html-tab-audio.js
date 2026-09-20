@@ -44,13 +44,16 @@ function configureHtmlTabAudio(expectedUrl, enabled) {
       const track=stream.getAudioTracks()[0];
       if(disposed||epoch!==requestEpoch||window.sessionGen!==generation||!track||track.readyState!=='live')throw Error('認識停止、または対象タブの音声を取得できませんでした');
       // tabCapture mutes the source tab. Restore exactly one local monitor.
-      context=new AudioContext();context.createMediaStreamSource(stream).connect(context.destination);await context.resume();
+      context=new AudioContext();
+      const monitorGain=context.createGain();monitorGain.gain.value=0;
+      context.createMediaStreamSource(stream).connect(monitorGain);monitorGain.connect(context.destination);await context.resume();
       if(context.state!=='running')throw Error('元動画の音声を再生できません。HTML本体をクリックしてから再開してください');
       if(disposed||closed||epoch!==requestEpoch||window.sessionGen!==generation||track.readyState!=='live')throw Error('認識停止により音声取得を中止しました');
+      monitorGain.gain.setValueAtTime(0,context.currentTime);monitorGain.gain.linearRampToValueAtTime(1,context.currentTime+.05);
       track.addEventListener('ended',close,{once:true});
       // Track.stop() does not emit ended; release the monitor after engine stop.
       timer=setInterval(()=>{if(track.readyState!=='live')close();},250);
-      window.dlog?.('audio','addon-tab-audio',{videoTracks:stream.getVideoTracks().length,monitor:context.state});
+      window.dlog?.('audio','addon-tab-audio',{videoTracks:stream.getVideoTracks().length,monitor:context.state,monitorFadeInMs:50});
       return {track,stream,ownsStream:true,fromOverlay:false};
     }catch(error){close();throw error;}
   }

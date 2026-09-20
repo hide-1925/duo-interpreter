@@ -33,7 +33,7 @@ function host(){
  create:async opts=>{calls.push(['create',opts]);const tab={id:3,url:opts.url,status:'complete'};tabs.set(3,tab);return tab;},
  update:async(id,opts)=>{calls.push(['focus',id,opts]);return tabs.get(id);},
  onRemoved:{addListener(){}},onActivated:{addListener(){}},onUpdated:{addListener:f=>updated=f},
- sendMessage:async(id,m)=>{calls.push(['message',id,m]);if(failTarget&&id===2)throw Error('target unavailable');return {ok:true,htmlBridgeVersion:'1.4.1'};}},
+ sendMessage:async(id,m)=>{calls.push(['message',id,m]);if(failTarget&&id===2)throw Error('target unavailable');return {ok:true,htmlBridgeVersion:'1.4.2'};}},
  windows:{update:async()=>{}},scripting:{insertCSS:async()=>{},executeScript:async args=>{calls.push(['inject',args]);return [{documentId:'doc-1',result:args.func?.name==='configureHtmlTabAudio'?{ok:true,enabled:true}:args.func?.name==='commandHtmlCaptionWindow'?{ok:true,route:'html-main',phase:args.args[1]==='guide'?'awaiting-click':'open',open:args.args[1]!=='guide'}:args.func?(args.func.toString().includes('build:')?{ok:true,build:'html-test'}:true):undefined}];}}};
  const c=vm.createContext({chrome,URL});c.importScripts=(...names)=>names.forEach(n=>vm.runInContext(read(n),c));vm.runInContext(read('service-worker.js'),c);
  const popup={url:'chrome-extension://duo/popup.html'};
@@ -159,7 +159,7 @@ const row=(id,text='原文',interim=false)=>({id,srcText:text,dstText:'訳文',s
   const calls=h.calls.filter(c=>c[0]==='inject'&&c[1]?.func?.name==='commandHtmlCaptionWindow');
   assert(calls.some(c=>c[1].target.tabId===1&&c[1].world==='MAIN'&&c[1].args[1]==='open'));
   assert(!calls.some(c=>c[1].target.tabId===2));
-  const status=await h.send({type:'DUO_GET_STATE'});assert.equal(status.workerVersion,'1.4.1');assert(status.overlay);assert(!('captionWindow' in status));
+  const status=await h.send({type:'DUO_GET_STATE'});assert.equal(status.workerVersion,'1.4.2');assert(status.overlay);assert(!('captionWindow' in status));
   assert(!(await h.send({type:'DUO_OPEN_HTML_CAPTION_WINDOW'},{tab:{id:999},frameId:0})).ok);
   assert((await h.send({type:'DUO_OPEN_HTML_CAPTION_WINDOW'},{tab:{id:2},frameId:0})).ok);
  });

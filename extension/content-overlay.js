@@ -451,7 +451,7 @@
       sendResponse({ ok: true }); return;
     }
     switch (message && message.type) {
-      case 'DUO_PING': sendResponse({ ok: true, installed: true, htmlBridgeVersion:'1.4.1', fullscreen:fullscreen.snapshot(), interaction:interactionSnapshot(), captions:entries.size, speechBuild: '20260906-chrome103-rca-echo' }); return;
+      case 'DUO_PING': sendResponse({ ok: true, installed: true, htmlBridgeVersion:'1.4.2', fullscreen:fullscreen.snapshot(), interaction:interactionSnapshot(), captions:entries.size, speechBuild: '20260906-chrome103-rca-echo' }); return;
       case 'DUO_HTML_BATCH': receiveHtmlBatch(message); break;
       case 'DUO_ENTRY': renderEntry(message.entry); break;
       case 'DUO_REMOVE_ENTRY': removeEntry(message.id); break;
