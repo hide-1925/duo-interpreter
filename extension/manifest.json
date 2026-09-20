@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.2",
-  "version_name": "1.4.2 Teams加工音声接続・切替音対策",
+  "version": "1.4.3",
+  "version_name": "1.4.3 Teams送信音声の誤除外修正",
   "optional_host_permissions": [
     "https://*/*"
   ],
