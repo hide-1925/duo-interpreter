@@ -74,4 +74,15 @@ test('turnDecisionMode and turnTraceMode ship as off in both files',()=>{
   }
 });
 
+/* index.html は単一HTMLなので、構文エラーを出すと起動そのものが死ぬ。
+   CRLF を含むためインラインスクリプトを取り出して構文検査する。 */
+test('the index.html inline script parses',()=>{
+  const blocks=html.match(/<script>\n([\s\S]*?)\n<\/script>/);
+  assert.ok(blocks,'main <script> block not found');
+  new (require('node:vm').Script)(blocks[1],{filename:'index.html:inline'});
+});
+test('extension/app.js parses',()=>{
+  new (require('node:vm').Script)(app,{filename:'app.js'});
+});
+
 console.log(JSON.stringify({passed:tests.length,tests},null,2));
