@@ -1,6 +1,6 @@
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 let serial=0;
-function environment(buggyExternalClassification=false,legacyExternalVeto=false){
+function environment(buggyExternalClassification=false,legacyExternalVeto=false,topLevelMicEvidenceOnly=false){
  class Track {constructor(kind='audio'){this.kind=kind;this.id='track-'+ ++serial;this.readyState='live';this._enabled=true;this.muted=false;}get enabled(){return this._enabled;}set enabled(v){this._enabled=!!v;}clone(){const t=new Track(this.kind);t.enabled=this.enabled;return t;}stop(){this.readyState='ended';}}
  class Stream {constructor(tracks=[]){this.tracks=tracks;}getTracks(){return this.tracks.slice();}getAudioTracks(){return this.tracks.filter(t=>t.kind==='audio');}clone(){return new Stream(this.tracks.map(t=>new Track(t.kind)));}}
  class Sender {constructor(track){this.track=track;}async replaceTrack(track){this.track=track;}}
@@ -20,6 +20,12 @@ function environment(buggyExternalClassification=false,legacyExternalVeto=false)
   // stream, and any external evidence vetoed the slot outright.
   if(legacyExternalVeto&&name==='mic-provenance')source=source.replace('sources.set(node,audio.slice(0,1));','sources.set(node,audio);');
   if(legacyExternalVeto&&name==='teams')source=source.replace(/const micMix=unique[^;]*;/,'const micMix=false;');
+  // Restore the 1.4.4 build: micEvidence was read off the proof flag at the top
+  // of the graph, so a microphone one nesting level down went unseen.
+  if(topLevelMicEvidenceOnly&&name==='mic-provenance'){
+   source=source.replace('micEvidence:results.some(r=>r.mic||r.micEvidence),','');
+   source=source.replace('micEvidence:!!(r.mic||r.micEvidence)','micEvidence:!!r.mic');
+  }
   vm.runInContext(source,c);}
  return {window,Track,Stream,PC,Context,media,adapter:window.DuoTeamsAdapter,provenance:window.DuoMicProvenance};
 }
@@ -198,6 +204,69 @@ async function test(name,fn){await fn(environment());passed.push(name);}
   assert.equal(e.adapter.discovery().eligibleCount,0);  // two audio senders
   pc.senders.pop();assert.equal(e.adapter.discovery().eligibleCount,1);
   await e.media.getUserMedia();assert.equal(e.adapter.discovery().eligibleCount,0);  // two live captures
+ });
+ // --- v1.4.5: Teams chains its outgoing graph through an intermediate stream ---
+ // Real Teams (duo-subtitle-interaction (16).json, extension 1.4.4) reported
+ // micEvidence false while sourceReasons still named get-user-media: the mic sits
+ // one MediaStreamAudioDestinationNode further upstream, and a nested processed
+ // track reports mic:false the moment anything beside it is unproven.
+ await test('Observed v1.4.4 log topology: a chained graph keeps the microphone visible as evidence',async()=>{
+  const fixture=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/teams-v144-discovery.json'),'utf8'));
+  async function setup(e){
+   const mic=(await e.media.getUserMedia()).getAudioTracks()[0];for(let i=0;i<fixture.streamClones;i++)new e.Stream([mic]).clone();
+   const pc=new e.window.RTCPeerConnection(),remote=new e.Track();pc.receive(remote);
+   const ctx=new e.window.AudioContext(),inner=ctx.createMediaStreamDestination();
+   ctx.createMediaStreamSource(new e.Stream([mic])).connect(inner);
+   ctx.createMediaStreamSource(new e.Stream([remote])).connect(inner);
+   const outer=ctx.createMediaStreamDestination();
+   ctx.createMediaStreamSource(inner.stream).connect(outer);
+   const original=outer.stream.getAudioTracks()[0],sender=pc.addTrack(original);
+   for(let i=0;i<fixture.nonAudioSenderCount;i++)pc.addTransceiver('video');
+   return {original,sender};
+  }
+  // The 1.4.4 build the user ran reproduces the recorded rejection exactly.
+  const old=environment(false,false,true);await setup(old);const before=old.adapter.discovery();
+  for(const key of ['peerCount','audioSenderCount','eligibleCount','selectionMethod','livePhysicalTracks','activeDisplayTracks','streamClones'])assert.equal(before[key],fixture[key],key);
+  const b0=before.senders.find(x=>x.kind==='audio');
+  assert.equal(b0.micEvidence,false);assert.equal(b0.externalEvidence,true);
+  assert.deepEqual([...b0.sourceReasons].sort(),[...fixture.senders[0].sourceReasons].sort());
+  assert.deepEqual([...b0.externalReasons],[...fixture.senders[0].externalReasons]);
+  assert.deepEqual([...b0.nodeTypes].sort(),[...fixture.senders[0].nodeTypes].sort());
+  await assert.rejects(old.adapter.start(new old.Track(),()=>{}),/マイク由来/);
+  // Current build: evidence survives the nesting, so the slot is selected.
+  const e=environment(),{original,sender}=await setup(e),d=e.adapter.discovery(),s0=d.senders.find(x=>x.kind==='audio');
+  assert.equal(s0.micEvidence,true);assert.deepEqual([...s0.externalReasons],['remote-receiver']);
+  assert.equal(d.selectionMethod,'mic-in-processed-mix');assert.equal(d.eligibleCount,1);
+  await e.adapter.start(new e.Track(),()=>{});assert.notEqual(sender.track,original);
+  await e.adapter.setMode('original-only');assert.equal(sender.track,original);
+  await e.adapter.setMode('tts-only');assert.notEqual(sender.track,original);
+  original.enabled=false;assert.equal(sender.track.enabled,false);
+  await e.adapter.stop();assert.equal(sender.track,original);assert.equal(sender.track.enabled,false);
+ });
+ await test('A chained graph carrying only the microphone is still proven, not merely evidenced',async e=>{
+  const ctx=new e.window.AudioContext(),inner=ctx.createMediaStreamDestination();
+  ctx.createMediaStreamSource(await e.media.getUserMedia()).connect(inner);
+  const outer=ctx.createMediaStreamDestination();ctx.createMediaStreamSource(inner.stream).connect(outer);
+  const original=outer.stream.getAudioTracks()[0],sender=new e.window.RTCPeerConnection().addTrack(original);
+  assert.equal(e.provenance.inspect(original).reason,'microphone-web-audio');
+  assert.equal(e.adapter.discovery().selectionMethod,'microphone-provenance');
+  await e.adapter.start(new e.Track(),()=>{});assert.notEqual(sender.track,original);
+  await e.adapter.stop();assert.equal(sender.track,original);
+ });
+ await test('Nesting does not smuggle screen capture or generated audio past the mix slot',async e=>{
+  for(const contaminate of ['display','generated']){
+   const f=environment();
+   const mic=(await f.media.getUserMedia()).getAudioTracks()[0];
+   const ctx=new f.window.AudioContext(),inner=ctx.createMediaStreamDestination();
+   ctx.createMediaStreamSource(new f.Stream([mic])).connect(inner);
+   if(contaminate==='display'){const disp=await f.media.getDisplayMedia();ctx.createMediaStreamSource(new f.Stream([disp.getAudioTracks()[0]])).connect(inner);}
+   else {const Osc=class extends f.window.AudioNode{};Object.defineProperty(Osc,'name',{value:'OscillatorNode'});new Osc().connect(inner);}
+   const outer=ctx.createMediaStreamDestination();ctx.createMediaStreamSource(inner.stream).connect(outer);
+   new f.window.RTCPeerConnection().addTrack(outer.stream.getAudioTracks()[0]);
+   const d=f.adapter.discovery();
+   assert.equal(d.eligibleCount,0,contaminate);assert.equal(d.selectionMethod,'none',contaminate);
+   await assert.rejects(f.adapter.start(new f.Track(),()=>{}));
+  }
  });
  console.log(JSON.stringify({passed:passed.length,tests:passed},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1;});

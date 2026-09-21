@@ -13,12 +13,12 @@ const probe=(frameId,count)=>({frameId,documentId:'doc-'+frameId,result:{ready:t
  const report=c.conferencePublic();assert(report.diagnostics.some(d=>d.event==='frame-discovery'&&d.frames.length===2));tests.push('Diagnostic output retains per-frame discovery counts');
  await c.conferenceStop('test');assert(sent.slice(-2).some(s=>s[2].documentId==='doc-7'));tests.push('Disconnect restores the selected child document');
  const ambiguous=env([probe(0,1),probe(7,1)]);await assert.rejects(ambiguous.c.conferenceToggle(popup),/複数/);assert.equal(ambiguous.sent.length,0);tests.push('Multiple eligible frames are not silently selected');
- const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json')));assert.equal(manifest.version,'1.4.4');assert.deepEqual(manifest.content_scripts[0].js.slice(0,2),['conference-adapters/mic-provenance.js','conference-adapters/teams.js']);assert(manifest.content_scripts.every(s=>s.all_frames));tests.push('Package installs provenance before adapter in matched Teams frames');
+ const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json')));assert.equal(manifest.version,'1.4.5');assert.deepEqual(manifest.content_scripts[0].js.slice(0,2),['conference-adapters/mic-provenance.js','conference-adapters/teams.js']);assert(manifest.content_scripts.every(s=>s.all_frames));tests.push('Package installs provenance before adapter in matched Teams frames');
  // Execute the real popup export callback and inspect its generated Blob.
  const callbacks={},nodes=new Map();let blob;
  function node(id){if(!nodes.has(id))nodes.set(id,{addEventListener:(type,fn)=>{callbacks[id+':'+type]=fn;},classList:{toggle(){}},setAttribute(){},click(){},remove(){},value:'',textContent:''});return nodes.get(id);}
- const response={ok:true,workerVersion:'1.4.4',conference:{error:'test-error',diagnostics:[{event:'microphone-discovery',eligibleCount:0}]},state:{},overlay:{}};
- const popupContext=vm.createContext({chrome:{runtime:{getManifest:()=>({version:'1.4.4'}),onMessage:{addListener(){}},sendMessage:async()=>response},tabs:{query:async()=>[]}},document:{getElementById:node,createElement:()=>node('link'),body:{appendChild(){}}},URL:{createObjectURL:b=>{blob=b;return 'blob:test';},revokeObjectURL(){}},Blob,console,setTimeout:()=>0,clearTimeout(){}});
+ const response={ok:true,workerVersion:'1.4.5',conference:{error:'test-error',diagnostics:[{event:'microphone-discovery',eligibleCount:0}]},state:{},overlay:{}};
+ const popupContext=vm.createContext({chrome:{runtime:{getManifest:()=>({version:'1.4.5'}),onMessage:{addListener(){}},sendMessage:async()=>response},tabs:{query:async()=>[]}},document:{getElementById:node,createElement:()=>node('link'),body:{appendChild(){}}},URL:{createObjectURL:b=>{blob=b;return 'blob:test';},revokeObjectURL(){}},Blob,console,setTimeout:()=>0,clearTimeout(){}});
  // Only install functions + export handler; exclude initial UI refresh.
  const popupSource=fs.readFileSync(path.join(root,'popup.js'),'utf8');
  const start=popupSource.indexOf("$('downloadInteraction').addEventListener"),end=popupSource.indexOf('function validTarget',start);
