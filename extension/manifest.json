@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.6",
-  "version_name": "1.4.6 モード切替の空振りと復帰失敗ループの修正",
+  "version": "1.4.7",
+  "version_name": "1.4.7 ブリッジ接続タイムアウトの修正",
   "optional_host_permissions": [
     "https://*/*"
   ],
