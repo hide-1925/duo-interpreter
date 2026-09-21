@@ -1878,9 +1878,14 @@ async function duoConferenceCommand(data){
       if(pc.connectionState==='connected'){clearTimeout(duoConferenceTimer);/* Wait for Teams adapter acknowledgement before enabling outbound audio. */}
       if(['failed','disconnected','closed'].indexOf(pc.connectionState)>=0)duoConferenceStop('transport-'+pc.connectionState);
     };
-    duoConferenceTimer=setTimeout(function(){if(pc===duoConferencePeer)duoConferenceStop('connection-timeout');},15000);
     await pc.setLocalDescription(await pc.createOffer());await duoIceComplete(pc);
-    if(pc===duoConferencePeer)duoConferenceSend({kind:'offer',token:data.token,description:pc.localDescription.toJSON()});
+    if(pc!==duoConferencePeer)return;
+    /* Arm the deadline only once the offer is on its way. Starting it before this
+       side's ICE gathering made one 15s budget cover two gathering phases - ours
+       and the answerer's, up to 8s each - so the handshake could expire before the
+       answer was even sent, with no error from either side to explain it. */
+    duoConferenceTimer=setTimeout(function(){if(pc===duoConferencePeer)duoConferenceStop('connection-timeout');},15000);
+    duoConferenceSend({kind:'offer',token:data.token,description:pc.localDescription.toJSON()});
   }catch(error){duoConferenceSend({kind:'error',token:data.token,error:String(error.message||error)});duoConferenceStop('error');}
 }
 function duoIceComplete(pc){return new Promise(function(resolve,reject){
@@ -2155,8 +2160,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.47.0';
-var APP_BUILD = '20260920-v1470-teams-speakers-audio';
+var APP_VERSION = 'v1.47.1';
+var APP_BUILD = '20260921-v1471-conference-handshake';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';

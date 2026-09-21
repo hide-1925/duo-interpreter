@@ -33,7 +33,11 @@ async function conferenceToggle(sender){
   const probe=eligible[0]||(withAudio.length===1?withAudio[0]:ready.find(p=>(p.frameId??0)===0))||ready[0];
   if(!probe.result?.relay)throw Error('Teamsタブの音声ブリッジが読み込まれていません。Teamsタブを再読み込みしてください');
   const session={token:crypto.randomUUID(),htmlTabId:state.htmlTabId,htmlDocumentId:state.htmlDocumentId,targetTabId:state.targetTabId,targetDocumentId:probe.documentId,targetFrameId:probe.frameId??0,phase:'pending',startedAt:Date.now()};conferenceSession=session;
-  session.timeout=setTimeout(()=>conferenceQueue(()=>conferenceStop('connection-timeout','接続がタイムアウトしました。HTML本体のWebプリセットとTTS設定を確認してください')),20000);
+  // Backstop only. The HTML owns the handshake deadline: 15s armed once its offer
+  // is sent, after up to 8s of its own ICE gathering. A 20s budget from here would
+  // expire first whenever gathering was slow, replacing the specific error with a
+  // vague one, so leave room for the whole of it.
+  session.timeout=setTimeout(()=>conferenceQueue(()=>conferenceStop('connection-timeout','接続がタイムアウトしました。HTML本体のWebプリセットとTTS設定を確認してください')),30000);
   try{const r=await chrome.tabs.sendMessage(session.htmlTabId,{type:'DUO_CONFERENCE_HTML',data:{kind:'start',token:session.token}},{documentId:session.htmlDocumentId});if(!r?.ok)throw Error('HTML本体を再接続してください');}
   catch(error){await conferenceStop('start-error');throw error;}
   await conferenceNotify();return {ok:true,...conferencePublic()};
