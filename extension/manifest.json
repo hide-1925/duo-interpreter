@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.7",
-  "version_name": "1.4.7 ブリッジ接続タイムアウトの修正",
+  "version": "1.4.8",
+  "version_name": "1.4.8 接続期限をHTML側へ一本化",
   "optional_host_permissions": [
     "https://*/*"
   ],
