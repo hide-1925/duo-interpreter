@@ -610,6 +610,25 @@ var CONFIG_SCHEMA = [
   { prop:"segmentStability", key:'di.segmentStability', embed:'segmentStability', def:'0', portable:true, el:"segmentStability", bind:'custom' },
   { prop:"segmentSilence", key:'di.segmentSilence', embed:'segmentSilence', def:'0', portable:true, el:"segmentSilence", bind:'custom' },
   { prop:"segmentDebt", key:'di.segmentDebt', embed:'segmentDebt', def:'8', portable:true, el:"segmentDebt", bind:'custom' },
+  /* 判断層。turnDecisionMode=off が既定で、そのときv1.47.1と同一の挙動になる。
+     言語別の上書きは en/ja だけで、他言語はRulesProviderのcontinuing判定に任せる。
+     判断用キーは翻訳キーから流用せず、設定埋込みHTMLにも含めない。 */
+  { prop:"turnDecisionMode", key:'di.tdMode', embed:'turnDecisionMode', def:'off', portable:true },
+  { prop:"turnDecisionProvider", key:'di.tdProv', embed:'turnDecisionProvider', def:'rules', portable:true },
+  { prop:"turnDecisionModel", key:'di.tdModel', embed:'turnDecisionModel', def:'', portable:true },
+  { prop:"turnDecisionBaseUrl", key:'di.tdBase', embed:'turnDecisionBaseUrl', def:'', portable:true },
+  { prop:"turnDecisionApiKey", key:'di.tdKey.local', def:'', localOnly:true, portable:false, note:"判断層のAPIキー。翻訳用キーと分離し書き出さない" },
+  { prop:"turnDecisionTimeoutMs", key:'di.tdTimeout', embed:'turnDecisionTimeoutMs', def:'900', portable:true },
+  { prop:"turnDecisionSoftMs", key:'di.tdSoft', embed:'turnDecisionSoftMs', def:'350', portable:true },
+  { prop:"turnDecisionLangEn", key:'di.tdEn', embed:'turnDecisionLangEn', def:'shadow', portable:true },
+  { prop:"turnDecisionLangJa", key:'di.tdJa', embed:'turnDecisionLangJa', def:'shadow', portable:true },
+  { prop:"turnDecisionContextTurns", key:'di.tdCtx', embed:'turnDecisionContextTurns', def:'0', portable:true },
+  { prop:"turnDecisionProsody", key:'di.tdProsody', embed:'turnDecisionProsody', def:'1', type:'bool', portable:true },
+  { prop:"turnFloorMaxWaitMs", key:'di.tdFloorMax', embed:'turnFloorMaxWaitMs', def:'3000', portable:true },
+  { prop:"turnFloorExpiry", key:'di.tdFloorExp', embed:'turnFloorExpiry', def:'speak', portable:true },
+  { prop:"turnDecisionRawLog", key:'di.tdRawLog', embed:'turnDecisionRawLog', def:'0', type:'bool', portable:true },
+  { prop:"turnInterruptMode", key:'di.tdInterrupt', embed:'turnInterruptMode', def:'preplay', portable:true },
+  { prop:"turnTraceMode", key:'di.tdTrace', embed:'turnTraceMode', def:'off', portable:true },
   { prop:"ttsMode", key:'di.tts', embed:'ttsMode', def:'off', portable:true, el:"ttsMode" },
   { prop:"ttsWho", key:'di.ttsw', embed:'ttsWho', def:'B2A', portable:true, el:"ttsWho" },
   { prop:"focus", key:'di.focus', embed:'focus', def:'split', portable:true },
@@ -3287,6 +3306,57 @@ ProsodyAnalyzer.prototype.finalize=function(){
       clusterGapMs:clusterGapMs,acousticClusters:clusters.length,selectedCluster:selectedIndex+1,
       discardedClusters:isWebSpeech?Math.max(0,clusters.length-1):0,discardedSpanMs:Math.round(discardedSpanMs),
       selectionMode:isWebSpeech?'latest-valid-cluster':'vad-segment'}
+  };
+};
+/* 発話途中の非破壊スナップショット。finalize()は内部でbeginSegment()を呼びframes
+   をリセットするため、判断層からは呼べない。判断層はテキストしか見ないモデルへ
+   音響を数値で渡す必要があるので、末尾windowMsだけを読んで相対値を返す。
+   絶対周波数は話者間で比較できないため、平均比と区間比だけを出す。 */
+ProsodyAnalyzer.prototype.peek=function(windowMs){
+  if (this.closed || !this.frames || this.frames.length<3) return {available:false,reason:'no_analysis_frames'};
+  var now=Date.now(), span=windowMs>0?windowMs:1500, frames=[], i;
+  for (i=this.frames.length-1;i>=0;i--){ if (now-this.frames[i].t>span) break; frames.unshift(this.frames[i]); }
+  if (frames.length<3) return {available:false,reason:'window_too_short'};
+  var diffs=[]; for (i=1;i<frames.length;i++) if (frames[i].t>frames[i-1].t) diffs.push(frames[i].t-frames[i-1].t);
+  var frameMs=prosodyClamp(prosodyMedian(diffs)||80,20,160);
+  var voice=[]; for (i=0;i<frames.length;i++) if (frames[i].voice) voice.push(frames[i]);
+  if (voice.length<2) return {available:false,reason:'no_voiced_frames'};
+  var first=voice[0].t, end=voice[voice.length-1].t+frameMs;
+  var spanMs=Math.max(frameMs,end-first), runStart=first, runLast=first, runDur=[], pauses=[], activeMs=0;
+  for (i=1;i<voice.length;i++){
+    var gap=voice[i].t-runLast-frameMs;
+    if (gap>=Math.max(140,frameMs*1.5)){ runDur.push(Math.max(frameMs,runLast+frameMs-runStart)); pauses.push(Math.round(gap)); runStart=voice[i].t; }
+    runLast=voice[i].t;
+  }
+  runDur.push(Math.max(frameMs,runLast+frameMs-runStart));
+  for (i=0;i<runDur.length;i++) activeMs+=runDur[i];
+  var internalPauseMs=Math.max(0,spanMs-activeMs), maxPause=0;
+  for (i=0;i<pauses.length;i++) maxPause=Math.max(maxPause,pauses[i]);
+  var pauseRatio=prosodyClamp(internalPauseMs/spanMs,0,1);
+  var runCv=runDur.length>1 ? prosodyStd(runDur)/Math.max(1,prosodyMean(runDur)) : 0;
+  var pv=[], ev=[];
+  for (i=0;i<voice.length;i++){ ev.push(voice[i].db); if (voice[i].pitch) pv.push(voice[i].pitch); }
+  var pmean=pv.length?prosodyMean(pv):0, slope=null, drop=null, q;
+  /* 終端の傾きは末尾1/4とその手前1/4の差を平均で割った比。下降調は完結の証拠。 */
+  if (pv.length>=4 && pmean>0){
+    q=Math.max(1,Math.floor(pv.length/4));
+    slope=prosodyRound((prosodyMean(pv.slice(pv.length-q))-prosodyMean(pv.slice(pv.length-2*q,pv.length-q)))/pmean,3);
+  }
+  if (ev.length>=4){
+    q=Math.max(1,Math.floor(ev.length/4));
+    drop=prosodyRound(prosodyPercentile(ev,0.95)-prosodyMean(ev.slice(ev.length-q)),1);
+  }
+  var coverage=prosodyClamp(activeMs/spanMs,0,1);
+  return {
+    available:true, windowMs:Math.round(spanMs),
+    terminalPitchSlope:slope,
+    pitchRelativeRange:pv.length>=2?prosodyRound((prosodyPercentile(pv,0.90)-prosodyPercentile(pv,0.10))/Math.max(1,pmean),3):null,
+    terminalEnergyDrop:drop,
+    internalPauseRatio:prosodyRound(pauseRatio,3),
+    maxInternalPauseMs:Math.round(maxPause),
+    tempoVariability:prosodyRound(prosodyClamp(pauseRatio*1.5+runCv*0.35,0,1),3),
+    voiceRuns:runDur.length, coverage:prosodyRound(coverage,3),
+    quality:prosodyRound(prosodyClamp(voice.length/8,0,1)*(0.4+0.6*prosodyClamp((coverage-0.18)/0.47,0,1)),3)
   };
 };
 ProsodyAnalyzer.prototype.stop=function(){ this.closed=true; this.frames=[]; };
@@ -10835,8 +10905,219 @@ INITIAL_FEED_EMPTY=document.querySelector('#feedA .empty').cloneNode(true);
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
  */
 var SEG = {cards:[], queue:[], active:null, epoch:0, timer:null, translations:0, requests:[],
-  retranslations:[], voice:{}, received:{}, uiTimer:null, committed:0, corrected:0, lastReason:'—', lastTick:0,cardOrder:0,dispatchOrder:0,dispatchRate:1,adaptive:{}};
+  retranslations:[], voice:{}, received:{}, uiTimer:null, committed:0, corrected:0, lastReason:'—', lastTick:0,cardOrder:0,dispatchOrder:0,dispatchRate:1,adaptive:{},
+  /* commitと確定後訂正をdecisionSource別に数える。合計値はadaptiveが従来どおり
+     参照するが、判断層をoffへ戻したあとの累積比の残留と、shadow比較のbaseline
+     汚染をこの分離で切り分ける。 */
+  committedBySource:{provider:0,rules:0}, correctedBySource:{provider:0,rules:0}};
 function segEnabled(){return CFG.segmentMode!=='off' && /^(balanced|fast|adaptive)$/.test(CFG.segmentMode) && CFG.sttProvider!=='realtime';}
+/* ── Turn decision layer ───────────────────────────────────────────────────
+   STT更新後の「どこまで確定するか」と、翻訳後の「いつ読み上げるか」を、固定秒では
+   なく候補＋証拠＋期限の合成で決めるための契約層。RulesProviderはv1.47.1の二実装
+   をそのまま正本として常時搭載する。
+   turnDecisionMode=off のときboundary/floorはRulesProviderの戻り値を素通しする
+   だけなので、v1.47.1と同一の挙動になる。判断層のための音響計算も走らせない。
+   INV-08 判断の不在はゼロコスト。remoteの返答を待ってcommitを遅らせない。
+   INV-09 floor待ちは turnFloorMaxWaitMs を超えて保持しない。                  */
+var TURN_STATE_SCHEMA='duo.turn-state.v1';
+var TurnDecision={
+  cache:{}, inflight:{}, sessionSalt:null,
+
+  /* 言語別mode。de/it/zh/mixedはsegSemanticTailのcontinuing判定が既にあるので
+     remote判断の対象にせず、Rules固定にする。 */
+  modeFor:function(lang){
+    if(String(CFG.turnDecisionMode||'off')==='off')return 'off';
+    var l=String(lang||'').split('-')[0];
+    if(l==='en')return String(CFG.turnDecisionLangEn||'shadow');
+    if(l==='ja')return String(CFG.turnDecisionLangJa||'shadow');
+    return 'off';
+  },
+  observes:function(lang){return this.modeFor(lang)!=='off';},
+  applies:function(lang){var m=this.modeFor(lang);return m==='assist'||m==='active';},
+
+  /* RulesProvider。契約の戻り値 {length, reasons, waiting} は既存実装のまま。 */
+  rules:function(input){
+    return segSemanticEnabled()?segSemanticDecision(input):segDecision(input);
+  },
+
+  /* 判断層がoffの間はpeekを呼ばない。60ms周期のYIN抽出を無駄に走らせないため。 */
+  prosodyOf:function(lang){
+    if(!this.observes(lang)||!CFG.turnDecisionProsody||!micProsody)return null;
+    var p=micProsody.peek(1500);
+    return (p&&p.available)?p:null;
+  },
+
+  /* 平文のspeakerIdを外部へ出さない。session単位のsaltでハッシュ化し、会議を
+     越えて同一人物を追跡しない。speakerIdが無ければseatを使う。 */
+  speakerKeyOf:function(e){
+    var id=e&&e.speaker&&e.speaker.id;
+    if(!id)return 'seat:'+((e&&e.seat)||'A');
+    if(!this.sessionSalt)this.sessionSalt=String(Math.random()).slice(2)+String(Date.now());
+    var h=0,str=this.sessionSalt+'|'+id,i;
+    for(i=0;i<str.length;i++)h=(h*31+str.charCodeAt(i))|0;
+    return 'spk:'+(h>>>0).toString(36);
+  },
+
+  /* 境界候補はDuoが作り、モデルにはHOLDか候補IDしか選ばせない。存在しない文字
+     位置や原文改変を構造上防ぐ。offsetは常に安定prefix以内に収める。 */
+  candidatesOf:function(input,ruleResult){
+    var text=String(input.text||''),stable=Math.min(text.length,input.stableLength||0),out=[],m;
+    if(ruleResult&&ruleResult.length&&ruleResult.length<=stable)
+      out.push({id:'C_RULES',offset:ruleResult.length,why:(ruleResult.reasons||[]).join('+')});
+    var rx=/[。！？!?]|\.(?=\s|$)/g;
+    while((m=rx.exec(text))&&out.length<4){var end=m.index+1;if(end<=stable)out.push({id:'C_SENTENCE',offset:end,why:'punctuation'});}
+    if(stable>0&&out.length<5)out.push({id:'C_STABLE',offset:stable,why:'stable-prefix'});
+    if(input.final&&out.length<5)out.push({id:'C_FULL',offset:text.length,why:'stt-final'});
+    return out;
+  },
+
+  contextOf:function(e){
+    var n=Number(CFG.turnDecisionContextTurns||0),self=this;
+    if(!(n>0))return [];
+    var index=S.entries.indexOf(e);
+    return (index<0?[]:S.entries.slice(0,index).filter(function(x){return !x.interim&&x.srcText;}).slice(-n))
+      .map(function(x){return {speakerKey:self.speakerKeyOf(x),language:x.srcLang,text:String(x.srcText).slice(-200)};});
+  },
+
+  /* TurnDecisionStateV1。silenceMsはmeter不明をnullで表す。Rules側が使う-1は
+     内部規約なので契約へ漏らさない。0と不明を同じ値にしない。 */
+  stateOf:function(e,s,input,ruleResult,silence,now){
+    var text=String(input.text||''),prosody=this.prosodyOf(e.srcLang),meter=(silence!==null&&silence!==undefined);
+    return {
+      schemaVersion:TURN_STATE_SCHEMA,
+      sessionId:'s'+sessionGen,
+      utteranceId:e.utteranceId||e.id,
+      revision:e.segment?e.segment.revision:0,
+      speakerKey:this.speakerKeyOf(e),
+      sourceLanguage:e.srcLang||'',
+      currentText:text.slice(-800),
+      stablePrefixChars:Math.min(text.length,input.stableLength||0),
+      lastDeltaMs:input.idleMs==null?null:Math.round(input.idleMs),
+      silenceMs:meter?Math.round(silence):null,
+      sttFinal:!!input.final,
+      speechEvent:input.final?'stopped':'unknown',
+      candidateBoundaries:this.candidatesOf(input,ruleResult),
+      prosody:prosody,
+      recentTurns:this.contextOf(e),
+      tts:{active:!!SEG.active,queueDebtMs:Math.round(segDebt()*1000),
+        pendingFirstAudio:!!(SEG.active&&!SEG.active.started),overlapMode:CFG.segmentOverlap||'auto'},
+      evidence:{meterAvailable:meter,partialAvailable:!input.final,
+        speakerReliable:!!DuoSpeakers.available,prosodyAvailable:!!prosody}
+    };
+  },
+
+  key:function(state){
+    return [state.sessionId,state.speakerKey,state.utteranceId,state.revision,TURN_STATE_SCHEMA,
+      String(CFG.turnDecisionProvider||'rules'),String(CFG.turnDecisionModel||'')].join('|');
+  },
+  read:function(state){
+    var hit=this.cache[this.key(state)];
+    if(!hit)return null;
+    if(hit.revision!==state.revision||hit.utteranceId!==state.utteranceId||hit.sessionId!==state.sessionId){
+      dlog('segment','turn-decision-stale',{requestRevision:hit.revision,currentRevision:state.revision,reason:'key-mismatch'});
+      return null;
+    }
+    return hit;
+  },
+
+  /* Phase 2でJevDirect/LocalModelのadapterをここから呼ぶ。provider=rulesの間は
+     一切外部へ出さないので、shadowでもネットワークは発生しない。 */
+  observe:function(state){
+    if(String(CFG.turnDecisionProvider||'rules')==='rules')return;
+  },
+
+  /* 候補外のoffsetは採用しない。安定prefixを越えるものも採らない。合成スコアの
+     重みはPhase 2の学習で決めるため、ここでは構造的な安全条件だけを検査する。 */
+  pick:function(state,hit){
+    if(!hit.boundary||!hit.boundary.choice||hit.boundary.choice==='HOLD')
+      return {length:0,reasons:[],waiting:'provider-hold',source:'provider'};
+    var list=state.candidateBoundaries||[],cand=null,i;
+    for(i=0;i<list.length;i++)if(list[i].id===hit.boundary.choice)cand=list[i];
+    if(!cand||cand.offset>state.stablePrefixChars)return null;
+    return {length:cand.offset,reasons:['provider-'+cand.id,'stable'],source:'provider'};
+  },
+
+  /* Boundary Gate。offとshadowはRulesProviderの結果をそのまま返す。assist以上でも
+     有効なcache結果が無ければ即Rulesへ進む。待たないことがINV-08の実装である。 */
+  boundary:function(e,s,input,ruleResult,silence,now){
+    var mode=this.modeFor(e.srcLang);
+    if(mode==='off')return ruleResult;
+    var state=this.stateOf(e,s,input,ruleResult,silence,now);
+    TurnTrace.decision(state,ruleResult);
+    this.observe(state);
+    if(mode==='shadow')return ruleResult;
+    var hit=this.read(state);
+    if(!hit)return ruleResult;
+    return this.pick(state,hit)||ruleResult;
+  },
+
+  /* Floor Gate の座席。Phase 3で判断を入れる。判断層がoffのあいだはnullを返し、
+     segPumpは既存のoverlap ruleだけで進む。INV-09の上限だけ先に実装しておく。 */
+  floor:function(job,silence,now){
+    var e=job&&job.card;
+    if(!e||!this.applies(e.srcLang)){if(job)job.floorSince=0;return null;}
+    if(!job.floorSince)job.floorSince=now;
+    var waited=now-job.floorSince;
+    if(waited>=Number(CFG.turnFloorMaxWaitMs||3000))
+      return {action:String(CFG.turnFloorExpiry||'speak')==='drop'?'drop':'speak',reason:'floor-max-wait',waitMs:waited};
+    return null;
+  },
+
+  reset:function(why){
+    var self=this;
+    Object.keys(this.inflight).forEach(function(k){
+      var c=self.inflight[k];if(c&&c.abort){try{c.abort();}catch(err){}}
+    });
+    this.cache={};this.inflight={};this.sessionSalt=null;
+    /* offのときは診断ログも出さない。判断層を切った状態の出力をv1.47.1と揃える。 */
+    if(String(CFG.turnDecisionMode||'off')!=='off')
+      dlog('segment','turn-decision-reset',{why:why,mode:CFG.turnDecisionMode});
+  }
+};
+
+/* Phase 0 計測。製品動作を変えずに、STT・音響・話者イベントとRulesが何を決めたか
+   を時刻付きで記録する。replayerが同じ列を流し直すことで、生の会議では不可能な
+   「同一入力でRulesとProviderを比較する」が成立する。turnTraceMode=recordのとき
+   だけ動き、offでは行を1本も積まない。 */
+var TurnTrace={
+  rows:[], startedAt:0, dropped:0,
+  enabled:function(){return String(CFG.turnTraceMode||'off')==='record';},
+  push:function(kind,data){
+    if(!this.enabled())return;
+    if(!this.startedAt)this.startedAt=Date.now();
+    if(this.rows.length>=40000){this.dropped++;return;}
+    this.rows.push({t:Date.now()-this.startedAt,kind:kind,data:data});
+  },
+  /* 原文はturnDecisionRawLogが明示的にonのときだけ残す。既定では文字数だけ。 */
+  text:function(e,text,final){
+    this.push('stt',{cardId:e.id,utteranceId:e.utteranceId,seat:e.seat,lang:e.srcLang,
+      chars:String(text||'').length,final:!!final,
+      raw:CFG.turnDecisionRawLog?String(text||''):undefined});
+  },
+  voice:function(seat,rms){this.push('vad',{seat:seat,rms:Math.round(rms*10000)/10000});},
+  decision:function(state,ruleResult){
+    if(!this.enabled())return;
+    this.push('decision',{utteranceId:state.utteranceId,revision:state.revision,speakerKey:state.speakerKey,
+      lang:state.sourceLanguage,chars:state.currentText.length,stable:state.stablePrefixChars,
+      silenceMs:state.silenceMs,lastDeltaMs:state.lastDeltaMs,final:state.sttFinal,
+      candidates:(state.candidateBoundaries||[]).map(function(c){return c.id+'@'+c.offset;}),
+      prosody:state.prosody,
+      rule:{length:ruleResult.length,reasons:ruleResult.reasons,waiting:ruleResult.waiting||''}});
+  },
+  firstAudio:function(j,at){
+    this.push('first-audio',{cardId:j.card.id,segmentId:j.segment.id,
+      startedAt:j.card.startedAt||null,endedAt:j.card.audioEndedAt||j.card.endedAt||null,at:at});
+  },
+  reset:function(){this.rows=[];this.startedAt=0;this.dropped=0;},
+  export:function(){
+    return JSON.stringify({schema:'duo.turn-trace.v1',build:APP_BUILD,recordedAt:new Date().toISOString(),
+      config:{segmentMode:CFG.segmentMode,segmentBoundary:CFG.segmentBoundary,segmentOverlap:CFG.segmentOverlap,
+        turnDecisionMode:CFG.turnDecisionMode,vad:CFG.vad,sttProvider:CFG.sttProvider},
+      counters:{committed:SEG.committed,corrected:SEG.corrected,
+        committedBySource:SEG.committedBySource,correctedBySource:SEG.correctedBySource},
+      dropped:this.dropped,rows:this.rows},null,1);
+  }
+};
 function segNumber(v,f,min,max){v=Number(v);return isFinite(v)&&v>0?Math.max(min,Math.min(max,v)):f;}
 function segPolicy(mode){var fast=mode==='fast';return {
   min:segNumber(CFG.segmentMin,fast?8:12,4,100), max:fast?28:48,
@@ -10935,7 +11216,8 @@ function segRefreshProgress(){
   });
 }
 function segStartProgress(){
-  SEG.received={};SEG.voice={};SEG.adaptive={};if(SEG.uiTimer)clearInterval(SEG.uiTimer);
+  SEG.received={};SEG.voice={};SEG.adaptive={};TurnDecision.reset('session-start');TurnTrace.reset();
+  if(SEG.uiTimer)clearInterval(SEG.uiTimer);
   SEG.uiTimer=setInterval(segRefreshProgress,250);segRefreshProgress();
 }
 function segStopProgress(){if(SEG.uiTimer)clearInterval(SEG.uiTimer);SEG.uiTimer=null;}
@@ -10950,7 +11232,7 @@ function segEchoCandidate(text){
     return r.t.indexOf(n)>=0||(n.indexOf(r.t)>=0&&r.t.length/n.length>=0.85)||biDice(n,r.t)>=0.85;
   });
 }
-function segVoice(seat,rms){var talking=rms>CFG.vad/1000;segObservePause(seat,SEG.voice[seat],talking);SEG.voice[seat]={talking:talking,at:Date.now(),last:rms>CFG.vad/1000?Date.now():((SEG.voice[seat]||{}).last||Date.now())};}
+function segVoice(seat,rms){var talking=rms>CFG.vad/1000;TurnTrace.voice(seat,rms);segObservePause(seat,SEG.voice[seat],talking);SEG.voice[seat]={talking:talking,at:Date.now(),last:rms>CFG.vad/1000?Date.now():((SEG.voice[seat]||{}).last||Date.now())};}
 function segAttachMeter(owner,track,seat){
   if(owner._segmentMeter||!segEnabled())return;
   try{
@@ -10981,7 +11263,8 @@ function segDebt(){
 }
 function segReviseCommittedSource(e,s,replacement,revision){
   if(replacement===s.sourceText)return;
-  if(!s.corrected){s.corrected=true;SEG.corrected++;}
+  if(!s.corrected){s.corrected=true;SEG.corrected++;
+    var src=s.decisionSource||'rules';SEG.correctedBySource[src]=(SEG.correctedBySource[src]||0)+1;}
   s.correctionCount=(s.correctionCount||0)+1;s.correctedAt=Date.now();
   s.sourceRevision=revision;s.sourceText=replacement;
   s.translationRevision=(s.translationRevision||0)+1;s.translationReady=false;
@@ -11010,6 +11293,7 @@ function segUpdate(e,text,final){
       s.start=at;s.end=mapped;at=mapped;
     });
     b.text=text;
+    TurnTrace.text(e,text,final);
   }
   b.final=!!final;e.interim=b.cancelled?false:!final;e.status=b.cancelled?'stopped':final?'final':'active';
   if(final)e.endedAt=now;
@@ -11055,7 +11339,8 @@ function segCheck(e){
     var silence=segSilence(e,now);
     var decisionInput={text:s.sourceText,stableLength:b.final?s.sourceText.length:stable,policy:p,lang:e.srcLang,idleMs:now-b.lastUpdate,
       mode:p.mode,debt:debt,silenceMs:silence===null?-1:silence,final:b.final};
-    var d=segSemanticEnabled()?segSemanticDecision(decisionInput):segDecision(decisionInput);
+    var ruleResult=TurnDecision.rules(decisionInput);
+    var d=TurnDecision.boundary(e,s,decisionInput,ruleResult,silence,now);
     if(d.waiting)b.boundaryWaiting=d.waiting;else b.boundaryWaiting='';
     if(!d.length)break;
     s.end=s.start+d.length;s.sourceText=b.text.slice(s.start,s.end);s.id=e.id+'-s'+s.seq;
@@ -11068,10 +11353,12 @@ function segCheck(e){
       dlog('segment','echo-suppressed',{cardId:e.id,seq:s.seq,chars:s.sourceText.length,displayPreserved:true});
     }else if(!duoAutomaticAllowed(e)||b.audioMuted){s.audio.status='cancelled';s.audio.skipReason='speech-stopped';}
     else SEG.queue.push({card:e,segment:s,epoch:SEG.epoch,cancelled:false});
+    s.decisionSource=d.source||'rules';
     SEG.committed++;
+    SEG.committedBySource[s.decisionSource]=(SEG.committedBySource[s.decisionSource]||0)+1;
     SEG.lastReason=d.reasons.join(' + ');
     dlog('segment','commit',{cardId:e.id,seq:s.seq,text:s.sourceText,chars:s.sourceText.length,reason:d.reasons,
-      stabilityMs:s.stabilityMs,debtEstimateSeconds:debt});segDraft(e);
+      decisionSource:s.decisionSource,stabilityMs:s.stabilityMs,debtEstimateSeconds:debt});segDraft(e);
   }
 }
 function segTranslate(e,s,manual){
@@ -11165,6 +11452,13 @@ function segPump(){
     var silence=segSilence(e,Date.now()),overlap=segOverlapFor(e,segDebt());
     // Without a trustworthy input meter, avoid-overlap waits for STT final.
     if(overlap==='avoid'&&!e.segment.final&&(silence===null||silence<segPolicyFor(e,segDebt()).silence)){segTtsWait(j,'input-silence');return;}
+    /* Floor Gate の座席。判断層がoffならnullが返り、既存のoverlap ruleだけで進む。
+       INV-09により、待ちはturnFloorMaxWaitMsを超えて保持されない。 */
+    var floor=TurnDecision.floor(j,silence,Date.now());
+    if(floor&&floor.action==='hold'){segTtsWait(j,'floor',{waitMs:floor.waitMs,floorReason:floor.reason});return;}
+    if(floor&&floor.action==='drop'){s.audio.status='cancelled';s.audio.skipReason='floor-expired';s.state='skipped';
+      SEG.queue.shift();segRefreshPlayback(j);
+      dlog('segment','floor-drop',{cardId:e.id,seq:s.seq,waitMs:floor.waitMs});continue;}
     var useSource=j.manual||CFG.ttsSrc,lang=useSource?e.srcLang:e.dstLang;
     var group=[j],source=s.sourceText,target=s.translationText||'';
     if(ttsProv().segmentJapaneseBatch&&lang==='ja'){
@@ -11224,6 +11518,7 @@ function segAudioEvent(msg,data){
   var j=SEG.active;if(!j)return;var s=j.segment,a=s.audio,now=Date.now();
   if(/^(browser-start|wa-play|rate-play|play-start|aivis-first|openai-first|vv-start)$/.test(msg)&&!a.firstAudioAt){
     a.firstAudioAt=now+((data&&data.leadMs)||0);a.generatedAt=now;a.status='playing';s.state='playing';
+    TurnTrace.firstAudio(j,a.firstAudioAt);
     if(!j.card.firstAudioAt)j.card.firstAudioAt=a.firstAudioAt;
     segRefreshPlayback(j);
     a.startEvidence=/first|wa-play/.test(msg)?'scheduled-estimate':'playback-event';
@@ -11303,6 +11598,7 @@ function segCancelAll(why){
     if(e.srcText.trim()){e.interim=false;e.status='stopped';e.endedAt=Date.now();render(e);}
   });
   SEG.queue=[];SEG.active=null;SEG.cards=[];if(SEG.timer)clearInterval(SEG.timer);SEG.timer=null;
+  TurnDecision.reset('cancel-all');
   dlog('segment','cancel',{why:why,epoch:SEG.epoch});segStatus();
 }
 function segRemove(e){if(!e||!e.segment)return;e.segment.cancelled=true;
