@@ -21,14 +21,18 @@ async function conferenceToggle(sender){
   const teamsFrames=(frames||[]).filter(f=>/^https:\/\/(?:teams\.(?:microsoft|live)\.com|teams\.cloud\.microsoft)\//.test(f.url||''));
   if(!teamsFrames.length)throw Error('Teamsの会議ページを検出できません。対象タブを選び直してください');
   const frameTarget=teamsFrames.every(f=>f.documentId)?{tabId:state.targetTabId,documentIds:teamsFrames.map(f=>f.documentId)}:{tabId:state.targetTabId,frameIds:teamsFrames.map(f=>f.frameId)};
-  const probes=await chrome.scripting.executeScript({target:frameTarget,world:'MAIN',func:()=>({ready:!!window.DuoTeamsAdapter,discovery:window.DuoTeamsAdapter?.discovery?.()||null})});
-  conferenceDiagnostic({event:'frame-discovery',frames:probes.map(p=>({frameId:p.frameId??0,documentId:p.documentId,ready:!!p.result?.ready,discovery:p.result?.discovery||null}))});
+  // The adapter and the bridge relay are separate scripts. Probing only the
+  // adapter lets a frame look ready while the offer has nothing to answer it,
+  // which surfaces as a bare connection timeout with no error from either side.
+  const probes=await chrome.scripting.executeScript({target:frameTarget,world:'MAIN',func:()=>({ready:!!window.DuoTeamsAdapter,relay:!!window.__duoConferenceTarget,discovery:window.DuoTeamsAdapter?.discovery?.()||null})});
+  conferenceDiagnostic({event:'frame-discovery',frames:probes.map(p=>({frameId:p.frameId??0,documentId:p.documentId,ready:!!p.result?.ready,relay:!!p.result?.relay,discovery:p.result?.discovery||null}))});
   const ready=probes.filter(p=>p.result?.ready),eligible=ready.filter(p=>p.result?.discovery?.eligibleCount>0);
   if(!ready.length)throw Error('拡張を更新した後、Teamsタブを再読み込みして会議に参加してください');
   if(eligible.length>1)throw Error('複数の会議音声を検出しました。対象タブで使う会議を1つにしてください');
   const withAudio=ready.filter(p=>p.result?.discovery?.audioSenderCount>0);
   const probe=eligible[0]||(withAudio.length===1?withAudio[0]:ready.find(p=>(p.frameId??0)===0))||ready[0];
-  const session={token:crypto.randomUUID(),htmlTabId:state.htmlTabId,htmlDocumentId:state.htmlDocumentId,targetTabId:state.targetTabId,targetDocumentId:probe.documentId,targetFrameId:probe.frameId??0,phase:'pending'};conferenceSession=session;
+  if(!probe.result?.relay)throw Error('Teamsタブの音声ブリッジが読み込まれていません。Teamsタブを再読み込みしてください');
+  const session={token:crypto.randomUUID(),htmlTabId:state.htmlTabId,htmlDocumentId:state.htmlDocumentId,targetTabId:state.targetTabId,targetDocumentId:probe.documentId,targetFrameId:probe.frameId??0,phase:'pending',startedAt:Date.now()};conferenceSession=session;
   session.timeout=setTimeout(()=>conferenceQueue(()=>conferenceStop('connection-timeout','接続がタイムアウトしました。HTML本体のWebプリセットとTTS設定を確認してください')),20000);
   try{const r=await chrome.tabs.sendMessage(session.htmlTabId,{type:'DUO_CONFERENCE_HTML',data:{kind:'start',token:session.token}},{documentId:session.htmlDocumentId});if(!r?.ok)throw Error('HTML本体を再接続してください');}
   catch(error){await conferenceStop('start-error');throw error;}
@@ -41,8 +45,11 @@ async function conferenceSignal(data,sender){
   const fromTarget=sender.tab?.id===s.targetTabId&&sender.documentId===s.targetDocumentId&&sender.frameId===s.targetFrameId;
   if(!fromHtml&&!fromTarget)throw Error('会議音声の送信元が一致しません');
   if(data.kind==='error'||data.kind==='stopped'){conferenceDiagnostic({error:data.error||'',reason:data.reason||data.kind});await conferenceStop(data.kind,data.error||(data.reason==='connection-timeout'?'接続がタイムアウトしました':''));return {ok:true};}
-  if(data.kind==='offer'&&fromHtml){if(!data.description||JSON.stringify(data.description).length>100000)throw Error('不正なSDPです');await chrome.tabs.sendMessage(s.targetTabId,{type:'DUO_CONFERENCE_TARGET',data},{documentId:s.targetDocumentId});}
-  else if(data.kind==='answer'&&fromTarget){await chrome.tabs.sendMessage(s.htmlTabId,{type:'DUO_CONFERENCE_HTML',data},{documentId:s.htmlDocumentId});}
+  if(data.kind==='offer'&&fromHtml){if(!data.description||JSON.stringify(data.description).length>100000)throw Error('不正なSDPです');
+    conferenceDiagnostic({event:'conference-offer-relayed',sinceStartMs:Date.now()-s.startedAt});
+    await chrome.tabs.sendMessage(s.targetTabId,{type:'DUO_CONFERENCE_TARGET',data},{documentId:s.targetDocumentId});}
+  else if(data.kind==='answer'&&fromTarget){conferenceDiagnostic({event:'conference-answer-relayed',sinceStartMs:Date.now()-s.startedAt});
+    await chrome.tabs.sendMessage(s.htmlTabId,{type:'DUO_CONFERENCE_HTML',data},{documentId:s.htmlDocumentId});}
   else if((data.kind==='mode'||data.kind==='gain')&&fromHtml){if(data.kind==='mode'&&!['tts-only','original-plus-tts','original-only'].includes(data.mode))throw Error('Invalid audio mode');await chrome.tabs.sendMessage(s.targetTabId,{type:'DUO_CONFERENCE_TARGET',data},{documentId:s.targetDocumentId});}
   else if(data.kind==='active'&&fromTarget){s.phase='active';clearTimeout(s.timeout);conferenceDiagnostic({webConferenceMicEnabled:true,conferenceAdapter:'teams'});await chrome.tabs.sendMessage(s.htmlTabId,{type:'DUO_CONFERENCE_HTML',data},{documentId:s.htmlDocumentId});await conferenceNotify();}
   else if((data.kind==='diagnostic'||data.kind==='mode-applied')&&fromTarget){conferenceDiagnostic(data);await chrome.tabs.sendMessage(s.htmlTabId,{type:'DUO_CONFERENCE_HTML',data},{documentId:s.htmlDocumentId});}

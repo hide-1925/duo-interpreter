@@ -1,7 +1,7 @@
 const path=require('node:path');
 const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict'),crypto=require('crypto');
 let state={htmlTabId:1,htmlDocumentId:'html-doc',targetTabId:2},sent=[];
-const chrome={tabs:{onUpdated:{addListener(){}},onRemoved:{addListener(){}},get:async()=>({url:'https://teams.cloud.microsoft/v2/'}),sendMessage:async(...args)=>{sent.push(args);return {ok:true};}},runtime:{getURL:p=>'chrome-extension://duo/'+p,sendMessage:async()=>({ok:true})},scripting:{executeScript:async o=>o.func.toString().includes('DuoTeamsAdapter')?[{result:{ready:true},documentId:'target-doc'}]:[{result:{ok:true,entryId:'e1'}}]}};
+const chrome={tabs:{onUpdated:{addListener(){}},onRemoved:{addListener(){}},get:async()=>({url:'https://teams.cloud.microsoft/v2/'}),sendMessage:async(...args)=>{sent.push(args);return {ok:true};}},runtime:{getURL:p=>'chrome-extension://duo/'+p,sendMessage:async()=>({ok:true})},scripting:{executeScript:async o=>o.func.toString().includes('DuoTeamsAdapter')?[{result:{ready:true,relay:true},documentId:'target-doc'}]:[{result:{ok:true,entryId:'e1'}}]}};
 chrome.webNavigation={getFrame:async()=>({documentId:'target-doc'}),getAllFrames:async()=>[{frameId:0,documentId:'target-doc',url:'https://teams.cloud.microsoft/v2/'}]};
 const c=vm.createContext({chrome,crypto,URL,console,setTimeout,clearTimeout,getState:async()=>state,validateOverlayFrameSender:async s=>{if(s.tab?.id!==2)throw Error('unauthorized');},sendOverlayMessage:async()=>({ok:true})});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'../audio-bridge/controller.js'),'utf8'),c);
