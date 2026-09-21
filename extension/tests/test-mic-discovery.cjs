@@ -3,7 +3,7 @@ let serial=0;
 function environment(buggyExternalClassification=false,legacyExternalVeto=false,topLevelMicEvidenceOnly=false){
  class Track {constructor(kind='audio'){this.kind=kind;this.id='track-'+ ++serial;this.readyState='live';this._enabled=true;this.muted=false;}get enabled(){return this._enabled;}set enabled(v){this._enabled=!!v;}clone(){const t=new Track(this.kind);t.enabled=this.enabled;return t;}stop(){this.readyState='ended';}}
  class Stream {constructor(tracks=[]){this.tracks=tracks;}getTracks(){return this.tracks.slice();}getAudioTracks(){return this.tracks.filter(t=>t.kind==='audio');}clone(){return new Stream(this.tracks.map(t=>new Track(t.kind)));}}
- class Sender {constructor(track){this.track=track;}async replaceTrack(track){this.track=track;}}
+ class Sender {constructor(track){this.track=track;this.calls=0;}async replaceTrack(track){this.calls++;if(this.failWith)throw Error(this.failWith);this.track=track;}}
  class PC {constructor(){this.senders=[];this.receivers=[];this.events=new Map();this.connectionState='connected';}addTrack(track){const s=new Sender(track);this.senders.push(s);return s;}addTransceiver(t){return {sender:this.addTrack(typeof t==='string'?null:t)};}getSenders(){return this.senders;}getReceivers(){return this.receivers;}addEventListener(type,fn){this.events.set(type,fn);}receive(track){this.receivers.push({track});this.events.get('track')?.({track});} }
  class AudioNode {connect(d){return d;}disconnect(){}}
  class Param {constructor(v){this.value=v;}}
@@ -317,6 +317,77 @@ async function test(name,fn){await fn(environment());passed.push(name);}
   assert.equal(s.track,ttsOnly);
   e.contexts.resumeTo='running';
   await e.adapter.stop();assert.equal(s.track,t);assert.equal(t.readyState,'live');
+ });
+ // --- v1.4.6: duo-subtitle-interaction (17).json ---
+ // Real Teams, extension 1.4.5: after the first switch to mix, four further mode
+ // changes emitted mode-applied with the new mode while the sender kept the mix
+ // track d32d594c. The speaker button read "on" while Teams still received the
+ // original microphone at 70%.
+ await test('Every mode change replaces the sender, not just the first',async e=>{
+  const mic=(await e.media.getUserMedia()).getAudioTracks()[0];
+  const pc=new e.window.RTCPeerConnection(),remote=new e.Track();pc.receive(remote);
+  const ctx=new e.window.AudioContext(),inner=ctx.createMediaStreamDestination();
+  ctx.createMediaStreamSource(new e.Stream([mic])).connect(inner);
+  ctx.createMediaStreamSource(new e.Stream([remote])).connect(inner);
+  const outer=ctx.createMediaStreamDestination();ctx.createMediaStreamSource(inner.stream).connect(outer);
+  const original=outer.stream.getAudioTracks()[0],sender=pc.addTrack(original);
+  await e.adapter.start(new e.Track(),()=>{});
+  const seen=[];
+  for(const mode of ['original-plus-tts','original-only','tts-only','original-plus-tts','original-only','tts-only']){
+   assert.equal(await e.adapter.setMode(mode,{micGain:.7,ttsGain:1}),mode);
+   seen.push({mode,track:sender.track});
+  }
+  // original-only hands the slot back; the other two must each install a fresh track.
+  for(const {mode,track} of seen){
+   if(mode==='original-only')assert.equal(track,original,mode);
+   else assert.notEqual(track,original,mode);
+  }
+  const blends=seen.filter(x=>x.mode==='original-plus-tts').map(x=>x.track);
+  assert.notEqual(blends[0],blends[1]);           // not the stale first mix
+  const ttsOnly=seen.filter(x=>x.mode==='tts-only').map(x=>x.track);
+  assert.notEqual(ttsOnly[0],ttsOnly[1]);
+  assert(!blends.includes(ttsOnly[0])&&!blends.includes(ttsOnly[1]));
+  await e.adapter.stop();assert.equal(sender.track,original);
+ });
+ await test('A mode change that can replace nothing fails loudly instead of reporting success',async e=>{
+  const t=(await e.media.getUserMedia()).getAudioTracks()[0],pc=new e.window.RTCPeerConnection(),s=pc.addTrack(t);
+  const events=[];await e.adapter.start(new e.Track(),d=>events.push(d));
+  assert.equal(await e.adapter.setMode('original-plus-tts',{micGain:.7,ttsGain:1}),'original-plus-tts');
+  const blend=s.track;
+  t.stop();  // the slot the adapter drives goes away
+  await assert.rejects(e.adapter.setMode('tts-only'),/切り替えられませんでした/);
+  const skip=events.filter(x=>x.event==='conference-mode-skipped').pop();
+  assert(skip,'a skipped mode change must be reported');
+  assert.equal(skip.requestedMode,'tts-only');
+  assert.equal(skip.appliedMode,'original-plus-tts');   // never claims the new mode
+  assert(skip.reasons.length);
+  assert.equal(s.track,blend);                          // sender untouched, not silently stale-labelled
+  await e.adapter.stop().catch(()=>{});
+ });
+ await test('A restore against a closed peer connection settles instead of retrying forever',async e=>{
+  const t=(await e.media.getUserMedia()).getAudioTracks()[0],pc=new e.window.RTCPeerConnection(),s=pc.addTrack(t);
+  const events=[];await e.adapter.start(new e.Track(),d=>events.push(d));
+  assert.notEqual(s.track,t);
+  const before=s.calls;
+  s.failWith="Failed to execute 'replaceTrack' on 'RTCRtpSender': The peer connection is closed.";
+  await e.adapter.stop();                       // the call is gone: not a restore failure
+  assert.equal(s.calls-before,1);
+  assert(events.some(x=>x.replaceTrackResult==='peer-closed'));
+  assert(!events.some(x=>x.replaceTrackResult==='restore-failed'));
+  await e.adapter.stop();await e.adapter.stop();
+  assert.equal(s.calls-before,1,'a dead replacement must not be retried on every later stop');
+ });
+ await test('A genuine restore failure is still reported, once per stop',async e=>{
+  const t=(await e.media.getUserMedia()).getAudioTracks()[0],pc=new e.window.RTCPeerConnection(),s=pc.addTrack(t);
+  const events=[];await e.adapter.start(new e.Track(),d=>events.push(d));
+  const before=s.calls;
+  s.failWith='InvalidModificationError';
+  await assert.rejects(e.adapter.stop(),/元マイクの復帰に失敗/);
+  assert.equal(s.calls-before,1);
+  assert.equal(events.filter(x=>x.replaceTrackResult==='restore-failed').length,1);
+  await e.adapter.stop();   // nothing left to retry
+  assert.equal(s.calls-before,1);
+  assert.equal(events.filter(x=>x.replaceTrackResult==='restore-failed').length,1);
  });
  console.log(JSON.stringify({passed:passed.length,tests:passed},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1;});

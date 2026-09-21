@@ -44,6 +44,15 @@
     const micMix=unique&&!fallback&&!!one.provenance.micEvidence&&externals.length>0&&externals.every(r=>r==='remote-receiver');
     return {audio,selected:known.length?known:fallback||micMix?[one]:[],method:known.length?'microphone-provenance':fallback?'unique-processed-sender':micMix?'mic-in-processed-mix':'none'};
   }
+  // Why this slot cannot be driven right now, or '' when it can. Every skip is
+  // reported: a mode change that quietly replaces nothing leaves the UI showing
+  // a mode the sender is not carrying.
+  function blocker(r){
+    if(!r||!r.original)return 'no-original-track';
+    if(r.original.readyState!=='live')return 'original-'+r.original.readyState;
+    if(!usable(r))return 'slot-no-longer-selectable';
+    return '';
+  }
   function usable(r){return isMic(r.original)||(!!r.selectionMethod&&candidates().selected.some(x=>x.sender===r.sender&&x.track===r.original));}
   function discover(sender){
     if(!sender?.track||sender.track.kind!=='audio'||!isMic(sender.track))return null;
@@ -57,7 +66,9 @@
       for(const r of records.values())if(r.original===this||r.replacement===this)syncMute(r);}
   });
   async function apply(r){
-    if(!activeTrack||!r.original||r.original.readyState!=='live'||!usable(r))return;
+    if(!activeTrack){report({kind:'diagnostic',conferenceAdapter:'teams',event:'conference-apply-skipped',reason:'no-active-track',at:Date.now()});return;}
+    const why=blocker(r);
+    if(why){report({kind:'diagnostic',conferenceAdapter:'teams',event:'conference-apply-skipped',reason:why,mode,at:Date.now()});return;}
     const version=++r.desiredVersion,requestEpoch=epoch;
     return enqueue(r,async()=>{
       if(version!==r.desiredVersion||requestEpoch!==epoch||!activeTrack)return;
@@ -95,15 +106,24 @@
       senders.push({kind:track?.kind||null,readyState:track?.readyState||null,enabled:track?.enabled??null,...provenance.inspect(track),connectionState:pc.connectionState});
     }}
     const selection=candidates();
-    return {adapterVersion:'1.4.5',peerCount:[...peers].filter(p=>p.connectionState!=='closed').length,audioSenderCount:senders.filter(s=>s.kind==='audio').length,eligibleCount:selection.selected.length,selectionMethod:selection.method,senders,...provenance.diagnostics()};
+    return {adapterVersion:'1.4.6',peerCount:[...peers].filter(p=>p.connectionState!=='closed').length,audioSenderCount:senders.filter(s=>s.kind==='audio').length,eligibleCount:selection.selected.length,selectionMethod:selection.method,senders,...provenance.diagnostics()};
   }
   window.RTCPeerConnection=new Proxy(NativePC,{construct(target,args,newTarget){const pc=Reflect.construct(target,args,newTarget);capture(pc);return pc;}});
   function fail(error){report({kind:'error',error:String(error.message||error)});stop().catch(()=>{});}
   async function stop(){activeTrack=null;++epoch;const tasks=[];
     for(const r of records.values()){++r.desiredVersion;if(r.replacement)enabledDescriptor.set.call(r.replacement,false);
       tasks.push(enqueue(r,async()=>{if(!r.replacement)return;const clone=r.replacement;
-        try{await nativeReplace.call(r.sender,r.original?.readyState==='live'?r.original:null);r.replacement=null;log('restored',r);}
-        catch(error){log('restore-failed',r,error);throw error;}finally{clone.stop();disposeMix(r.mix);r.mix=null;}
+        // Drop the replacement before restoring. If the restore throws and the
+        // record keeps pointing at the dead clone, every later stop retries the
+        // same sender, fails again, and the session can never report a clean stop.
+        r.replacement=null;
+        try{await nativeReplace.call(r.sender,r.original?.readyState==='live'?r.original:null);log('restored',r);}
+        catch(error){
+          // A closed peer connection means the call itself is gone. There is no
+          // microphone left to hand back, so this is not a restore failure.
+          if(/peer connection is closed/i.test(String(error&&error.message||error))){records.delete(r.sender);log('peer-closed',r);return;}
+          log('restore-failed',r,error);throw error;}
+        finally{clone.stop();disposeMix(r.mix);r.mix=null;}
       }));}
     const results=await Promise.allSettled(tasks);if(results.some(x=>x.status==='rejected'))throw Error('元マイクの復帰に失敗しました。Teamsのマイクを選び直してください');
   }
@@ -118,7 +138,21 @@
       if(!eligible.length){activeTrack=null;const d=snapshot();throw Error(!d.peerCount?'Teamsの会議接続を検出できません。Teamsタブを再読み込みして会議へ参加してください':!d.audioSenderCount?'Teamsの送信音声がありません。Teamsでマイクを選択してください':(d.senders.find(x=>x.kind==='audio')?.externalReasons||[]).includes('display-capture')?'画面共有の音声がマイクと同じ経路に入っています。画面共有を停止してから会議マイク送出を選択してください':'Teamsの送信音声をマイク由来と確認できません（診断JSONに検出結果を記録しました）');}
       try{await Promise.all(eligible.map(apply));}catch(error){await stop().catch(()=>{});throw error;}
     },
-    async setMode(next,levels={}){if(!activeTrack||!['tts-only','original-plus-tts','original-only'].includes(next))throw Error('会議音声モードが無効です');mode=next;this.setGains(levels);await Promise.all([...records.values()].filter(r=>r.original?.readyState==='live'&&usable(r)).map(apply));return mode;},
+    async setMode(next,levels={}){
+      if(!activeTrack||!['tts-only','original-plus-tts','original-only'].includes(next))throw Error('会議音声モードが無効です');
+      const previous=mode;mode=next;this.setGains(levels);
+      const targets=[],reasons=[];
+      for(const r of records.values()){const why=blocker(r);if(why)reasons.push(why);else targets.push(r);}
+      // Reporting a mode nothing carries is worse than failing: the speaker button
+      // would read "on" while the sender still sends the previous blend.
+      if(!targets.length){
+        mode=previous;
+        report({kind:'diagnostic',conferenceAdapter:'teams',event:'conference-mode-skipped',requestedMode:next,appliedMode:previous,recordCount:records.size,reasons:[...new Set(reasons)],at:Date.now()});
+        throw Error('会議音声モードを切り替えられませんでした。会議マイク送出を接続し直してください');
+      }
+      await Promise.all(targets.map(apply));
+      return mode;
+    },
     setGains(levels){if(Number.isFinite(levels.micGain))micLevel=Math.max(0,Math.min(1,levels.micGain));if(Number.isFinite(levels.ttsGain))ttsLevel=Math.max(0,Math.min(1,levels.ttsGain));for(const r of records.values())if(r.mix){r.mix.mic.gain.value=micLevel;r.mix.tts.gain.value=ttsLevel;}},
     stop,discovery:snapshot,diagnostics:()=>[...records.values()].map(r=>({originalMicTrackId:r.original?.id,conferenceMicTrackId:r.replacement?.id,mode}))};
   addEventListener('pagehide',()=>{clearInterval(timer);stop().catch(()=>{});},{once:true});
