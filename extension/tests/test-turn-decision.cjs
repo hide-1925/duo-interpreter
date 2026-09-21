@@ -50,6 +50,7 @@ for(const b of [segBlock(),
                 block('function prosodyStd('),
                 block('ProsodyAnalyzer.prototype.peek=function(windowMs){'),
                 block('var TURN_STATE_SCHEMA='),
+                block('function segCorrectionCounts(e){'),
                 block('var TurnDecision={'),
                 block('var TurnTrace={')]) vm.runInContext(b,c);
 
@@ -254,6 +255,27 @@ test('commit and correction counters exist per decision source',()=>{
     assert.equal(c.SEG.committedBySource[k],0,'committedBySource.'+k);
     assert.equal(c.SEG.correctedBySource[k],0,'correctedBySource.'+k);
   }
+});
+
+/* ── adaptive が見る訂正率 ──────────────────────────────────────────────── */
+test('off scopes the correction rate to rules, which equals the totals',()=>{
+  reset();
+  /* offのあいだは全commitがrules由来になるので、合計値と一致しなければならない。 */
+  c.SEG.committedBySource={provider:7,rules:40}; c.SEG.correctedBySource={provider:5,rules:4};
+  const n=c.segCorrectionCounts(card());
+  assert.equal(n.committed,40); assert.equal(n.corrected,4);
+});
+test('active scopes the correction rate to the provider, dropping rules-era residue',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  c.SEG.committedBySource={provider:7,rules:40}; c.SEG.correctedBySource={provider:5,rules:4};
+  const n=c.segCorrectionCounts(card());
+  assert.equal(n.committed,7); assert.equal(n.corrected,5);
+});
+test('a language left on rules keeps reading the rules counters even when global is active',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active',turnDecisionLangJa:'shadow'});
+  c.SEG.committedBySource={provider:7,rules:40}; c.SEG.correctedBySource={provider:5,rules:4};
+  assert.equal(c.segCorrectionCounts(card({srcLang:'ja'})).committed,40);
+  assert.equal(c.segCorrectionCounts(card({srcLang:'en'})).committed,7);
 });
 
 /* ── prosody peek が非破壊であること ────────────────────────────────────── */

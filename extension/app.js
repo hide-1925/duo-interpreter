@@ -11976,15 +11976,25 @@ function segAdaptiveDecision(input){
   }else if(input.samples>=3)reason='balanced-tempo';
   return {profile:profile,mode:mode,min:min,max:max,stability:stability,silence:silence,rate:rate,reason:reason};
 }
+/* adaptiveが参照する確定数と訂正数。decisionSource別カウンタから、その発話の
+   言語でいま採用されている判断源の分を返す。 */
+function segCorrectionCounts(e){
+  var src=TurnDecision.applies(e&&e.srcLang)?'provider':'rules';
+  return {committed:SEG.committedBySource[src]||0,corrected:SEG.correctedBySource[src]||0};
+}
 function segAdaptiveState(e,debt){
   var a=segTempoState(e.seat),now=Date.now();
   if(a.decision&&now-a.checkedAt<1000)return a.decision;
   a.checkedAt=now;a.events=a.events.filter(function(x){return now-x.at<=10000;});
   var span=a.events.length?now-a.events[0].at:0;
   a.cps=span>=2000?a.events.reduce(function(n,x){return n+x.chars;},0)/(span/1000):0;
+  /* 訂正率は「いま効いている判断源」の分だけで見る。判断層をoffへ戻したあとに
+     稼働期間の訂正が累積比へ残り、adaptiveが導入前を再現しなくなるのを防ぐ。
+     offのあいだは全commitがrules由来なので、合計値と一致し挙動は変わらない。 */
+  var counted=segCorrectionCounts(e);
   var next=segAdaptiveDecision({debt:debt,cps:a.cps,samples:a.events.length,spanMs:span,pauseMs:a.pauseMs,
     fastCps:/^(ja|zh)/.test(e.srcLang)?5:13,previous:a.decision&&a.decision.profile,
-    committed:SEG.committed,correctionRate:SEG.committed?SEG.corrected/SEG.committed:0});
+    committed:counted.committed,correctionRate:counted.committed?counted.corrected/counted.committed:0});
   if(a.decision&&next.profile!==a.decision.profile&&now-a.changedAt<3000&&next.profile!=='cautious')return a.decision;
   if(!a.decision||next.profile!==a.decision.profile){
     a.changedAt=now;
