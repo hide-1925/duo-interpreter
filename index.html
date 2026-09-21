@@ -1784,7 +1784,10 @@ var AudioEndpointManager={
   apply:function(){['A','B'].forEach(function(view){var source=AudioEndpointManager.legacySource(view);CFG['src'+view]=source;var el=$('src'+view);if(el)el.value=source;});}
 };
 var STT_ADAPTER_CAPABILITIES={
-  webspeech:{microphone:true,systemAudio:false,arbitraryTrack:false},
+  /* Web SpeechはChrome 135+のSpeechRecognition.start(audioTrack)で共有音声Trackを
+     直接認識できる。WebSpeechTrackEngineがその経路の実装であり、開始できない実機は
+     エンジン側が理由を出して止まる。テーブルで先に塞がない。 */
+  webspeech:{microphone:true,systemAudio:true,arbitraryTrack:true},
   openai:{microphone:true,systemAudio:true,arbitraryTrack:true},
   xai:{microphone:true,systemAudio:true,arbitraryTrack:true},
   groq:{microphone:true,systemAudio:true,arbitraryTrack:true},
@@ -1842,8 +1845,19 @@ function duoRefreshEndpoints(){var el=$('duoEndpointInfo');if(el)el.textContent=
 function duoValidateInputs(){
   AudioEndpointManager.apply();
   var caps=STT_ADAPTER_CAPABILITIES[CFG.sttProvider]||STT_ADAPTER_CAPABILITIES.openai;
-  if(Object.values(duoSession.endpoints).some(function(ep){return ep.enabled&&ep.type==='system-audio';})&&!caps.systemAudio){
-    toast('Webプリセットの共有音声にはOpenAI / Groq / Geminiの音声認識を選んでください。Web Speechは通常のマイク入力で使用できます。');return false;
+  /* endpointが有効かどうかではなく、A／Bのどちらかが認識源としてタブ／システム
+     音声に束ねられているかで判定する。会議音声をTTSの送出先にしか使わない構成を
+     巻き込んで止めないため。 */
+  var recognisingShared=['A','B'].some(function(view){return AudioEndpointManager.legacySource(view)==='display';});
+  if(!recognisingShared)return true;
+  /* 経路ごとに必要な能力が違う。directはTrackを直接渡し、apiはBlobを送る。
+     vbは仮想入力デバイスなので通常のマイク扱いで、どのadapterでも通る。 */
+  var route=effectiveDisplaySttRoute();
+  if(route==='direct'&&!caps.arbitraryTrack){
+    toast('この音声認識では共有音声Trackを直接認識できません。<br>⚙→音声 で共有音声の認識経路を「VB-CABLE」または「外部API」にしてください。');return false;
+  }
+  if(route==='api'&&!caps.systemAudio){
+    toast('共有音声を外部APIで認識するには OpenAI / xAI / Groq / Gemini のいずれかを選んでください。<br>Web Speechは共有音声Trackの直接認識（⚙→音声）で使えます。');return false;
   }
   return true;
 }
