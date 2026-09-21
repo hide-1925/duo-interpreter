@@ -10,25 +10,25 @@
   let lastError='';
   const nodeInputs=node=>edges.get(node)||[];
   function walkNode(node,seen,seenTracks){
-    if(seen.has(node))return {mic:false,unknown:true,external:true,externalReasons:['graph-cycle'],reasons:['graph-cycle']};
+    if(seen.has(node))return {mic:false,micEvidence:false,unknown:true,external:true,externalReasons:['graph-cycle'],reasons:['graph-cycle']};
     const next=new Set(seen);next.add(node);
     const tracks=sources.get(node);
-    if(tracks){const results=tracks.map(t=>inspect(t,new Set(seenTracks)));return {mic:results.some(r=>r.mic),unknown:!results.length||results.some(r=>!r.mic),external:results.some(r=>r.externalEvidence),externalReasons:[...new Set(results.flatMap(r=>r.externalReasons||[]))],reasons:[...new Set(results.flatMap(r=>r.sourceReasons||[r.reason]))]};}
+    if(tracks){const results=tracks.map(t=>inspect(t,new Set(seenTracks)));return {mic:results.some(r=>r.mic),micEvidence:results.some(r=>r.mic||r.micEvidence),unknown:!results.length||results.some(r=>!r.mic),external:results.some(r=>r.externalEvidence),externalReasons:[...new Set(results.flatMap(r=>r.externalReasons||[]))],reasons:[...new Set(results.flatMap(r=>r.sourceReasons||[r.reason]))]};}
     const incoming=nodeInputs(node);
     if(!incoming.length){const generated=['OscillatorNode','AudioBufferSourceNode','ConstantSourceNode','MediaElementAudioSourceNode'].includes(node.constructor?.name);
-      return {mic:false,unknown:true,external:generated,externalReasons:generated?['generated-audio']:[],reasons:['node-without-observed-input']};}
+      return {mic:false,micEvidence:false,unknown:true,external:generated,externalReasons:generated?['generated-audio']:[],reasons:['node-without-observed-input']};}
     const results=incoming.map(e=>walkNode(e.source,next,seenTracks));
-    return {mic:results.some(r=>r.mic),unknown:results.some(r=>r.unknown),external:results.some(r=>r.external),externalReasons:[...new Set(results.flatMap(r=>r.externalReasons||[]))],reasons:[...new Set(results.flatMap(r=>r.reasons||[]))]};
+    return {mic:results.some(r=>r.mic),micEvidence:results.some(r=>r.mic||r.micEvidence),unknown:results.some(r=>r.unknown),external:results.some(r=>r.external),externalReasons:[...new Set(results.flatMap(r=>r.externalReasons||[]))],reasons:[...new Set(results.flatMap(r=>r.reasons||[]))]};
   }
   function inspect(track,seen=new Set()){
     if(!track||track.kind!=='audio')return {mic:false,reason:'not-audio'};
     if(seen.has(track))return {mic:false,reason:'cycle'};
     seen.add(track);
     if(external.has(track))return {mic:false,reason:external.get(track),externalEvidence:true,externalReasons:[external.get(track)]};
-    if(physical.has(track))return {mic:true,reason:'get-user-media'};
+    if(physical.has(track))return {mic:true,micEvidence:true,reason:'get-user-media'};
     if(parents.has(track)){const r=inspect(parents.get(track),seen);return {...r,reason:r.mic?'microphone-clone':r.reason};}
     const node=destinations.get(track);
-    if(node){const r=walkNode(node,new Set(),seen);return {mic:r.mic&&!r.unknown,reason:r.mic&&!r.unknown?'microphone-web-audio':'unproven-web-audio',processed:true,micEvidence:!!r.mic,externalEvidence:!!r.external,externalReasons:r.externalReasons||[],sourceReasons:r.reasons||[],nodeTypes:graphTypes(node)};}
+    if(node){const r=walkNode(node,new Set(),seen);return {mic:r.mic&&!r.unknown,reason:r.mic&&!r.unknown?'microphone-web-audio':'unproven-web-audio',processed:true,micEvidence:!!(r.mic||r.micEvidence),externalEvidence:!!r.external,externalReasons:r.externalReasons||[],sourceReasons:r.reasons||[],nodeTypes:graphTypes(node)};}
     return {mic:false,reason:'unobserved-origin'};
   }
   const media=navigator.mediaDevices;

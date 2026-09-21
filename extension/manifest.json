@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.4",
-  "version_name": "1.4.4 マイクと受信音声が同居する送信経路の選定修正",
+  "version": "1.4.5",
+  "version_name": "1.4.5 多段Web Audioグラフでのマイク検出修正",
   "optional_host_permissions": [
     "https://*/*"
   ],

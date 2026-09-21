@@ -1,0 +1,37 @@
+{
+  "_source": "duo-subtitle-interaction (16).json — extensionVersion 1.4.4, real Web Teams, 2026-09-21T00:31:34Z",
+  "_outcome": "eligibleCount 0 / selectionMethod none: micEvidence read the proof flag at the top of the graph only, so the microphone one nesting level down was invisible even though sourceReasons still named it.",
+  "_topology": "mic + far-end receiver -> intermediate MediaStreamAudioDestinationNode -> re-sourced -> outgoing MediaStreamAudioDestinationNode. graphTypes dedupes by constructor name, so a chained graph and a flat one both report two node types.",
+  "adapterVersion": "1.4.4",
+  "peerCount": 1,
+  "audioSenderCount": 1,
+  "eligibleCount": 0,
+  "selectionMethod": "none",
+  "getUserMediaCalls": 1,
+  "getUserMediaSuccesses": 1,
+  "getUserMediaFailures": 0,
+  "physicalTracks": 1,
+  "livePhysicalTracks": 1,
+  "trackClones": 0,
+  "streamClones": 4,
+  "activeDisplayTracks": 0,
+  "lastGetUserMediaError": "",
+  "senders": [
+    {
+      "kind": "audio",
+      "readyState": "live",
+      "enabled": true,
+      "mic": false,
+      "reason": "unproven-web-audio",
+      "processed": true,
+      "micEvidence": false,
+      "externalEvidence": true,
+      "externalReasons": ["remote-receiver"],
+      "sourceReasons": ["get-user-media", "remote-receiver"],
+      "nodeTypes": ["MediaStreamAudioDestinationNode", "MediaStreamAudioSourceNode"],
+      "connectionState": "connected"
+    }
+  ],
+  "nonAudioSenderCount": 11,
+  "error": "Teamsの送信音声をマイク由来と確認できません（診断JSONに検出結果を記録しました）"
+}
