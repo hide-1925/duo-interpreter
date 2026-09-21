@@ -1,19 +1,19 @@
 {
  "version": "1.4.5",
  "scope": "Node VM regression tests; real Teams and browser loopback not executed",
- "totalPassed": 115,
+ "totalPassed": 117,
  "syntaxFiles": 31,
  "reproduced": "tests/fixtures/teams-v144-discovery.json — the recorded v1.4.4 rejection (micEvidence false on a chained graph) is reproduced against the 1.4.4 predicate, then connects, mutes and restores under the current one. teams-v143-discovery.json likewise for the 1.4.3 rejection.",
  "notVerified": [
   "real browser audio samples",
   "ICE/DTLS/RTP media flow",
-  "audio arriving at the far end of a real Teams meeting",
-  "whether the selected slot, once replaced, actually carries TTS to the far end"
+  "original-plus-tts (mix) in a real Teams meeting — covered by adapter tests only",
+  "original-only in a real Teams meeting"
  ],
  "results": [
   {
    "file": "tests/test-mic-discovery.cjs",
-   "passed": 29,
+   "passed": 31,
    "tests": [
     "Direct microphone and cloned track connect and restore to the Teams track",
     "Native MediaStream.clone internal copies retain microphone provenance",
@@ -43,7 +43,9 @@
     "The far-end mix slot still requires a single audio sender and one live capture",
     "Observed v1.4.4 log topology: a chained graph keeps the microphone visible as evidence",
     "A chained graph carrying only the microphone is still proven, not merely evidenced",
-    "Nesting does not smuggle screen capture or generated audio past the mix slot"
+    "Nesting does not smuggle screen capture or generated audio past the mix slot",
+    "Mix mode blends the original slot with TTS, tracks mute, and frees every mixer",
+    "A blend that cannot start audio leaves the previous routing intact"
    ]
   },
   {
@@ -174,5 +176,6 @@
     "Monitor fades in after resume without changing the STT track"
    ]
   }
- ]
+ ],
+ "confirmedInRealTeams": "TTS reaches a real Teams meeting (many-to-many), verified by the user against the meeting recording. tts-only is the connect default, so the original microphone is intentionally absent from that recording."
 }

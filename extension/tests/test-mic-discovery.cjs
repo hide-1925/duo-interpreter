@@ -6,9 +6,19 @@ function environment(buggyExternalClassification=false,legacyExternalVeto=false,
  class Sender {constructor(track){this.track=track;}async replaceTrack(track){this.track=track;}}
  class PC {constructor(){this.senders=[];this.receivers=[];this.events=new Map();this.connectionState='connected';}addTrack(track){const s=new Sender(track);this.senders.push(s);return s;}addTransceiver(t){return {sender:this.addTrack(typeof t==='string'?null:t)};}getSenders(){return this.senders;}getReceivers(){return this.receivers;}addEventListener(type,fn){this.events.set(type,fn);}receive(track){this.receivers.push({track});this.events.get('track')?.({track});} }
  class AudioNode {connect(d){return d;}disconnect(){}}
+ class Param {constructor(v){this.value=v;}}
+ class Gain extends AudioNode {constructor(){super();this.gain=new Param(1);}}
+ class Comp extends AudioNode {constructor(){super();for(const k of ['threshold','knee','ratio','attack','release'])this[k]=new Param(0);}}
  class Source extends AudioNode {constructor(ctx,{mediaStream}={}){super();this.mediaStream=mediaStream;}}
  class Destination extends AudioNode {constructor(){super();this.stream=new Stream([new Track()]);}}
- class Context {createMediaStreamSource(s){return new Source(this,{mediaStream:s});}createMediaStreamDestination(){return new Destination();}createGain(){return new AudioNode();}}
+ const contexts={created:[],closed:[],resumeTo:'running'};
+ class Context {constructor(){this.state='running';contexts.created.push(this);}
+  createMediaStreamSource(s){return new Source(this,{mediaStream:s});}
+  createMediaStreamDestination(){return new Destination();}
+  createGain(){return new Gain();}
+  createDynamicsCompressor(){return new Comp();}
+  async resume(){this.state=contexts.resumeTo;}
+  async close(){this.state='closed';contexts.closed.push(this);}}
  Object.defineProperty(Source,'name',{value:'MediaStreamAudioSourceNode'});Object.defineProperty(Destination,'name',{value:'MediaStreamAudioDestinationNode'});
  const media={getUserMedia:async()=>new Stream([new Track()]),getDisplayMedia:async()=>new Stream([new Track('video'),new Track()])};
  const window={MediaStreamTrack:Track,MediaStream:Stream,RTCPeerConnection:PC,RTCRtpSender:Sender,AudioContext:Context,AudioNode,MediaStreamAudioSourceNode:Source,MediaStreamAudioDestinationNode:Destination};
@@ -27,7 +37,7 @@ function environment(buggyExternalClassification=false,legacyExternalVeto=false,
    source=source.replace('micEvidence:!!(r.mic||r.micEvidence)','micEvidence:!!r.mic');
   }
   vm.runInContext(source,c);}
- return {window,Track,Stream,PC,Context,media,adapter:window.DuoTeamsAdapter,provenance:window.DuoMicProvenance};
+ return {window,Track,Stream,PC,Context,media,contexts,adapter:window.DuoTeamsAdapter,provenance:window.DuoMicProvenance};
 }
 const passed=[];
 async function test(name,fn){await fn(environment());passed.push(name);}
@@ -267,6 +277,46 @@ async function test(name,fn){await fn(environment());passed.push(name);}
    assert.equal(d.eligibleCount,0,contaminate);assert.equal(d.selectionMethod,'none',contaminate);
    await assert.rejects(f.adapter.start(new f.Track(),()=>{}));
   }
+ });
+ // --- mix mode (original-plus-tts) had no adapter-level coverage at all ---
+ await test('Mix mode blends the original slot with TTS, tracks mute, and frees every mixer',async e=>{
+  const mic=(await e.media.getUserMedia()).getAudioTracks()[0];
+  const pc=new e.window.RTCPeerConnection(),remote=new e.Track();pc.receive(remote);
+  const ctx=new e.window.AudioContext(),inner=ctx.createMediaStreamDestination();
+  ctx.createMediaStreamSource(new e.Stream([mic])).connect(inner);
+  ctx.createMediaStreamSource(new e.Stream([remote])).connect(inner);
+  const outer=ctx.createMediaStreamDestination();ctx.createMediaStreamSource(inner.stream).connect(outer);
+  const original=outer.stream.getAudioTracks()[0],sender=pc.addTrack(original),tts=new e.Track();
+  const before=e.contexts.created.length;
+  await e.adapter.start(tts,()=>{});
+  const ttsOnly=sender.track;assert.notEqual(ttsOnly,original);assert.notEqual(ttsOnly,tts);
+  assert.equal(await e.adapter.setMode('original-plus-tts',{micGain:.7,ttsGain:1}),'original-plus-tts');
+  const mixed=sender.track;
+  assert.notEqual(mixed,original);assert.notEqual(mixed,tts);assert.notEqual(mixed,ttsOnly);
+  assert.equal(e.contexts.created.length-before,1);
+  // Teams mutes by flipping enabled on the slot it owns; the blend must follow.
+  original.enabled=false;assert.equal(mixed.enabled,false);
+  original.enabled=true;assert.equal(mixed.enabled,true);
+  e.adapter.setGains({micGain:.2,ttsGain:.9});
+  // Churning modes must not strand an AudioContext per switch.
+  for(let i=0;i<3;i++){await e.adapter.setMode('tts-only');await e.adapter.setMode('original-plus-tts',{micGain:.7,ttsGain:1});}
+  assert.equal(e.contexts.created.length-before,4);assert.equal(e.contexts.closed.length,3);
+  await e.adapter.stop();
+  assert.equal(sender.track,original);assert.equal(original.readyState,'live');
+  assert.equal(e.contexts.closed.length,4);
+ });
+ await test('A blend that cannot start audio leaves the previous routing intact',async e=>{
+  const t=(await e.media.getUserMedia()).getAudioTracks()[0],s=new e.window.RTCPeerConnection().addTrack(t);
+  await e.adapter.start(new e.Track(),()=>{});
+  const ttsOnly=s.track;assert.notEqual(ttsOnly,t);
+  e.contexts.resumeTo='suspended';
+  const opened=e.contexts.created.length;
+  await assert.rejects(e.adapter.setMode('original-plus-tts',{micGain:.7,ttsGain:1}),/音声を許可/);
+  // The half-built mixer is torn down, and the sender keeps what it had.
+  assert.equal(e.contexts.closed.length,e.contexts.created.length-opened);
+  assert.equal(s.track,ttsOnly);
+  e.contexts.resumeTo='running';
+  await e.adapter.stop();assert.equal(s.track,t);assert.equal(t.readyState,'live');
  });
  console.log(JSON.stringify({passed:passed.length,tests:passed},null,2));
 })().catch(e=>{console.error(e);process.exitCode=1;});
