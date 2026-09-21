@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const previous=window.__duoHtmlSource;
-  if(previous?.version==='1.4.5'){previous.refresh();return;}
+  if(previous?.version==='1.4.6'){previous.refresh();return;}
   if(previous?.dispose)previous.dispose();
   if(!window.CFG||!Array.isArray(window.S?.entries)||!document.getElementById('feedA'))throw new Error('Duo HTML本体を確認できません');
   let revision=0,queued=false,disposed=false,reset=true,lastProfile='',lastRunning=null;
@@ -58,6 +58,6 @@
   window.addEventListener('duo-html-source-command',command);
   function dispose(){disposed=true;observer.disconnect();clearInterval(timer);document.removeEventListener('change',schedule);document.removeEventListener('input',schedule);window.removeEventListener('duo-html-source-command',command);window.removeEventListener('pagehide',dispose);delete window.__duoHtmlSource;}
   window.addEventListener('pagehide',dispose,{once:true});
-  window.__duoHtmlSource={version:'1.4.5',dispose,refresh(){sent.clear();lastProfile='';reset=true;schedule();}};
+  window.__duoHtmlSource={version:'1.4.6',dispose,refresh(){sent.clear();lastProfile='';reset=true;schedule();}};
   schedule();
 })();
