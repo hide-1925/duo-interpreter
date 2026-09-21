@@ -1,0 +1,34 @@
+{
+  "_source": "duo-subtitle-interaction (15).json — extensionVersion 1.4.3, real Web Teams, 2026-09-20T23:30:59Z",
+  "_outcome": "eligibleCount 0 / selectionMethod none: the only audio sender carried both the microphone and a far-end receiver, and every selection path treated external evidence as fatal.",
+  "adapterVersion": "1.4.3",
+  "peerCount": 1,
+  "audioSenderCount": 1,
+  "eligibleCount": 0,
+  "selectionMethod": "none",
+  "getUserMediaCalls": 1,
+  "getUserMediaSuccesses": 1,
+  "getUserMediaFailures": 0,
+  "physicalTracks": 1,
+  "livePhysicalTracks": 1,
+  "trackClones": 0,
+  "streamClones": 4,
+  "activeDisplayTracks": 0,
+  "lastGetUserMediaError": "",
+  "senders": [
+    {
+      "kind": "audio",
+      "readyState": "live",
+      "enabled": true,
+      "mic": false,
+      "reason": "unproven-web-audio",
+      "processed": true,
+      "externalEvidence": true,
+      "sourceReasons": ["get-user-media", "remote-receiver"],
+      "nodeTypes": ["MediaStreamAudioDestinationNode", "MediaStreamAudioSourceNode"],
+      "connectionState": "connected"
+    }
+  ],
+  "nonAudioSenderCount": 11,
+  "error": "Teamsの送信音声をマイク由来と確認できません（診断JSONに検出結果を記録しました）"
+}

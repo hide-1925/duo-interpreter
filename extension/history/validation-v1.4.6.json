@@ -1,0 +1,183 @@
+{
+ "version": "1.4.6",
+ "scope": "Node VM regression tests; real Teams and browser loopback not executed",
+ "totalPassed": 121,
+ "syntaxFiles": 31,
+ "reproduced": "3 of the 4 new tests fail against the shipped v1.4.5 teams.js: a mode change that replaces nothing returned success, and a restore against a closed peer connection threw on every later stop (37 restore-failed in duo-subtitle-interaction (17).json).",
+ "notVerified": [
+  "real browser audio samples",
+  "why the real v1.4.5 record became unactionable — the adapter logged nothing when it skipped; the new conference-apply-skipped / conference-mode-skipped diagnostics close that gap",
+  "session drops on Teams page navigation (unchanged: releasing the microphone on disconnect is correct)"
+ ],
+ "results": [
+  {
+   "file": "tests/test-mic-discovery.cjs",
+   "passed": 35,
+   "tests": [
+    "Direct microphone and cloned track connect and restore to the Teams track",
+    "Native MediaStream.clone internal copies retain microphone provenance",
+    "Gain-processed microphone and its clone qualify",
+    "Web Audio constructor syntax also retains proven microphone lineage",
+    "Mixed remote audio is rejected; selective disconnect restores provenance",
+    "Screenshare/remote clones and arbitrary generated audio never qualify",
+    "Cached constructor and existing peer with later addTrack are observed",
+    "Receiver relay peer stays excluded from Teams connection discovery",
+    "Microphone muted while using a clone remains muted after restoration",
+    "Discovery produces actionable counts without labels, conversation or device IDs",
+    "Feedback through a destination stream is rejected without recursion overflow",
+    "Observed Teams case: unique opaque processed sender connects, mutes, and restores",
+    "Opaque slot still works when the original capture is stopped but microphone clones survive",
+    "Unknown sender with active display capture is never selected by the fallback",
+    "Multiple opaque audio senders are rejected without guessing",
+    "Single processed remote stream is excluded even when a microphone is acquired",
+    "Fallback requires a connected peer and exactly one active microphone family",
+    "Actual v1.4.2 log topology reproduces the rejection; corrected predicate connects and restores",
+    "Receiver scan labels an existing remote track even without a track event",
+    "Unknown stream is distinct from positively identified display audio",
+    "Observed v1.4.3 log topology: microphone mixed with a far-end receiver connects, mutes, and restores",
+    "A source node reads one track, so extra tracks in the stream no longer forge provenance",
+    "Screen capture mixed into the microphone graph is still rejected",
+    "Generated audio mixed into the microphone graph is still rejected",
+    "A far-end mix with no microphone evidence is still rejected",
+    "The far-end mix slot still requires a single audio sender and one live capture",
+    "Observed v1.4.4 log topology: a chained graph keeps the microphone visible as evidence",
+    "A chained graph carrying only the microphone is still proven, not merely evidenced",
+    "Nesting does not smuggle screen capture or generated audio past the mix slot",
+    "Mix mode blends the original slot with TTS, tracks mute, and frees every mixer",
+    "A blend that cannot start audio leaves the previous routing intact",
+    "Every mode change replaces the sender, not just the first",
+    "A mode change that can replace nothing fails loudly instead of reporting success",
+    "A restore against a closed peer connection settles instead of retrying forever",
+    "A genuine restore failure is still reported, once per stop"
+   ]
+  },
+  {
+   "file": "tests/test-frame-routing.cjs",
+   "passed": 8,
+   "tests": [
+    "Offer targets the unique child document containing a proven microphone",
+    "Only selected document/frame may acknowledge microphone activation",
+    "Heartbeat binds to the exact selected child frame",
+    "Diagnostic output retains per-frame discovery counts",
+    "Disconnect restores the selected child document",
+    "Multiple eligible frames are not silently selected",
+    "Package installs provenance before adapter in matched Teams frames",
+    "Real JSON download handler preserves conference diagnostics"
+   ]
+  },
+  {
+   "file": "tests/test-teams.cjs",
+   "passed": 8,
+   "tests": [
+    "Only proven microphone senders replaced; screen/remote tracks excluded",
+    "Teams enabled mute mirrored synchronously",
+    "Mute on replacement retained on original microphone restore",
+    "Host microphone changes restored to newest original",
+    "Activation never unmutes Teams",
+    "Null-track Teams mute respected",
+    "Failed replacement fails closed",
+    "Concurrent host replace and disable restore serialized"
+   ]
+  },
+  {
+   "file": "tests/test-controller.cjs",
+   "passed": 10,
+   "tests": [
+    "Initial and worker-reset state inactive",
+    "Unauthorized page cannot toggle",
+    "Explicit toggle starts HTML offer; cloud.microsoft Teams supported",
+    "Only registered document/frame can send signaling",
+    "Target answer relays only to registered HTML and active follows adapter success",
+    "Audio mode is delivered to target and acknowledgement/diagnostics return to HTML",
+    "Speaker metadata accepts only selected Teams main document and needs no audio connection",
+    "Lease authorized to exact target and revoked on stop",
+    "Late original-track restoration error remains visible",
+    "Text input requires registered overlay/popup, bounded text, and targets HTML document"
+   ]
+  },
+  {
+   "file": "tests/test-next.cjs",
+   "passed": 15,
+   "tests": [
+    "Web and Many to Many use one remote endpoint and permit conference adapters",
+    "Three participants with the same language can switch local identity by configuration alone",
+    "Policy denies missing identity and every manual replay",
+    "Only automatic local audio is eligible by default in on and mix",
+    "Remote relay requires opt-in, selected identity, translation and automatic intent",
+    "Delayed metadata attributes existing card from utterance time, not response time",
+    "Manual edit is locked through further automatic events; reset restores automatic identity",
+    "Simultaneous speakers stay ambiguous without a forced single identity",
+    "Name resolution updates identity without translation or text mutation",
+    "Same display name never merges independent participant IDs",
+    "Adjacent padded overlap is low confidence",
+    "No speaker metadata falls back without blocking text processing",
+    "Manual export is authoritative and revisions enter minutes fingerprint",
+    "Automatic off skips all old cards on resume; manual intent remains routable locally",
+    "Legacy and segment manual jobs are tagged before synthesis"
+   ]
+  },
+  {
+   "file": "tools/test-html-bridge.js",
+   "passed": 23,
+   "tests": [
+    "Fresh browser session reconnects configured HTML already open when selecting target",
+    "Missing HTML in this browser leaves target set without claiming source connection",
+    "Native translation-only cards cross source bridge even with cascade translation off",
+    "Source sends only subtitle whitelist and respects zero opacity/hold",
+    "Interim, final and translation deltas preserve ID; delete is forwarded",
+    "Font command calls HTML setter; reinjection and dispose leave speech state intact",
+    "Addon open launches registered HTTPS HTML and reuses its tab",
+    "First launch uses default URL without registration and attaches HTML",
+    "First launch discovers an already open default HTML tab",
+    "Custom URL is saved for subsequent launches; URL hash is removed",
+    "URL changes invalidate old source and clear old target captions",
+    "Invalid URL, missing permission and non-popup save do not replace existing URL",
+    "Opening HTML clears accidental source/target collision",
+    "Window command queries and opens HTML main world, not target renderer",
+    "Target visibility and target switching do not close HTML caption window",
+    "HTML relay logs addon window separately without touching HTML PiP state",
+    "Isolated relay preserves message order and disposes on rejected sender",
+    "Worker rejects wrong tab, document, frame and registration caller",
+    "Worker delivers deltas, rejects stale revision and replays after target failure",
+    "Font operation routes back to HTML source",
+    "Target updates text safely in place and preserves history scroll",
+    "Unchanged snapshots do not renew timers or revive expired/cleared captions",
+    "Target opacity 0/100, source visibility and font apply without new text"
+   ]
+  },
+  {
+   "file": "tools/test-html-caption-command.js",
+   "passed": 8,
+   "tests": [
+    "Calls exact native HTML settings function and leaves recognition unchanged",
+    "Status sees a small window opened manually from HTML without invoking open",
+    "A swallowed native rejection is detected by actual window state",
+    "Wrong page and missing native function do not open another renderer",
+    "Guide focuses actual HTML settings button without pretending PiP opened",
+    "Popup click injects first, into registered HTML document and MAIN world",
+    "Popup failure or unopened HTML routes to working native settings button",
+    "Unsaved URL prevents opening stale HTML"
+   ]
+  },
+  {
+   "file": "tools/test-html-tab-audio.js",
+   "passed": 14,
+   "tests": [
+    "Opt-in leaves normal HTML acquisition intact; enable does not capture",
+    "Audio-only constraints, owned STT track, one audible local monitor, no stream token in logs",
+    "HTML engine track.stop releases monitor without ended event",
+    "Tab ended releases monitor and disable restores original route",
+    "Enable during recognition prepares the next capture; repeat enable preserves current stream",
+    "Active HTML screen share is rejected instead of mixed with another capture",
+    "Late getUserMedia is discarded after session-stop",
+    "Late getUserMedia is discarded after target-stop",
+    "Late getUserMedia is discarded after disable",
+    "Target stop during monitor resume cannot return a stale track",
+    "Autoplay failure releases capture instead of silently muting the original video",
+    "Isolated relay returns authorized token and disposal stops the MAIN adapter",
+    "Worker authorizes only the registered document and binds target and consumer tab",
+    "Monitor fades in after resume without changing the STT track"
+   ]
+  }
+ ]
+}

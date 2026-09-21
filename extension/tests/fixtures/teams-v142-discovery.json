@@ -1,0 +1,120 @@
+{
+  "activeDisplayTracks": 0,
+  "adapterVersion": "1.4.2",
+  "audioSenderCount": 1,
+  "eligibleCount": 0,
+  "getUserMediaCalls": 1,
+  "getUserMediaFailures": 0,
+  "getUserMediaSuccesses": 1,
+  "lastGetUserMediaError": "",
+  "livePhysicalTracks": 1,
+  "peerCount": 1,
+  "physicalTracks": 1,
+  "selectionMethod": "none",
+  "senders": [
+    {
+      "connectionState": "connected",
+      "enabled": true,
+      "externalEvidence": true,
+      "kind": "audio",
+      "mic": false,
+      "nodeTypes": [
+        "MediaStreamAudioDestinationNode",
+        "MediaStreamAudioSourceNode"
+      ],
+      "processed": true,
+      "readyState": "live",
+      "reason": "unproven-web-audio"
+    },
+    {
+      "connectionState": "connected",
+      "enabled": null,
+      "kind": null,
+      "mic": false,
+      "readyState": null,
+      "reason": "not-audio"
+    },
+    {
+      "connectionState": "connected",
+      "enabled": null,
+      "kind": null,
+      "mic": false,
+      "readyState": null,
+      "reason": "not-audio"
+    },
+    {
+      "connectionState": "connected",
+      "enabled": null,
+      "kind": null,
+      "mic": false,
+      "readyState": null,
+      "reason": "not-audio"
+    },
+    {
+      "connectionState": "connected",
+      "enabled": null,
+      "kind": null,
+      "mic": false,
+      "readyState": null,
+      "reason": "not-audio"
+    },
+    {
+      "connectionState": "connected",
+      "enabled": null,
+      "kind": null,
+      "mic": false,
+      "readyState": null,
+      "reason": "not-audio"
+    },
+    {
+      "connectionState": "connected",
+      "enabled": null,
+      "kind": null,
+      "mic": false,
+      "readyState": null,
+      "reason": "not-audio"
+    },
+    {
+      "connectionState": "connected",
+      "enabled": null,
+      "kind": null,
+      "mic": false,
+      "readyState": null,
+      "reason": "not-audio"
+    },
+    {
+      "connectionState": "connected",
+      "enabled": null,
+      "kind": null,
+      "mic": false,
+      "readyState": null,
+      "reason": "not-audio"
+    },
+    {
+      "connectionState": "connected",
+      "enabled": null,
+      "kind": null,
+      "mic": false,
+      "readyState": null,
+      "reason": "not-audio"
+    },
+    {
+      "connectionState": "connected",
+      "enabled": null,
+      "kind": null,
+      "mic": false,
+      "readyState": null,
+      "reason": "not-audio"
+    },
+    {
+      "connectionState": "connected",
+      "enabled": null,
+      "kind": null,
+      "mic": false,
+      "readyState": null,
+      "reason": "not-audio"
+    }
+  ],
+  "streamClones": 4,
+  "trackClones": 0
+}
