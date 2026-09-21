@@ -18,6 +18,9 @@ function block(src,startsWith,label){
 }
 
 const SHARED=[
+  'function duoValidateInputs(){',
+  'var STT_ADAPTER_CAPABILITIES={',
+  'function duoSessionConfig(presetId){',
   'function segDecision(input){',
   'function segSemanticDecision(input){',
   'function segSemanticTail(text,lang){',
