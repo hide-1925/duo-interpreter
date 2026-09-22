@@ -98,16 +98,16 @@ test('percentile is stable on a single value and on an empty set',()=>{
 });
 
 /* ── 重み学習（--fit）─────────────────────────────────────────────────── */
-const {samplesOf,fit,score,pickThreshold,runFit,FEATURES}=require(path.join(__dirname,'../tools/turn-trace-replay.js'));
+const {samplesOf,languagesIn,fit,score,pickThreshold,runFit,FEATURES}=require(path.join(__dirname,'../tools/turn-trace-replay.js'));
 const fs2=require('fs');
 
 /* 学習用に、完結／継続がはっきり分かれる合成 trace を作る。 */
-function fitTrace(n){
+function fitTrace(n,lang){
   const rows=[];
   for(let i=0;i<n;i++){
     const complete=i%2===0;
     const t=i*2000;
-    rows.push({t,kind:'decision',data:{utteranceId:'u'+i,revision:1,speakerKey:'seat:A',lang:'ja',
+    rows.push({t,kind:'decision',data:{utteranceId:'u'+i,revision:1,speakerKey:'seat:A',lang:lang||'ja',
       chars:12,stable:12,silenceMs:complete?900:120,lastDeltaMs:complete?800:100,final:false,
       candidates:[],raw:'来週の予定は火曜日です。',
       prosody:{terminalPitchSlope:complete?-0.25:0.15,terminalEnergyDrop:complete?12:1,
@@ -122,23 +122,70 @@ function fitTrace(n){
 test('fit refuses to produce weights from too little data',()=>{
   const out=runFit(fitTrace(10),[]);
   assert.ok(out.error,'少量データでは重みを出さないこと');
-  assert.match(out.error,/足りません/);
+  assert.match(out.skipped.ja.reason,/足りません/);
+  assert.equal(Object.keys(out.languages).length,0);
+});
+
+test('languages present in a trace are detected, region tags stripped',()=>{
+  const rows=fitTrace(4,'ja').rows.concat(fitTrace(4,'en-US').rows);
+  assert.deepEqual(languagesIn(trace(rows)),['en','ja']);
+});
+
+test('samples are filtered per language, so ja and en never mix',()=>{
+  const rows=fitTrace(20,'ja').rows.concat(fitTrace(20,'en').rows);
+  const t=trace(rows);
+  assert.equal(samplesOf(t,'ja').length,20);
+  assert.equal(samplesOf(t,'en').length,20);
+  assert.equal(samplesOf(t).length,40,'no language means every sample');
+});
+
+test('a two-language meeting yields one model per language, never a shared one',()=>{
+  const rows=fitTrace(200,'ja').rows.concat(fitTrace(200,'en').rows);
+  const out=runFit(trace(rows),['--precision','0.95']);
+  assert.ok(!out.error,JSON.stringify(out.skipped));
+  assert.deepEqual(Object.keys(out.languages).sort(),['en','ja']);
+  for(const l of ['ja','en']){
+    assert.equal(typeof out.languages[l].bias,'number');
+    assert.ok(out.languages[l].threshold>0&&out.languages[l].threshold<1,'a calibrated threshold per language');
+    assert.ok(out.languages[l].calibration.precision>=0.95);
+  }
+  assert.equal(out.languages.ja.features.silence!==undefined,true);
+});
+
+test('one language can pass while the other is skipped for lack of data',()=>{
+  const rows=fitTrace(200,'ja').rows.concat(fitTrace(12,'en').rows);
+  const out=runFit(trace(rows),['--precision','0.95']);
+  assert.deepEqual(Object.keys(out.languages),['ja']);
+  assert.ok(out.skipped.en,'en must be reported as skipped, not silently dropped');
+  assert.match(out.skipped.en.reason,/足りません/);
+});
+
+test('a holdout with only one label is refused instead of fitted',()=>{
+  /* 完結だけの trace。precision は形式上1.0になるが、学習として無意味なので止める。 */
+  const rows=[];
+  for(let i=0;i<200;i++) rows.push({t:i*2000,kind:'decision',data:{utteranceId:'u'+i,revision:1,
+    speakerKey:'seat:A',lang:'ja',chars:12,stable:12,silenceMs:900,lastDeltaMs:800,final:false,
+    candidates:[],raw:'来週の予定は火曜日です。',prosody:null,rule:{length:12,reasons:[],waiting:''}}});
+  const out=runFit(trace(rows),[]);
+  assert.ok(out.skipped.ja,'片方のラベルだけなら学習しないこと');
+  assert.match(out.skipped.ja.reason,/片方のラベル/);
 });
 
 test('fit separates complete from continuing and reaches the precision target',()=>{
   const out=runFit(fitTrace(200),['--precision','0.95']);
   assert.ok(!out.error,JSON.stringify(out));
-  assert.equal(typeof out.bias,'number');
-  for(const f of FEATURES) assert.equal(typeof out.features[f],'number','missing weight: '+f);
-  assert.ok(out.calibration&&!out.calibration.error,JSON.stringify(out.calibration));
-  assert.ok(out.calibration.precision>=0.95,'holdout precision '+out.calibration.precision);
-  assert.ok(out.calibration.recall>0,'recall must not be zero');
+  const m=out.languages.ja;
+  assert.equal(typeof m.bias,'number');
+  for(const f of FEATURES) assert.equal(typeof m.features[f],'number','missing weight: '+f);
+  assert.ok(m.calibration.precision>=0.95,'holdout precision '+m.calibration.precision);
+  assert.ok(m.calibration.recall>0,'recall must not be zero');
 });
 
 test('fit records what it was fitted on, so a stale model is detectable',()=>{
   const out=runFit(fitTrace(200),[]);
-  assert.equal(out.fittedOn.train+out.fittedOn.holdout,200);
+  assert.equal(out.languages.ja.fittedOn.train+out.languages.ja.fittedOn.holdout,200);
   assert.match(out.version,/^local-\d{4}-\d{2}-\d{2}$/);
+  assert.deepEqual(out.fittedOn.languages,['ja']);
 });
 
 test('the fitted feature list matches the one the app scores with',()=>{
@@ -153,7 +200,7 @@ test('the fitted feature list matches the one the app scores with',()=>{
 
 test('the fitted model scores a clear complete above a clear continuing',()=>{
   const out=runFit(fitTrace(200),[]);
-  const model={bias:out.bias,features:out.features};
+  const model={bias:out.languages.ja.bias,features:out.languages.ja.features};
   const hi=score(model,{silence:0.9,meterKnown:1,lastDelta:0.8,final:0,stableRatio:1,
     pitchSlope:-0.25,energyDrop:0.3,pauseRatio:0.05,tempoVar:0.1,prosodyQuality:0.8});
   const lo=score(model,{silence:0.12,meterKnown:1,lastDelta:0.1,final:0,stableRatio:1,

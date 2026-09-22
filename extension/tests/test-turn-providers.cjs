@@ -140,14 +140,39 @@ test('local refuses to run without fitted weights',async()=>{
   reset({turnDecisionProvider:'local'});
   await assert.rejects(()=>P().local.evaluate(stateOf()),/重み/);
 });
-test('local runs once weights are supplied and stays offline',async()=>{
-  reset({turnDecisionProvider:'local',
-    turnDecisionLocalWeights:{version:'w1',bias:-1,features:{silence:2,final:1.5,pitchSlope:-3}}});
+const W=(over)=>({version:'w1',languages:Object.assign({
+  ja:{bias:-1,features:{silence:2,final:1.5,pitchSlope:-3},threshold:0.6}},over||{})});
+
+test('local runs once weights for that language are supplied, and stays offline',async()=>{
+  reset({turnDecisionProvider:'local',turnDecisionLocalWeights:W()});
   const n=await P().local.evaluate(stateOf());
   assert.ok(n,'a fitted local model must produce a normalized answer');
   assert.equal(n.provider,'local');
   assert.equal(n.probabilitySemantics,'post_calibrated');
+  assert.match(n.model,/^w1:ja$/,'the model id must name the language it was fitted for');
   assert.equal(calls.length,0,'local must not use the network');
+});
+test('local refuses a language it has no weights for, rather than borrowing another',async()=>{
+  /* 日本語の重みだけがある状態で英語の発話が来ても、流用してはいけない。 */
+  reset({turnDecisionProvider:'local',turnDecisionLocalWeights:W()});
+  const i=input({lang:'en'});
+  const s=D().stateOf(card({srcLang:'en'}),{},i,D().rules(i),800,Date.now());
+  await assert.rejects(()=>P().local.evaluate(s),/en.*重み/);
+});
+test('local refuses weights that carry no calibrated threshold',async()=>{
+  reset({turnDecisionProvider:'local',
+    turnDecisionLocalWeights:{version:'w1',languages:{ja:{bias:-1,features:{silence:2}}}}});
+  await assert.rejects(()=>P().local.evaluate(stateOf()),/重み/);
+});
+test('local uses the calibrated threshold, not a hardcoded 0.5',async()=>{
+  /* bias だけで complete=0.55 付近にし、閾値0.6では HOLD、0.5では commit になることを見る。 */
+  const z=Math.log(0.55/0.45);
+  reset({turnDecisionProvider:'local',
+    turnDecisionLocalWeights:{version:'w1',languages:{ja:{bias:z,features:{},threshold:0.6}}}});
+  assert.equal((await P().local.evaluate(stateOf())).boundary.choice,'HOLD');
+  reset({turnDecisionProvider:'local',
+    turnDecisionLocalWeights:{version:'w1',languages:{ja:{bias:z,features:{},threshold:0.5}}}});
+  assert.notEqual((await P().local.evaluate(stateOf())).boundary.choice,'HOLD');
 });
 test('local is declared local so it is exempt from transport guards',()=>{
   assert.equal(P().local.capabilities().local,true);

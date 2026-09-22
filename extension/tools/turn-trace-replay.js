@@ -7,6 +7,7 @@
  *
  *   node turn-trace-replay.js trace.json [--json] [--boundary semantic|rule]
  *   node turn-trace-replay.js trace.json --fit [--out weights.json]
+ *                                    [--precision 0.98] [--min 50]
  *
  * 自動ラベル: commit 後に原文訂正が入った、または同一話者が 800ms 以内に発話を
  * 続けた commit を premature とみなす。人手ラベルなしで baseline が出る。 */
@@ -111,13 +112,23 @@ function featuresOf(d){
 
 /* ラベル: その decision のあとPREMATURE窓内に同一発話の継続が無ければ「完結」。
  * 自動ラベルなので人手の注釈は要らないが、その分ノイズが乗る前提で扱う。 */
-function samplesOf(trace){
+function samplesOf(trace,lang){
   const rows=trace.rows||[],stt=rows.filter(r=>r.kind==='stt');
-  return rows.filter(r=>r.kind==='decision').map(r=>{
+  const want=lang?String(lang).split('-')[0]:null;
+  return rows.filter(r=>r.kind==='decision'&&
+      (!want||String(r.data.lang||'').split('-')[0]===want)).map(r=>{
     const continued=stt.some(s=>s.t>r.t&&s.t-r.t<=PREMATURE_CONTINUE_MS&&
       s.data.utteranceId===r.data.utteranceId&&!s.data.final);
     return {x:featuresOf(r.data),y:continued?0:1};
   });
+}
+
+/* trace に現れた言語。話者Aと話者Bで言語が違う会議では2つ以上になる。 */
+function languagesIn(trace){
+  const set=new Set();
+  for(const r of (trace.rows||[]))
+    if(r.kind==='decision'&&r.data.lang) set.add(String(r.data.lang).split('-')[0]);
+  return Array.from(set).sort();
 }
 
 function fit(samples,opts){
@@ -160,25 +171,54 @@ function pickThreshold(model,samples,targetPrecision){
 }
 
 function runFit(trace,args){
-  const all=samplesOf(trace);
-  if(all.length<50)
-    return {error:'学習に足りません。decision が '+all.length+' 件しかありません。'
-      +'50件以上、できれば言語ごとに数百件を集めてください。'};
-  /* 時系列なので前半で学習し後半で評価する。シャッフルすると同一発話が両側へ漏れる。 */
-  const cut=Math.floor(all.length/2),train=all.slice(0,cut),hold=all.slice(cut);
-  const model=fit(train);
-  const lang=(trace.config&&trace.config.segmentMode)?undefined:undefined;
-  const target=Number((args.indexOf('--precision')>=0?args[args.indexOf('--precision')+1]:0.98));
-  const picked=pickThreshold(model,hold,target);
-  const base=hold.filter(s=>s.y===1).length/Math.max(1,hold.length);
-  return {version:'local-'+new Date().toISOString().slice(0,10),
-    bias:+model.bias.toFixed(5),
-    features:Object.fromEntries(FEATURES.map(f=>[f,+model.features[f].toFixed(5)])),
-    fittedOn:{trace:trace.recordedAt||null,build:trace.build||null,
-      train:train.length,holdout:hold.length,completeRate:+base.toFixed(4)},
-    calibration:picked?{targetPrecision:target,...picked}
-      :{targetPrecision:target,error:'holdout で目標 precision に達する閾値がありません。'
-        +'データを増やすか目標を見直してください。'}};
+  const arg=(name,def)=>{const i=args.indexOf(name);return i>=0&&args[i+1]!==undefined?args[i+1]:def;};
+  const target=Number(arg('--precision',0.98));
+  const minPer=Number(arg('--min',50));
+  const langs=languagesIn(trace);
+  const out={version:'local-'+new Date().toISOString().slice(0,10),
+    fittedOn:{trace:trace.recordedAt||null,build:trace.build||null,languages:langs},
+    targetPrecision:target,minSamplesPerLanguage:minPer,languages:{},skipped:{}};
+  if(!langs.length){out.error='trace に decision が1件もありません。';return out;}
+
+  /* 言語ごとに独立して学習する。公式ドキュメントが「日本語の本番ワークロードは
+   * 英語の閾値を流用せず独自のラベル付き評価が必要」と明記しており、ja と en を
+   * 混ぜた1つのモデルはその注意をそのまま踏み抜く（仕様書 §9.3）。
+   * 片方だけ条件を満たすこともある。その場合はその言語だけ出す。 */
+  for(const lang of langs){
+    const all=samplesOf(trace,lang);
+    if(all.length<minPer){
+      out.skipped[lang]={decisions:all.length,need:minPer,
+        reason:'学習に足りません。この言語の decision を '+minPer+'件以上集めてください。'};
+      continue;
+    }
+    /* 時系列なので前半で学習し後半で評価する。シャッフルすると同一発話が両側へ漏れる。 */
+    const cut=Math.floor(all.length/2),train=all.slice(0,cut),hold=all.slice(cut);
+    const pos=hold.filter(s=>s.y===1).length;
+    if(!pos||pos===hold.length){
+      out.skipped[lang]={decisions:all.length,
+        reason:'holdout が片方のラベルだけです。完結と継続の両方を含む会議が必要です。'};
+      continue;
+    }
+    const model=fit(train);
+    const picked=pickThreshold(model,hold,target);
+    if(!picked){
+      out.skipped[lang]={decisions:all.length,
+        reason:'holdout で目標 precision '+target+' に達する閾値がありません。データを増やすか目標を見直してください。'};
+      continue;
+    }
+    out.languages[lang]={
+      bias:+model.bias.toFixed(5),
+      features:Object.fromEntries(FEATURES.map(f=>[f,+model.features[f].toFixed(5)])),
+      threshold:picked.threshold,
+      calibration:{targetPrecision:target,precision:picked.precision,recall:picked.recall,
+        tp:picked.tp,fp:picked.fp},
+      fittedOn:{train:train.length,holdout:hold.length,
+        completeRate:+(pos/hold.length).toFixed(4)}
+    };
+  }
+  if(!Object.keys(out.languages).length)
+    out.error='どの言語も学習条件を満たしませんでした。'+JSON.stringify(out.skipped);
+  return out;
 }
 
 function main(){
@@ -222,4 +262,4 @@ function main(){
       '  corrected '+JSON.stringify(r.counters.correctedBySource));
 }
 if(require.main===module)main();
-module.exports={replay,loadRules,percentile,samplesOf,fit,score,pickThreshold,runFit,FEATURES};
+module.exports={replay,loadRules,percentile,samplesOf,languagesIn,fit,score,pickThreshold,runFit,FEATURES};
