@@ -6,6 +6,7 @@
  * ここへ流し、RulesProvider を app.js から実物のまま読み込んで決定を再現する。
  *
  *   node turn-trace-replay.js trace.json [--json] [--boundary semantic|rule]
+ *   node turn-trace-replay.js trace.json --fit [--out weights.json]
  *
  * 自動ラベル: commit 後に原文訂正が入った、または同一話者が 800ms 以内に発話を
  * 続けた commit を premature とみなす。人手ラベルなしで baseline が出る。 */
@@ -84,11 +85,117 @@ function replay(trace,opts){
   };
 }
 
+/* LocalModelProvider の重みを trace から学習する（§9.1）。閾値を手置きせず、
+ * 自動ラベルから合成器のウェイトを当てる。ロジスティック回帰をバッチ勾配降下で
+ * 解くだけの素朴な実装で、特徴量は app.js の TurnProviders.local.features と
+ * 同じ並びにする。学習と holdout を半分ずつに割り、holdout の precision を出す。 */
+const FEATURES=['silence','meterKnown','lastDelta','final','stableRatio',
+  'pitchSlope','energyDrop','pauseRatio','tempoVar','prosodyQuality'];
+
+function featuresOf(d){
+  const p=d.prosody||{},sil=d.silenceMs,last=d.lastDeltaMs;
+  const chars=d.chars||0;
+  return {
+    silence:sil===null||sil===undefined?0:Math.min(sil,2000)/1000,
+    meterKnown:sil===null||sil===undefined?0:1,
+    lastDelta:last===null||last===undefined?0:Math.min(last,3000)/1000,
+    final:d.final?1:0,
+    stableRatio:chars?(d.stable||0)/chars:0,
+    pitchSlope:typeof p.terminalPitchSlope==='number'?p.terminalPitchSlope:0,
+    energyDrop:typeof p.terminalEnergyDrop==='number'?Math.min(p.terminalEnergyDrop,40)/40:0,
+    pauseRatio:typeof p.internalPauseRatio==='number'?p.internalPauseRatio:0,
+    tempoVar:typeof p.tempoVariability==='number'?p.tempoVariability:0,
+    prosodyQuality:typeof p.quality==='number'?p.quality:0
+  };
+}
+
+/* ラベル: その decision のあとPREMATURE窓内に同一発話の継続が無ければ「完結」。
+ * 自動ラベルなので人手の注釈は要らないが、その分ノイズが乗る前提で扱う。 */
+function samplesOf(trace){
+  const rows=trace.rows||[],stt=rows.filter(r=>r.kind==='stt');
+  return rows.filter(r=>r.kind==='decision').map(r=>{
+    const continued=stt.some(s=>s.t>r.t&&s.t-r.t<=PREMATURE_CONTINUE_MS&&
+      s.data.utteranceId===r.data.utteranceId&&!s.data.final);
+    return {x:featuresOf(r.data),y:continued?0:1};
+  });
+}
+
+function fit(samples,opts){
+  opts=opts||{};
+  const iters=opts.iters||4000,lr=opts.lr||0.2,l2=opts.l2||1e-3;
+  let bias=0;const w={};for(const f of FEATURES)w[f]=0;
+  for(let it=0;it<iters;it++){
+    let gb=0;const g={};for(const f of FEATURES)g[f]=0;
+    for(const s of samples){
+      let z=bias;for(const f of FEATURES)z+=w[f]*(s.x[f]||0);
+      const err=1/(1+Math.exp(-z))-s.y;
+      gb+=err;for(const f of FEATURES)g[f]+=err*(s.x[f]||0);
+    }
+    const n=Math.max(1,samples.length);
+    bias-=lr*gb/n;
+    for(const f of FEATURES)w[f]-=lr*(g[f]/n+l2*w[f]);
+  }
+  return {bias,features:w};
+}
+
+function score(model,x){
+  let z=model.bias;for(const f of FEATURES)z+=model.features[f]*(x[f]||0);
+  return 1/(1+Math.exp(-z));
+}
+
+/* precision 目標から閾値を逆算する。目標を満たす最小の閾値を採る（§9.1 手順3）。 */
+function pickThreshold(model,samples,targetPrecision){
+  let best=null;
+  for(let th=0.50;th<=0.99;th+=0.01){
+    let tp=0,fp=0,pos=0;
+    for(const s of samples){
+      if(s.y===1)pos++;
+      if(score(model,s.x)>=th){ if(s.y===1)tp++;else fp++; }
+    }
+    const precision=tp+fp?tp/(tp+fp):1, recall=pos?tp/pos:0;
+    if(precision>=targetPrecision){best={threshold:+th.toFixed(2),precision:+precision.toFixed(4),
+      recall:+recall.toFixed(4),tp,fp};break;}
+  }
+  return best;
+}
+
+function runFit(trace,args){
+  const all=samplesOf(trace);
+  if(all.length<50)
+    return {error:'学習に足りません。decision が '+all.length+' 件しかありません。'
+      +'50件以上、できれば言語ごとに数百件を集めてください。'};
+  /* 時系列なので前半で学習し後半で評価する。シャッフルすると同一発話が両側へ漏れる。 */
+  const cut=Math.floor(all.length/2),train=all.slice(0,cut),hold=all.slice(cut);
+  const model=fit(train);
+  const lang=(trace.config&&trace.config.segmentMode)?undefined:undefined;
+  const target=Number((args.indexOf('--precision')>=0?args[args.indexOf('--precision')+1]:0.98));
+  const picked=pickThreshold(model,hold,target);
+  const base=hold.filter(s=>s.y===1).length/Math.max(1,hold.length);
+  return {version:'local-'+new Date().toISOString().slice(0,10),
+    bias:+model.bias.toFixed(5),
+    features:Object.fromEntries(FEATURES.map(f=>[f,+model.features[f].toFixed(5)])),
+    fittedOn:{trace:trace.recordedAt||null,build:trace.build||null,
+      train:train.length,holdout:hold.length,completeRate:+base.toFixed(4)},
+    calibration:picked?{targetPrecision:target,...picked}
+      :{targetPrecision:target,error:'holdout で目標 precision に達する閾値がありません。'
+        +'データを増やすか目標を見直してください。'}};
+}
+
 function main(){
   const args=process.argv.slice(2),file=args.find(a=>!a.startsWith('--'));
   if(!file){
     console.error('usage: node turn-trace-replay.js <trace.json> [--json] [--boundary semantic|rule]');
     process.exit(2);
+  }
+  if(args.includes('--fit')){
+    const trace=JSON.parse(fs.readFileSync(file,'utf8'));
+    const out=runFit(trace,args);
+    const oi=args.indexOf('--out');
+    if(oi>=0&&args[oi+1]){fs.writeFileSync(args[oi+1],JSON.stringify(out,null,2));
+      console.log('wrote '+args[oi+1]);}
+    console.log(JSON.stringify(out,null,2));
+    if(out.error||out.calibration&&out.calibration.error)process.exitCode=1;
+    return;
   }
   const bi=args.indexOf('--boundary');
   const report=replay(JSON.parse(fs.readFileSync(file,'utf8')),
@@ -115,4 +222,4 @@ function main(){
       '  corrected '+JSON.stringify(r.counters.correctedBySource));
 }
 if(require.main===module)main();
-module.exports={replay,loadRules,percentile};
+module.exports={replay,loadRules,percentile,samplesOf,fit,score,pickThreshold,runFit,FEATURES};
