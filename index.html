@@ -2209,7 +2209,8 @@ function turnDecisionInstall(){
     +'外部へは送られません。保管と削除の扱いを決めてから有効にしてください。</p>'
     +'<button type="button" id="turnTraceExport">trace を書き出す</button> '
     +'<button type="button" id="turnTraceClear">trace を破棄する</button> '
-    +'<button type="button" id="turnDecisionKeyClear">この経路のキーを消す</button>'
+    +'<button type="button" id="turnDecisionKeyClear">この経路のキーを消す</button> '
+    +'<button type="button" id="turnDecisionProbe">この経路へ疎通を試す</button>'
     +'<small id="turnDecisionStatus" aria-live="off" data-fold="off"></small>';
   host.appendChild(box);
 
@@ -2276,6 +2277,27 @@ function turnDecisionInstall(){
     TurnProviders.setKey(r.vendor,'');keyRefresh();
     toast(r.label+' のキーを消しました。');
   };
+  /* 会議を1本回さないと到達可否が分からない状態だったので、1クリックで試せるようにする。
+     判断層のモードには触れない。off のままでも試せる。 */
+  $('turnDecisionProbe').onclick=function(){
+    var r=routeOf(),btn=this;
+    if(r.local){toast(r.label+' は外部へ送らないので、疎通の確認は要りません。');return;}
+    if(!TurnProviders.keyFor(r.vendor)){toast('先に '+r.label+' のキーを入れてください。');return;}
+    btn.disabled=true;toast('疎通を試しています…');
+    TurnProviders.probe(r.id).then(function(res){
+      btn.disabled=false;
+      if(res.ok){toast('到達しました（'+res.ms+'ms）。<br>'+r.label+' は使えます。');return;}
+      if(res.unreachable){
+        toast('到達できません（'+res.ms+'ms）。<br>'
+          +'ブラウザから直接この API を呼べない可能性があります（CORS）。<br>'
+          +'DevTools の Network で OPTIONS の応答をご確認ください。');
+        return;
+      }
+      toast('サーバまでは届きましたが拒否されました（HTTP '+res.status+'）。<br>'
+        +(res.status===401||res.status===403?'キーをご確認ください。'
+          :res.status===404?'Base URL と経路をご確認ください。':'応答: '+(res.detail||'')));
+    },function(err){btn.disabled=false;toast('確認できませんでした: '+((err&&err.message)||err));});
+  };
   $('turnTraceClear').onclick=function(){
     var n=TurnTrace.rows.length;TurnTrace.reset();turnDecisionStatus();
     toast(n?n+'行の trace を破棄しました。':'trace は空です。');
@@ -2307,8 +2329,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.0';
-var APP_BUILD = '20260922-v1490-turn-routes';
+var APP_VERSION = 'v1.49.1';
+var APP_BUILD = '20260922-v1491-route-reachability';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -13084,10 +13106,19 @@ var TurnProviders={
       capabilities:{probabilitySemantics:'native_calibrated',supportsChoice:true,supportsNoul:true,
         structuredOutput:true,abortable:true,maxChoices:255,textOnly:true,local:false},
       path:'/v1/systemone',
+      /* 公式リファレンスに記載が無いのに私が足していたヘッダ。ブラウザから別オリジンへ
+         投げると preflight(OPTIONS) が走り、サーバが Access-Control-Allow-Headers に
+         この名前を並べていなければ本リクエストは発射されず "Failed to fetch" になる。
+         実在を確認できていないヘッダのために疎通を落とすのは本末転倒なので、既定では
+         送らない。送る必要が判明したら true にする。 */
+      extraHeaders:false,
       headers:function(key){
-        /* ZDR と no-train は経路を変えると落ちる。経路ごとに明示して送る。 */
-        return {'Authorization':'Bearer '+key,
-          'X-TypeSafe-Zero-Data-Retention':'true','X-TypeSafe-No-Training':'true'};
+        var h={'Authorization':'Bearer '+key};
+        if(this.extraHeaders){
+          h['X-TypeSafe-Zero-Data-Retention']='true';
+          h['X-TypeSafe-No-Training']='true';
+        }
+        return h;
       },
       body:function(state,model){
         return {model:model,state:state,questions:TurnProviders.questions(state)};
@@ -13155,6 +13186,39 @@ var TurnProviders={
     return out;
   },
 
+  /* 経路へ最小の1回だけ投げて、到達できるかを見る。判断層のモードには依存しない。
+     本文は実際の契約と同じ形にする。形が違えば通っても意味がないため。 */
+  probe:function(id){
+    var route=this.ROUTES[id];
+    if(!route)return Promise.resolve({ok:false,status:0,detail:'未知の経路'});
+    var key=this.keyFor(route.vendor);
+    var base=String(CFG.turnDecisionBaseUrl||'')||route.defaultBase;
+    var model=String(CFG.turnDecisionModel||'')||route.defaultModel;
+    var state={schemaVersion:TURN_STATE_SCHEMA,sessionId:'probe',utteranceId:'probe',revision:0,
+      speakerKey:'probe',sourceLanguage:'en',currentText:'This is a connectivity check.',
+      stablePrefixChars:28,lastDeltaMs:400,silenceMs:600,sttFinal:true,speechEvent:'stopped',
+      candidateBoundaries:[{id:'C_FULL_28',kind:'C_FULL',offset:28,
+        left:'connectivity check.',right:''}],
+      prosody:null,recentTurns:[],
+      tts:{active:false,queueDebtMs:0,pendingFirstAudio:false,overlapMode:'auto'},
+      evidence:{meterAvailable:true,partialAvailable:false,speakerReliable:false,prosodyAvailable:false}};
+    var headers={'Content-Type':'application/json'},h=route.headers(key),hk;
+    for(hk in h)if(Object.prototype.hasOwnProperty.call(h,hk))headers[hk]=h[hk];
+    var t0=Date.now();
+    return fetch(base.replace(/\/+$/,'')+route.path,{method:'POST',cache:'no-store',
+      headers:headers,body:JSON.stringify(route.body(state,model))
+    }).then(function(r){
+      var ms=Date.now()-t0;
+      if(r.ok)return {ok:true,ms:ms,status:r.status};
+      return r.text().then(function(txt){
+        return {ok:false,ms:ms,status:r.status,detail:String(txt||'').slice(0,160)};
+      },function(){return {ok:false,ms:ms,status:r.status};});
+    },function(err){
+      return {ok:false,unreachable:true,ms:Date.now()-t0,status:0,
+        detail:String((err&&err.message)||err).slice(0,80)};
+    });
+  },
+
   /* 経路の宣言から provider を作る。共通の検査と組み立てはここだけに置く。 */
   httpProvider:function(id){
     var route=this.ROUTES[id];
@@ -13181,6 +13245,14 @@ var TurnProviders={
         var t0=Date.now();
         return fetch(base.replace(/\/+$/,'')+route.path,{
           method:'POST',signal:opts&&opts.signal,cache:'no-store',headers:headers,body:body
+        }).catch(function(err){
+          /* status を持たない失敗は、応答が返らなかったということ。ブラウザは CORS でも
+             DNS でも遮断でも同じ "Failed to fetch" を投げるので、ここで印を付ける。 */
+          if(err&&err.name==='AbortError')throw err;
+          if(err&&err.status)throw err;
+          var e=new Error('応答が返りません（CORS・DNS・ネットワーク遮断のいずれか）');
+          e.unreachable=true;e.cause=String((err&&err.message)||err).slice(0,80);
+          throw e;
         }).then(function(r){
           if(!r.ok){var e=new Error('HTTP '+r.status);e.status=r.status;throw e;}
           return r.text();
@@ -13454,7 +13526,9 @@ var TurnDecision={
     var rec={abort:ctrl&&ctrl.abort?function(){try{ctrl.abort();}catch(e){}}:null,
       revision:state.revision,at:Date.now()};
     this.inflight[state.speakerKey]=rec;
-    dlog('segment','turn-decision-request',{provider:id,model:CFG.turnDecisionModel||'',language:lang,
+    var routeInfo=TurnProviders.ROUTES[id];
+    dlog('segment','turn-decision-request',{provider:id,
+      model:String(CFG.turnDecisionModel||'')||(routeInfo&&routeInfo.defaultModel)||'',language:lang,
       speakerKey:state.speakerKey,revision:state.revision,
       candidates:(state.candidateBoundaries||[]).length,textChars:state.currentText.length,
       questionSetHash:this.questionSetHash()});
@@ -13478,6 +13552,11 @@ var TurnDecision={
         var status=err&&err.status,reason=status?('http-'+status):String((err&&err.message)||err).slice(0,80);
         /* 再試行しない status は設定か実装の誤り。自動再試行せず判断層を止める。
            429／529／5xx は会話内では待たず Rules へ落ち、circuit breaker が扱う。 */
+        if(err&&err.unreachable&&!self._toldUnreachable){
+          self._toldUnreachable=true;
+          toast('判断層へ到達できません。<br>ブラウザから直接この API を呼べない可能性があります'
+            +'（CORS）。<br>Rules で動作を続けます。');
+        }
         if(status&&TurnProviders.NEVER_RETRY.indexOf(status)>=0){
           self.circuitFail(id,lang,reason);
           toast('判断層の設定エラー（'+status+'）。判断モードをoffに戻しました。');
@@ -13599,7 +13678,7 @@ var TurnDecision={
     return null;
   },
 
-  reset:function(why){
+  reset:function(why){this._toldUnreachable=false;
     var self=this;
     Object.keys(this.inflight).forEach(function(k){
       var c=self.inflight[k];if(c&&c.abort){try{c.abort();}catch(err){}}
