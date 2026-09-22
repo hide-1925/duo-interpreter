@@ -94,10 +94,18 @@
     "v1.49.9": {
       "build": "20260923-v1499-openai-tts-limits",
       "extension": "1.4.20",
-      "commit": null,
+      "commit": "575b768",
       "indexHtmlSha256": "911b97f620018db8afccc7ea3b5701c76a0d4244499b56282cbabe05c56e0ca8",
       "extensionAppJsSha256": "8b25d76bd7bb7821315b81d4077b2b1d93aa387b788fb6db22fbe44d1ff03c80",
       "summary": "OpenAI音声には429の扱いが無く上限に当たると黙って音声を捨てていたので、応答ヘッダの実上限を記録し429を他の失敗と分ける"
+    },
+    "v1.49.10": {
+      "build": "20260923-v14910-rate-browser-voice",
+      "extension": "1.4.21",
+      "commit": null,
+      "indexHtmlSha256": "1bb9136f8c60676aae8127e362a4277fa7597d8906acafa558e6787d1d3ca2be",
+      "extensionAppJsSha256": "bd6a4e21eec2d04590caf19d7f5d35c9ca3412689bbd734f92d8dc8acdff2835",
+      "summary": "API読み上げがレート上限に達している間は待たずにブラウザ内蔵音声で読む。待つ設計では実測でTTS待ちが20〜40秒に達していた"
     }
   }
 }
