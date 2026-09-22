@@ -2185,6 +2185,15 @@ function turnDecisionInstall(){
       +'<option value="assist">assist</option><option value="active">active</option>'
     +'</select></label>'
     +'<p>ドイツ語・イタリア語・中国語は既存ルールの接続表現判定を使い、判断層の対象外です。</p>'
+    +'<hr><p><b>判断の経路</b>　rules と local は外部へ何も送りません。'
+      +'それ以外を選ぶと、認識中の原文と音響特徴が選んだ事業者へ送られます。</p>'
+    +'<label>経路 <select id="turnDecisionProvider"></select></label>'
+    +'<label>モデル <input id="turnDecisionModel" type="text" spellcheck="false" placeholder="（経路の既定）"></label>'
+    +'<label>APIキー <input id="turnDecisionKey" type="password" spellcheck="false" autocomplete="off" placeholder="（未設定）"></label>'
+    +'<p id="turnDecisionKeyNote" class="sublabel"></p>'
+    +'<label>Base URL <input id="turnDecisionBaseUrl" type="text" spellcheck="false" placeholder="（経路の既定）"></label>'
+    +'<p>キーは経路ごとに別々に保存します。翻訳用のキーは流用しません。'
+      +'設定の書き出しにも埋込みHTMLにも含まれません。</p>'
     +'<label class="settings-check switch"><input type="checkbox" id="turnDecisionProsody"> 音響特徴を渡す（ピッチ・エネルギー・間）</label>'
     +'<label>送る直近ターン数 <input id="turnDecisionContextTurns" type="number" min="0" max="6" step="1"></label>'
     +'<label>読み上げ開始の待ち上限 ms <input id="turnFloorMaxWaitMs" type="number" min="500" max="10000" step="100"></label>'
@@ -2199,17 +2208,59 @@ function turnDecisionInstall(){
     +'<p>原文の記録は replayer の再現検査に必要ですが、会議の発言が端末内の trace に残ります。'
     +'外部へは送られません。保管と削除の扱いを決めてから有効にしてください。</p>'
     +'<button type="button" id="turnTraceExport">trace を書き出す</button> '
-    +'<button type="button" id="turnTraceClear">trace を破棄する</button>'
+    +'<button type="button" id="turnTraceClear">trace を破棄する</button> '
+    +'<button type="button" id="turnDecisionKeyClear">この経路のキーを消す</button>'
     +'<small id="turnDecisionStatus" aria-live="off" data-fold="off"></small>';
   host.appendChild(box);
 
+  /* 経路の選択肢は registry から作る。経路を足したらここを直さなくても出る。 */
+  var sel=$('turnDecisionProvider'),routes=TurnProviders.list(),ri;
+  for(ri=0;ri<routes.length;ri++){
+    var op=document.createElement('option');
+    op.value=routes[ri].id;
+    op.textContent=routes[ri].label+(routes[ri].verified?'':'（未検証）');
+    sel.appendChild(op);
+  }
+
   ['turnDecisionMode','turnDecisionLangEn','turnDecisionLangJa','turnDecisionProsody',
    'turnDecisionContextTurns','turnFloorMaxWaitMs','turnFloorExpiry',
+   'turnDecisionProvider','turnDecisionModel','turnDecisionBaseUrl',
    'turnTraceMode','turnDecisionRawLog'].forEach(function(prop){
     var spec=CONFIG_BY_PROP[prop];if(!spec||!$(spec.el))return;
     if(spec.type==='bool')$(spec.el).checked=!!CFG[prop];else $(spec.el).value=CFG[prop];
     simple(spec);
   });
+
+  /* キーは経路の vendor ごとに持つ。経路を変えたら、その vendor のキーを出す。
+     値は表示しない。設定済みかどうかと文字数だけ見せる。 */
+  function routeOf(){
+    var id=String(CFG.turnDecisionProvider||'rules'),list=TurnProviders.list(),i;
+    for(i=0;i<list.length;i++)if(list[i].id===id)return list[i];
+    return list[0];
+  }
+  function keyRefresh(){
+    var r=routeOf(),box=$('turnDecisionKey'),note=$('turnDecisionKeyNote');
+    var needsKey=!r.local;
+    box.disabled=!needsKey;
+    $('turnDecisionModel').placeholder=r.defaultModel||'（経路の既定）';
+    if(!needsKey){box.value='';note.textContent='この経路は外部へ送らないので、キーは要りません。';return;}
+    var cur=TurnProviders.keyFor(r.vendor);
+    box.value='';
+    box.placeholder=cur?'設定済み（'+cur.length+'文字）':'（未設定）';
+    note.textContent=(r.keyHint||'APIキー')+'。'+(r.contextNote?r.contextNote+'。':'')
+      +(r.verified?'':'この経路のリクエスト形式は未検証です。実機で疎通を確認してください。');
+  }
+  $('turnDecisionKey').onchange=function(){
+    var r=routeOf();if(r.local)return;
+    var v=this.value.trim();
+    if(!v)return;                       /* 空欄は「変更しない」。消すのは下のボタン */
+    TurnProviders.setKey(r.vendor,v);this.value='';keyRefresh();
+    toast(r.label+' のキーを保存しました。');
+  };
+  /* simple() の onchange がこの前に登録されるので、ここへ来た時点で CFG は更新済み。
+     遅らせる必要はなく、遅らせると切り替えた直後の1瞬だけ前の経路の表示が残る。 */
+  $('turnDecisionProvider').addEventListener('change',keyRefresh);
+  keyRefresh();
 
   $('turnTraceExport').onclick=function(){
     if(!TurnTrace.rows.length){toast('記録された trace がありません。<br>trace 記録を record にして会議を行ってください。');return;}
@@ -2219,6 +2270,11 @@ function turnDecisionInstall(){
     setTimeout(function(){URL.revokeObjectURL(a.href);},10000);
     dlog('segment','turn-trace-export',{rows:TurnTrace.rows.length,dropped:TurnTrace.dropped,file:name});
     toast(TurnTrace.rows.length+'行を書き出しました。<br>node extension/tools/turn-trace-replay.js '+name);
+  };
+  $('turnDecisionKeyClear').onclick=function(){
+    var r=routeOf();if(r.local){toast('この経路にキーはありません。');return;}
+    TurnProviders.setKey(r.vendor,'');keyRefresh();
+    toast(r.label+' のキーを消しました。');
   };
   $('turnTraceClear').onclick=function(){
     var n=TurnTrace.rows.length;TurnTrace.reset();turnDecisionStatus();
@@ -2230,7 +2286,7 @@ function turnDecisionInstall(){
 function turnDecisionStatus(){
   var el=$('turnDecisionStatus');if(!el)return;
   var mode=CFG.turnDecisionMode||'off';
-  var parts=['判断 '+mode];
+  var parts=['判断 '+mode,'経路 '+(CFG.turnDecisionProvider||'rules')];
   if(mode!=='off')parts.push('en='+(CFG.turnDecisionLangEn||'shadow')+' / ja='+(CFG.turnDecisionLangJa||'shadow'));
   parts.push('trace '+(String(CFG.turnTraceMode||'off')==='record'?TurnTrace.rows.length+'行'+(TurnTrace.dropped?'（上限超過あり）':''):'off'));
   parts.push('確定 rules '+(SEG.committedBySource.rules||0)+' / provider '+(SEG.committedBySource.provider||0));
@@ -2452,10 +2508,14 @@ var CONFIG_SCHEMA = [
      言語別の上書きは en/ja だけで、他言語はRulesProviderのcontinuing判定に任せる。
      判断用キーは翻訳キーから流用せず、設定埋込みHTMLにも含めない。 */
   { prop:"turnDecisionMode", key:'di.tdMode', embed:'turnDecisionMode', def:'off', portable:true, el:"turnDecisionMode" },
-  { prop:"turnDecisionProvider", key:'di.tdProv', embed:'turnDecisionProvider', def:'rules', portable:true },
-  { prop:"turnDecisionModel", key:'di.tdModel', embed:'turnDecisionModel', def:'', portable:true },
-  { prop:"turnDecisionBaseUrl", key:'di.tdBase', embed:'turnDecisionBaseUrl', def:'', portable:true },
-  { prop:"turnDecisionApiKey", key:'di.tdKey.local', def:'', localOnly:true, portable:false, note:"判断層のAPIキー。翻訳用キーと分離し書き出さない" },
+  { prop:"turnDecisionProvider", key:'di.tdProv', embed:'turnDecisionProvider', def:'rules', portable:true, el:"turnDecisionProvider" },
+  { prop:"turnDecisionModel", key:'di.tdModel', embed:'turnDecisionModel', def:'', portable:true, el:"turnDecisionModel" },
+  { prop:"turnDecisionBaseUrl", key:'di.tdBase', embed:'turnDecisionBaseUrl', def:'', portable:true, el:"turnDecisionBaseUrl" },
+  { prop:"turnDecisionApiKey", key:'di.tdKey.local', def:'', localOnly:true, portable:false, note:"判断層のAPIキー（旧・単一保存）。vendor別へ移行済みで読み出しの後方互換にだけ使う" },
+  /* vendor ごとのキー。TypeSafe直・OpenRouter・将来のOpenAI/Claudeで別々のキーが要る。
+     1本の欄を使い回すと経路を切り替えるたび貼り直しになるので、vendor名→キーのmapで持つ。
+     embed を持たないので設定埋込みHTMLには出ない。portable:false で書き出しにも乗らない。 */
+  { prop:"turnDecisionKeys", key:'di.tdKeys.local', def:'', localOnly:true, portable:false, note:"判断層のvendor別APIキー。翻訳用キーと分離し書き出さない" },
   { prop:"turnDecisionTimeoutMs", key:'di.tdTimeout', embed:'turnDecisionTimeoutMs', def:'900', portable:true },
   { prop:"turnDecisionSoftMs", key:'di.tdSoft', embed:'turnDecisionSoftMs', def:'350', portable:true },
   { prop:"turnDecisionLangEn", key:'di.tdEn', embed:'turnDecisionLangEn', def:'shadow', portable:true, el:"turnDecisionLangEn" },
@@ -12488,6 +12548,29 @@ var DIAG_ROWS = [
   {section:"settings",order:27,label:'再生順序',value:function(ctx){ return 'カード受付順＋部分seq／送信本文・結合した部分IDをdispatchに記録'; }},
   {section:"settings",order:28,label:'TTS逐次読み上げ',value:function(ctx){ return CFG.segmentMode+' / 重なり '+CFG.segmentOverlap; }},
   {section:"settings",order:29,label:'逐次確定・訂正',value:function(ctx){ return SEG.committed+' / '+SEG.corrected+'（訂正率 '+(SEG.committed?(100*SEG.corrected/SEG.committed).toFixed(1):'0')+'%）'; }},
+  /* 判断層の状態。これが無いと、診断ログを見ても Jev が効いているのか
+     旧ルールのままなのかが読み取れない。キーは値を出さず有無と長さだけ書く。 */
+  {section:"settings",order:29.1,label:'発話交代の判断層',value:function(ctx){
+    var mode=CFG.turnDecisionMode||'off';
+    if(mode==='off')return 'OFF（境界判定と読み上げ開始は v1.47.1 と同一）';
+    return mode+' / 英語='+(CFG.turnDecisionLangEn||'shadow')+' / 日本語='+(CFG.turnDecisionLangJa||'shadow')
+      +' / 音響特徴'+(CFG.turnDecisionProsody?'あり':'なし')+' / 直近ターン'+(CFG.turnDecisionContextTurns||0);
+  }},
+  {section:"settings",order:29.2,label:'判断の経路',value:function(ctx){
+    var id=String(CFG.turnDecisionProvider||'rules'),list=TurnProviders.list(),r=null,i;
+    for(i=0;i<list.length;i++)if(list[i].id===id)r=list[i];
+    if(!r)return id+'（未知の経路。Rulesへ落ちます）';
+    if(r.local)return r.label+'（外部送信なし）';
+    var key=TurnProviders.keyFor(r.vendor);
+    return r.label+' / モデル '+(CFG.turnDecisionModel||r.defaultModel||'(既定)')
+      +' / キー'+(key?'設定済み '+key.length+'文字':'未設定')
+      +(r.verified?'':' / リクエスト形式は未検証');
+  }},
+  {section:"settings",order:29.3,label:'判断の内訳',value:function(ctx){
+    var c=SEG.committedBySource||{},x=SEG.correctedBySource||{};
+    return '確定 rules '+(c.rules||0)+' / provider '+(c.provider||0)
+      +'　確定後訂正 rules '+(x.rules||0)+' / provider '+(x.provider||0);
+  }},
   {section:"settings",order:30,label:'逐次TTS待ち音声',value:function(ctx){ return segDebt().toFixed(1)+'秒（文字数による推定）'; }},
   {section:"settings",order:31,label:'逐次計測の定義',value:function(ctx){ return 'L1=最初の認識文字から、L2=commitからの代理値。音響的な意味単位終了時刻は未計測。'; }},
   {section:"settings",order:32,label:'TTSストリーミング',value:function(ctx){ return ctx.rtNativeAudio ? '(外部TTS設定は未使用)' : ttsStreamCapability(CFG.ttsMode).text; }},
@@ -12798,9 +12881,21 @@ var TurnProviders={
     }
     var t=raw.turnState;
     if(t&&typeof t==='object'){
-      if(['COMPLETE','CONTINUING','SELF_REPAIR','UNKNOWN'].indexOf(String(t.choice))<0)return null;
+      var TS=['COMPLETE','CONTINUING','SELF_REPAIR','UNKNOWN'];
+      if(TS.indexOf(String(t.choice))<0)return null;
       var tc=num(t.confidence);if(tc===null)return null;
-      out.turnState={choice:String(t.choice),confidence:tc};
+      out.turnState={choice:String(t.choice),confidence:tc,probabilities:{}};
+      /* pick は P(CONTINUING) の上限で止める。ここで確率を捨てるとその枝が死ぬ。
+         boundary と同じ厳しさで検査し、通らなければ応答ごと捨てる。 */
+      if(t.probabilities&&typeof t.probabilities==='object'){
+        var tk=Object.keys(t.probabilities),tsum=0,ti;
+        for(ti=0;ti<tk.length;ti++){
+          if(TS.indexOf(tk[ti])<0)return null;
+          var tv=num(t.probabilities[tk[ti]]);if(tv===null)return null;
+          out.turnState.probabilities[tk[ti]]=tv;tsum+=tv;
+        }
+        if(tk.length&&(tsum<0.5||tsum>1.5))return null;
+      }
     }else out.turnState={choice:'UNKNOWN',confidence:0};
     /* Noul には confidence が無い。値だけを検査する。 */
     out.safeToSpeak=num(raw.safeToSpeak);
@@ -12899,7 +12994,7 @@ var TurnProviders={
     var out=this.normalize({
       decisionId:raw.id||raw.request_id||('d'+Date.now()),
       boundary:{choice:b.choice,confidence:b.confidence,probabilities:b.probabilities},
-      turnState:{choice:t.choice,confidence:t.confidence},
+      turnState:{choice:t.choice,confidence:t.confidence,probabilities:t.probabilities},
       safeToSpeak:s.noul,repairLikelihood:r.noul
     },state,{provider:meta.provider,model:String(raw.model||meta.model||''),
       semantics:meta.semantics,latencyMs:meta.latencyMs,questionSetHash:meta.questionSetHash});
@@ -12916,37 +13011,187 @@ var TurnProviders={
      リクエスト検証エラーが 400 で返ることがある。 */
   NEVER_RETRY:[400,401,403,404,422],
 
-  'jev-direct':{
-    id:'jev-direct',
-    capabilities:function(){return {probabilitySemantics:'native_calibrated',supportsChoice:true,
-      supportsNoul:true,structuredOutput:true,abortable:true,maxChoices:255,textOnly:true,local:false};},
-    evaluate:function(state,opts){
-      var key=String(CFG.turnDecisionApiKey||'');
-      if(!key)return Promise.reject(new Error('turnDecisionApiKey が未設定です'));
-      var base=String(CFG.turnDecisionBaseUrl||'https://api.typesafe.ai');
-      if(!/^https:\/\//.test(base))return Promise.reject(new Error('判断層のURLはHTTPSのみ許可します'));
-      /* model は必須。active では alias ではなく校正済み version を pin する（§8.5）。 */
-      var model=String(CFG.turnDecisionModel||'')||'jev-latest';
-      if(TurnDecision.applies(state.sourceLanguage)&&/latest/i.test(model))
-        return Promise.reject(new Error('active では model に固定versionを指定してください（いまは '+model+'）'));
-      var t0=Date.now();
-      return fetch(base.replace(/\/+$/,'')+'/v1/systemone',{
-        method:'POST',signal:opts.signal,cache:'no-store',
-        headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,
-          /* ZDR と no-train は経路を変えると落ちる。adapter ごとに明示して送る。 */
-          'X-TypeSafe-Zero-Data-Retention':'true','X-TypeSafe-No-Training':'true'},
-        body:JSON.stringify({model:model,state:state,questions:TurnProviders.questions(state)})
-      }).then(function(r){
-        if(!r.ok){var e=new Error('HTTP '+r.status);e.status=r.status;throw e;}
-        return r.text();
-      }).then(function(text){
-        if(text.length>200000)throw new Error('応答が大きすぎます');
-        var j;try{j=JSON.parse(text);}catch(err){throw new Error('JSONではない応答');}
-        return TurnProviders.fromAnswers(j,state,{provider:'jev-direct',model:model,
-          semantics:'native_calibrated',latencyMs:Date.now()-t0,
-          questionSetHash:TurnDecision.questionSetHash()});
-      });
+  /* vendor ごとのAPIキー。TypeSafe直とOpenRouterでは別のキーが要り、将来 OpenAI や
+     Claude が増えればさらに増える。1本の欄を使い回すと経路を切り替えるたびに貼り
+     直しになるので、vendor名→キーのmapで持つ。旧の単一欄は読み出しだけ互換を残す。 */
+  keyFor:function(vendor){
+    var raw=CFG.turnDecisionKeys,map=null;
+    if(raw){try{map=typeof raw==='string'?JSON.parse(raw):raw;}catch(err){map=null;}}
+    var k=map&&typeof map==='object'?String(map[vendor]||''):'';
+    return k||String(CFG.turnDecisionApiKey||'');
+  },
+  setKey:function(vendor,value){
+    var raw=CFG.turnDecisionKeys,map=null;
+    if(raw){try{map=typeof raw==='string'?JSON.parse(raw):raw;}catch(err){map=null;}}
+    if(!map||typeof map!=='object')map={};
+    if(value)map[vendor]=String(value);else delete map[vendor];
+    var s=JSON.stringify(map);
+    CFG.turnDecisionKeys=s;persistSetting('turnDecisionKeys',s);
+  },
+
+  /* chat互換の経路へ渡す答えの形。公式の systemone は answers を型付きで返すが、
+     chat/completions を入口にする経路では此方が形を指定しなければならない。
+     fromAnswers がそのまま食える形（type を含む）にして、正規化を1本に保つ。 */
+  answerSchema:function(state){
+    var ids=['HOLD'],list=state.candidateBoundaries||[],i;
+    for(i=0;i<list.length;i++)ids.push(list[i].id);
+    var TS=['COMPLETE','CONTINUING','SELF_REPAIR','UNKNOWN'];
+    var mapOf=function(keys){
+      var o={type:'object',additionalProperties:false,properties:{},required:[]},k;
+      for(k=0;k<keys.length;k++){o.properties[keys[k]]={type:'number'};o.required.push(keys[k]);}
+      return o;
+    };
+    var choice=function(enumv,probs){
+      return {type:'object',additionalProperties:false,required:['type','choice','confidence','probabilities'],
+        properties:{type:{type:'string',enum:['choice']},choice:{type:'string',enum:enumv},
+          confidence:{type:'number'},probabilities:probs}};
+    };
+    var noul={type:'object',additionalProperties:false,required:['type','noul'],
+      properties:{type:{type:'string',enum:['noul']},noul:{type:'number'}}};
+    return {type:'object',additionalProperties:false,required:['answers'],properties:{
+      answers:{type:'object',additionalProperties:false,
+        required:['boundary_choice','turn_state','safe_to_speak','repair_likelihood'],
+        properties:{boundary_choice:choice(ids,mapOf(ids)),turn_state:choice(TS,mapOf(TS)),
+          safe_to_speak:noul,repair_likelihood:noul}}}};
+  },
+  /* chat経路での前置き。systemone なら instructions が質問ごとに届くが、
+     chat では1本の文脈にまとめる必要がある。文面は questionSetHash に入る。 */
+  ENVELOPE_PROMPT:'You answer typed decision questions about a live interpreting session. '
+    +'The user message holds `state` and `questions`. Each question carries its own `instructions` '
+    +'and `criteria`. Answer every question using only the options its `criteria` lists. '
+    +'Return probabilities that sum to 1 within each question. Do not add commentary.',
+
+  /* ── 経路レジストリ ───────────────────────────────────────────────────
+     判断契約は Duo が所有し、経路は「宣言」で足す。1経路が書くのは
+       vendor / endpoint / 認証ヘッダ / body の組み立て / 応答の取り出し
+     だけで、タイムアウト・中断・サイズ上限・model pin 検査・再試行しない status・
+     回線遮断は下の httpEvaluate と observe が共通で持つ。
+     OpenAI や Claude が同等の判断APIを出したら、ここに1件足せば UI の選択肢にも
+     診断にも自動で出る（UIは registry から作るため、追記漏れが起きない）。
+
+     semantics は「確率の出どころ」。native_calibrated 以外は thresholds() が
+     commit 側を厳しくする。校正済みの数値と同じ扱いにしてはいけない。       */
+  ROUTES:{
+    'jev-direct':{
+      label:'Jev — TypeSafe に直接',
+      vendor:'typesafe',
+      verified:true,
+      semantics:'native_calibrated',
+      defaultBase:'https://api.typesafe.ai',
+      defaultModel:'jev-latest',
+      keyHint:'TypeSafe の API キー',
+      contextNote:'64k context',
+      capabilities:{probabilitySemantics:'native_calibrated',supportsChoice:true,supportsNoul:true,
+        structuredOutput:true,abortable:true,maxChoices:255,textOnly:true,local:false},
+      path:'/v1/systemone',
+      headers:function(key){
+        /* ZDR と no-train は経路を変えると落ちる。経路ごとに明示して送る。 */
+        return {'Authorization':'Bearer '+key,
+          'X-TypeSafe-Zero-Data-Retention':'true','X-TypeSafe-No-Training':'true'};
+      },
+      body:function(state,model){
+        return {model:model,state:state,questions:TurnProviders.questions(state)};
+      },
+      parse:function(json,state,meta){return TurnProviders.fromAnswers(json,state,meta);}
+    },
+
+    'jev-openrouter':{
+      label:'Jev — OpenRouter 経由',
+      vendor:'openrouter',
+      /* 公式の chat/completions 互換という前提で組んである。TypeSafe が
+         OpenRouter 上でどの入口を出しているかは未確認なので、実機で疎通を
+         確かめるまで verified:false のままにする。UIにもそう出す。 */
+      verified:false,
+      semantics:'vendor_reported',
+      defaultBase:'https://openrouter.ai/api',
+      defaultModel:'typesafe/jev',
+      keyHint:'OpenRouter の API キー',
+      /* 公式が「OpenRouter 経由では 32k」と書いているので、直叩きより文脈を削る。 */
+      contextNote:'32k context（直接の半分）',
+      maxStateChars:24000,
+      capabilities:{probabilitySemantics:'vendor_reported',supportsChoice:true,supportsNoul:true,
+        structuredOutput:true,abortable:true,maxChoices:255,textOnly:true,local:false},
+      path:'/v1/chat/completions',
+      headers:function(key){return {'Authorization':'Bearer '+key};},
+      body:function(state,model){
+        return {model:model,temperature:0,
+          response_format:{type:'json_schema',json_schema:{name:'duo_turn_answers',strict:true,
+            schema:TurnProviders.answerSchema(state)}},
+          messages:[{role:'system',content:TurnProviders.ENVELOPE_PROMPT},
+            {role:'user',content:JSON.stringify({state:state,questions:TurnProviders.questions(state)})}]};
+      },
+      parse:function(json,state,meta){
+        var msg=json&&json.choices&&json.choices[0]&&json.choices[0].message;
+        var text=msg&&typeof msg.content==='string'?msg.content:'';
+        if(!text)return null;
+        var inner;try{inner=JSON.parse(text);}catch(err){return null;}
+        if(!inner||typeof inner!=='object')return null;
+        /* usage の綴りが OpenAI 互換側は prompt/completion。契約側の名前へ寄せる。 */
+        if(json.usage&&typeof json.usage==='object')
+          inner.usage={input_tokens:json.usage.prompt_tokens,output_tokens:json.usage.completion_tokens};
+        if(!inner.model)inner.model=json.model||meta.model;
+        return TurnProviders.fromAnswers(inner,state,meta);
+      }
     }
+  },
+
+  /* 経路を安全に引く。TurnProviders 自身のメソッド名（normalize 等）を
+     provider 名に入れられると、関数がそのまま経路として扱われてしまう。
+     registry を分けたうえで hasOwnProperty で引き、それ以外は必ず null を返す。 */
+  get:function(id){
+    var key=String(id||'');
+    if(key==='local')return this.local;
+    if(Object.prototype.hasOwnProperty.call(this.ROUTES,key))return this.httpProvider(key);
+    return null;
+  },
+  /* UI と診断はこの一覧から作る。経路を足したら選択肢にも自動で出る。 */
+  list:function(){
+    var out=[{id:'rules',label:'Rules — 既存ルールのみ（外部送信なし）',vendor:'',verified:true,local:true},
+      {id:'local',label:'Local — 端末内の学習済み重み（外部送信なし）',vendor:'',verified:true,local:true}],k;
+    for(k in this.ROUTES)if(Object.prototype.hasOwnProperty.call(this.ROUTES,k))
+      out.push({id:k,label:this.ROUTES[k].label,vendor:this.ROUTES[k].vendor,
+        verified:!!this.ROUTES[k].verified,local:false,keyHint:this.ROUTES[k].keyHint,
+        contextNote:this.ROUTES[k].contextNote,defaultModel:this.ROUTES[k].defaultModel});
+    return out;
+  },
+
+  /* 経路の宣言から provider を作る。共通の検査と組み立てはここだけに置く。 */
+  httpProvider:function(id){
+    var route=this.ROUTES[id];
+    return {
+      id:id,route:route,
+      capabilities:function(){return route.capabilities;},
+      evaluate:function(state,opts){
+        var key=TurnProviders.keyFor(route.vendor);
+        if(!key)return Promise.reject(new Error(route.label+' の API キーが未設定です'));
+        var base=String(CFG.turnDecisionBaseUrl||'')||route.defaultBase;
+        if(!/^https:\/\//.test(base))return Promise.reject(new Error('判断層のURLはHTTPSのみ許可します'));
+        var model=String(CFG.turnDecisionModel||'')||route.defaultModel;
+        /* active では alias ではなく校正済み version を pin する（§8.5）。 */
+        if(TurnDecision.applies(state.sourceLanguage)&&/latest/i.test(model))
+          return Promise.reject(new Error('active では model に固定versionを指定してください（いまは '+model+'）'));
+        var body;try{body=JSON.stringify(route.body(state,model));}catch(err){
+          return Promise.reject(new Error('リクエストを組み立てられません'));}
+        /* 経路ごとの文脈上限。超えたら送らずRulesへ落とす。途中で切ると
+           候補の offset と本文がずれ、存在しない位置を選ばせてしまう。 */
+        if(route.maxStateChars&&body.length>route.maxStateChars)
+          return Promise.reject(new Error('この経路の文脈上限を超えました'));
+        var headers={'Content-Type':'application/json'},h=route.headers(key),hk;
+        for(hk in h)if(Object.prototype.hasOwnProperty.call(h,hk))headers[hk]=h[hk];
+        var t0=Date.now();
+        return fetch(base.replace(/\/+$/,'')+route.path,{
+          method:'POST',signal:opts&&opts.signal,cache:'no-store',headers:headers,body:body
+        }).then(function(r){
+          if(!r.ok){var e=new Error('HTTP '+r.status);e.status=r.status;throw e;}
+          return r.text();
+        }).then(function(text){
+          if(text.length>200000)throw new Error('応答が大きすぎます');
+          var j;try{j=JSON.parse(text);}catch(err){throw new Error('JSONではない応答');}
+          return route.parse(j,state,{provider:id,model:model,semantics:route.semantics,
+            latencyMs:Date.now()-t0,questionSetHash:TurnDecision.questionSetHash()});
+        });
+      }
+    };
   },
 
   /* ブラウザ内の小さな合成器。遅延ゼロ・外部送信なし・レート制限なしで、
@@ -13195,7 +13440,9 @@ var TurnDecision={
   observe:function(state){
     var id=String(CFG.turnDecisionProvider||'rules');
     if(id==='rules')return;
-    var p=TurnProviders[id];
+    /* registry からだけ引く。TurnProviders のメソッド名を provider に入れられても
+       経路として扱わない。 */
+    var p=TurnProviders.get(id);
     if(!p){dlog('segment','turn-decision-fallback',{reason:'unknown-provider:'+id,ruleAction:'rules',elapsedMs:0});return;}
     var lang=state.sourceLanguage,self=this;
     if(this.inflight[state.speakerKey])return;            /* speakerKeyごとに同時1件 */
@@ -13246,12 +13493,23 @@ var TurnDecision={
      HOLD＋候補1〜5件で毎回変わる。同じ p_max でも候補を多く作った回ほど
      confidence が高く出るため、固定の下限を置くと「Duo が何件候補を作ったか」で
      合否が変わってしまう。turn_state は選択肢が4つ固定なので confidence を使える。 */
-  thresholds:function(lang){
-    var l=String(lang||'').split('-')[0];
-    if(l==='ja')return {holdMax:0.10,chosenMin:0.80,turnConfMin:0.50,
+  thresholds:function(lang,semantics){
+    var l=String(lang||'').split('-')[0],t;
+    if(l==='ja')t={holdMax:0.10,chosenMin:0.80,turnConfMin:0.50,
       continuingMax:0.10,repairMax:0.12,silenceMin:450,confirm:2};
-    return {holdMax:0.15,chosenMin:0.70,turnConfMin:0.50,
+    else t={holdMax:0.15,chosenMin:0.70,turnConfMin:0.50,
       continuingMax:0.15,repairMax:0.20,silenceMin:250,confirm:1};
+    /* 閾値は native_calibrated な確率の上で決めた値である。経路を変えると確率の
+       出どころが変わり、同じ数値が同じ意味を持たなくなる。校正されていない確率を
+       そのまま同じ閾値に通すと、確信度の水増しをそのまま採用してしまう。
+       校正外の経路は commit 側だけ厳しくし、待つ側（HOLD）は緩めない。 */
+    if(semantics&&semantics!=='native_calibrated'){
+      t=({holdMax:t.holdMax,chosenMin:Math.min(0.95,t.chosenMin+0.10),
+        turnConfMin:Math.min(0.95,t.turnConfMin+0.10),
+        continuingMax:t.continuingMax,repairMax:t.repairMax,
+        silenceMin:t.silenceMin,confirm:Math.max(2,t.confirm+1),uncalibrated:true});
+    }
+    return t;
   },
 
   /* ヒステリシス。同じ offset をN回連続で支持したときだけ commit する。
@@ -13271,7 +13529,9 @@ var TurnDecision={
   pick:function(state,hit,ruleResult){
     var b=hit&&hit.boundary;
     if(!b||!b.choice)return null;
-    var th=this.thresholds(state.sourceLanguage),probs=b.probabilities||{},i;
+    /* 確率の出どころで閾値を変える。hit.probabilitySemantics は adapter が申告する。 */
+    var th=this.thresholds(state.sourceLanguage,hit&&hit.probabilitySemantics),
+        probs=b.probabilities||{},i;
     var num=function(v){return typeof v==='number'&&isFinite(v)?v:null;};
     var pHold=num(probs.HOLD);
 

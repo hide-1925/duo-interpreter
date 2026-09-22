@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.9",
-  "version_name": "1.4.9 判断層の計測基盤とWeb Speech共有音声の修正",
+  "version": "1.4.10",
+  "version_name": "1.4.10 popupが版の不一致で開けない不具合を修正",
   "optional_host_permissions": [
     "https://*/*"
   ],

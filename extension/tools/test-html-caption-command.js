@@ -14,14 +14,18 @@ function html({deny=false,missing=false,opened=false}={}){
 }
 function popup({open=true,noHtml=false,dirty=false}={}){
  const elements=new Map(),calls=[];const get=id=>{if(!elements.has(id))elements.set(id,{addEventListener:(type,fn)=>elements.get(id)[type]=fn,textContent:'',className:''});return elements.get(id);};
- const chrome={scripting:{executeScript:async args=>{calls.push({kind:'inject',args});return [{result:{ok:open,open}}];}},runtime:{onMessage:{addListener(){}},sendMessage:async m=>{calls.push({kind:'message',m});return {ok:true};}}};
- const context=vm.createContext({DuoTextComposer(){},document:{getElementById:get},chrome,window:{close:()=>calls.push({kind:'close'})}});
+ const chrome={scripting:{executeScript:async args=>{calls.push({kind:'inject',args});return [{result:{ok:open,open}}];}},runtime:{onMessage:{addListener(){}},sendMessage:async m=>{calls.push({kind:'message',m});return {ok:true};},getManifest:()=>({version:'9.9.9'})}};
+ const context=vm.createContext({DuoTextComposer(){},document:{getElementById:get},chrome,navigator:{userAgent:'Mozilla/5.0 Chrome/140.0.0.0'},window:{close:()=>calls.push({kind:'close'})}});
  vm.runInContext(read('html-caption-command.js'),context);
  vm.runInContext(read('popup.js').replace("refresh().catch((error) => show(error.message, 'err'));",''),context);
  vm.runInContext(`state=${JSON.stringify(noHtml?{}:{htmlTabId:7,htmlDocumentId:'registered-document'})};registeredHtmlUrl='https://example.test/duo/';htmlUrlDirty=${dirty};`,context);
  return {calls,click:()=>get('openCaptionWindow').click(),get};
 }
 (async()=>{
+ await test('Popup shows the manifest version and the running browser, never a hardcoded one',async()=>{
+  /* popup.html に直書きしていた版は v1.4.0 のまま9版ぶん古かった。 */
+  const h=popup();assert.equal(h.get('extVersion').textContent,'Chrome v9.9.9');
+ });
  await test('Calls exact native HTML settings function and leaves recognition unchanged',async()=>{
   const h=html(),speech=h.window.S;const result=await h.run('open');assert(result.ok&&result.open);assert.equal(h.calls,1);assert.equal(h.window.openCaptionPip,h.native);assert.equal(h.window.S,speech);assert(h.window.S.running);assert.equal(result.route,'html-main');assert.equal(result.captions,1);assert(!JSON.stringify(result).includes('secret'));
  });
