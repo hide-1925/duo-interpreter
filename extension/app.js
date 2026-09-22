@@ -654,8 +654,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.8';
-var APP_BUILD = '20260923-v1498-tail-window-share';
+var APP_VERSION = 'v1.49.10';
+var APP_BUILD = '20260923-v14910-rate-browser-voice';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -4020,6 +4020,53 @@ function browserSpeak(text, tag, prosody, onFinish){
    instructionsへ変換する。 */
 var OAI_RATE_FACTORS = [0.75,0.88,1,1.15,1.35,1.50,1.80];
 var OAI_GAIN_FACTORS = [0.75,0.88,1,1.12,1.25];
+/* OpenAI の上限は Aivis のような公表された固定値ではなく、アカウントの usage tier で
+   決まる。だから公式の表を読んでも「自分の値」は分からない。実際に効いている値は応答
+   ヘッダに入っているので、それを読んで記録する。役に立つのは自分の数字だけ。
+
+   Aivis 側は上限待ちと再試行を持っているが（aivis-request の 60秒10回、Retry-After
+   待ち、再試行2回）、OpenAI 側は 429 を他の失敗と区別していなかった。上限に当たると
+   音声を1つ落として終わりで、しかも警告は openaiTtsWarned で一度しか出ない。
+   まず「いくらで、いま何回残っているか」を見えるようにする。再試行の方針は
+   実際の数字を見てから決める。 */
+function openaiRateMeta(r){
+  var h=function(n){try{return r&&r.headers?r.headers.get(n)||'':'';}catch(e){return'';}};
+  return {
+    limitRequests:h('x-ratelimit-limit-requests'),
+    remainingRequests:h('x-ratelimit-remaining-requests'),
+    resetRequests:h('x-ratelimit-reset-requests'),
+    limitTokens:h('x-ratelimit-limit-tokens'),
+    remainingTokens:h('x-ratelimit-remaining-tokens'),
+    resetTokens:h('x-ratelimit-reset-tokens'),
+    retryAfter:h('retry-after')
+  };
+}
+var OPENAI_LAST_RATE=null;
+function openaiLogRate(r,where){
+  var m=openaiRateMeta(r);
+  if(m.limitRequests||m.remainingRequests||m.limitTokens||m.remainingTokens||m.retryAfter){
+    OPENAI_LAST_RATE=m;
+    dlog('tts','openai-ratelimit',{where:where||'speech',
+      requests:(m.remainingRequests||'?')+'/'+(m.limitRequests||'?'),
+      resetRequests:m.resetRequests||'',
+      tokens:(m.remainingTokens||'?')+'/'+(m.limitTokens||'?'),
+      resetTokens:m.resetTokens||'',retryAfter:m.retryAfter||''});
+  }
+  return m;
+}
+/* 429 だけは他の失敗と混ぜない。落とした音声があること、いつ空くかを必ず伝える。 */
+var openaiRateWarned=false;
+function openaiTtsHttpError(r,raw,where){
+  var m=openaiLogRate(r,where),body=String(raw||'').slice(0,140);
+  if(r.status===429){
+    var wait=m.retryAfter||m.resetRequests||m.resetTokens||'';
+    openaiRateBlock(openaiRetryDelayMs(m));
+    var e=new Error('429 OpenAIの利用上限に達しました'+(wait?'（'+wait+'後に空きます）':'')
+      +'。この読み上げは飛ばしました。');
+    e.status=429;e.rateWait=wait;return e;
+  }
+  var err=new Error('TTS '+r.status+' '+body);err.status=r.status;return err;
+}
 var openaiTtsWarned = false;
 function oaiLevel(v){
   var n=parseInt(v,10); if (isNaN(n)) n=0;
@@ -4153,7 +4200,8 @@ function apiSpeakBlob(text, lang, seat, prosody, plan, key){
   fetch('https://api.openai.com/v1/audio/speech',{
     method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify(body)
   }).then(function(r){
-    if (!r.ok) return r.text().then(function(x){ throw new Error('TTS '+r.status+' '+String(x).slice(0,120)); });
+    if (!r.ok) return r.text().then(function(x){ throw openaiTtsHttpError(r,x,'speech-wav'); });
+    openaiLogRate(r,'speech-wav');
     return r.blob();
   }).then(function(b){
     dlog('tts','openai-ok',{chars:text.length,ms:Date.now()-t0,bytes:b.size,seat:seat,model:body.model,
@@ -4161,7 +4209,20 @@ function apiSpeakBlob(text, lang, seat, prosody, plan, key){
     playBlob(b,finish,'openai',{gain:plan.gain});
   }).catch(function(err){
     var m=String((err&&err.message)||err);
-    dlog('tts','openai-FAIL',{err:m.slice(0,160),ms:Date.now()-t0}); finish();
+    dlog('tts','openai-FAIL',{err:m.slice(0,160),ms:Date.now()-t0,status:err&&err.status||0});
+    /* 429 は一度きりの警告にしない。会議の途中で上限に当たったことを黙ると、
+       読み上げが飛んだ理由が分からなくなる。ただし連続で鳴らし続けもしない。 */
+    if (err&&err.status===429){
+      if (!openaiRateWarned){ openaiRateWarned=true;
+        setTimeout(function(){openaiRateWarned=false;},30000);
+        toast('OpenAI音声の利用上限に達しました。<br>今回はブラウザ内蔵の音声で読み上げます。'); }
+      /* 捨てずに読む。上限に当たった1つが無音になると、聞き手には理由が分からない。
+         finish() はブラウザ再生の完了で呼ぶ。先に呼ぶと読み上げスロットが空いて
+         次の発話が走り出し、音が重なる。VOICEVOX の fallback と同じ形にする。 */
+      browserSpeak(text,L(lang).tts,prosody,function(){finish();});
+      return;
+    }
+    finish();
     if (!openaiTtsWarned){ openaiTtsWarned=true; toast('OpenAI音声の生成に失敗しました。<br><small>'+m.slice(0,100)+'</small>'); }
   });
 }
@@ -4293,7 +4354,8 @@ function apiSpeakStreamWorklet(text,lang,seat,prosody,plan,ctx,key){
       body:JSON.stringify(body)
     });
   }).then(function(r){
-    if(!r.ok)return r.text().then(function(x){throw new Error('TTS '+r.status+' '+String(x).slice(0,140));});
+    if(!r.ok)return r.text().then(function(x){throw openaiTtsHttpError(r,x,'speech-worklet');});
+    openaiLogRate(r,'speech-worklet');
     var contentType='';try{contentType=String(r.headers.get('content-type')||'');}catch(e){}
     dlog('tts','openai-response',{status:r.status,contentType:contentType||'(不明)',streamFormat:body.stream_format,
       transport:'audio-worklet'});
@@ -4386,7 +4448,8 @@ function apiSpeakStream(text, lang, seat, prosody, plan, ctx, key){
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'Accept':'audio/pcm, application/octet-stream'},
     body:JSON.stringify(body)
   }).then(function(r){
-    if (!r.ok) return r.text().then(function(x){throw new Error('TTS '+r.status+' '+String(x).slice(0,140));});
+    if (!r.ok) return r.text().then(function(x){throw openaiTtsHttpError(r,x,'speech-stream');});
+    openaiLogRate(r,'speech-stream');
     var contentType='';try{contentType=String(r.headers.get('content-type')||'');}catch(e){}
     dlog('tts','openai-response',{status:r.status,contentType:contentType||'(不明)',streamFormat:body.stream_format});
     /* SSEやJSONをPCMとして再生すると大音量のビープ／ノイズになる。指定が無視された場合は
@@ -4712,6 +4775,36 @@ function ensureSink(seat){
 /* ---------------- 日本語専用エンジン共通の下ごしらえ ----------------
    VOICEVOX・Aivis Cloud・ローカルエンジンはいずれも日本語専用。
    日本語以外や設定不足のときは、黙って止まらずブラウザ内蔵音声に逃がす。 */
+/* API の読み上げがレート上限に達している間は、待たずにブラウザ内蔵音声で読む。
+
+   待つ設計だと待ち行列が伸びる。実測ログでは Aivis の枠を使い切ったあと TTS の
+   待ちが20〜40秒に達していた。声は落ちるが、間に合うほうを選ぶ。
+
+   上限の見え方はプロバイダごとに違う。Aivis は公表された固定値（60秒10回）を
+   こちら側で数えているので、送る前に分かる。OpenAI はアカウントの usage tier で
+   決まるので事前には分からず、429 を受けてから一定時間だけ避ける。だから
+   「あと何ms 塞がっているか」を返す1つの関数に揃える。 */
+var OPENAI_RATE_BLOCK_UNTIL=0;
+function openaiRateBlock(ms){
+  OPENAI_RATE_BLOCK_UNTIL=Math.max(OPENAI_RATE_BLOCK_UNTIL,Date.now()+Math.max(1000,ms||0));
+}
+function ttsRateWaitMs(mode){
+  var p=ttsProv(mode);
+  return typeof p.rateWait==='function'?Math.max(0,p.rateWait()||0):0;
+}
+/* 429 応答の Retry-After / reset から待ち時間を読む。読めなければ控えめに60秒。 */
+function openaiRetryDelayMs(m){
+  var pick=function(v){
+    if(v==null)return null;
+    var s=String(v).trim();if(!s)return null;
+    var ms=/ms$/i.test(s)?Number(s.replace(/ms$/i,'')):/s$/i.test(s)?Number(s.replace(/s$/i,''))*1000:Number(s)*1000;
+    return isFinite(ms)&&ms>=0?ms:null;
+  };
+  var v=pick(m&&m.retryAfter);if(v!=null)return v;
+  v=pick(m&&m.resetRequests);if(v!=null)return v;
+  v=pick(m&&m.resetTokens);if(v!=null)return v;
+  return 60000;
+}
 function jaOnlyMode(mode){ return ttsProv(mode).jaOnly; }
 function ttsFallback(text, lang, why, warnMsg, flagName, prosody){
   dlog('tts','fallback',{ mode: CFG.ttsMode, why: why, lang: lang });
@@ -7021,6 +7114,8 @@ var TTS_PROVIDERS = {
   },
   openai: {
     label:"OpenAI音声",
+    /* 上限は usage tier 次第で事前に分からない。429 を受けてから避ける。 */
+    rateWait:function(){return Math.max(0,OPENAI_RATE_BLOCK_UNTIL-Date.now());},
     optionLabel:"OpenAI 音声（自然）",
     uiField:"oaiOnly",
     enabled:true,
@@ -7238,6 +7333,8 @@ var TTS_PROVIDERS = {
   },
   aivis: {
     label:"Aivis Cloud API",
+    /* 公表値（60秒10回）をこちら側で数えているので、送る前に分かる。 */
+    rateWait:function(){return aivisRateWait();},
     optionLabel:"Aivis Cloud API（高品質・低遅延・日本語のみ）",
     uiField:"aivisField",
     enabled:true,
@@ -7293,7 +7390,21 @@ var TTS_PROVIDERS = {
     {section:"settings",order:45,label:'Aivis APIキー同期',value:function(){ return aivisKeyState(); },inactive:'(未使用)'},
     {section:"settings",order:46,label:'Aivis課金モード（直近応答）',value:function(){ return AIVIS_LAST_BILLING ? ((AIVIS_LAST_BILLING.mode||'(headerなし)')
          +(AIVIS_LAST_BILLING.creditsRemaining?' / 残クレジット '+AIVIS_LAST_BILLING.creditsRemaining:'')
-         +(AIVIS_LAST_BILLING.rateRemaining?' / 残リクエスト '+AIVIS_LAST_BILLING.rateRemaining:'')) : '(まだAivis応答なし)'; },inactive:'(未使用)'}
+         +(AIVIS_LAST_BILLING.rateRemaining?' / 残リクエスト '+AIVIS_LAST_BILLING.rateRemaining:'')) : '(まだAivis応答なし)'; },inactive:'(未使用)'},
+    /* OpenAI の上限はアカウントの usage tier で決まるので、公表値では自分の枠が分からない。
+       応答ヘッダに入っている実値をそのまま出す。Aivis と併用するなら、どちらが先に
+       詰まるのかはこの2行を並べて見るのがいちばん早い。 */
+    {section:"settings",order:46.5,label:'OpenAI音声の上限（直近応答）',value:function(){
+      if(!OPENAI_LAST_RATE)return '(まだOpenAI音声の応答なし)';
+      var m=OPENAI_LAST_RATE,out=[];
+      if(m.limitRequests||m.remainingRequests)
+        out.push('リクエスト '+(m.remainingRequests||'?')+'/'+(m.limitRequests||'?')
+          +(m.resetRequests?'（回復 '+m.resetRequests+'）':''));
+      if(m.limitTokens||m.remainingTokens)
+        out.push('トークン '+(m.remainingTokens||'?')+'/'+(m.limitTokens||'?')
+          +(m.resetTokens?'（回復 '+m.resetTokens+'）':''));
+      if(m.retryAfter)out.push('Retry-After '+m.retryAfter);
+      return out.length?out.join(' / '):'(上限ヘッダなし)'; },inactive:'(未使用)'}
   ],
     segmentJapaneseBatch:true,
     segmentStatus:function(){return ' ／ Aivis 10回/分 · '+(aivisRateWait()>0?'次の送信まで '+(aivisRateWait()/1000).toFixed(1)+'秒':'送信可能');}
@@ -7550,6 +7661,16 @@ function speak(e){
   var sayText = useSrc ? e.srcText : e.dstText;
   var sayLang = useSrc ? e.srcLang : e.dstLang;
   if (!sayText){ dlog('tts','skip',{ why: useSrc ? '原文が空' : '訳文が空' }); return; }
+  /* レート上限中は待たずにブラウザ内蔵音声へ。待ち行列を伸ばさないことを優先する。
+     segPump から来る proxy には forceBrowserTts が付いていることがある（そちらは
+     まとめ処理の前に判定しているので、ここでの再判定と二重にならない）。 */
+  var rateWait=e.forceBrowserTts?1:ttsRateWaitMs();
+  if (rateWait>0){
+    ttsFallback(sayText,sayLang,'rate-limit',
+      ttsProv().label+' の利用上限に達しています。',
+      'ttsRateFallbackWarned',e.prosody);
+    return;
+  }
   if(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat)){
     dlog('tts','skip',{why:'同じ仮想経路への自己認識防止',seat:e.seat});return;
   }
@@ -12690,10 +12811,18 @@ function segPump(){
       dlog('segment','floor-drop',{cardId:e.id,seq:s.seq,waitMs:floor.waitMs});continue;}
     var useSource=j.manual||CFG.ttsSrc,lang=useSource?e.srcLang:e.dstLang;
     var group=[j],source=s.sourceText,target=s.translationText||'';
-    if(ttsProv().segmentJapaneseBatch&&lang==='ja'){
+    if(ttsProv().segmentJapaneseBatch&&lang==='ja'&&!j.forceBrowserTts){
+      /* 上限に当たったら待たない。ブラウザ内蔵音声で読んで先へ進む。待つ設計では
+         実測で TTS 待ちが20〜40秒に達していた。Aivis 用のまとめ処理（同一声・
+         500文字まで）は飛ばす。まとめるのは Aivis の枠を節約するためなので、
+         その枠を使わないのなら意味が無い。 */
       var rateWait=aivisRateWait();
-      if(rateWait>0){segTtsWait(j,AIVIS_RATE.blockedUntil>Date.now()?'aivis-server-limit':'aivis-window-limit',
-        {waitMs:rateWait,count60s:AIVIS_RATE.sent.length,limit:10});return;}
+      if(rateWait>0){
+        j.forceBrowserTts=true;
+        dlog('segment','tts-rate-fallback',{cardId:e.id,seq:s.seq,
+          why:AIVIS_RATE.blockedUntil>Date.now()?'aivis-server-limit':'aivis-window-limit',
+          waitMs:rateWait,count60s:AIVIS_RATE.sent.length,limit:10});
+      }
       var voiceKey=segAivisVoiceKey(e);
       // Collect adjacent ready parts with identical effective synthesis settings.
       for(var n=1;n<SEG.queue.length;n++){
@@ -12726,7 +12855,7 @@ function segPump(){
       q.segment.audio.dispatchOrder=j.dispatchOrder;q.segment.audio.schedulerRate=rate;});
     group.forEach(function(q){q.segment.state='tts_generating';q.segment.dispatched=true;q.segment.audio.status='generating';q.segment.audio.requestedAt=Date.now();});
     SEG.active=j;j.started=false;j.finished=false;segRefreshPlayback(j);
-    var proxy={id:e.id,utteranceId:e.utteranceId,origin:e.origin,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,srcText:source,dstText:target,prosody:e.prosody,speaker:e.speaker,startedAt:e.startedAt,ts:e.ts};
+    var proxy={id:e.id,utteranceId:e.utteranceId,origin:e.origin,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,srcText:source,dstText:target,prosody:e.prosody,speaker:e.speaker,startedAt:e.startedAt,ts:e.ts,forceBrowserTts:!!j.forceBrowserTts};
     dlog('segment','dispatch',{cardId:e.id,seq:s.seq,manualReplay:!!j.manual,order:j.dispatchOrder,members:group.map(function(q){return q.segment.id;}),
       text:j.speechText,parts:group.length,chars:j.speechText.length,debtEstimateSeconds:segDebt(),overlap:overlap,schedulerRate:rate});
     SEG.dispatchRate=rate;
