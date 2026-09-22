@@ -169,11 +169,51 @@ test('each question carries type, instructions and criteria in the documented fo
   assert.ok(!Array.isArray(q.boundary_choice.criteria));
   assert.ok(q.boundary_choice.options===undefined,'options is not part of the contract');
   assert.ok(q.boundary_choice.criteria.HOLD,'HOLD must be an offered option');
-  assert.ok(Object.keys(q.boundary_choice.criteria).length<=256,'Choice allows at most 255 options');
+  assert.ok(Object.keys(q.boundary_choice.criteria).length<=255,'Choice allows at most 255 options');
   /* noul の criteria は true/false の意味。 */
   assert.equal(q.safe_to_speak.type,'noul');
   assert.equal(typeof q.safe_to_speak.criteria['true'],'string');
   assert.equal(typeof q.safe_to_speak.criteria['false'],'string');
+});
+
+/* 公式は「似ていて混同しやすい選択肢には項目立てした criteria を渡せ」と書いている。
+   HOLD と「ここで切る」はこの設計で最も混同しやすい対なので、同じ項目立てで渡す。 */
+test('HOLD and each cut candidate are described with the same structured fields',async()=>{
+  reset({turnDecisionProvider:'jev-direct'});
+  const s=stateOf();fetchImpl=reply(wire(s));
+  await P()['jev-direct'].evaluate(s,{});
+  const crit=JSON.parse(calls[0].opt.body).questions.boundary_choice.criteria;
+  const hold=crit.HOLD;
+  assert.equal(typeof hold,'object','HOLD needs structured criteria, not one sentence');
+  for(const f of ['what','not_for','examples'])
+    assert.equal(typeof hold[f],'string','HOLD criteria needs '+f);
+  const ids=Object.keys(crit).filter(k=>k!=='HOLD');
+  assert.ok(ids.length,'there must be at least one cut candidate to contrast with HOLD');
+  for(const id of ids){
+    assert.equal(typeof crit[id],'object',id+' needs structured criteria');
+    for(const f of ['what','not_for','before','after'])
+      assert.equal(typeof crit[id][f],'string',id+' criteria needs '+f);
+  }
+});
+
+/* 「モデルは並べなかった値を選べない」。文末が多い発話で、構造上の候補（とくに
+   final のときの C_FULL）が文末候補に押し出されてはならない。 */
+test('the structural candidates survive a text full of sentence ends',()=>{
+  reset();
+  /* 末尾に文末記号のない語を足し、C_FULL が C_STABLE と別 offset になるようにする。
+     同じ offset なら重複排除されるのが正しいので、そこは検査対象にしない。 */
+  const text='あ。'.repeat(40)+'それで';
+  const i=input({text:text,stableLength:80,final:true});
+  const cands=D().candidatesOf(i,D().rules(i));
+  const kinds=cands.map(c=>c.kind);
+  assert.ok(kinds.indexOf('C_FULL')>=0,'C_FULL must be offered on a final result');
+  assert.ok(kinds.indexOf('C_STABLE')>=0,'the stable prefix edge must be offered too');
+  assert.ok(cands.length>5,'candidates are no longer shortlisted to five: '+cands.length);
+  assert.ok(cands.length<=64,'but they stay inside the documented cap: '+cands.length);
+  const ids=cands.map(c=>c.id);
+  assert.equal(new Set(ids).size,ids.length,'ids stay unique at scale');
+  for(const c of cands)
+    assert.ok(c.offset>0&&c.offset<=text.length,c.id+' points outside the text');
 });
 
 test('candidate ids are unique, so the criteria map cannot collide',()=>{
