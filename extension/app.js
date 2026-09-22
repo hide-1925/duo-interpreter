@@ -54,17 +54,36 @@ var AudioRoutingPolicy={resolve:function(job){
   var allowed=!!(valid&&automatic&&conferenceAudioState.mode!=='original-only'&&(job.sourceScope==='local'||remote));
   return {localMonitor:true,conferenceMic:allowed};
 }};
-var ConferenceMicBus={context:null,destination:null,gate:null,enabled:false,
+/* 判定結果をjobごとに覚えておく。streaming TTS は PCM バッファごとに connect へ
+   来るので、そのたびに同じ2行を書くと診断ログがこれで埋まる。実測では61秒・475件の
+   ログの半分近くがこれだった。1時間の記録では trace 上限 40,000 行に早々に届き、
+   肝心の行が落ちる。判定は job と bus の状態だけで決まるので、結果が変わったときだけ
+   書けば情報量は同じ。 */
+var ConferenceMicBus={context:null,destination:null,gate:null,enabled:false,lastRoute:{},lastRouteN:0,
   ensure:function(ctx){
     if(!this.destination){this.context=ctx;this.destination=ctx.createMediaStreamDestination();this.gate=ctx.createGain();this.gate.gain.value=0;this.gate.connect(this.destination);}
     if(this.context!==ctx)throw Error('会議音声のAudioContextが一致しません');
     return this.destination.stream;
   },
   setEnabled:function(on){this.enabled=!!on;if(this.gate)this.gate.gain.value=on?1:0;duoRefreshRouteGates();},
+  /* 初回か、この job の行き先が変わったときだけ true。長い会議で jobId が溜まり
+     続けないよう、一定数で丸ごと捨てる。捨てても余分な1行が出るだけで害はない。 */
+  noteRoute:function(job,route){
+    var id=String(job.jobId||''),kind=(route.conferenceMic?(job.sourceScope==='remote'?'relay':'tts-only'):'rejected')
+      +'/'+(this.enabled?'on':'off');
+    if(!id)return true;
+    if(this.lastRoute[id]===kind)return false;
+    if(this.lastRouteN>=256){this.lastRoute={};this.lastRouteN=0;}
+    if(this.lastRoute[id]===undefined)this.lastRouteN++;
+    this.lastRoute[id]=kind;
+    return true;
+  },
   connect:function(node,job){
     var route=AudioRoutingPolicy.resolve(job);if(route.conferenceMic){this.ensure(node.context);var jobGate=node.context.createGain();jobGate.gain.value=1;node.connect(jobGate);jobGate.connect(this.gate);duoRouteGates.push({gate:jobGate,job:job,at:Date.now()});}
-    if(job)dlog('conference',route.conferenceMic?(job.sourceScope==='remote'?'conference-route-remote-relay':'conference-route-tts-only'):'conference-route-rejected',{jobId:job.jobId,playbackIntent:job.playbackIntent,speakerId:job.speakerId,at:Date.now()});
-    if(job)dlog('audio-route','resolve',Object.assign({},job,{route:route,webConferenceMicEnabled:this.enabled,conferenceMicTrackId:this.destination&&this.destination.stream.getAudioTracks()[0].id}));
+    if(job&&this.noteRoute(job,route)){
+      dlog('conference',route.conferenceMic?(job.sourceScope==='remote'?'conference-route-remote-relay':'conference-route-tts-only'):'conference-route-rejected',{jobId:job.jobId,playbackIntent:job.playbackIntent,speakerId:job.speakerId,at:Date.now()});
+      dlog('audio-route','resolve',Object.assign({},job,{route:route,webConferenceMicEnabled:this.enabled,conferenceMicTrackId:this.destination&&this.destination.stream.getAudioTracks()[0].id}));
+    }
     return route;
   }
 };
@@ -603,8 +622,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.4';
-var APP_BUILD = '20260923-v1494-state-projection';
+var APP_VERSION = 'v1.49.5';
+var APP_BUILD = '20260923-v1495-route-log-dedup';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
