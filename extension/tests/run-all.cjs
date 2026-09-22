@@ -14,13 +14,16 @@ const GATE=['test-turn-decision.cjs','test-file-sync.cjs','test-turn-trace-repla
   'test-input-validation.cjs','test-turn-providers.cjs',
   'test-teams.cjs','test-next.cjs','test-controller.cjs','test-frame-routing.cjs',
   'test-bridge-target.cjs','test-mic-discovery.cjs'];
+/* tools/ の3スイートは実物の service-worker.js などを読み込む。gate の外に置いた
+   ままにしていたため、v1.4.9 の版ずれを出荷前に捕まえられなかった。 */
+const TOOLS=['test-html-bridge.js','test-html-caption-command.js','test-html-tab-audio.js'];
 const E2E=['test-browser.cjs','test-settings-ui.cjs'];
 
 const withE2e=process.argv.includes('--with-e2e');
 let failed=0,total=0;
 
-for(const f of GATE.concat(withE2e?E2E:[])){
-  const label=f.replace(/\.cjs$/,'');
+for(const f of GATE.concat(TOOLS.map(t=>'../tools/'+t)).concat(withE2e?E2E:[])){
+  const label=path.basename(f).replace(/\.(cjs|js)$/,'');
   try{
     const out=execFileSync(process.execPath,[path.join(__dirname,f)],
       {encoding:'utf8',timeout:300000,stdio:['ignore','pipe','pipe']});

@@ -1,6 +1,8 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
+/* 版はmanifestから引く。ここを手で書くとv1.4.0のまま9版ぶん古い表示が残った。 */
+$('extVersion').textContent=(/Edg\//.test(navigator.userAgent)?'Edge':'Chrome')+' v'+chrome.runtime.getManifest().version;
 DuoTextComposer($('textComposer'),$('openText'));
 function conferenceState(s){$('conferenceMic').classList.toggle('active',!!s?.active);$('conferenceMic').setAttribute('aria-pressed',String(!!s?.active));$('conferenceStatus').textContent=s?.pending?'接続待機中':s?.error||'';}
 $('conferenceMic').addEventListener('click',async()=>{$('conferenceMic').disabled=true;try{conferenceState(await send({type:'DUO_CONFERENCE_TOGGLE'}));}catch(error){$('conferenceStatus').textContent=error.message;}finally{$('conferenceMic').disabled=false;}});

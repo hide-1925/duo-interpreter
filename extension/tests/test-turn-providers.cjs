@@ -135,7 +135,7 @@ test('an unknown turn state is refused, and an absent one becomes UNKNOWN',()=>{
 test('the request carries ZDR and no-training headers on the direct path',async()=>{
   reset({turnDecisionProvider:'jev-direct'});
   const s=stateOf();fetchImpl=reply(wire(s));
-  await P()['jev-direct'].evaluate(s,{});
+  await P().get('jev-direct').evaluate(s,{});
   const h=calls[0].opt.headers;
   assert.equal(h['X-TypeSafe-Zero-Data-Retention'],'true');
   assert.equal(h['X-TypeSafe-No-Training'],'true');
@@ -146,7 +146,7 @@ test('the request carries ZDR and no-training headers on the direct path',async(
 test('the request body matches the documented shape: state, model, questions',async()=>{
   reset({turnDecisionProvider:'jev-direct',turnDecisionModel:'jev-1.13.0'});
   const s=stateOf();fetchImpl=reply(wire(s));
-  await P()['jev-direct'].evaluate(s,{});
+  await P().get('jev-direct').evaluate(s,{});
   const body=JSON.parse(calls[0].opt.body);
   assert.deepEqual(Object.keys(body).sort(),['model','questions','state']);
   assert.equal(body.model,'jev-1.13.0');
@@ -158,7 +158,7 @@ test('the request body matches the documented shape: state, model, questions',as
 test('each question carries type, instructions and criteria in the documented form',async()=>{
   reset({turnDecisionProvider:'jev-direct'});
   const s=stateOf();fetchImpl=reply(wire(s));
-  await P()['jev-direct'].evaluate(s,{});
+  await P().get('jev-direct').evaluate(s,{});
   const q=JSON.parse(calls[0].opt.body).questions;
   assert.deepEqual(Object.keys(q).sort(),
     ['boundary_choice','repair_likelihood','safe_to_speak','turn_state']);
@@ -181,7 +181,7 @@ test('each question carries type, instructions and criteria in the documented fo
 test('HOLD and each cut candidate are described with the same structured fields',async()=>{
   reset({turnDecisionProvider:'jev-direct'});
   const s=stateOf();fetchImpl=reply(wire(s));
-  await P()['jev-direct'].evaluate(s,{});
+  await P().get('jev-direct').evaluate(s,{});
   const crit=JSON.parse(calls[0].opt.body).questions.boundary_choice.criteria;
   const hold=crit.HOLD;
   assert.equal(typeof hold,'object','HOLD needs structured criteria, not one sentence');
@@ -216,6 +216,168 @@ test('the structural candidates survive a text full of sentence ends',()=>{
     assert.ok(c.offset>0&&c.offset<=text.length,c.id+' points outside the text');
 });
 
+/* ── 経路レジストリ（拡張性）──────────────────────────────────────────── */
+/* 経路は宣言で足せること。足した経路がUI・診断・引き当ての全部に出ること。 */
+test('every declared route carries the full contract a new vendor must fill in',()=>{
+  reset();
+  const R=P().ROUTES;
+  const ids=Object.keys(R);
+  assert.ok(ids.includes('jev-direct')&&ids.includes('jev-openrouter'),'routes: '+ids.join(','));
+  for(const id of ids){
+    const r=R[id];
+    for(const f of ['label','vendor','semantics','defaultBase','defaultModel','path','keyHint'])
+      assert.equal(typeof r[f],'string',id+' must declare '+f);
+    for(const f of ['headers','body','parse'])
+      assert.equal(typeof r[f],'function',id+' must declare '+f);
+    assert.equal(typeof r.verified,'boolean',id+' must say whether its shape is verified');
+    assert.ok(/^https:\/\//.test(r.defaultBase),id+' defaultBase must be https');
+    assert.ok(r.capabilities&&typeof r.capabilities==='object',id+' needs capabilities');
+    assert.equal(r.capabilities.probabilitySemantics,r.semantics,id+' semantics must agree');
+  }
+});
+test('the route list drives the picker, so a new route needs no UI edit',()=>{
+  reset();
+  const ids=P().list().map(r=>r.id);
+  /* vm と host で Array の realm が違うので deepEqual は使えない。値で比べる。 */
+  assert.equal(ids.slice(0,2).join(','),'rules,local','local-only routes come first');
+  for(const id of Object.keys(P().ROUTES)) assert.ok(ids.includes(id),id+' missing from the picker list');
+  for(const r of P().list()){
+    assert.equal(typeof r.label,'string');
+    assert.equal(typeof r.verified,'boolean');
+    assert.equal(typeof r.local,'boolean');
+  }
+});
+test('a TurnProviders method name cannot be used as a provider',()=>{
+  reset();
+  /* 以前は TurnProviders[id] で直接引いていたので normalize が経路になれた。 */
+  assert.equal(P().get('normalize'),null);
+  assert.equal(P().get('questions'),null);
+  assert.equal(P().get('ROUTES'),null);
+  assert.equal(P().get(''),null);
+  assert.ok(P().get('local'),'local must still resolve');
+  assert.ok(P().get('jev-direct'),'declared routes must resolve');
+});
+
+/* ── vendor 別キー ────────────────────────────────────────────────────── */
+test('keys are stored per vendor, so switching routes does not lose the other key',()=>{
+  reset({turnDecisionApiKey:'',turnDecisionKeys:''});
+  ctx.CFG.turnDecisionKeys=JSON.stringify({typesafe:'ts-key',openrouter:'or-key'});
+  assert.equal(P().keyFor('typesafe'),'ts-key');
+  assert.equal(P().keyFor('openrouter'),'or-key');
+  assert.equal(P().keyFor('openai'),'','an unknown vendor has no key yet');
+});
+test('the legacy single key still works as a fallback',()=>{
+  reset({turnDecisionApiKey:'old-single',turnDecisionKeys:''});
+  assert.equal(P().keyFor('typesafe'),'old-single');
+  ctx.CFG.turnDecisionKeys=JSON.stringify({typesafe:'new-per-vendor'});
+  assert.equal(P().keyFor('typesafe'),'new-per-vendor','the vendor map wins over the legacy field');
+});
+test('a corrupt key map does not throw, it just reads as unset',()=>{
+  reset({turnDecisionApiKey:'',turnDecisionKeys:'{not json'});
+  assert.equal(P().keyFor('typesafe'),'');
+});
+
+/* ── OpenRouter 経路 ──────────────────────────────────────────────────── */
+test('the OpenRouter route posts a chat-completions envelope with a strict schema',async()=>{
+  reset({turnDecisionProvider:'jev-openrouter',turnDecisionApiKey:'',turnDecisionBaseUrl:'',
+    turnDecisionModel:'typesafe/jev-1.13.0',
+    turnDecisionKeys:JSON.stringify({openrouter:'or-key'})});
+  const s=stateOf();
+  fetchImpl=reply({id:'x',model:'typesafe/jev-1.13.0',
+    usage:{prompt_tokens:120,completion_tokens:0},
+    choices:[{message:{content:JSON.stringify(wire(s))}}]});
+  const n=await P().get('jev-openrouter').evaluate(s,{});
+  assert.ok(n,'the envelope must normalize');
+  assert.equal(calls[0].url,'https://openrouter.ai/api/v1/chat/completions');
+  assert.equal(calls[0].opt.headers.Authorization,'Bearer or-key','it must use the OpenRouter key');
+  assert.ok(!calls[0].opt.headers['X-TypeSafe-No-Training'],'TypeSafe headers do not belong on this route');
+  const body=JSON.parse(calls[0].opt.body);
+  assert.equal(body.model,'typesafe/jev-1.13.0');
+  assert.equal(body.temperature,0,'a decision must not be sampled');
+  assert.equal(body.response_format.type,'json_schema');
+  assert.equal(body.response_format.json_schema.strict,true);
+  assert.equal(body.messages.length,2);
+  const sent=JSON.parse(body.messages[1].content);
+  assert.ok(sent.state&&sent.questions,'state and questions ride in the user message');
+  assert.equal(sent.state.currentText,s.currentText,'the text must not be altered');
+  assert.equal(n.usage.inputTokens,120,'prompt_tokens maps onto the contract name');
+});
+test('the OpenRouter schema offers exactly the candidates the state proposed',async()=>{
+  reset({turnDecisionProvider:'jev-openrouter',turnDecisionApiKey:'',
+    turnDecisionModel:'typesafe/jev-1.13.0',turnDecisionKeys:JSON.stringify({openrouter:'k'})});
+  const s=stateOf();
+  fetchImpl=reply({choices:[{message:{content:JSON.stringify(wire(s))}}]});
+  await P().get('jev-openrouter').evaluate(s,{});
+  const schema=JSON.parse(calls[0].opt.body).response_format.json_schema.schema;
+  const enumv=schema.properties.answers.properties.boundary_choice.properties.choice.enum;
+  const expected=['HOLD'].concat((s.candidateBoundaries||[]).map(c=>c.id));
+  assert.equal(enumv.join(','),expected.join(','),'the model must not be able to name an offset we did not offer');
+  const ts=schema.properties.answers.properties.turn_state.properties.choice.enum;
+  assert.equal(ts.join(','),'COMPLETE,CONTINUING,SELF_REPAIR,UNKNOWN');
+});
+test('a chat reply that is not JSON, or has no message, is refused',async()=>{
+  reset({turnDecisionProvider:'jev-openrouter',turnDecisionApiKey:'',
+    turnDecisionModel:'typesafe/jev-1.13.0',turnDecisionKeys:JSON.stringify({openrouter:'k'})});
+  const s=stateOf();
+  fetchImpl=reply({choices:[{message:{content:'申し訳ありませんが'}}]});
+  assert.equal(await P().get('jev-openrouter').evaluate(s,{}),null);
+  fetchImpl=reply({choices:[]});
+  assert.equal(await P().get('jev-openrouter').evaluate(s,{}),null);
+});
+test('the OpenRouter route refuses a payload past its smaller context',async()=>{
+  reset({turnDecisionProvider:'jev-openrouter',turnDecisionApiKey:'',
+    turnDecisionModel:'typesafe/jev-1.13.0',turnDecisionKeys:JSON.stringify({openrouter:'k'})});
+  const s=stateOf();
+  s.recentTurns=[];for(let i=0;i<400;i++)s.recentTurns.push({speakerKey:'s'+i,language:'ja',text:'あ'.repeat(200)});
+  await assert.rejects(()=>P().get('jev-openrouter').evaluate(s,{}),/文脈上限/);
+  assert.equal(calls.length,0,'nothing may be sent once it is over the limit');
+});
+
+/* ── 確率の出どころ ───────────────────────────────────────────────────── */
+test('an uncalibrated route does not get the calibrated thresholds',()=>{
+  reset();
+  const cal=D().thresholds('ja','native_calibrated');
+  const raw=D().thresholds('ja','vendor_reported');
+  assert.equal(cal.uncalibrated,undefined);
+  assert.equal(raw.uncalibrated,true);
+  assert.ok(raw.chosenMin>cal.chosenMin,'commit must be harder on an uncalibrated route');
+  assert.ok(raw.confirm>cal.confirm,'and it must be confirmed more times');
+  assert.equal(raw.holdMax,cal.holdMax,'waiting must not get harder; that would cut more, not less');
+});
+test('the route semantics reaches pick, not just the log',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const i=input(),s=D().stateOf(card(),{},i,D().rules(i),900,Date.now());
+  const cand=s.candidateBoundaries[0];
+  /* 0.75 は校正済みなら ja の 0.80 に届かず、いずれにせよ通らない。
+     0.85 は校正済みなら通り、未校正（0.90）なら通らない。ここが効き目の差。 */
+  /* HOLD は ja の上限 0.10 より下に置く。でないと chosenMin に届く前に
+     HOLD の枝で待ちになり、閾値の差を試せない。 */
+  const hit=(sem,p)=>{const probs={HOLD:0.05};probs[cand.id]=p;
+    return {boundary:{choice:cand.id,confidence:0.9,probabilities:probs},
+      turnState:{choice:'COMPLETE',confidence:0.9,probabilities:{COMPLETE:0.9,CONTINUING:0.1}},
+      safeToSpeak:0.95,repairLikelihood:0.01,probabilitySemantics:sem};};
+  const rule={length:cand.offset,reasons:['semantic-sentence','stable']};
+  assert.ok(D().pick(s,hit('native_calibrated',0.85),rule),'0.85 passes when calibrated');
+  assert.equal(D().pick(s,hit('vendor_reported',0.85),rule),null,'0.85 must not pass uncalibrated');
+});
+test('P(CONTINUING) survives normalization, so the gate that uses it is alive',()=>{
+  reset();
+  const s=stateOf(),id=firstId(s);
+  const raw=wire(s);
+  raw.answers.turn_state.probabilities={COMPLETE:0.3,CONTINUING:0.7};
+  const n=P().fromAnswers(raw,s,{provider:'t',model:'m',semantics:'native_calibrated',
+    latencyMs:1,questionSetHash:'h'});
+  assert.ok(n,'it must normalize');
+  assert.equal(n.turnState.probabilities.CONTINUING,0.7,'pick reads this; dropping it kills the gate');
+});
+test('an out-of-schema turn state probability is refused',()=>{
+  reset();
+  const s=stateOf(),raw=wire(s);
+  raw.answers.turn_state.probabilities={COMPLETE:0.5,NOT_A_STATE:0.5};
+  assert.equal(P().fromAnswers(raw,s,{provider:'t',model:'m',semantics:'native_calibrated',
+    latencyMs:1,questionSetHash:'h'}),null);
+});
+
 test('candidate ids are unique, so the criteria map cannot collide',()=>{
   reset();
   /* 文末が複数ある文章。以前は C_SENTENCE が重複し map で潰れていた。 */
@@ -229,7 +391,7 @@ test('candidate ids are unique, so the criteria map cannot collide',()=>{
 test('a documented answers payload is accepted and mapped onto the contract',async()=>{
   reset({turnDecisionProvider:'jev-direct'});
   const s=stateOf();fetchImpl=reply(wire(s));
-  const n=await P()['jev-direct'].evaluate(s,{});
+  const n=await P().get('jev-direct').evaluate(s,{});
   assert.ok(n,'the documented shape must normalize');
   assert.equal(n.model,'jev-1.13.0','the model comes back from the response');
   assert.equal(n.safeToSpeak,0.95);
@@ -242,34 +404,34 @@ test('an answer whose type does not match its question is refused',async()=>{
   reset({turnDecisionProvider:'jev-direct'});
   const s=stateOf();
   fetchImpl=reply(wire(s,{answers:{safe_to_speak:{type:'choice',choice:'x',probabilities:{},confidence:0.5}}}));
-  assert.equal(await P()['jev-direct'].evaluate(s,{}),null);
+  assert.equal(await P().get('jev-direct').evaluate(s,{}),null);
   fetchImpl=reply({model:'m',answers:{},usage:{}});
-  assert.equal(await P()['jev-direct'].evaluate(s,{}),null);
+  assert.equal(await P().get('jev-direct').evaluate(s,{}),null);
 });
 
 test('active refuses a model alias, so a calibrated version must be pinned',async()=>{
   reset({turnDecisionProvider:'jev-direct',turnDecisionModel:''});
-  await assert.rejects(()=>P()['jev-direct'].evaluate(stateOf(),{}),/固定version/);
+  await assert.rejects(()=>P().get('jev-direct').evaluate(stateOf(),{}),/固定version/);
   reset({turnDecisionProvider:'jev-direct',turnDecisionLangJa:'shadow',turnDecisionModel:''});
   const s=stateOf();fetchImpl=reply(wire(s));
-  const n=await P()['jev-direct'].evaluate(s,{});
+  const n=await P().get('jev-direct').evaluate(s,{});
   assert.ok(n,'shadow may use the latest alias');
   assert.equal(JSON.parse(calls[0].opt.body).model,'jev-latest');
 });
 test('a missing key or a non-https base url is refused before any request',async()=>{
   reset({turnDecisionProvider:'jev-direct',turnDecisionApiKey:'',turnDecisionModel:'jev-1.13.0'});
-  await assert.rejects(()=>P()['jev-direct'].evaluate(stateOf(),{}),/turnDecisionApiKey/);
+  await assert.rejects(()=>P().get('jev-direct').evaluate(stateOf(),{}),/API キーが未設定/);
   reset({turnDecisionProvider:'jev-direct',turnDecisionBaseUrl:'http://insecure.example',turnDecisionModel:'jev-1.13.0'});
   fetchImpl=reply({});
-  await assert.rejects(()=>P()['jev-direct'].evaluate(stateOf(),{}),/HTTPS/);
+  await assert.rejects(()=>P().get('jev-direct').evaluate(stateOf(),{}),/HTTPS/);
   assert.equal(calls.length,0);
 });
 test('a huge or non-JSON body is refused',async()=>{
   reset({turnDecisionProvider:'jev-direct',turnDecisionModel:'jev-1.13.0'});
   fetchImpl=reply('x'.repeat(200001));
-  await assert.rejects(()=>P()['jev-direct'].evaluate(stateOf(),{}),/大きすぎ/);
+  await assert.rejects(()=>P().get('jev-direct').evaluate(stateOf(),{}),/大きすぎ/);
   fetchImpl=reply('<html>error</html>');
-  await assert.rejects(()=>P()['jev-direct'].evaluate(stateOf(),{}),/JSON/);
+  await assert.rejects(()=>P().get('jev-direct').evaluate(stateOf(),{}),/JSON/);
 });
 
 /* ── local ────────────────────────────────────────────────────────────── */
@@ -313,7 +475,7 @@ test('local uses the calibrated threshold, not a hardcoded 0.5',async()=>{
 });
 test('local is declared local so it is exempt from transport guards',()=>{
   assert.equal(P().local.capabilities().local,true);
-  assert.equal(P()['jev-direct'].capabilities().local,false);
+  assert.equal(P().get('jev-direct').capabilities().local,false);
 });
 
 /* ── 送る数値はすべて説明されていること ──────────────────────────────── */

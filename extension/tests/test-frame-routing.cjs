@@ -13,7 +13,23 @@ const probe=(frameId,count,relay=true)=>({frameId,documentId:'doc-'+frameId,resu
  const report=c.conferencePublic();assert(report.diagnostics.some(d=>d.event==='frame-discovery'&&d.frames.length===2));tests.push('Diagnostic output retains per-frame discovery counts');
  await c.conferenceStop('test');assert(sent.slice(-2).some(s=>s[2].documentId==='doc-7'));tests.push('Disconnect restores the selected child document');
  const ambiguous=env([probe(0,1),probe(7,1)]);await assert.rejects(ambiguous.c.conferenceToggle(popup),/複数/);assert.equal(ambiguous.sent.length,0);tests.push('Multiple eligible frames are not silently selected');
- const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json')));assert.equal(manifest.version,'1.4.9');assert.deepEqual(manifest.content_scripts[0].js.slice(0,2),['conference-adapters/mic-provenance.js','conference-adapters/teams.js']);assert(manifest.content_scripts.every(s=>s.all_frames));tests.push('Package installs provenance before adapter in matched Teams frames');
+ const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json')));assert.equal(manifest.version,'1.4.10');
+ /* popup は service-worker が名乗る版を manifest と突き合わせ、合わなければ全機能を止める。
+    これは「新しいZIPを古いフォルダへ上書きした」を検出するための意図的な二重管理なので、
+    片方だけ上げると popup が開かなくなる。v1.4.9 で実際にそれをやった。 */
+ const worker=fs.readFileSync(path.join(root,'service-worker.js'),'utf8');
+ const declared=/workerVersion:'([^']+)'/.exec(worker);
+ assert(declared,'service-worker.js must declare workerVersion for the popup mixing check');
+ assert.equal(declared[1],manifest.version,'service-worker.js workerVersion ('+declared[1]+') must match manifest.json ('+manifest.version+'), or the popup refuses to open');
+ tests.push('service-worker declares the same version as the manifest, so the popup opens');
+ /* 表示用の版はmanifestから引く。手書きするとv1.4.0のように何版も古いまま残る。 */
+ const popupHtml=fs.readFileSync(path.join(root,'popup.html'),'utf8');
+ assert(!/v\d+\.\d+\.\d+/.test(popupHtml),'popup.html must not hardcode a version; popup.js fills it from the manifest');
+ assert(/id="extVersion"/.test(popupHtml),'popup.html needs the extVersion slot');
+ const popupJs=fs.readFileSync(path.join(root,'popup.js'),'utf8');
+ assert(/extVersion[\s\S]{0,120}getManifest\(\)\.version/.test(popupJs),'popup.js must fill extVersion from the manifest');
+ tests.push('the popup shows the manifest version instead of a hardcoded one');
+assert.deepEqual(manifest.content_scripts[0].js.slice(0,2),['conference-adapters/mic-provenance.js','conference-adapters/teams.js']);assert(manifest.content_scripts.every(s=>s.all_frames));tests.push('Package installs provenance before adapter in matched Teams frames');
  // Execute the real popup export callback and inspect its generated Blob.
  const callbacks={},nodes=new Map();let blob;
  function node(id){if(!nodes.has(id))nodes.set(id,{addEventListener:(type,fn)=>{callbacks[id+':'+type]=fn;},classList:{toggle(){}},setAttribute(){},click(){},remove(){},value:'',textContent:''});return nodes.get(id);}

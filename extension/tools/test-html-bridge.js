@@ -159,7 +159,7 @@ const row=(id,text='原文',interim=false)=>({id,srcText:text,dstText:'訳文',s
   const calls=h.calls.filter(c=>c[0]==='inject'&&c[1]?.func?.name==='commandHtmlCaptionWindow');
   assert(calls.some(c=>c[1].target.tabId===1&&c[1].world==='MAIN'&&c[1].args[1]==='open'));
   assert(!calls.some(c=>c[1].target.tabId===2));
-  const status=await h.send({type:'DUO_GET_STATE'});assert.equal(status.workerVersion,'1.4.8');assert(status.overlay);assert(!('captionWindow' in status));
+  const status=await h.send({type:'DUO_GET_STATE'});/* 版を直書きすると、manifest だけ上げたときに素通りする。v1.4.9 で実際に素通りした。 */assert.equal(status.workerVersion,JSON.parse(read('manifest.json')).version);assert(status.overlay);assert(!('captionWindow' in status));
   assert(!(await h.send({type:'DUO_OPEN_HTML_CAPTION_WINDOW'},{tab:{id:999},frameId:0})).ok);
   assert((await h.send({type:'DUO_OPEN_HTML_CAPTION_WINDOW'},{tab:{id:2},frameId:0})).ok);
  });
