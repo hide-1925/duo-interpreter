@@ -1,0 +1,85 @@
+{
+  "model": "jev-latest",
+  "state": {
+    "schemaVersion": "duo.turn-state.v1",
+    "sessionId": "probe",
+    "utteranceId": "probe",
+    "revision": 0,
+    "speakerKey": "probe",
+    "sourceLanguage": "en",
+    "currentText": "This is a connectivity check.",
+    "stablePrefixChars": 28,
+    "lastDeltaMs": 400,
+    "silenceMs": 600,
+    "sttFinal": true,
+    "speechEvent": "stopped",
+    "candidateBoundaries": [
+      {
+        "id": "C_FULL_28",
+        "kind": "C_FULL",
+        "offset": 28,
+        "left": "connectivity check.",
+        "right": ""
+      }
+    ],
+    "prosody": null,
+    "recentTurns": [],
+    "tts": {
+      "active": false,
+      "queueDebtMs": 0,
+      "pendingFirstAudio": false,
+      "overlapMode": "auto"
+    },
+    "evidence": {
+      "meterAvailable": true,
+      "partialAvailable": false,
+      "speakerReliable": false,
+      "prosodyAvailable": false
+    }
+  },
+  "questions": {
+    "boundary_choice": {
+      "type": "choice",
+      "instructions": "A live interpreter is translating this speaker as they talk.\n`currentText` is the tail of what they have said that is not translated yet, in their own language.\n`stablePrefixChars` is how many leading characters of it the recogniser now treats as settled.\n`silenceMs` is the acoustic silence since they last made a sound; null means the microphone level is unknown, which is not the same as zero.\n`lastDeltaMs` is how long since the recogniser last added text.\n`sttFinal` is true when the recogniser has closed the utterance.\n`prosody` is absent when the acoustics are unavailable. When present:\n`prosody.terminalPitchSlope` is negative when their pitch falls at the end, which usually means they finished, and positive when it rises.\n`prosody.terminalEnergyDrop` in dB is larger when their voice tails off.\n`prosody.internalPauseRatio` is larger when they paused a lot inside what they just said.\n`prosody.maxInternalPauseMs` is their longest pause inside it.\n`prosody.tempoVariability` is larger when their pace is uneven, which often means hesitation.\n`prosody.quality` is how trustworthy these acoustic numbers are; treat them as weak evidence when it is low.\n`recentTurns` holds a little earlier conversation when it is available.\nPick the one boundary that is safe to translate now, or HOLD. Safe means the text before the boundary is a complete unit of meaning and the speaker is not mid-clause, mid-repair, or trailing into a connective.",
+      "criteria": {
+        "HOLD": {
+          "what": "Do not cut anywhere yet. More is coming from this speaker.",
+          "not_for": "Not for a tail that is merely short, and not because `silenceMs` is null. Judge whether the tail itself is finished, not how much text there is.",
+          "examples": "A trailing connective or conjunction; a dangling particle or preposition; a filler such as \"uh\" or \"ええと\"; the first half of a self-repair."
+        },
+        "C_FULL_28": {
+          "what": "Cut between `before` and `after`. Everything up to the cut is translated and spoken now; the rest waits.",
+          "not_for": "Not when `before` stops mid-clause, and not when `after` carries on the same clause as `before`.",
+          "before": "connectivity check.",
+          "after": ""
+        }
+      }
+    },
+    "turn_state": {
+      "type": "choice",
+      "instructions": "Classify whether the speaker has finished this utterance. Judge the tail of `currentText`, using `silenceMs`, `lastDeltaMs`, `sttFinal` and `prosody` as described in the other questions.",
+      "criteria": {
+        "COMPLETE": "Finished. Another person may take the floor.",
+        "CONTINUING": "More is coming. The speaker is mid-sentence or mid-clause.",
+        "SELF_REPAIR": "Restating. The speaker is correcting what they just said.",
+        "UNKNOWN": "Cannot be told from what is available."
+      }
+    },
+    "safe_to_speak": {
+      "type": "noul",
+      "instructions": "Would starting the translated audio right now avoid cutting the speaker off? `tts.active` is true when translated audio is already playing, and `tts.queueDebtMs` is how far behind the queue is. `silenceMs` is null when the microphone level is unknown.",
+      "criteria": {
+        "true": "Starting now would not interrupt; the speaker has yielded the floor.",
+        "false": "Starting now would talk over the speaker."
+      }
+    },
+    "repair_likelihood": {
+      "type": "noul",
+      "instructions": "Is the speaker about to restate what they just said? Look at the tail of `currentText` for fillers and false starts, and at `prosody.tempoVariability` for an uneven pace.",
+      "criteria": {
+        "true": "A self-repair or restatement is likely to follow immediately.",
+        "false": "No restatement is expected."
+      }
+    }
+  }
+}

@@ -2311,6 +2311,9 @@ function turnDecisionStatus(){
   var parts=['判断 '+mode,'経路 '+(CFG.turnDecisionProvider||'rules')];
   if(mode!=='off')parts.push('en='+(CFG.turnDecisionLangEn||'shadow')+' / ja='+(CFG.turnDecisionLangJa||'shadow'));
   parts.push('trace '+(String(CFG.turnTraceMode||'off')==='record'?TurnTrace.rows.length+'行'+(TurnTrace.dropped?'（上限超過あり）':''):'off'));
+  var st=TurnDecision.stats||{};
+  if(mode!=='off')parts.push('往復 送信'+(st.requested||0)+'/応答'+(st.answered||0)
+    +'/解析失敗'+(st.parseFailed||0)+'/到達不能'+(st.unreachable||0)+'/適用'+(st.applied||0));
   parts.push('確定 rules '+(SEG.committedBySource.rules||0)+' / provider '+(SEG.committedBySource.provider||0));
   parts.push('確定後訂正 rules '+(SEG.correctedBySource.rules||0)+' / provider '+(SEG.correctedBySource.provider||0));
   el.textContent=parts.join(' ／ ');
@@ -2329,8 +2332,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.1';
-var APP_BUILD = '20260922-v1491-route-reachability';
+var APP_VERSION = 'v1.49.2';
+var APP_BUILD = '20260923-v1492-mode-ceiling';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -12593,6 +12596,14 @@ var DIAG_ROWS = [
     return '確定 rules '+(c.rules||0)+' / provider '+(c.provider||0)
       +'　確定後訂正 rules '+(x.rules||0)+' / provider '+(x.provider||0);
   }},
+  /* 「呼べたか」ではなく「使える答えが返って適用できたか」。送信数だけでは
+     解析で落ちたのか古くて捨てたのか分からず、実機の切り分けができない。 */
+  {section:"settings",order:29.4,label:'判断層の往復',value:function(ctx){
+    var s=TurnDecision.stats||{};
+    return '送信 '+(s.requested||0)+' / 正常応答 '+(s.answered||0)
+      +' / 解析失敗 '+(s.parseFailed||0)+' / 古くて破棄 '+(s.stale||0)
+      +' / 到達不能 '+(s.unreachable||0)+' / 適用 '+(s.applied||0);
+  }},
   {section:"settings",order:30,label:'逐次TTS待ち音声',value:function(ctx){ return segDebt().toFixed(1)+'秒（文字数による推定）'; }},
   {section:"settings",order:31,label:'逐次計測の定義',value:function(ctx){ return 'L1=最初の認識文字から、L2=commitからの代理値。音響的な意味単位終了時刻は未計測。'; }},
   {section:"settings",order:32,label:'TTSストリーミング',value:function(ctx){ return ctx.rtNativeAudio ? '(外部TTS設定は未使用)' : ttsStreamCapability(CFG.ttsMode).text; }},
@@ -13209,10 +13220,23 @@ var TurnProviders={
       headers:headers,body:JSON.stringify(route.body(state,model))
     }).then(function(r){
       var ms=Date.now()-t0;
-      if(r.ok)return {ok:true,ms:ms,status:r.status};
-      return r.text().then(function(txt){
+      if(!r.ok)return r.text().then(function(txt){
         return {ok:false,ms:ms,status:r.status,detail:String(txt||'').slice(0,160)};
       },function(){return {ok:false,ms:ms,status:r.status};});
+      /* 200 が返っただけでは使えるとは言えない。本番と同じ parse と正規化を
+         通し、契約に載る答えが取り出せたときだけ ok にする。ここを緩めると
+         「疎通は通ったのに会議では何も起きない」が再発する。 */
+      return r.text().then(function(txt){
+        var j;try{j=JSON.parse(txt);}catch(err){
+          return {ok:false,ms:ms,status:r.status,parsed:false,detail:'JSONではない応答'};}
+        var norm=null;
+        try{norm=route.parse(j,state,{provider:id,model:model,semantics:route.semantics,
+          latencyMs:ms,questionSetHash:TurnDecision.questionSetHash()});}catch(err){norm=null;}
+        if(!norm)return {ok:false,ms:ms,status:r.status,parsed:false,
+          detail:'契約の形に解析できません: '+String(txt||'').slice(0,120)};
+        return {ok:true,ms:ms,status:r.status,parsed:true,
+          choice:norm.boundary&&norm.boundary.choice,model:norm.model};
+      });
     },function(err){
       return {ok:false,unreachable:true,ms:Date.now()-t0,status:0,
         detail:String((err&&err.message)||err).slice(0,80)};
@@ -13339,12 +13363,21 @@ var TurnDecision={
 
   /* 言語別mode。de/it/zh/mixedはsegSemanticTailのcontinuing判定が既にあるので
      remote判断の対象にせず、Rules固定にする。 */
+  /* 全体モードは「上限」であって、単なる on/off ではない。以前は言語別の設定が
+     全体を飛び越えられた。全体を shadow にしても、日本語を active にしていれば
+     日本語だけ動作へ反映されてしまう。親のつまみを絞ったのに子が効き続ける形で、
+     「shadow なら動作は変わらない」という前提が崩れる。小さいほうを採る。 */
+  RANK:{off:0,shadow:1,assist:2,active:3},
   modeFor:function(lang){
-    if(String(CFG.turnDecisionMode||'off')==='off')return 'off';
-    var l=String(lang||'').split('-')[0];
-    if(l==='en')return String(CFG.turnDecisionLangEn||'shadow');
-    if(l==='ja')return String(CFG.turnDecisionLangJa||'shadow');
-    return 'off';
+    var g=String(CFG.turnDecisionMode||'off');
+    if(g==='off')return 'off';
+    var l=String(lang||'').split('-')[0],per='off';
+    if(l==='en')per=String(CFG.turnDecisionLangEn||'shadow');
+    else if(l==='ja')per=String(CFG.turnDecisionLangJa||'shadow');
+    else return 'off';
+    var rg=this.RANK[g],rp=this.RANK[per];
+    if(rg===undefined||rp===undefined)return 'off';
+    return rp<=rg?per:g;
   },
   observes:function(lang){return this.modeFor(lang)!=='off';},
   applies:function(lang){var m=this.modeFor(lang);return m==='assist'||m==='active';},
@@ -13493,6 +13526,11 @@ var TurnDecision={
     this._lastSend[state.speakerKey]={bucket:b,at:now};
     return false;
   },
+  /* 「Jevを呼べたか」ではなく「使える答えが返って適用できたか」を数える。
+     送信数だけ見ても、解析で落ちているのか古くて捨てたのか判別できない。 */
+  stats:{requested:0,answered:0,parseFailed:0,stale:0,applied:0,unreachable:0},
+  bump:function(k){this.stats[k]=(this.stats[k]||0)+1;},
+
   key:function(state){
     return [state.sessionId,state.speakerKey,state.utteranceId,state.revision,TURN_STATE_SCHEMA,
       String(CFG.turnDecisionProvider||'rules'),String(CFG.turnDecisionModel||'')].join('|');
@@ -13532,17 +13570,18 @@ var TurnDecision={
       speakerKey:state.speakerKey,revision:state.revision,
       candidates:(state.candidateBoundaries||[]).length,textChars:state.currentText.length,
       questionSetHash:this.questionSetHash()});
+    this.bump('requested');
     var done=function(){clearTimeout(timer);if(self.inflight[state.speakerKey]===rec)delete self.inflight[state.speakerKey];};
     Promise.resolve(p.evaluate(state,{signal:ctrl&&ctrl.signal,deadlineMs:timeoutMs}))
       .then(function(norm){
         done();
-        if(!norm){self.circuitFail(id,lang,'schema');
+        if(!norm){self.circuitFail(id,lang,'schema');self.bump('parseFailed');
           dlog('segment','turn-decision-fallback',{reason:'schema',ruleAction:'rules',elapsedMs:Date.now()-rec.at});return;}
         self.circuitOk(id,lang);
         /* 停止・revision変更・speaker変更後の応答は適用しない。 */
-        if(norm.sessionId!=='s'+sessionGen){
+        if(norm.sessionId!=='s'+sessionGen){self.bump('stale');
           dlog('segment','turn-decision-stale',{requestRevision:norm.revision,currentRevision:state.revision,reason:'session'});return;}
-        self.cache[self.key(state)]=norm;
+        self.bump('answered');self.cache[self.key(state)]=norm;
         dlog('segment','turn-decision-result',{latency:norm.latencyMs,choice:norm.boundary.choice,
           probabilities:norm.boundary.probabilities,confidence:norm.boundary.confidence,
           safeToSpeak:norm.safeToSpeak,modelVersion:norm.model,
@@ -13552,6 +13591,7 @@ var TurnDecision={
         var status=err&&err.status,reason=status?('http-'+status):String((err&&err.message)||err).slice(0,80);
         /* 再試行しない status は設定か実装の誤り。自動再試行せず判断層を止める。
            429／529／5xx は会話内では待たず Rules へ落ち、circuit breaker が扱う。 */
+        if(err&&err.unreachable)self.bump('unreachable');
         if(err&&err.unreachable&&!self._toldUnreachable){
           self._toldUnreachable=true;
           toast('判断層へ到達できません。<br>ブラウザから直接この API を呼べない可能性があります'
@@ -13615,8 +13655,9 @@ var TurnDecision={
     var pHold=num(probs.HOLD);
 
     /* HOLD を選んだ、または HOLD の確率が上限を超えるなら待つ。 */
-    if(b.choice==='HOLD'||(pHold!==null&&pHold>th.holdMax))
-      return {length:0,reasons:[],waiting:'provider-hold',source:'provider'};
+    if(b.choice==='HOLD'||(pHold!==null&&pHold>th.holdMax)){
+      this.bump('applied');
+      return {length:0,reasons:[],waiting:'provider-hold',source:'provider'};}
 
     var list=state.candidateBoundaries||[],cand=null;
     for(i=0;i<list.length;i++)if(list[i].id===b.choice)cand=list[i];
@@ -13649,6 +13690,7 @@ var TurnDecision={
     if(!agrees&&!this.confirmed(state,cand.offset,th.confirm))
       return {length:0,reasons:[],waiting:'provider-confirming',source:'provider'};
 
+    this.bump('applied');
     return {length:cand.offset,reasons:['provider-'+cand.kind,'stable'],source:'provider'};
   },
 
@@ -13668,15 +13710,26 @@ var TurnDecision={
 
   /* Floor Gate の座席。Phase 3で判断を入れる。判断層がoffのあいだはnullを返し、
      segPumpは既存のoverlap ruleだけで進む。INV-09の上限だけ先に実装しておく。 */
+  /* 保持する理由が生じたときだけ時計を回す。以前は assist/active であれば
+     理由の有無に関わらず時計を回し、3秒を超えた job に expiry を適用していた。
+     読み上げ待ちは実測で20〜40秒に達するので、expiry=drop のままでは
+     「フロアで保持した覚えのない音声」を理由なく捨てる。保持していないなら
+     期限も無い。 */
   floor:function(job,silence,now){
     var e=job&&job.card;
     if(!e||!this.applies(e.srcLang)){if(job)job.floorSince=0;return null;}
+    var why=this.floorHold(job,silence,now);
+    if(!why){job.floorSince=0;return null;}
     if(!job.floorSince)job.floorSince=now;
     var waited=now-job.floorSince;
     if(waited>=Number(CFG.turnFloorMaxWaitMs||3000))
       return {action:String(CFG.turnFloorExpiry||'speak')==='drop'?'drop':'speak',reason:'floor-max-wait',waitMs:waited};
-    return null;
+    return {action:'hold',reason:why,waitMs:waited};
   },
+  /* 話者フロアの判定そのもの。Phase 3 は話者帰属の実測が前提で未実装なので、
+     保持する条件をまだ持たない。ここが null を返す間、Floor Gate は無効で、
+     読み上げ開始は既存の overlap ルールだけで決まる。 */
+  floorHold:function(){return null;},
 
   reset:function(why){this._toldUnreachable=false;
     var self=this;

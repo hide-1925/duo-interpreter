@@ -110,7 +110,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'DUO_CONFERENCE_SIGNAL':return conferenceQueue(()=>conferenceSignal(message.data,sender));
       case 'DUO_CONFERENCE_LEASE':return conferenceLease(message,sender);
       case 'DUO_GET_STATE':
-        return { ok: true, workerVersion:'1.4.12', conference:conferencePublic(), state: await getState(), htmlUrl:await getHtmlSourceUrl(), overlay:await getOverlayStatus() };
+        return { ok: true, workerVersion:'1.4.13', conference:conferencePublic(), state: await getState(), htmlUrl:await getHtmlSourceUrl(), overlay:await getOverlayStatus() };
 
       case 'DUO_FULLSCREEN_CHANGED':return syncDuoFullscreen(message,sender);
       case 'DUO_REFRESH_FRAMES': {

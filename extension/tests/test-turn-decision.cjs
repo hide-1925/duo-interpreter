@@ -335,17 +335,56 @@ test('raw transcript stays out of the trace unless explicitly enabled',()=>{
   assert.equal(T().rows[0].data.raw,'秘密の話');
 });
 
+/* ── 全体モードは上限 ──────────────────────────────────────────────────── */
+/* 以前は言語別の設定が全体を飛び越えられた。全体を shadow にしても日本語を
+   active にしていれば日本語だけ動作へ反映され、「shadow なら動作は変わらない」
+   という前提が崩れる。小さいほうを採る。 */
+test('a per-language mode cannot escalate past the global mode',()=>{
+  reset({turnDecisionMode:'shadow',turnDecisionLangJa:'active',turnDecisionLangEn:'assist'});
+  assert.equal(D().modeFor('ja'),'shadow','global shadow must cap a per-language active');
+  assert.equal(D().modeFor('en'),'shadow');
+  assert.equal(D().applies('ja'),false,'and it must not reach behaviour');
+  assert.equal(D().observes('ja'),true,'but it still observes');
+});
+test('a per-language mode can still be lower than the global mode',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'shadow',turnDecisionLangEn:'off'});
+  assert.equal(D().modeFor('ja'),'shadow','the smaller of the two wins');
+  assert.equal(D().modeFor('en'),'off');
+  assert.equal(D().applies('ja'),false);
+});
+test('off at the top still silences everything',()=>{
+  reset({turnDecisionMode:'off',turnDecisionLangJa:'active',turnDecisionLangEn:'active'});
+  assert.equal(D().modeFor('ja'),'off');
+  assert.equal(D().observes('ja'),false);
+});
+
 /* ── INV-09 floor 待ちの上限 ────────────────────────────────────────────── */
-test('INV-09 the floor wait is bounded and the expiry action always fires',()=>{
-  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
-  const now=Date.now(),job={card:card(),segment:{id:'s1'}};
-  assert.equal(D().floor(job,250,now),null);
-  assert.equal(job.floorSince,now);
-  assert.equal(D().floor(job,250,now+2999),null);
-  assert.equal(D().floor(job,250,now+3000).action,'speak');
+/* 以前のこの検査は「保持する理由が無くても時計が回り、3秒で expiry が発火する」
+   ことを正しいとして固定していた。読み上げ待ちは実測で20〜40秒に達するので、
+   expiry=drop のままでは保持した覚えのない音声を理由なく捨てる。 */
+test('the floor arms no timer while it has no reason to hold',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active',turnFloorExpiry:'drop'});
-  const j2={card:card(),segment:{id:'s2'},floorSince:now};
-  assert.equal(D().floor(j2,250,now+5000).action,'drop');
+  const now=Date.now(),job={card:card(),segment:{id:'s1'}};
+  assert.equal(D().floorHold(job,250,now),null,'Phase 3 is not implemented, so nothing holds');
+  assert.equal(D().floor(job,250,now),null);
+  assert.equal(job.floorSince,0,'a timer must not run while nothing is being held');
+  /* 読み上げ待ちが長引いても、保持していない job が捨てられてはならない。 */
+  assert.equal(D().floor(job,250,now+40000),null,'a long TTS queue is not a floor expiry');
+});
+test('INV-09 once the floor really holds, the wait is bounded and the expiry fires',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const now=Date.now(),job={card:card(),segment:{id:'s1'}},real=D().floorHold;
+  D().floorHold=function(){return 'test-speaker-floor';};   /* Phase 3 の代役 */
+  try{
+    assert.equal(D().floor(job,250,now).action,'hold');
+    assert.equal(job.floorSince,now);
+    assert.equal(D().floor(job,250,now+2999).action,'hold');
+    assert.equal(D().floor(job,250,now+3000).action,'speak');
+    reset({turnDecisionMode:'active',turnDecisionLangJa:'active',turnFloorExpiry:'drop'});
+    D().floorHold=function(){return 'test-speaker-floor';};
+    const j2={card:card(),segment:{id:'s2'},floorSince:now};
+    assert.equal(D().floor(j2,250,now+5000).action,'drop');
+  } finally { D().floorHold=real; }
 });
 
 /* ── stale ─────────────────────────────────────────────────────────────── */
