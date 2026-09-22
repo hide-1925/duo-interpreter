@@ -2160,6 +2160,83 @@ function duoRelayList(){
 var duoRouteGates=[];
 function duoRefreshRouteGates(){duoRouteGates=duoRouteGates.filter(function(r){if(Date.now()-r.at>600000){r.gate.disconnect();return false;}r.gate.gain.value=AudioRoutingPolicy.resolve(r.job).conferenceMic?1:0;return true;});}
 function duoSttTiming(e){if(!e)return;var now=Date.now();if(e.srcText&&e.srcText!=='（認識中…）'&&!e.firstPartialAt){e.firstPartialAt=now;dlog('speaker','stt-first-partial',{utteranceId:e.utteranceId,startedAt:e.startedAt,at:now});}if(!e.interim&&!e.sttFinalAt){e.sttFinalAt=now;dlog('speaker','stt-final',{utteranceId:e.utteranceId,startedAt:e.startedAt,endedAt:e.audioEndedAt||e.endedAt,at:now});}}
+/* 判断層の設定UI。extension/app.html と index.html の両方へ同じ markup を置くと
+   3ファイル目の同期先が増えるので、duoNextInstall と同じくJSから注入する。
+   bindSettings() は読み込み時に一度だけ走るため、ここで simple() を呼んで
+   既存の永続化経路へ相乗りする。独自のonchangeは書かない。 */
+function turnDecisionInstall(){
+  var host=$('p2');if(!host)return;
+  var box=document.createElement('details');box.className='adv';box.id='turnDecisionSettings';
+  box.innerHTML='<summary>発話交代の判断層（実験）</summary>'
+    +'<p>既定は OFF です。OFF のあいだは境界判定と読み上げ開始が v1.47.1 と同一に動き、'
+    +'外部への送信も判断用の音響計算も行いません。</p>'
+    +'<label>判断モード <select id="turnDecisionMode">'
+      +'<option value="off">off — 使わない（既定）</option>'
+      +'<option value="shadow">shadow — 記録するが動作へ反映しない</option>'
+      +'<option value="assist">assist — 高確信のときだけ採用</option>'
+      +'<option value="active">active — 主経路にする</option>'
+    +'</select></label>'
+    +'<label>英語 <select id="turnDecisionLangEn">'
+      +'<option value="off">off</option><option value="shadow">shadow</option>'
+      +'<option value="assist">assist</option><option value="active">active</option>'
+    +'</select></label>'
+    +'<label>日本語 <select id="turnDecisionLangJa">'
+      +'<option value="off">off</option><option value="shadow">shadow</option>'
+      +'<option value="assist">assist</option><option value="active">active</option>'
+    +'</select></label>'
+    +'<p>ドイツ語・イタリア語・中国語は既存ルールの接続表現判定を使い、判断層の対象外です。</p>'
+    +'<label class="settings-check switch"><input type="checkbox" id="turnDecisionProsody"> 音響特徴を渡す（ピッチ・エネルギー・間）</label>'
+    +'<label>送る直近ターン数 <input id="turnDecisionContextTurns" type="number" min="0" max="6" step="1"></label>'
+    +'<label>読み上げ開始の待ち上限 ms <input id="turnFloorMaxWaitMs" type="number" min="500" max="10000" step="100"></label>'
+    +'<label>上限に達したら <select id="turnFloorExpiry">'
+      +'<option value="speak">読み上げる</option><option value="drop">字幕だけにする</option>'
+    +'</select></label>'
+    +'<hr><p><b>計測</b>　判断層とは独立に動きます。OFF のままでも記録できます。</p>'
+    +'<label>trace 記録 <select id="turnTraceMode">'
+      +'<option value="off">off（既定）</option><option value="record">record — 記録する</option>'
+    +'</select></label>'
+    +'<label class="settings-check switch"><input type="checkbox" id="turnDecisionRawLog"> 認識した原文も記録する</label>'
+    +'<p>原文の記録は replayer の再現検査に必要ですが、会議の発言が端末内の trace に残ります。'
+    +'外部へは送られません。保管と削除の扱いを決めてから有効にしてください。</p>'
+    +'<button type="button" id="turnTraceExport">trace を書き出す</button> '
+    +'<button type="button" id="turnTraceClear">trace を破棄する</button>'
+    +'<small id="turnDecisionStatus" aria-live="off" data-fold="off"></small>';
+  host.appendChild(box);
+
+  ['turnDecisionMode','turnDecisionLangEn','turnDecisionLangJa','turnDecisionProsody',
+   'turnDecisionContextTurns','turnFloorMaxWaitMs','turnFloorExpiry',
+   'turnTraceMode','turnDecisionRawLog'].forEach(function(prop){
+    var spec=CONFIG_BY_PROP[prop];if(!spec||!$(spec.el))return;
+    if(spec.type==='bool')$(spec.el).checked=!!CFG[prop];else $(spec.el).value=CFG[prop];
+    simple(spec);
+  });
+
+  $('turnTraceExport').onclick=function(){
+    if(!TurnTrace.rows.length){toast('記録された trace がありません。<br>trace 記録を record にして会議を行ってください。');return;}
+    var name='turn-trace-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
+    var blob=new Blob([TurnTrace.export()],{type:'application/json'});
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);},10000);
+    dlog('segment','turn-trace-export',{rows:TurnTrace.rows.length,dropped:TurnTrace.dropped,file:name});
+    toast(TurnTrace.rows.length+'行を書き出しました。<br>node extension/tools/turn-trace-replay.js '+name);
+  };
+  $('turnTraceClear').onclick=function(){
+    var n=TurnTrace.rows.length;TurnTrace.reset();turnDecisionStatus();
+    toast(n?n+'行の trace を破棄しました。':'trace は空です。');
+  };
+  setInterval(turnDecisionStatus,1000);turnDecisionStatus();
+}
+/* 現在の状態を1行で出す。OFFで沈黙していることを目で確かめられるようにする。 */
+function turnDecisionStatus(){
+  var el=$('turnDecisionStatus');if(!el)return;
+  var mode=CFG.turnDecisionMode||'off';
+  var parts=['判断 '+mode];
+  if(mode!=='off')parts.push('en='+(CFG.turnDecisionLangEn||'shadow')+' / ja='+(CFG.turnDecisionLangJa||'shadow'));
+  parts.push('trace '+(String(CFG.turnTraceMode||'off')==='record'?TurnTrace.rows.length+'行'+(TurnTrace.dropped?'（上限超過あり）':''):'off'));
+  parts.push('確定 rules '+(SEG.committedBySource.rules||0)+' / provider '+(SEG.committedBySource.provider||0));
+  parts.push('確定後訂正 rules '+(SEG.correctedBySource.rules||0)+' / provider '+(SEG.correctedBySource.provider||0));
+  el.textContent=parts.join(' ／ ');
+}
 function duoNextInstall(){
   var descriptions=['対面会議','ブラウザから音声取り込み','Web会議（複数話者）','ショップツアーやプレゼン時'];
   Array.from($('duoPresetMenu').children).forEach(function(b,i){var desc=document.createElement('small');desc.className='preset-description';desc.textContent=descriptions[i];b.appendChild(desc);b.setAttribute('aria-description',descriptions[i]);});
@@ -2374,22 +2451,22 @@ var CONFIG_SCHEMA = [
   /* 判断層。turnDecisionMode=off が既定で、そのときv1.47.1と同一の挙動になる。
      言語別の上書きは en/ja だけで、他言語はRulesProviderのcontinuing判定に任せる。
      判断用キーは翻訳キーから流用せず、設定埋込みHTMLにも含めない。 */
-  { prop:"turnDecisionMode", key:'di.tdMode', embed:'turnDecisionMode', def:'off', portable:true },
+  { prop:"turnDecisionMode", key:'di.tdMode', embed:'turnDecisionMode', def:'off', portable:true, el:"turnDecisionMode" },
   { prop:"turnDecisionProvider", key:'di.tdProv', embed:'turnDecisionProvider', def:'rules', portable:true },
   { prop:"turnDecisionModel", key:'di.tdModel', embed:'turnDecisionModel', def:'', portable:true },
   { prop:"turnDecisionBaseUrl", key:'di.tdBase', embed:'turnDecisionBaseUrl', def:'', portable:true },
   { prop:"turnDecisionApiKey", key:'di.tdKey.local', def:'', localOnly:true, portable:false, note:"判断層のAPIキー。翻訳用キーと分離し書き出さない" },
   { prop:"turnDecisionTimeoutMs", key:'di.tdTimeout', embed:'turnDecisionTimeoutMs', def:'900', portable:true },
   { prop:"turnDecisionSoftMs", key:'di.tdSoft', embed:'turnDecisionSoftMs', def:'350', portable:true },
-  { prop:"turnDecisionLangEn", key:'di.tdEn', embed:'turnDecisionLangEn', def:'shadow', portable:true },
-  { prop:"turnDecisionLangJa", key:'di.tdJa', embed:'turnDecisionLangJa', def:'shadow', portable:true },
-  { prop:"turnDecisionContextTurns", key:'di.tdCtx', embed:'turnDecisionContextTurns', def:'0', portable:true },
-  { prop:"turnDecisionProsody", key:'di.tdProsody', embed:'turnDecisionProsody', def:'1', type:'bool', portable:true },
-  { prop:"turnFloorMaxWaitMs", key:'di.tdFloorMax', embed:'turnFloorMaxWaitMs', def:'3000', portable:true },
-  { prop:"turnFloorExpiry", key:'di.tdFloorExp', embed:'turnFloorExpiry', def:'speak', portable:true },
-  { prop:"turnDecisionRawLog", key:'di.tdRawLog', embed:'turnDecisionRawLog', def:'0', type:'bool', portable:true },
+  { prop:"turnDecisionLangEn", key:'di.tdEn', embed:'turnDecisionLangEn', def:'shadow', portable:true, el:"turnDecisionLangEn" },
+  { prop:"turnDecisionLangJa", key:'di.tdJa', embed:'turnDecisionLangJa', def:'shadow', portable:true, el:"turnDecisionLangJa" },
+  { prop:"turnDecisionContextTurns", key:'di.tdCtx', embed:'turnDecisionContextTurns', def:'0', portable:true, el:"turnDecisionContextTurns" },
+  { prop:"turnDecisionProsody", key:'di.tdProsody', embed:'turnDecisionProsody', def:'1', type:'bool', portable:true, el:"turnDecisionProsody" },
+  { prop:"turnFloorMaxWaitMs", key:'di.tdFloorMax', embed:'turnFloorMaxWaitMs', def:'3000', portable:true, el:"turnFloorMaxWaitMs" },
+  { prop:"turnFloorExpiry", key:'di.tdFloorExp', embed:'turnFloorExpiry', def:'speak', portable:true, el:"turnFloorExpiry" },
+  { prop:"turnDecisionRawLog", key:'di.tdRawLog', embed:'turnDecisionRawLog', def:'0', type:'bool', portable:true, el:"turnDecisionRawLog" },
   { prop:"turnInterruptMode", key:'di.tdInterrupt', embed:'turnInterruptMode', def:'preplay', portable:true },
-  { prop:"turnTraceMode", key:'di.tdTrace', embed:'turnTraceMode', def:'off', portable:true },
+  { prop:"turnTraceMode", key:'di.tdTrace', embed:'turnTraceMode', def:'off', portable:true, el:"turnTraceMode" },
   { prop:"ttsMode", key:'di.tts', embed:'ttsMode', def:'off', portable:true, el:"ttsMode" },
   { prop:"ttsWho", key:'di.ttsw', embed:'ttsWho', def:'B2A', portable:true, el:"ttsWho" },
   { prop:"focus", key:'di.focus', embed:'focus', def:'split', portable:true },
@@ -13955,6 +14032,7 @@ iosSetup();
 unlockAudioOnce();
 duoInstallUI();
 duoNextInstall();
+turnDecisionInstall();
 
 /* 音声リストは遅れて読み込まれるので、先に一度読ませておく
    （最初の読み上げで声が選べずに失敗するのを防ぐ） */

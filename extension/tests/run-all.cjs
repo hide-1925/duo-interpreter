@@ -14,7 +14,7 @@ const GATE=['test-turn-decision.cjs','test-file-sync.cjs','test-turn-trace-repla
   'test-input-validation.cjs',
   'test-teams.cjs','test-next.cjs','test-controller.cjs','test-frame-routing.cjs',
   'test-bridge-target.cjs','test-mic-discovery.cjs'];
-const E2E=['test-browser.cjs'];
+const E2E=['test-browser.cjs','test-settings-ui.cjs'];
 
 const withE2e=process.argv.includes('--with-e2e');
 let failed=0,total=0;
