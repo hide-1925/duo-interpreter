@@ -78,10 +78,18 @@
     "v1.49.7": {
       "build": "20260923-v1497-correction-metric",
       "extension": "1.4.18",
-      "commit": null,
+      "commit": "88bec21",
       "indexHtmlSha256": "b46b9a2e9ad19c327f1a6503345175d24dce7bee2f17545db75bea1fb28f3586",
       "extensionAppJsSha256": "057852b59980e9edbfb9fc406ba19bf7d6e97efce0b41ce688a599ce94ef24db",
       "summary": "前後の空白だけの差を訂正として数えていたため、判断層の評価基準である訂正率が0%から13.3%に跳ねていたのを正す"
+    },
+    "v1.49.8": {
+      "build": "20260923-v1498-tail-window-share",
+      "extension": "1.4.19",
+      "commit": null,
+      "indexHtmlSha256": "bdde398ad961cba87dd6ee78069c978e9ed73ffe3a4e0f0501b357f9f2947db6",
+      "extensionAppJsSha256": "266a3a9df851e74fc11543d692b093e024df75d3004de12d03018ea6fb58b3cb",
+      "summary": "v1.49.6 の繰越カード修正で、無音で解放された末尾カードの区間が0秒に潰れていたのを、文字数比で窓の内側に置くようにする"
     }
   }
 }

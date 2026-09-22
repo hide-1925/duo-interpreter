@@ -348,9 +348,23 @@ function duoSpeakerResolve(e,now){
 
    startedAt と対になるのは audioEndedAt（録音の meta から入る組）なので、それを次の
    区間の始まりとして使う。無いときは従来どおりに落とす。 */
-function fourOTailStart(e){
+function fourOTailStart(e,readyChars,tailChars){
   if(!e)return Date.now();
-  return e.audioEndedAt||e.endedAt||e.startedAt||Date.now();
+  var end=e.audioEndedAt||e.endedAt||e.startedAt||Date.now(),start=e.startedAt;
+  var ready=Number(readyChars)||0,tail=Number(tailChars)||0;
+  if(!(start>0)||!(end>start)||!(ready+tail>0))return end;
+  /* 末尾の文字が録音窓の何割を占めるかで、窓の終わりから手前へ戻す。
+
+     v1.49.6 では単純に窓の終わり（audioEndedAt）を使っていたが、末尾カードの音声は
+     その窓の「中」にある。次の録音を取り込めば終わりは進むので問題は出ないが、
+     無音で解放されると終わりが進まず、実測ログ（v1.49.7）の e7 は startedAt と
+     endedAt が同値で区間0秒になっていた。duoSpeakerResolve は end=max(start+1,end)
+     で潰れないようにしているだけなので、帰属は confidence 0.2 の low に落ちる。
+     誤った名前が付く前のバグより害は小さいが、正しくもない。
+
+     文字数比での配分は概算（話速は発話内で変わる）だが、区間が潰れることも、
+     話し続けるほど伸びることもない。 */
+  return Math.max(start,end-Math.round((end-start)*(tail/(ready+tail))));
 }
 function duoSpeakerUpdate(e){
   if(!duoSpeakerEligible(e))return;
@@ -640,8 +654,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.7';
-var APP_BUILD = '20260923-v1497-correction-metric';
+var APP_VERSION = 'v1.49.8';
+var APP_BUILD = '20260923-v1498-tail-window-share';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -8171,7 +8185,7 @@ FourOFileBuffer.prototype.drain=function(){
     if(parts.ready){
       fourOCardText(e,parts.ready,true,'sentence-prefix');fourOFinalize(e,'sentence-prefix',false);
       if(parts.tail){
-        tail=addEntry(q.seat,'',true);tail.startedAt=fourOTailStart(e);tail.audioEndedAt=e.audioEndedAt;tail.srcLang=q.srcLang;tail.dstLang=q.dstLang;
+        tail=addEntry(q.seat,'',true);tail.startedAt=fourOTailStart(e,parts.ready.length,parts.tail.length);tail.audioEndedAt=e.audioEndedAt;tail.srcLang=q.srcLang;tail.dstLang=q.dstLang;
         tail.fourOState={pending:true,reason:'tail',model:this.model,request:q.id};
         if(segEnabled())segInit(tail);fourOPlaceAfter(tail,e);fourOCardText(tail,parts.tail,false,'tail');
       }
