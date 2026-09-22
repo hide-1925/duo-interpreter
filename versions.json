@@ -62,10 +62,18 @@
     "v1.49.5": {
       "build": "20260923-v1495-route-log-dedup",
       "extension": "1.4.16",
-      "commit": null,
+      "commit": "f5fa425",
       "indexHtmlSha256": "888cbfc6aec3dbde3bd0e70dbe65f6d9a505776ca2ed444ee3e540a53db45042",
       "extensionAppJsSha256": "2f2e4067c6d7c74511d857fbcc7606a5fd0ee74805f02ebcd1383f895d8d56db",
       "summary": "streaming TTS がPCMバッファごとに同じ経路判定を書いて診断ログを埋めていたのを、結果が変わったときだけに絞る"
+    },
+    "v1.49.6": {
+      "build": "20260923-v1496-tail-card-span",
+      "extension": "1.4.17",
+      "commit": null,
+      "indexHtmlSha256": "e8dda5cb5ed01fc8ccda8f241f17ec46aa7056d398f1bd60abcbeb99c3ade14b",
+      "extensionAppJsSha256": "7228b6ee28aa145a3a832db7f9cc3d0b21dec6f4664043ce4a8cfafbc6c11114",
+      "summary": "繰越した末尾カードが元の発話開始時刻を引き継いでいたため、話者帰属の照合窓が話し続けるほど広がり誤帰属していたのを正す"
     }
   }
 }
