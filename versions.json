@@ -34,6 +34,14 @@
    "indexHtmlSha256": "4cf94269b036ccb55c75438398962eab58ed241cad43b0f76b69da7dc47ca8f8",
    "extensionAppJsSha256": "f6bd01f1749fdfb1fc71a5859bdf4ad22e767dd3dd6df1e5e1c62c2e3fe86c4e",
    "summary": "jev-direct から未記載ヘッダを外し、到達不能を CORS として切り分け、経路の疎通確認を追加"
+  },
+  "v1.49.2": {
+   "build": "20260923-v1492-mode-ceiling",
+   "extension": "1.4.13",
+   "commit": null,
+   "indexHtmlSha256": "feb3f0843b74f1648cce8c9d523b4f35fd08364d52822c2e666ccd38d6417b22",
+   "extensionAppJsSha256": "18a259df86067d4441d74521ef081d50b2ead765b39f7dd86d210cac410a33a7",
+   "summary": "全体モードを上限にし、保持していないFloorの期限発火を止め、疎通の成否を解析結果で判定し、往復の内訳を診断へ出す"
   }
  }
 }

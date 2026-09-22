@@ -334,6 +334,15 @@ test('the OpenRouter route refuses a payload past its smaller context',async()=>
   assert.equal(calls.length,0,'nothing may be sent once it is over the limit');
 });
 
+/* probe が自分で組む state（候補は C_FULL_28 ひとつ）に合わせた、契約どおりの応答。 */
+const PROBE_ANSWER={answers:{
+  boundary_choice:{type:'choice',choice:'C_FULL_28',confidence:0.9,
+    probabilities:{HOLD:0.1,C_FULL_28:0.9}},
+  turn_state:{type:'choice',choice:'COMPLETE',confidence:0.9,
+    probabilities:{COMPLETE:0.9,CONTINUING:0.1}},
+  safe_to_speak:{type:'noul',noul:0.95},
+  repair_likelihood:{type:'noul',noul:0.02}},model:'jev-1.13.0'};
+
 /* ── 疎通と到達不能 ───────────────────────────────────────────────────── */
 /* 公式に記載の無いヘッダを送ると preflight が増え、サーバが許可していなければ
    本リクエストが飛ばずに "Failed to fetch" になる。既定では送らない。 */
@@ -381,15 +390,28 @@ test('an abort stays an abort, so a timeout is not reported as a CORS problem',a
   assert.equal(err.unreachable,undefined);
 });
 
+/* 疎通の成功は「HTTP 200」ではなく「本番と同じ解析を通って判断が取り出せた」。
+   200 で ok にすると「疎通は通ったのに会議では何も起きない」が再発する。 */
 test('probe reaches the route with a real contract body and reports the outcome',async()=>{
   reset({turnDecisionProvider:'jev-direct'});
-  fetchImpl=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve('{}')});
+  fetchImpl=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve(JSON.stringify(PROBE_ANSWER))});
   const res=await P().probe('jev-direct');
   assert.equal(res.ok,true);
+  assert.equal(res.parsed,true,'ok must mean the contract parsed, not just HTTP 200');
+  assert.equal(res.choice,'C_FULL_28','and the decision must be readable');
   assert.equal(calls[0].url,'https://api.typesafe.ai/v1/systemone');
   const body=JSON.parse(calls[0].opt.body);
   assert.ok(body.state&&body.questions&&body.model,'the probe must use the real contract shape');
   assert.equal(body.state.candidateBoundaries.length,1,'and offer a candidate like a real call');
+});
+test('probe refuses a 200 that does not parse into the contract',async()=>{
+  reset({turnDecisionProvider:'jev-direct'});
+  fetchImpl=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve('{"ok":true}')});
+  const res=await P().probe('jev-direct');
+  assert.equal(res.ok,false,'a 200 with no usable answer is not a working route');
+  assert.equal(res.parsed,false);
+  assert.equal(res.status,200,'but the status is kept, so it is not mistaken for unreachable');
+  assert.equal(res.unreachable,undefined);
 });
 test('probe separates unreachable from refused, so the message can differ',async()=>{
   reset({turnDecisionProvider:'jev-direct'});
@@ -404,8 +426,10 @@ test('probe separates unreachable from refused, so the message can differ',async
 test('probe does not depend on the decision mode, so it works while off',async()=>{
   reset({turnDecisionMode:'off',turnDecisionLangEn:'off',turnDecisionLangJa:'off',
     turnDecisionProvider:'jev-direct'});
-  fetchImpl=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve('{}')});
-  assert.equal((await P().probe('jev-direct')).ok,true);
+  fetchImpl=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve(JSON.stringify(PROBE_ANSWER))});
+  const res=await P().probe('jev-direct');
+  assert.equal(res.ok,true);
+  assert.equal(res.parsed,true);
 });
 
 /* ── 確率の出どころ ───────────────────────────────────────────────────── */
