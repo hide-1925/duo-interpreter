@@ -172,7 +172,11 @@ test('the request body matches the documented shape: state, model, questions',as
   assert.deepEqual(Object.keys(body).sort(),['model','questions','state']);
   assert.equal(body.model,'jev-1.13.0');
   assert.equal(typeof body.state,'object','state may be structured data');
-  assert.equal(body.state.schemaVersion,'duo.turn-state.v1');
+  /* schemaVersion は内部の trace 用で、どの質問も参照しない。公式が context rot を
+     明記しているので、送る側からは落とす。内部 state には残る。 */
+  assert.equal(body.state.schemaVersion,undefined,'our own bookkeeping is not the model\'s business');
+  assert.equal(s.schemaVersion,'duo.turn-state.v1','but the internal state still carries it');
+  assert.equal(typeof body.state.currentText,'string','what the questions do name is sent');
   assert.equal(body.instructions,undefined,'instructions belong to each question, not the top level');
 });
 
@@ -345,13 +349,67 @@ test('a chat reply that is not JSON, or has no message, is refused',async()=>{
   fetchImpl=reply({choices:[]});
   assert.equal(await P().get('jev-openrouter').evaluate(s,{}),null);
 });
-test('the OpenRouter route refuses a payload past its smaller context',async()=>{
+/* 公式の Models ページ: 1リクエスト 64k tokens、うち state ＋最長の質問で 32k。
+   32k は OpenRouter 固有ではなく直叩きにも掛かる。前版は直叩きに上限が無く、
+   長い state は 422 を受けて NEVER_RETRY で判断層が自分を止めていた。 */
+test('every TypeSafe route refuses a payload past the documented context, not just OpenRouter',async()=>{
+  const bloat=(s)=>{s.recentTurns=[];
+    for(let i=0;i<400;i++)s.recentTurns.push({speakerKey:'s'+i,language:'ja',text:'あ'.repeat(200)});
+    return s;};
+  for(const id of ['jev-direct','jev-extension']){
+    reset({turnDecisionProvider:id,turnDecisionModel:'jev-1.13.0'});
+    ctx.chrome={runtime:{id:'abc',lastError:null,sendMessage:(m,cb)=>cb({ok:true,status:200,text:'{}'})}};
+    await assert.rejects(()=>P().get(id).evaluate(bloat(stateOf()),{}),/文脈上限/,id);
+    assert.equal(calls.length,0,id+': nothing may be sent once it is over the limit');
+  }
   reset({turnDecisionProvider:'jev-openrouter',turnDecisionApiKey:'',
     turnDecisionModel:'typesafe/jev-1.13.0',turnDecisionKeys:JSON.stringify({openrouter:'k'})});
-  const s=stateOf();
-  s.recentTurns=[];for(let i=0;i<400;i++)s.recentTurns.push({speakerKey:'s'+i,language:'ja',text:'あ'.repeat(200)});
-  await assert.rejects(()=>P().get('jev-openrouter').evaluate(s,{}),/文脈上限/);
-  assert.equal(calls.length,0,'nothing may be sent once it is over the limit');
+  await assert.rejects(()=>P().get('jev-openrouter').evaluate(bloat(stateOf()),{}),/文脈上限/);
+  assert.equal(calls.length,0);
+});
+
+/* ── 送る state の絞り込み ─────────────────────────────────────────────
+   公式の jaggedness: state が判断に無関係な内容で膨らむと精度が落ちる
+   （context rot）。質問がバッククォートで名指ししていない項目は送らない。 */
+test('only the state fields the questions actually name are sent',async()=>{
+  reset({turnDecisionProvider:'jev-direct',turnDecisionModel:'jev-1.13.0'});
+  const s=stateOf();fetchImpl=reply(wire(s));
+  await P().get('jev-direct').evaluate(s,{});
+  const sent=JSON.parse(calls[0].opt.body).state;
+  const named=JSON.stringify(P().template)+JSON.stringify(P().HOLD_CRITERION);
+  for(const k of Object.keys(sent))
+    assert.ok(named.indexOf('`'+k)>=0,'sent but never named by a question: '+k);
+  for(const k of ['sessionId','utteranceId','speakerKey','revision','schemaVersion',
+                  'speechEvent','evidence','sourceLanguage'])
+    assert.ok(!(k in sent),k+' is a distractor: no question refers to it');
+  /* candidateBoundaries は criteria 側に before/after として同じ本文が入るので重複。 */
+  assert.ok(!('candidateBoundaries' in sent),'the candidates are already in criteria');
+  const crit=JSON.parse(calls[0].opt.body).questions.boundary_choice.criteria;
+  assert.ok(Object.keys(crit).length>1,'and the options still carry them');
+});
+test('a sub-field named on its own does not drag its siblings along',async()=>{
+  reset({turnDecisionProvider:'jev-direct',turnDecisionModel:'jev-1.13.0'});
+  const s=stateOf();fetchImpl=reply(wire(s));
+  await P().get('jev-direct').evaluate(s,{});
+  const tts=JSON.parse(calls[0].opt.body).state.tts;
+  assert.equal(Object.keys(tts).sort().join(','),'active,queueDebtMs',
+    'only tts.active and tts.queueDebtMs are named in the instructions');
+});
+test('the projection is send-only: the internal state keeps everything',async()=>{
+  reset({turnDecisionProvider:'jev-direct',turnDecisionModel:'jev-1.13.0'});
+  const s=stateOf();fetchImpl=reply(wire(s));
+  const out=await P().get('jev-direct').evaluate(s,{});
+  assert.ok(s.candidateBoundaries.length,'trace, local weights and the Phase 3 floor need these');
+  assert.ok(s.evidence&&s.sessionId);
+  assert.ok(out&&out.boundary,'and the answer still validates against the candidates');
+});
+test('naming a new field in the instructions is what makes it sent',()=>{
+  reset();
+  const before=P().sentFields();
+  assert.ok(!before.speakerKey,'not named, not sent');
+  assert.ok(before.currentText&&before.currentText.all);
+  assert.ok(before.tts&&!before.tts.all&&before.tts.sub.queueDebtMs,
+    'a dotted reference allows only that sub-field');
 });
 
 /* probe が自分で組む state（候補は C_FULL_28 ひとつ）に合わせた、契約どおりの応答。 */
@@ -422,7 +480,11 @@ test('probe reaches the route with a real contract body and reports the outcome'
   assert.equal(calls[0].url,'https://api.typesafe.ai/v1/systemone');
   const body=JSON.parse(calls[0].opt.body);
   assert.ok(body.state&&body.questions&&body.model,'the probe must use the real contract shape');
-  assert.equal(body.state.candidateBoundaries.length,1,'and offer a candidate like a real call');
+  /* 候補は state ではなく criteria 側に出る（state 側は重複なので送らない）。
+     probe が候補を1つ載せていることは、選べる選択肢の数で確かめる。 */
+  assert.equal(body.state.candidateBoundaries,undefined);
+  assert.equal(Object.keys(body.questions.boundary_choice.criteria).sort().join(','),
+    'C_FULL_28,HOLD','and offer a candidate like a real call');
 });
 test('probe refuses a 200 that does not parse into the contract',async()=>{
   reset({turnDecisionProvider:'jev-direct'});
@@ -693,6 +755,15 @@ test('the same bucket is not resent inside 300ms, but a longer silence is a new 
   const s2=D().stateOf(card(),{},i,D().rules(i),1200,Date.now());
   assert.equal(D().throttled(s2),false,'a 100ms-quantised silence step is a new state');
 });
+test('active refuses both aliases, because an alias moves without a change on our side',async()=>{
+  for(const m of ['jev-latest','jev-preview','JEV-Latest']){
+    reset({turnDecisionProvider:'jev-direct',turnDecisionModel:m});
+    await assert.rejects(()=>P().get('jev-direct').evaluate(stateOf(),{}),/固定version/,m);
+  }
+  reset({turnDecisionProvider:'jev-direct',turnDecisionModel:'jev-1.13.0'});
+  const s=stateOf();fetchImpl=reply(wire(s));
+  assert.ok(await P().get('jev-direct').evaluate(s,{}),'a pinned version is accepted');
+});
 test('the question set hash is stable and changes with the instructions',()=>{
   reset();
   const a=D().questionSetHash();
@@ -755,7 +826,7 @@ test('an extension page relays the round trip through chrome.runtime',async()=>{
   assert.equal(seen.length,1);
   assert.equal(seen[0].type,'DUO_TURN_FETCH');
   assert.equal(seen[0].request.url,'https://api.typesafe.ai/v1/systemone');
-  assert.equal(JSON.parse(seen[0].request.body).state.schemaVersion,c.TURN_STATE_SCHEMA);
+  assert.equal(typeof JSON.parse(seen[0].request.body).state.currentText,'string');
   assert.equal(seen[0].request.headers.Authorization,'Bearer k','the key rides the relay');
   assert.ok(out&&out.boundary,'and the answer normalises as usual');
   assert.equal(out.boundary.choice,(s.candidateBoundaries[0]||{}).id);

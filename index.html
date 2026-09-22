@@ -2248,7 +2248,12 @@ function turnDecisionInstall(){
     var cur=TurnProviders.keyFor(r.vendor);
     box.value='';
     box.placeholder=cur?'設定済み（'+cur.length+'文字）':'（未設定）';
+    /* 公式が「英語が主な学習言語で精度も最良。CJK を含む他言語は扱えるが同等では
+       ない」と明記している。日英の通訳が主用途なので、ここは黙っていられない。 */
     note.textContent=(r.keyHint||'APIキー')+'。'+(r.contextNote?r.contextNote+'。':'')
+      +(r.vendor==='typesafe'?'active では alias（jev-latest／jev-preview）を拒否します。'
+        +'固定versionを入れてください（例 jev-1.13.0）。日本語は公式が「英語と同等では'
+        +'ない」と明記しているので、日本語側は必ず shadow で確かめてください。':'')
       +(r.bridge?(TurnBridge.available()?'アドオンに接続できています。'
         :'いまアドオンを経由できません。ポップアップから接続してください。'):'')
       +(r.verified?'':'この経路のリクエスト形式は未検証です。実機で疎通を確認してください。');
@@ -2345,8 +2350,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.3';
-var APP_BUILD = '20260923-v1493-extension-transport';
+var APP_VERSION = 'v1.49.4';
+var APP_BUILD = '20260923-v1494-state-projection';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -13125,6 +13130,52 @@ var TurnProviders={
     not_for:'Not for a tail that is merely short, and not because `silenceMs` is null. Judge whether the tail itself is finished, not how much text there is.',
     examples:'A trailing connective or conjunction; a dangling particle or preposition; a filler such as "uh" or "ええと"; the first half of a self-repair.'
   },
+
+  /* 質問が名指ししていない state は送らない。
+
+     公式の jaggedness ページが「state が判断に無関係な内容で膨らむと精度が落ちる。
+     無関係な detail は distractor になる（context rot）」と明記している。実際に
+     突き合わせたら、送っている17項目のうち9項目はどの質問からも参照されていなかった。
+     schemaVersion / sessionId / utteranceId / revision / speakerKey / sourceLanguage /
+     speechEvent / evidence、そして candidateBoundaries。最後のものは criteria 側に
+     before / after として同じ本文が入っているので、丸ごと重複だった。
+
+     許可リストは instructions と criteria の本文からバッククォート付きの識別子を
+     拾って作る。手で二重管理すると必ず片方が古くなる。文面で `x` と書けば送られ、
+     書かなければ送られない、という一方向の規則にする。
+
+     内部の state はそのまま全項目を持つ。trace・local モデル・Phase 3 の床は
+     これらを使うので、削るのは送信する形だけ。 */
+  SENT_FIELD_RX:/`([A-Za-z_][A-Za-z0-9_]*)(?:\.([A-Za-z_][A-Za-z0-9_]*))?`/g,
+  sentFields:function(){
+    if(this._sent)return this._sent;
+    var src=JSON.stringify(this.template)+JSON.stringify(this.HOLD_CRITERION),
+        rx=new RegExp(this.SENT_FIELD_RX.source,'g'),m,map={};
+    while((m=rx.exec(src))){
+      if(!map[m[1]])map[m[1]]={all:false,sub:{}};
+      if(m[2])map[m[1]].sub[m[2]]=true;else map[m[1]].all=true;
+    }
+    return (this._sent=map);
+  },
+  project:function(state){
+    var allow=this.sentFields(),out={},k,rule,v,sub,sk;
+    for(k in state){
+      if(!Object.prototype.hasOwnProperty.call(state,k))continue;
+      rule=Object.prototype.hasOwnProperty.call(allow,k)?allow[k]:null;
+      if(!rule)continue;
+      v=state[k];
+      /* `tts.queueDebtMs` のように下位だけを名指しされたときは、その下位だけ送る。
+         `prosody` のように丸ごと名指しされていれば全部送る（prosody は
+         TURN_PROSODY_SENT で既に絞ってある）。 */
+      if(rule.all||v===null||typeof v!=='object'||v instanceof Array){out[k]=v;continue;}
+      sub={};
+      for(sk in v)if(Object.prototype.hasOwnProperty.call(v,sk)
+        &&Object.prototype.hasOwnProperty.call(rule.sub,sk))sub[sk]=v[sk];
+      out[k]=sub;
+    }
+    return out;
+  },
+
   questions:function(state){
     var list=state.candidateBoundaries||[],crit={HOLD:this.HOLD_CRITERION},i,c;
     for(i=0;i<list.length;i++){
@@ -13247,7 +13298,15 @@ var TurnProviders={
       defaultBase:'https://api.typesafe.ai',
       defaultModel:'jev-latest',
       keyHint:'TypeSafe の API キー',
-      contextNote:'64k context',
+      /* 公式の Models ページ: 1リクエスト 64k tokens、うち state ＋最長の質問で 32k。
+         32k は OpenRouter 固有の制限ではなく直叩きにも掛かる。前版で「OpenRouter は
+         直接の半分」と書いていたのは私の誤読。 */
+      contextNote:'64k context（state＋最長の質問で32k）',
+      /* トークン数はブラウザ側で数えられないので、文字数で保守的に代理する。
+         全文が CJK でも 1文字≒1トークンを超えないため、24,000文字なら 32k の
+         内側に収まる。超えたら送らず Rules へ落とす。切って送ると候補の
+         before/after と本文がずれ、存在しない位置を選ばせてしまう。 */
+      maxBodyChars:24000,
       capabilities:{probabilitySemantics:'native_calibrated',supportsChoice:true,supportsNoul:true,
         structuredOutput:true,abortable:true,maxChoices:255,textOnly:true,local:false},
       path:'/v1/systemone',
@@ -13266,7 +13325,9 @@ var TurnProviders={
         return h;
       },
       body:function(state,model){
-        return {model:model,state:state,questions:TurnProviders.questions(state)};
+        /* questions は候補を組むので完全な state を見る。送るのは projection。 */
+        return {model:model,state:TurnProviders.project(state),
+          questions:TurnProviders.questions(state)};
       },
       parse:function(json,state,meta){return TurnProviders.fromAnswers(json,state,meta);}
     },
@@ -13283,7 +13344,8 @@ var TurnProviders={
       defaultBase:'https://api.typesafe.ai',
       defaultModel:'jev-latest',
       keyHint:'TypeSafe の API キー',
-      contextNote:'64k context・アドオンが往復を肩代わりします',
+      contextNote:'64k context（state＋最長の質問で32k）・アドオンが往復を肩代わりします',
+      maxBodyChars:24000,
       capabilities:{probabilitySemantics:'native_calibrated',supportsChoice:true,supportsNoul:true,
         structuredOutput:true,abortable:true,maxChoices:255,textOnly:true,local:false},
       path:'/v1/systemone',
@@ -13306,19 +13368,26 @@ var TurnProviders={
       defaultBase:'https://openrouter.ai/api',
       defaultModel:'typesafe/jev',
       keyHint:'OpenRouter の API キー',
-      /* 公式が「OpenRouter 経由では 32k」と書いているので、直叩きより文脈を削る。 */
-      contextNote:'32k context（直接の半分）',
-      maxStateChars:24000,
+      /* 前版の「OpenRouter は直接の半分」は誤り。公式が 32k と書いているのは
+         「state ＋最長の質問」の枠で、直叩きにも同じように掛かる。OpenRouter 側の
+         実際の枠は確認できていないので、直叩きと同じ保守値を置いて未確認と出す。 */
+      contextNote:'文脈の上限は未確認（直叩きと同じ保守値で運用）',
+      maxBodyChars:24000,
       capabilities:{probabilitySemantics:'vendor_reported',supportsChoice:true,supportsNoul:true,
         structuredOutput:true,abortable:true,maxChoices:255,textOnly:true,local:false},
       path:'/v1/chat/completions',
       headers:function(key){return {'Authorization':'Bearer '+key};},
       body:function(state,model){
+        /* answerSchema と questions は候補を組むので完全な state を見なければならない。
+           projection を先に当てると candidateBoundaries が消え、enum が HOLD だけに
+           なる。「モデルは省いた値を選べない」のだから、それは全部 HOLD を強制する
+           のと同じ。送るのは projection、組み立てに使うのは完全な state。 */
         return {model:model,temperature:0,
           response_format:{type:'json_schema',json_schema:{name:'duo_turn_answers',strict:true,
             schema:TurnProviders.answerSchema(state)}},
           messages:[{role:'system',content:TurnProviders.ENVELOPE_PROMPT},
-            {role:'user',content:JSON.stringify({state:state,questions:TurnProviders.questions(state)})}]};
+            {role:'user',content:JSON.stringify({state:TurnProviders.project(state),
+              questions:TurnProviders.questions(state)})}]};
       },
       parse:function(json,state,meta){
         var msg=json&&json.choices&&json.choices[0]&&json.choices[0].message;
@@ -13433,14 +13502,19 @@ var TurnProviders={
         var base=String(CFG.turnDecisionBaseUrl||'')||route.defaultBase;
         if(!/^https:\/\//.test(base))return Promise.reject(new Error('判断層のURLはHTTPSのみ許可します'));
         var model=String(CFG.turnDecisionModel||'')||route.defaultModel;
-        /* active では alias ではなく校正済み version を pin する（§8.5）。 */
-        if(TurnDecision.applies(state.sourceLanguage)&&/latest/i.test(model))
-          return Promise.reject(new Error('active では model に固定versionを指定してください（いまは '+model+'）'));
+        /* active では alias ではなく校正済み version を pin する（§8.5）。alias は
+           新版が出ると勝手に動き、こちら側の変更なしに答えが変わる。公式の
+           Models ページでは jev-latest も jev-preview も jev-1.13.0 を指している。 */
+        if(TurnDecision.applies(state.sourceLanguage)&&/latest|preview/i.test(model))
+          return Promise.reject(new Error('active では model に固定versionを指定してください'
+            +'（いまは '+model+'。例: jev-1.13.0）'));
         var body;try{body=JSON.stringify(route.body(state,model));}catch(err){
           return Promise.reject(new Error('リクエストを組み立てられません'));}
         /* 経路ごとの文脈上限。超えたら送らずRulesへ落とす。途中で切ると
-           候補の offset と本文がずれ、存在しない位置を選ばせてしまう。 */
-        if(route.maxStateChars&&body.length>route.maxStateChars)
+           候補の before/after と本文がずれ、存在しない位置を選ばせてしまう。
+           名前が maxStateChars だった頃から実際に見ているのは body 全体で、
+           state ＋全質問なので公式の「state ＋最長の質問」より厳しい側に外れる。 */
+        if(route.maxBodyChars&&body.length>route.maxBodyChars)
           return Promise.reject(new Error('この経路の文脈上限を超えました'));
         var headers={'Content-Type':'application/json'},h=route.headers(key),hk;
         for(hk in h)if(Object.prototype.hasOwnProperty.call(h,hk))headers[hk]=h[hk];
