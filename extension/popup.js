@@ -13,6 +13,8 @@ let htmlUrlDirty = false;
 let registeredHtmlUrl = '';
 let missingPlayerOrigins=[];
 let targetPermissionOrigins=[];
+let turnState={origin:'',allowed:false};
+let turnOriginDirty=false;
 
 function show(message, kind) {
   $('status').textContent = message || '';
@@ -56,6 +58,14 @@ async function refresh() {
   const failedFrames=(overlay.frames||[]).filter(f=>f.allowed&&!f.ready&&f.frameId!==0);
   if(failedFrames.length){$('overlayState').textContent+=' · 埋め込みプレイヤーへ接続できません。タブを再読み込みしてください';$('overlayState').className='err';}
 
+  turnState = response.turn || {origin:'',allowed:false};
+  if (!turnOriginDirty) $('turnOrigin').value = turnState.origin || '';
+  $('turnConnection').textContent = turnOriginDirty ? '接続先の変更は未保存です'
+    : turnState.allowed ? '判断層の中継を許可済み（'+turnState.origin+'）'
+    : turnState.origin ? '許可が外れています。もう一度「この接続先を許可」を押してください'
+    : '未設定。Jevをアドオン経由で使うときだけ必要です';
+  $('turnConnection').className = turnState.allowed ? 'ok' : turnState.origin ? 'err' : '';
+
   registeredHtmlUrl = response.htmlUrl;
   if (!htmlUrlDirty) $('htmlSource').value = response.htmlUrl;
   $('htmlSource').title = response.htmlUrl || '';
@@ -90,6 +100,29 @@ $('registerHtml').addEventListener('click', async () => {
     await refresh();
     show('URLを保存しました。「HTML本体を開く」で接続します', 'ok');
   } catch(error) { show(error.message, 'err'); }
+});
+
+/* 判断層への中継は、利用者が明示的に許可したオリジン1つに限る。ここが唯一の
+   許可の入口。許可を取るには利用者の操作が必要なので、click から直接要求する。 */
+$('allowTurn').addEventListener('click', async () => {
+  try {
+    const raw = $('turnOrigin').value.trim() || $('turnOrigin').placeholder;
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' || url.username || url.password) throw new Error('認証情報を含まないHTTPSのURLを入力してください');
+    const granted = await chrome.permissions.request({origins:[url.origin + '/*']});
+    if (!granted) throw new Error('中継するには、この接続先へのアクセス許可が必要です');
+    await send({type:'DUO_SET_TURN_ORIGIN',origin:url.origin});
+    turnOriginDirty = false;
+    await refresh();
+    show('判断層の接続先を許可しました。HTML本体で「Jev — アドオン経由」を選んでください', 'ok');
+  } catch(error) { show(error.message, 'err'); }
+});
+$('turnOrigin').addEventListener('input', () => {
+  turnOriginDirty = $('turnOrigin').value.trim() !== (turnState.origin || '');
+  $('turnConnection').textContent = turnOriginDirty ? '接続先の変更は未保存です' : '';
+});
+$('turnOrigin').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') { event.preventDefault(); $('allowTurn').click(); }
 });
 
 $('htmlSource').addEventListener('input', () => {

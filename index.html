@@ -1801,17 +1801,36 @@ var AudioRoutingPolicy={resolve:function(job){
   var allowed=!!(valid&&automatic&&conferenceAudioState.mode!=='original-only'&&(job.sourceScope==='local'||remote));
   return {localMonitor:true,conferenceMic:allowed};
 }};
-var ConferenceMicBus={context:null,destination:null,gate:null,enabled:false,
+/* 判定結果をjobごとに覚えておく。streaming TTS は PCM バッファごとに connect へ
+   来るので、そのたびに同じ2行を書くと診断ログがこれで埋まる。実測では61秒・475件の
+   ログの半分近くがこれだった。1時間の記録では trace 上限 40,000 行に早々に届き、
+   肝心の行が落ちる。判定は job と bus の状態だけで決まるので、結果が変わったときだけ
+   書けば情報量は同じ。 */
+var ConferenceMicBus={context:null,destination:null,gate:null,enabled:false,lastRoute:{},lastRouteN:0,
   ensure:function(ctx){
     if(!this.destination){this.context=ctx;this.destination=ctx.createMediaStreamDestination();this.gate=ctx.createGain();this.gate.gain.value=0;this.gate.connect(this.destination);}
     if(this.context!==ctx)throw Error('会議音声のAudioContextが一致しません');
     return this.destination.stream;
   },
   setEnabled:function(on){this.enabled=!!on;if(this.gate)this.gate.gain.value=on?1:0;duoRefreshRouteGates();},
+  /* 初回か、この job の行き先が変わったときだけ true。長い会議で jobId が溜まり
+     続けないよう、一定数で丸ごと捨てる。捨てても余分な1行が出るだけで害はない。 */
+  noteRoute:function(job,route){
+    var id=String(job.jobId||''),kind=(route.conferenceMic?(job.sourceScope==='remote'?'relay':'tts-only'):'rejected')
+      +'/'+(this.enabled?'on':'off');
+    if(!id)return true;
+    if(this.lastRoute[id]===kind)return false;
+    if(this.lastRouteN>=256){this.lastRoute={};this.lastRouteN=0;}
+    if(this.lastRoute[id]===undefined)this.lastRouteN++;
+    this.lastRoute[id]=kind;
+    return true;
+  },
   connect:function(node,job){
     var route=AudioRoutingPolicy.resolve(job);if(route.conferenceMic){this.ensure(node.context);var jobGate=node.context.createGain();jobGate.gain.value=1;node.connect(jobGate);jobGate.connect(this.gate);duoRouteGates.push({gate:jobGate,job:job,at:Date.now()});}
-    if(job)dlog('conference',route.conferenceMic?(job.sourceScope==='remote'?'conference-route-remote-relay':'conference-route-tts-only'):'conference-route-rejected',{jobId:job.jobId,playbackIntent:job.playbackIntent,speakerId:job.speakerId,at:Date.now()});
-    if(job)dlog('audio-route','resolve',Object.assign({},job,{route:route,webConferenceMicEnabled:this.enabled,conferenceMicTrackId:this.destination&&this.destination.stream.getAudioTracks()[0].id}));
+    if(job&&this.noteRoute(job,route)){
+      dlog('conference',route.conferenceMic?(job.sourceScope==='remote'?'conference-route-remote-relay':'conference-route-tts-only'):'conference-route-rejected',{jobId:job.jobId,playbackIntent:job.playbackIntent,speakerId:job.speakerId,at:Date.now()});
+      dlog('audio-route','resolve',Object.assign({},job,{route:route,webConferenceMicEnabled:this.enabled,conferenceMicTrackId:this.destination&&this.destination.stream.getAudioTracks()[0].id}));
+    }
     return route;
   }
 };
@@ -2248,7 +2267,14 @@ function turnDecisionInstall(){
     var cur=TurnProviders.keyFor(r.vendor);
     box.value='';
     box.placeholder=cur?'設定済み（'+cur.length+'文字）':'（未設定）';
+    /* 公式が「英語が主な学習言語で精度も最良。CJK を含む他言語は扱えるが同等では
+       ない」と明記している。日英の通訳が主用途なので、ここは黙っていられない。 */
     note.textContent=(r.keyHint||'APIキー')+'。'+(r.contextNote?r.contextNote+'。':'')
+      +(r.vendor==='typesafe'?'active では alias（jev-latest／jev-preview）を拒否します。'
+        +'固定versionを入れてください（例 jev-1.13.0）。日本語は公式が「英語と同等では'
+        +'ない」と明記しているので、日本語側は必ず shadow で確かめてください。':'')
+      +(r.bridge?(TurnBridge.available()?'アドオンに接続できています。'
+        :'いまアドオンを経由できません。ポップアップから接続してください。'):'')
       +(r.verified?'':'この経路のリクエスト形式は未検証です。実機で疎通を確認してください。');
   }
   $('turnDecisionKey').onchange=function(){
@@ -2287,10 +2313,21 @@ function turnDecisionInstall(){
     TurnProviders.probe(r.id).then(function(res){
       btn.disabled=false;
       if(res.ok){toast('到達しました（'+res.ms+'ms）。<br>'+r.label+' は使えます。');return;}
+      if(res.needsBridge){
+        toast('アドオンを経由できません（'+res.ms+'ms）。<br>'+res.detail+'<br>'
+          +'拡張版では不要ですが、HTML本体ではポップアップの「HTML本体を開く」で'
+          +'先に接続してください。');
+        return;
+      }
+      if(res.needsSetup){
+        toast('アドオンの接続先が未許可です（'+res.ms+'ms）。<br>'
+          +'Duo のポップアップの「判断層（Jev）の接続を許可」を押してください。');
+        return;
+      }
       if(res.unreachable){
         toast('到達できません（'+res.ms+'ms）。<br>'
           +'ブラウザから直接この API を呼べない可能性があります（CORS）。<br>'
-          +'DevTools の Network で OPTIONS の応答をご確認ください。');
+          +'「Jev — アドオン経由」をお試しください。');
         return;
       }
       toast('サーバまでは届きましたが拒否されました（HTTP '+res.status+'）。<br>'
@@ -2332,8 +2369,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.2';
-var APP_BUILD = '20260923-v1492-mode-ceiling';
+var APP_VERSION = 'v1.49.5';
+var APP_BUILD = '20260923-v1495-route-log-dedup';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -12882,6 +12919,127 @@ function segEnabled(){return CFG.segmentMode!=='off' && /^(balanced|fast|adaptiv
    ネットワークは発生しない。
    正規化はここに集約する。schema 外の選択肢、確率の合計不正、欠落field、NaN、
    巨大応答は必ず拒否し、adapter conformance error として捨てる。      */
+/* 拡張のバックグラウンドへの中継。
+
+   ページは別オリジンへ投げても、サーバが CORS 応答ヘッダを出さなければ結果を
+   読めない。api.typesafe.ai は実測で「API は動くが Access-Control-Allow-Origin
+   を出さない」だった。つまりブラウザからの直叩きは成立しない。拡張は利用者が
+   許可したホストに対してこの制約を受けないので、往復だけを拡張へ肩代わりさせる。
+
+   2通りある。拡張版（app.html）は chrome.runtime へ直接。HTML版は MAIN world から
+   chrome.* が見えないので、ポップアップで接続したときに張られる内容スクリプトへ
+   CustomEvent で渡す。鍵も本文もこのブラウザの中しか通らない。
+
+   鍵が DOM イベントに載る点について: 同じページの他スクリプトからは読める。ただし
+   鍵はもともと同じページの localStorage にあるので、そこを読める相手はイベントを
+   待つまでもない。露出は増えていない。 */
+var TurnBridge={
+  /* 中継先が黙って消えることがある（タブを閉じた、拡張を更新した）。
+     signal を渡さない probe もここで必ず終わる。 */
+  timeoutMs:35000,
+  seq:0,
+  pending:{},
+  ready:false,
+  wired:false,
+  /* 'runtime' 拡張ページから直接 / 'event' HTML本体から内容スクリプト経由 / '' 不可 */
+  mode:function(){
+    if(typeof chrome!=='undefined'&&chrome&&chrome.runtime&&chrome.runtime.id
+      &&typeof chrome.runtime.sendMessage==='function')return 'runtime';
+    return this.ready?'event':'';
+  },
+  available:function(){return !!this.mode();},
+  wire:function(){
+    if(this.wired||typeof window==='undefined'||!window.addEventListener)return;
+    this.wired=true;
+    var self=this;
+    window.addEventListener('duo-turn-bridge',function(ev){
+      var d=null;try{d=JSON.parse(ev.detail);}catch(err){return;}
+      self.ready=!!(d&&d.ready);
+      if(!self.ready)self.failAll('アドオンとの接続が切れました');
+    });
+    window.addEventListener('duo-turn-reply',function(ev){
+      var d=null;try{d=JSON.parse(ev.detail);}catch(err){return;}
+      if(!d||typeof d.id!=='string')return;
+      var p=self.pending[d.id];
+      if(p)p(d);
+    });
+    /* 内容スクリプトが先に張られている場合に備えて、こちらからも名乗る。 */
+    try{window.dispatchEvent(new CustomEvent('duo-turn-hello'));}catch(err){}
+  },
+  failAll:function(reason){
+    var k,p=this.pending;this.pending={};
+    for(k in p)if(Object.prototype.hasOwnProperty.call(p,k))
+      p[k]({ok:false,error:reason,unreachable:true});
+  },
+  /* fetch と同じ {status,text} を返す。上位は経路差を見ない。 */
+  send:function(url,headers,body,signal){
+    var m=this.mode();
+    if(!m)return Promise.reject(this.bridgeError(
+      'HTML本体がアドオンに接続されていません（ポップアップの「HTML本体を開く」で接続します）'));
+    return m==='runtime'?this.viaRuntime({url:url,headers:headers,body:body},signal)
+      :this.viaEvent({url:url,headers:headers,body:body},signal);
+  },
+  /* 中断・二重解決・後始末をここへ集める。個々の経路で書くと片方だけ漏れる。 */
+  settleWith:function(signal,work){
+    var self=this;
+    return new Promise(function(resolve,reject){
+      var done=false,onAbort=null,timer=null;
+      function stop(){
+        if(timer)clearTimeout(timer);
+        if(onAbort&&signal&&signal.removeEventListener)signal.removeEventListener('abort',onAbort);
+      }
+      function ok(v){if(done)return;done=true;stop();resolve(v);}
+      function ng(e){if(done)return;done=true;stop();reject(e);}
+      onAbort=function(){var e=new Error('中断しました');e.name='AbortError';ng(e);};
+      if(signal){
+        if(signal.aborted){onAbort();return;}
+        if(signal.addEventListener)signal.addEventListener('abort',onAbort);
+      }
+      timer=setTimeout(function(){ng(self.bridgeError('時間内に応答がありません'));},
+        self.timeoutMs);
+      work(function(reply){self.settle(reply,ok,ng);},ng);
+    });
+  },
+  viaRuntime:function(req,signal){
+    var self=this;
+    return this.settleWith(signal,function(deliver,fail){
+      try{
+        chrome.runtime.sendMessage({type:'DUO_TURN_FETCH',request:req},function(reply){
+          if(chrome.runtime.lastError){
+            fail(self.bridgeError(chrome.runtime.lastError.message));return;}
+          deliver(reply);
+        });
+      }catch(err){fail(self.bridgeError(String((err&&err.message)||err)));}
+    });
+  },
+  viaEvent:function(req,signal){
+    var self=this,id='t'+(++this.seq)+'-'+Date.now();
+    var task=this.settleWith(signal,function(deliver,fail){
+      self.pending[id]=deliver;
+      try{window.dispatchEvent(new CustomEvent('duo-turn-request',
+        {detail:JSON.stringify({id:id,request:req})}));}
+      catch(err){delete self.pending[id];fail(self.bridgeError(String((err&&err.message)||err)));}
+    });
+    var drop=function(){delete self.pending[id];};
+    task.then(drop,drop);
+    return task;
+  },
+  settle:function(reply,resolve,reject){
+    if(!reply){reject(this.bridgeError('アドオンから応答がありません'));return;}
+    if(reply.ok){resolve({status:Number(reply.status)||0,text:String(reply.text||'')});return;}
+    var e=new Error(String(reply.error||'アドオンが中継できませんでした'));
+    if(reply.needsSetup)e.needsSetup=true;
+    if(reply.unreachable)e.unreachable=true;
+    if(reply.status)e.status=Number(reply.status);
+    reject(e);
+  },
+  bridgeError:function(msg){
+    var e=new Error('アドオンを経由できません: '+String(msg||'').slice(0,100));
+    e.needsBridge=true;e.unreachable=true;return e;
+  }
+};
+TurnBridge.wire();
+
 var TurnProviders={
   /* 応答を契約の形へ正規化する。通らなかったものは null を返して捨てる。 */
   normalize:function(raw,state,meta){
@@ -12991,6 +13149,52 @@ var TurnProviders={
     not_for:'Not for a tail that is merely short, and not because `silenceMs` is null. Judge whether the tail itself is finished, not how much text there is.',
     examples:'A trailing connective or conjunction; a dangling particle or preposition; a filler such as "uh" or "ええと"; the first half of a self-repair.'
   },
+
+  /* 質問が名指ししていない state は送らない。
+
+     公式の jaggedness ページが「state が判断に無関係な内容で膨らむと精度が落ちる。
+     無関係な detail は distractor になる（context rot）」と明記している。実際に
+     突き合わせたら、送っている17項目のうち9項目はどの質問からも参照されていなかった。
+     schemaVersion / sessionId / utteranceId / revision / speakerKey / sourceLanguage /
+     speechEvent / evidence、そして candidateBoundaries。最後のものは criteria 側に
+     before / after として同じ本文が入っているので、丸ごと重複だった。
+
+     許可リストは instructions と criteria の本文からバッククォート付きの識別子を
+     拾って作る。手で二重管理すると必ず片方が古くなる。文面で `x` と書けば送られ、
+     書かなければ送られない、という一方向の規則にする。
+
+     内部の state はそのまま全項目を持つ。trace・local モデル・Phase 3 の床は
+     これらを使うので、削るのは送信する形だけ。 */
+  SENT_FIELD_RX:/`([A-Za-z_][A-Za-z0-9_]*)(?:\.([A-Za-z_][A-Za-z0-9_]*))?`/g,
+  sentFields:function(){
+    if(this._sent)return this._sent;
+    var src=JSON.stringify(this.template)+JSON.stringify(this.HOLD_CRITERION),
+        rx=new RegExp(this.SENT_FIELD_RX.source,'g'),m,map={};
+    while((m=rx.exec(src))){
+      if(!map[m[1]])map[m[1]]={all:false,sub:{}};
+      if(m[2])map[m[1]].sub[m[2]]=true;else map[m[1]].all=true;
+    }
+    return (this._sent=map);
+  },
+  project:function(state){
+    var allow=this.sentFields(),out={},k,rule,v,sub,sk;
+    for(k in state){
+      if(!Object.prototype.hasOwnProperty.call(state,k))continue;
+      rule=Object.prototype.hasOwnProperty.call(allow,k)?allow[k]:null;
+      if(!rule)continue;
+      v=state[k];
+      /* `tts.queueDebtMs` のように下位だけを名指しされたときは、その下位だけ送る。
+         `prosody` のように丸ごと名指しされていれば全部送る（prosody は
+         TURN_PROSODY_SENT で既に絞ってある）。 */
+      if(rule.all||v===null||typeof v!=='object'||v instanceof Array){out[k]=v;continue;}
+      sub={};
+      for(sk in v)if(Object.prototype.hasOwnProperty.call(v,sk)
+        &&Object.prototype.hasOwnProperty.call(rule.sub,sk))sub[sk]=v[sk];
+      out[k]=sub;
+    }
+    return out;
+  },
+
   questions:function(state){
     var list=state.candidateBoundaries||[],crit={HOLD:this.HOLD_CRITERION},i,c;
     for(i=0;i<list.length;i++){
@@ -13113,7 +13317,15 @@ var TurnProviders={
       defaultBase:'https://api.typesafe.ai',
       defaultModel:'jev-latest',
       keyHint:'TypeSafe の API キー',
-      contextNote:'64k context',
+      /* 公式の Models ページ: 1リクエスト 64k tokens、うち state ＋最長の質問で 32k。
+         32k は OpenRouter 固有の制限ではなく直叩きにも掛かる。前版で「OpenRouter は
+         直接の半分」と書いていたのは私の誤読。 */
+      contextNote:'64k context（state＋最長の質問で32k）',
+      /* トークン数はブラウザ側で数えられないので、文字数で保守的に代理する。
+         全文が CJK でも 1文字≒1トークンを超えないため、24,000文字なら 32k の
+         内側に収まる。超えたら送らず Rules へ落とす。切って送ると候補の
+         before/after と本文がずれ、存在しない位置を選ばせてしまう。 */
+      maxBodyChars:24000,
       capabilities:{probabilitySemantics:'native_calibrated',supportsChoice:true,supportsNoul:true,
         structuredOutput:true,abortable:true,maxChoices:255,textOnly:true,local:false},
       path:'/v1/systemone',
@@ -13132,8 +13344,35 @@ var TurnProviders={
         return h;
       },
       body:function(state,model){
-        return {model:model,state:state,questions:TurnProviders.questions(state)};
+        /* questions は候補を組むので完全な state を見る。送るのは projection。 */
+        return {model:model,state:TurnProviders.project(state),
+          questions:TurnProviders.questions(state)};
       },
+      parse:function(json,state,meta){return TurnProviders.fromAnswers(json,state,meta);}
+    },
+
+    /* 同じ契約を、拡張のバックグラウンド経由で投げる。実測で api.typesafe.ai は
+       CORS 応答ヘッダを出さないため、ブラウザからの直叩きでは結果を読めない。
+       リクエストの形は jev-direct と同一で、変えているのは運び方だけ。 */
+    'jev-extension':{
+      label:'Jev — アドオン経由（CORS回避）',
+      vendor:'typesafe',
+      verified:true,
+      semantics:'native_calibrated',
+      transport:'extension',
+      defaultBase:'https://api.typesafe.ai',
+      defaultModel:'jev-latest',
+      keyHint:'TypeSafe の API キー',
+      contextNote:'64k context（state＋最長の質問で32k）・アドオンが往復を肩代わりします',
+      maxBodyChars:24000,
+      capabilities:{probabilitySemantics:'native_calibrated',supportsChoice:true,supportsNoul:true,
+        structuredOutput:true,abortable:true,maxChoices:255,textOnly:true,local:false},
+      path:'/v1/systemone',
+      extraHeaders:false,
+      /* 形は jev-direct と同一。2箇所に書くと必ず片方だけ古くなるので、
+         関数そのものを共有する。 */
+      headers:function(key){return TurnProviders.ROUTES['jev-direct'].headers.call(this,key);},
+      body:function(state,model){return TurnProviders.ROUTES['jev-direct'].body(state,model);},
       parse:function(json,state,meta){return TurnProviders.fromAnswers(json,state,meta);}
     },
 
@@ -13148,19 +13387,26 @@ var TurnProviders={
       defaultBase:'https://openrouter.ai/api',
       defaultModel:'typesafe/jev',
       keyHint:'OpenRouter の API キー',
-      /* 公式が「OpenRouter 経由では 32k」と書いているので、直叩きより文脈を削る。 */
-      contextNote:'32k context（直接の半分）',
-      maxStateChars:24000,
+      /* 前版の「OpenRouter は直接の半分」は誤り。公式が 32k と書いているのは
+         「state ＋最長の質問」の枠で、直叩きにも同じように掛かる。OpenRouter 側の
+         実際の枠は確認できていないので、直叩きと同じ保守値を置いて未確認と出す。 */
+      contextNote:'文脈の上限は未確認（直叩きと同じ保守値で運用）',
+      maxBodyChars:24000,
       capabilities:{probabilitySemantics:'vendor_reported',supportsChoice:true,supportsNoul:true,
         structuredOutput:true,abortable:true,maxChoices:255,textOnly:true,local:false},
       path:'/v1/chat/completions',
       headers:function(key){return {'Authorization':'Bearer '+key};},
       body:function(state,model){
+        /* answerSchema と questions は候補を組むので完全な state を見なければならない。
+           projection を先に当てると candidateBoundaries が消え、enum が HOLD だけに
+           なる。「モデルは省いた値を選べない」のだから、それは全部 HOLD を強制する
+           のと同じ。送るのは projection、組み立てに使うのは完全な state。 */
         return {model:model,temperature:0,
           response_format:{type:'json_schema',json_schema:{name:'duo_turn_answers',strict:true,
             schema:TurnProviders.answerSchema(state)}},
           messages:[{role:'system',content:TurnProviders.ENVELOPE_PROMPT},
-            {role:'user',content:JSON.stringify({state:state,questions:TurnProviders.questions(state)})}]};
+            {role:'user',content:JSON.stringify({state:TurnProviders.project(state),
+              questions:TurnProviders.questions(state)})}]};
       },
       parse:function(json,state,meta){
         var msg=json&&json.choices&&json.choices[0]&&json.choices[0].message;
@@ -13175,6 +13421,27 @@ var TurnProviders={
         return TurnProviders.fromAnswers(inner,state,meta);
       }
     }
+  },
+
+  /* 送信の口はここ1つ。経路が transport:'extension' なら拡張のバックグラウンドへ
+     肩代わりさせる。返す形は fetch と同じ {status,text} に揃え、上位が運び方の
+     違いを見ないで済むようにする。 */
+  send:function(route,url,headers,body,signal){
+    if(route&&route.transport==='extension')
+      return TurnBridge.send(url,headers,body,signal);
+    return fetch(url,{method:'POST',signal:signal,cache:'no-store',headers:headers,body:body})
+      .then(function(r){
+        return r.text().then(function(t){return {status:r.status,text:String(t||'')};},
+          function(){return {status:r.status,text:''};});
+      },function(err){
+        /* status を持たない失敗は、応答が返らなかったということ。ブラウザは CORS でも
+           DNS でも遮断でも同じ "Failed to fetch" を投げるので、ここで印を付ける。 */
+        if(err&&err.name==='AbortError')throw err;
+        if(err&&err.status)throw err;
+        var e=new Error('応答が返りません（CORS・DNS・ネットワーク遮断のいずれか）');
+        e.unreachable=true;e.cause=String((err&&err.message)||err).slice(0,80);
+        throw e;
+      });
   },
 
   /* 経路を安全に引く。TurnProviders 自身のメソッド名（normalize 等）を
@@ -13193,6 +13460,7 @@ var TurnProviders={
     for(k in this.ROUTES)if(Object.prototype.hasOwnProperty.call(this.ROUTES,k))
       out.push({id:k,label:this.ROUTES[k].label,vendor:this.ROUTES[k].vendor,
         verified:!!this.ROUTES[k].verified,local:false,keyHint:this.ROUTES[k].keyHint,
+        bridge:this.ROUTES[k].transport==='extension',
         contextNote:this.ROUTES[k].contextNote,defaultModel:this.ROUTES[k].defaultModel});
     return out;
   },
@@ -13216,30 +13484,28 @@ var TurnProviders={
     var headers={'Content-Type':'application/json'},h=route.headers(key),hk;
     for(hk in h)if(Object.prototype.hasOwnProperty.call(h,hk))headers[hk]=h[hk];
     var t0=Date.now();
-    return fetch(base.replace(/\/+$/,'')+route.path,{method:'POST',cache:'no-store',
-      headers:headers,body:JSON.stringify(route.body(state,model))
-    }).then(function(r){
+    return this.send(route,base.replace(/\/+$/,'')+route.path,headers,
+      JSON.stringify(route.body(state,model))).then(function(r){
       var ms=Date.now()-t0;
-      if(!r.ok)return r.text().then(function(txt){
-        return {ok:false,ms:ms,status:r.status,detail:String(txt||'').slice(0,160)};
-      },function(){return {ok:false,ms:ms,status:r.status};});
+      if(r.status<200||r.status>=300)
+        return {ok:false,ms:ms,status:r.status,detail:String(r.text||'').slice(0,160)};
       /* 200 が返っただけでは使えるとは言えない。本番と同じ parse と正規化を
          通し、契約に載る答えが取り出せたときだけ ok にする。ここを緩めると
          「疎通は通ったのに会議では何も起きない」が再発する。 */
-      return r.text().then(function(txt){
-        var j;try{j=JSON.parse(txt);}catch(err){
-          return {ok:false,ms:ms,status:r.status,parsed:false,detail:'JSONではない応答'};}
-        var norm=null;
-        try{norm=route.parse(j,state,{provider:id,model:model,semantics:route.semantics,
-          latencyMs:ms,questionSetHash:TurnDecision.questionSetHash()});}catch(err){norm=null;}
-        if(!norm)return {ok:false,ms:ms,status:r.status,parsed:false,
-          detail:'契約の形に解析できません: '+String(txt||'').slice(0,120)};
-        return {ok:true,ms:ms,status:r.status,parsed:true,
-          choice:norm.boundary&&norm.boundary.choice,model:norm.model};
-      });
+      var j;try{j=JSON.parse(r.text);}catch(err){
+        return {ok:false,ms:ms,status:r.status,parsed:false,detail:'JSONではない応答'};}
+      var norm=null;
+      try{norm=route.parse(j,state,{provider:id,model:model,semantics:route.semantics,
+        latencyMs:ms,questionSetHash:TurnDecision.questionSetHash()});}catch(err){norm=null;}
+      if(!norm)return {ok:false,ms:ms,status:r.status,parsed:false,
+        detail:'契約の形に解析できません: '+String(r.text||'').slice(0,120)};
+      return {ok:true,ms:ms,status:r.status,parsed:true,
+        choice:norm.boundary&&norm.boundary.choice,model:norm.model};
     },function(err){
-      return {ok:false,unreachable:true,ms:Date.now()-t0,status:0,
-        detail:String((err&&err.message)||err).slice(0,80)};
+      return {ok:false,unreachable:!!(err&&err.unreachable),
+        needsBridge:!!(err&&err.needsBridge),needsSetup:!!(err&&err.needsSetup),
+        ms:Date.now()-t0,status:Number(err&&err.status)||0,
+        detail:String((err&&err.message)||err).slice(0,120)};
     });
   },
 
@@ -13255,34 +13521,28 @@ var TurnProviders={
         var base=String(CFG.turnDecisionBaseUrl||'')||route.defaultBase;
         if(!/^https:\/\//.test(base))return Promise.reject(new Error('判断層のURLはHTTPSのみ許可します'));
         var model=String(CFG.turnDecisionModel||'')||route.defaultModel;
-        /* active では alias ではなく校正済み version を pin する（§8.5）。 */
-        if(TurnDecision.applies(state.sourceLanguage)&&/latest/i.test(model))
-          return Promise.reject(new Error('active では model に固定versionを指定してください（いまは '+model+'）'));
+        /* active では alias ではなく校正済み version を pin する（§8.5）。alias は
+           新版が出ると勝手に動き、こちら側の変更なしに答えが変わる。公式の
+           Models ページでは jev-latest も jev-preview も jev-1.13.0 を指している。 */
+        if(TurnDecision.applies(state.sourceLanguage)&&/latest|preview/i.test(model))
+          return Promise.reject(new Error('active では model に固定versionを指定してください'
+            +'（いまは '+model+'。例: jev-1.13.0）'));
         var body;try{body=JSON.stringify(route.body(state,model));}catch(err){
           return Promise.reject(new Error('リクエストを組み立てられません'));}
         /* 経路ごとの文脈上限。超えたら送らずRulesへ落とす。途中で切ると
-           候補の offset と本文がずれ、存在しない位置を選ばせてしまう。 */
-        if(route.maxStateChars&&body.length>route.maxStateChars)
+           候補の before/after と本文がずれ、存在しない位置を選ばせてしまう。
+           名前が maxStateChars だった頃から実際に見ているのは body 全体で、
+           state ＋全質問なので公式の「state ＋最長の質問」より厳しい側に外れる。 */
+        if(route.maxBodyChars&&body.length>route.maxBodyChars)
           return Promise.reject(new Error('この経路の文脈上限を超えました'));
         var headers={'Content-Type':'application/json'},h=route.headers(key),hk;
         for(hk in h)if(Object.prototype.hasOwnProperty.call(h,hk))headers[hk]=h[hk];
         var t0=Date.now();
-        return fetch(base.replace(/\/+$/,'')+route.path,{
-          method:'POST',signal:opts&&opts.signal,cache:'no-store',headers:headers,body:body
-        }).catch(function(err){
-          /* status を持たない失敗は、応答が返らなかったということ。ブラウザは CORS でも
-             DNS でも遮断でも同じ "Failed to fetch" を投げるので、ここで印を付ける。 */
-          if(err&&err.name==='AbortError')throw err;
-          if(err&&err.status)throw err;
-          var e=new Error('応答が返りません（CORS・DNS・ネットワーク遮断のいずれか）');
-          e.unreachable=true;e.cause=String((err&&err.message)||err).slice(0,80);
-          throw e;
-        }).then(function(r){
-          if(!r.ok){var e=new Error('HTTP '+r.status);e.status=r.status;throw e;}
-          return r.text();
-        }).then(function(text){
-          if(text.length>200000)throw new Error('応答が大きすぎます');
-          var j;try{j=JSON.parse(text);}catch(err){throw new Error('JSONではない応答');}
+        return TurnProviders.send(route,base.replace(/\/+$/,'')+route.path,headers,body,
+          opts&&opts.signal).then(function(r){
+          if(r.status<200||r.status>=300){var e=new Error('HTTP '+r.status);e.status=r.status;throw e;}
+          if(r.text.length>200000)throw new Error('応答が大きすぎます');
+          var j;try{j=JSON.parse(r.text);}catch(err){throw new Error('JSONではない応答');}
           return route.parse(j,state,{provider:id,model:model,semantics:route.semantics,
             latencyMs:Date.now()-t0,questionSetHash:TurnDecision.questionSetHash()});
         });
@@ -13594,8 +13854,12 @@ var TurnDecision={
         if(err&&err.unreachable)self.bump('unreachable');
         if(err&&err.unreachable&&!self._toldUnreachable){
           self._toldUnreachable=true;
-          toast('判断層へ到達できません。<br>ブラウザから直接この API を呼べない可能性があります'
-            +'（CORS）。<br>Rules で動作を続けます。');
+          toast(err.needsBridge?('判断層へ到達できません。<br>'+err.message
+              +'<br>Rules で動作を続けます。')
+            :err.needsSetup?('判断層へ到達できません。<br>アドオンのポップアップで接続先を'
+              +'許可してください。<br>Rules で動作を続けます。')
+            :('判断層へ到達できません。<br>ブラウザから直接この API を呼べない可能性があります'
+              +'（CORS）。<br>アドオン経由の経路をお試しください。<br>Rules で動作を続けます。'));
         }
         if(status&&TurnProviders.NEVER_RETRY.indexOf(status)>=0){
           self.circuitFail(id,lang,reason);

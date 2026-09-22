@@ -11,6 +11,47 @@ test('Three participants with the same language can switch local identity by con
 test('Policy denies missing identity and every manual replay',()=>{for(const mode of ['tts-only','original-plus-tts','original-only']){c.conferenceAudioState.mode=mode;assert(!c.AudioRoutingPolicy.resolve({...job,playbackIntent:'manual-replay'}).conferenceMic);assert(!c.AudioRoutingPolicy.resolve({...job,utteranceId:null}).conferenceMic);}});
 test('Only automatic local audio is eligible by default in on and mix',()=>{for(const mode of ['tts-only','original-plus-tts']){c.conferenceAudioState.mode=mode;assert(c.AudioRoutingPolicy.resolve(job).conferenceMic);assert(!c.AudioRoutingPolicy.resolve({...job,sourceScope:'remote',speakerId:'x'}).conferenceMic);}});
 test('Remote relay requires opt-in, selected identity, translation and automatic intent',()=>{const s=c.conferenceAudioState;s.mode='tts-only';s.relay=true;s.relayParticipants.add('x');const r={...job,sourceScope:'remote',speakerId:'x'};assert(c.AudioRoutingPolicy.resolve(r).conferenceMic);for(const override of [{speakerId:null},{speakerId:'y'},{ttsType:'original'},{playbackIntent:'manual-replay'}])assert(!c.AudioRoutingPolicy.resolve({...r,...override}).conferenceMic);s.mode='original-only';assert(!c.AudioRoutingPolicy.resolve(r).conferenceMic);s.mode='tts-only';assert(c.AudioRoutingPolicy.resolve(r).conferenceMic);});
+/* streaming TTS は PCM バッファごとに ConferenceMicBus.connect へ来る。実測ログでは
+   61秒・475件の半分近くが同じ2行の繰り返しで埋まっていた。1時間の記録では trace 上限
+   40,000 行に早々に届き、肝心の行が落ちる。判定は job と bus の状態だけで決まるので、
+   結果が変わったときだけ書く。ルーティング自体はバッファごとに行う（実際の接続なので）。 */
+test('The same job logs its route once, however many buffers the stream produces',()=>{
+  c.conferenceAudioState.mode='tts-only';c.conferenceAudioState.relay=false;
+  c.ConferenceMicBus.lastRoute={};c.ConferenceMicBus.lastRouteN=0;
+  events.length=0;
+  const streamed={...job,jobId:'tts-1'};
+  for(let i=0;i<40;i++)c.ConferenceMicBus.noteRoute(streamed,{conferenceMic:false});
+  const lines=events.length;
+  assert.equal(lines,0,'noteRoute itself never logs');
+  let wrote=0;
+  for(let i=0;i<40;i++)if(c.ConferenceMicBus.noteRoute({...streamed,jobId:'tts-2'},{conferenceMic:false}))wrote++;
+  assert.equal(wrote,1,'40 buffers of one job must produce one entry, not 40');
+});
+test('A different job, and a changed destination, are still reported',()=>{
+  c.ConferenceMicBus.lastRoute={};c.ConferenceMicBus.lastRouteN=0;
+  const a={...job,jobId:'tts-a'},b={...job,jobId:'tts-b'};
+  assert.equal(c.ConferenceMicBus.noteRoute(a,{conferenceMic:false}),true);
+  assert.equal(c.ConferenceMicBus.noteRoute(b,{conferenceMic:false}),true,'each job is reported once');
+  assert.equal(c.ConferenceMicBus.noteRoute(a,{conferenceMic:false}),false);
+  assert.equal(c.ConferenceMicBus.noteRoute(a,{conferenceMic:true}),true,
+    'a job that starts reaching the conference mic is a new fact');
+  c.ConferenceMicBus.enabled=true;
+  assert.equal(c.ConferenceMicBus.noteRoute(a,{conferenceMic:true}),true,
+    'and so is the bus being switched on underneath it');
+  c.ConferenceMicBus.enabled=false;
+});
+test('The memo is bounded, so a long meeting cannot grow it without limit',()=>{
+  c.ConferenceMicBus.lastRoute={};c.ConferenceMicBus.lastRouteN=0;
+  for(let i=0;i<600;i++)c.ConferenceMicBus.noteRoute({...job,jobId:'tts-'+i},{conferenceMic:false});
+  assert.ok(Object.keys(c.ConferenceMicBus.lastRoute).length<=257,
+    'got '+Object.keys(c.ConferenceMicBus.lastRoute).length);
+  assert.ok(c.ConferenceMicBus.lastRouteN<=257);
+});
+test('A job with no id is always reported rather than silently dropped',()=>{
+  c.ConferenceMicBus.lastRoute={};c.ConferenceMicBus.lastRouteN=0;
+  assert.equal(c.ConferenceMicBus.noteRoute({...job,jobId:''},{conferenceMic:false}),true);
+  assert.equal(c.ConferenceMicBus.noteRoute({...job,jobId:''},{conferenceMic:false}),true);
+});
 const now=Date.now(),entry={id:'e1',utteranceId:'u1',seat:'B',ts:new Date(now).toISOString(),startedAt:now,endedAt:now+2000,origin:{sourceEndpointId:'conference-audio',presetId:'many_to_many'},srcText:'test',dstText:'translation'};entries.push(entry);
 function batch(events,participants=[{speakerKey:'p1',displayName:'Yamada'},{speakerKey:'p2',displayName:'Smith'}]){c.duoSpeakerEvent({session:'meeting',available:true,observedAt:now,participants,events});}
 test('Delayed metadata attributes existing card from utterance time, not response time',()=>{batch([{kind:'speaker-start',speakerKey:'p1',observedAt:now},{kind:'speaker-end',speakerKey:'p1',observedAt:now+2000}]);assert.equal(entry.speaker.displayName,'Yamada');assert.equal(entry.speaker.id,'meeting:p1');assert.equal(entry.srcText,'test');assert.equal(entry.dstText,'translation');});

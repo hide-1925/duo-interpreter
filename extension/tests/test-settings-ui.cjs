@@ -113,6 +113,11 @@ const CONTROLS=['turnDecisionMode','turnDecisionLangEn','turnDecisionLangJa','tu
       assert.ok(r.routes.includes('local'),'local missing');
       assert.ok(r.routes.includes('jev-direct'),'jev-direct missing');
       assert.ok(r.routes.includes('jev-openrouter'),'jev-openrouter missing');
+      /* 実測で api.typesafe.ai は CORS 応答ヘッダを出さない。直叩きだけを出すと
+         「選べるのに絶対届かない経路」しか残らないので、アドオン経由も必ず出す。 */
+      assert.ok(r.routes.includes('jev-extension'),'jev-extension missing');
+      const bridged=r.routeLabels.filter(l=>/アドオン経由/.test(l));
+      assert.equal(bridged.length,1,'the add-on route must be identifiable in the picker');
       const unverified=r.routeLabels.filter(l=>/未検証/.test(l));
       assert.equal(unverified.length,1,'the unverified route must say so in the picker');
       assert.ok(/OpenRouter/.test(unverified[0]),'got: '+unverified[0]);

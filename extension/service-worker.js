@@ -1,5 +1,5 @@
 'use strict';
-importScripts('html-caption-command.js','html-tab-audio.js','html-host.js','overlay-frames.js','fullscreen-host.js','audio-bridge/controller.js');
+importScripts('html-caption-command.js','html-tab-audio.js','html-host.js','turn-proxy.js','overlay-frames.js','fullscreen-host.js','audio-bridge/controller.js');
 
 const SESSION_KEY = 'duoChromeSession';
 const SPEECH_BUILD = '20260906-chrome103-rca-echo';
@@ -110,7 +110,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'DUO_CONFERENCE_SIGNAL':return conferenceQueue(()=>conferenceSignal(message.data,sender));
       case 'DUO_CONFERENCE_LEASE':return conferenceLease(message,sender);
       case 'DUO_GET_STATE':
-        return { ok: true, workerVersion:'1.4.13', conference:conferencePublic(), state: await getState(), htmlUrl:await getHtmlSourceUrl(), overlay:await getOverlayStatus() };
+        return { ok: true, workerVersion:'1.4.16', conference:conferencePublic(), state: await getState(), htmlUrl:await getHtmlSourceUrl(), overlay:await getOverlayStatus(), turn:await turnPermission() };
 
       case 'DUO_FULLSCREEN_CHANGED':return syncDuoFullscreen(message,sender);
       case 'DUO_REFRESH_FRAMES': {
@@ -123,6 +123,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'DUO_SAVE_HTML_URL':requirePopup(sender);return queueHtmlOperation(()=>saveHtmlSourceUrl(message.url));
       case 'DUO_REGISTER_HTML':requirePopup(sender);return registerHtmlSource(message.tabId);
       case 'DUO_HTML_DATA':return queueHtml(message,sender);
+      /* 判断層の往復だけを中継する。縛りは turn-proxy.js 側に書いてある。 */
+      case 'DUO_TURN_FETCH':return turnFetch(message,sender);
+      case 'DUO_SET_TURN_ORIGIN':requirePopup(sender);return setTurnOrigin(message.origin);
+      case 'DUO_CLEAR_TURN_ORIGIN':requirePopup(sender);return clearTurnOrigin();
       case 'DUO_HTML_AUDIO_CAPTURE':return getHtmlTabAudioId(sender);
       case 'DUO_PREPARE_TARGET': {
         requirePopup(sender);
