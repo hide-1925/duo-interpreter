@@ -1,47 +1,55 @@
 {
- "note": "出荷した版と、その版の実体のSHA-256。tests/test-release-manifest.cjs が、いま名乗っている版の記録と実ファイルの一致を検査する。中身を変えたのに版を据え置くと落ちる。v1.48.0 を名乗る別物を main へ載せてしまった事故の再発防止。",
- "incident": "コミット 1bdeb9b は v1.48.0 を名乗りながら 454a232 とは別の index.html を 載せていた（4e16d461… と d689c7fc…）。判断層の経路UIを入れたのに版を上げなかったため。v1.49.0 として名乗り直し、以後はこの検査で止める。",
- "pairing": "拡張の zip には app.js が入るので、HTML の版が変われば拡張の版も変わる。対になる版をここに記録する。",
- "releases": {
-  "v1.47.1": {
-   "build": "20260921-v1471-conference-handshake",
-   "extension": "1.4.8",
-   "commit": "974a322",
-   "indexHtmlSha256": "09d2a9f9f0892d778b5ea78957f40ab55525810ad96b4aa357730d22567f743f",
-   "extensionAppJsSha256": "be8211c6196f9a47f9dfd1aea38e3403ccc766c71b0a49a0ff8fec5d3bf531c4",
-   "summary": "Teams会議への読み上げ送出"
-  },
-  "v1.48.0": {
-   "build": "20260922-v1480-turn-decision",
-   "extension": "1.4.9",
-   "commit": "454a232",
-   "indexHtmlSha256": "4e16d4616ca1dc2db931e6ced614d1f6e5b35aab248a08dd1ad5a4d9490d8e96",
-   "extensionAppJsSha256": "c742c7e8782d12866bb93891c20f6323ad7603c9ca81d718956c93f298ff20e5",
-   "summary": "判断層の計測基盤と契約（UIからは経路を選べない）"
-  },
-  "v1.49.0": {
-   "build": "20260922-v1490-turn-routes",
-   "extension": "1.4.11",
-   "commit": null,
-   "indexHtmlSha256": "a3bd0bc6431998f303f344afcb4ef22837c65dc36224a1ec7d0e2bd03cfa0b7a",
-   "extensionAppJsSha256": "fe4fe0b38f8f85420a575d3142779d9091283cf3cd3175ed067d0785daeca508",
-   "summary": "判断層の経路レジストリ・経路選択とAPIキーのUI・診断ログ。Jevへ繋げる最初の版"
-  },
-  "v1.49.1": {
-   "build": "20260922-v1491-route-reachability",
-   "extension": "1.4.12",
-   "commit": null,
-   "indexHtmlSha256": "4cf94269b036ccb55c75438398962eab58ed241cad43b0f76b69da7dc47ca8f8",
-   "extensionAppJsSha256": "f6bd01f1749fdfb1fc71a5859bdf4ad22e767dd3dd6df1e5e1c62c2e3fe86c4e",
-   "summary": "jev-direct から未記載ヘッダを外し、到達不能を CORS として切り分け、経路の疎通確認を追加"
-  },
-  "v1.49.2": {
-   "build": "20260923-v1492-mode-ceiling",
-   "extension": "1.4.13",
-   "commit": null,
-   "indexHtmlSha256": "feb3f0843b74f1648cce8c9d523b4f35fd08364d52822c2e666ccd38d6417b22",
-   "extensionAppJsSha256": "18a259df86067d4441d74521ef081d50b2ead765b39f7dd86d210cac410a33a7",
-   "summary": "全体モードを上限にし、保持していないFloorの期限発火を止め、疎通の成否を解析結果で判定し、往復の内訳を診断へ出す"
+  "note": "出荷した版と、その版の実体のSHA-256。tests/test-release-manifest.cjs が、いま名乗っている版の記録と実ファイルの一致を検査する。中身を変えたのに版を据え置くと落ちる。v1.48.0 を名乗る別物を main へ載せてしまった事故の再発防止。",
+  "incident": "コミット 1bdeb9b は v1.48.0 を名乗りながら 454a232 とは別の index.html を 載せていた（4e16d461… と d689c7fc…）。判断層の経路UIを入れたのに版を上げなかったため。v1.49.0 として名乗り直し、以後はこの検査で止める。",
+  "pairing": "拡張の zip には app.js が入るので、HTML の版が変われば拡張の版も変わる。対になる版をここに記録する。",
+  "releases": {
+    "v1.47.1": {
+      "build": "20260921-v1471-conference-handshake",
+      "extension": "1.4.8",
+      "commit": "974a322",
+      "indexHtmlSha256": "09d2a9f9f0892d778b5ea78957f40ab55525810ad96b4aa357730d22567f743f",
+      "extensionAppJsSha256": "be8211c6196f9a47f9dfd1aea38e3403ccc766c71b0a49a0ff8fec5d3bf531c4",
+      "summary": "Teams会議への読み上げ送出"
+    },
+    "v1.48.0": {
+      "build": "20260922-v1480-turn-decision",
+      "extension": "1.4.9",
+      "commit": "454a232",
+      "indexHtmlSha256": "4e16d4616ca1dc2db931e6ced614d1f6e5b35aab248a08dd1ad5a4d9490d8e96",
+      "extensionAppJsSha256": "c742c7e8782d12866bb93891c20f6323ad7603c9ca81d718956c93f298ff20e5",
+      "summary": "判断層の計測基盤と契約（UIからは経路を選べない）"
+    },
+    "v1.49.0": {
+      "build": "20260922-v1490-turn-routes",
+      "extension": "1.4.11",
+      "commit": null,
+      "indexHtmlSha256": "a3bd0bc6431998f303f344afcb4ef22837c65dc36224a1ec7d0e2bd03cfa0b7a",
+      "extensionAppJsSha256": "fe4fe0b38f8f85420a575d3142779d9091283cf3cd3175ed067d0785daeca508",
+      "summary": "判断層の経路レジストリ・経路選択とAPIキーのUI・診断ログ。Jevへ繋げる最初の版"
+    },
+    "v1.49.1": {
+      "build": "20260922-v1491-route-reachability",
+      "extension": "1.4.12",
+      "commit": null,
+      "indexHtmlSha256": "4cf94269b036ccb55c75438398962eab58ed241cad43b0f76b69da7dc47ca8f8",
+      "extensionAppJsSha256": "f6bd01f1749fdfb1fc71a5859bdf4ad22e767dd3dd6df1e5e1c62c2e3fe86c4e",
+      "summary": "jev-direct から未記載ヘッダを外し、到達不能を CORS として切り分け、経路の疎通確認を追加"
+    },
+    "v1.49.2": {
+      "build": "20260923-v1492-mode-ceiling",
+      "extension": "1.4.13",
+      "commit": "f4663dd",
+      "indexHtmlSha256": "feb3f0843b74f1648cce8c9d523b4f35fd08364d52822c2e666ccd38d6417b22",
+      "extensionAppJsSha256": "18a259df86067d4441d74521ef081d50b2ead765b39f7dd86d210cac410a33a7",
+      "summary": "全体モードを上限にし、保持していないFloorの期限発火を止め、疎通の成否を解析結果で判定し、往復の内訳を診断へ出す"
+    },
+    "v1.49.3": {
+      "build": "20260923-v1493-extension-transport",
+      "extension": "1.4.14",
+      "commit": null,
+      "indexHtmlSha256": "3762a9f5409e628aa3a86bd4afcecd71b25ab12cff30a68d63ffc65febcd0d72",
+      "extensionAppJsSha256": "9406822eb8a672ec4b7202189ac5c9fa75b36a55f33a86fb06ed1017562db7b4",
+      "summary": "api.typesafe.ai が CORS 応答ヘッダを出さないことを実測で確定したので、判断層の往復をアドオンのバックグラウンドに肩代わりさせる経路を足す"
+    }
   }
- }
 }

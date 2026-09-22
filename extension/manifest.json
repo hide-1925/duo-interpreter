@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.13",
-  "version_name": "1.4.13 HTML v1.49.2 と対。全体モードを上限にする",
+  "version": "1.4.14",
+  "version_name": "1.4.14 HTML v1.49.3 と対。判断層の往復をアドオンが肩代わりする",
   "optional_host_permissions": [
     "https://*/*"
   ],

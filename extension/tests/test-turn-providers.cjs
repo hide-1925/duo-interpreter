@@ -25,11 +25,26 @@ const ctx={console,Math,Date,JSON,Object,Array,String,Number,isFinite,RegExp,Pro
   persistSetting:()=>{}, micProsody:null,
   hasSpeechContent:t=>/[\p{L}\p{N}]/u.test(String(t||'')),
   fetch:(url,opt)=>{calls.push({url,opt});return fetchImpl(url,opt);}};
+/* 拡張経由の経路を検査するための疑似 window / chrome。
+   既定では両方 undefined にしておく（＝直叩きしか使えない状態）。
+   TurnBridge.mode() はこの2つだけを見て運び方を決めるので、ここを差し替えると
+   「拡張ページ」「HTML本体＋内容スクリプト」「どちらでもない」を再現できる。 */
+const winListeners={},dispatched=[];
+ctx.window={
+  addEventListener:(name,fn)=>{(winListeners[name]=winListeners[name]||[]).push(fn);},
+  removeEventListener:(name,fn)=>{const a=winListeners[name]||[];const i=a.indexOf(fn);if(i>=0)a.splice(i,1);},
+  dispatchEvent:(ev)=>{dispatched.push(ev);for(const fn of (winListeners[ev.type]||[]).slice())fn(ev);return true;}
+};
+ctx.CustomEvent=class{constructor(type,init){this.type=type;this.detail=init&&init.detail;}};
+const fireWindow=(name,detail)=>{
+  for(const fn of (winListeners[name]||[]).slice())fn({type:name,detail:JSON.stringify(detail)});
+};
 const c=vm.createContext(ctx);
 for(const b of [segBlock(),block('var TURN_PROSODY_SENT='),
                 block('function segEnabled()'),block('function segDecision(input){'),
                 block('function segSemanticEnabled()'),block('function segSemanticTail(text,lang){'),
                 block('function segSemanticDecision(input){'),
+                block('var TurnBridge={'),
                 block('var TurnProviders={'),block('var TURN_STATE_SCHEMA='),
                 block('var TurnDecision={'),block('var TurnTrace={')]) vm.runInContext(b,c);
 
@@ -37,7 +52,7 @@ for(const b of [segBlock(),block('var TURN_PROSODY_SENT='),
    実質ゲートにならない。順番に await する。 */
 const queue=[],tests=[];
 const test=(n,f)=>{queue.push([n,f]);};
-const D=()=>c.TurnDecision,P=()=>c.TurnProviders;
+const D=()=>c.TurnDecision,P=()=>c.TurnProviders,B=()=>c.TurnBridge;
 function reset(over){
   calls.length=0;toasts.length=0;logs.length=0;
   ctx.CFG=Object.assign({segmentMode:'balanced',segmentBoundary:'semantic',sttProvider:'openai',
@@ -48,6 +63,11 @@ function reset(over){
     /* active では alias を拒否するので、既定で固定version を入れておく。 */
     turnDecisionModel:'jev-1.13.0'},over||{});
   D().cache={};D().inflight={};D().circuit={};D()._lastSend={};D()._confirm={};D()._qsh=null;
+  /* 中継の状態も毎回戻す。ready が残ると「接続されていない」を検査できない。 */
+  B().ready=false;B().pending={};B().seq=0;
+  delete ctx.chrome;
+  for(const k of Object.keys(winListeners))delete winListeners[k];
+  dispatched.length=0;
 }
 const card=(o)=>Object.assign({id:'e1',utteranceId:'u1',seat:'A',srcLang:'ja',
   segment:{revision:3,final:false},segments:[]},o||{});
@@ -686,6 +706,158 @@ test('reset drops the circuit and the send history too',()=>{
   D().reset('test');
   assert.equal(Object.keys(D().circuit).length,0);
   assert.equal(Object.keys(D()._lastSend).length,0);
+});
+
+
+/* ── アドオン経由の運搬 ─────────────────────────────────────────────────
+   実測で api.typesafe.ai は「API は動くが Access-Control-Allow-Origin を出さない」
+   だった。ブラウザからの直叩きでは結果を読めないので、往復を拡張へ肩代わりさせる
+   経路を足した。ここで守るのは3つ。
+     1. リクエストの形は直叩きと同一であること（形が違えば別物を検証してしまう）
+     2. 中継できないときに直叩きへ勝手に落ちないこと（落ちれば必ず失敗し、
+        しかも理由が CORS に見えて原因を取り違える）
+     3. 中継された HTTP エラーが status を保つこと（NEVER_RETRY の判定が効く） */
+test('the add-on route is offered and marked as needing the add-on',()=>{
+  reset();
+  const rows=P().list(),row=rows.filter(r=>r.id==='jev-extension')[0];
+  assert.ok(row,'jev-extension must appear in the picker');
+  assert.equal(row.bridge,true,'and be marked as going through the add-on');
+  assert.equal(row.vendor,'typesafe','so it shares the TypeSafe key');
+  assert.equal(rows.filter(r=>r.bridge).length,1,'only this route goes through the add-on');
+});
+test('the add-on route sends byte-identical requests to the direct route',()=>{
+  reset();
+  const s=stateOf(),direct=P().ROUTES['jev-direct'],bridged=P().ROUTES['jev-extension'];
+  assert.equal(JSON.stringify(bridged.body(s,'jev-1.13.0')),
+               JSON.stringify(direct.body(s,'jev-1.13.0')),'the body must not drift');
+  assert.equal(JSON.stringify(bridged.headers('k')),JSON.stringify(direct.headers('k')),
+    'nor the headers');
+  assert.equal(bridged.path,direct.path);
+  assert.equal(bridged.defaultBase,direct.defaultBase);
+});
+test('with no add-on reachable, the route reports it and never falls back to a direct fetch',async()=>{
+  reset({turnDecisionProvider:'jev-extension'});
+  fetchImpl=reply(wire(stateOf()));
+  let err=null;
+  try{await P().get('jev-extension').evaluate(stateOf(),{});}catch(e){err=e;}
+  assert.ok(err,'it must fail rather than send');
+  assert.equal(err.needsBridge,true,'and say the add-on is what is missing');
+  assert.equal(err.unreachable,true,'so the counter and the toast treat it as unreachable');
+  assert.equal(calls.length,0,'a silent direct fetch would always fail and blame CORS');
+});
+test('an extension page relays the round trip through chrome.runtime',async()=>{
+  reset({turnDecisionProvider:'jev-extension'});
+  const s=stateOf();const seen=[];
+  ctx.chrome={runtime:{id:'abc',lastError:null,
+    sendMessage:(msg,cb)=>{seen.push(msg);cb({ok:true,status:200,text:JSON.stringify(wire(s))});}}};
+  const out=await P().get('jev-extension').evaluate(s,{});
+  assert.equal(calls.length,0,'the page must not fetch by itself');
+  assert.equal(seen.length,1);
+  assert.equal(seen[0].type,'DUO_TURN_FETCH');
+  assert.equal(seen[0].request.url,'https://api.typesafe.ai/v1/systemone');
+  assert.equal(JSON.parse(seen[0].request.body).state.schemaVersion,c.TURN_STATE_SCHEMA);
+  assert.equal(seen[0].request.headers.Authorization,'Bearer k','the key rides the relay');
+  assert.ok(out&&out.boundary,'and the answer normalises as usual');
+  assert.equal(out.boundary.choice,(s.candidateBoundaries[0]||{}).id);
+});
+test('the page bridge carries the round trip once the content script announces itself',async()=>{
+  reset({turnDecisionProvider:'jev-extension'});
+  B().wired=false;B().wire();
+  assert.equal(B().mode(),'','before the announcement there is no relay');
+  fireWindow('duo-turn-bridge',{ready:true});
+  assert.equal(B().mode(),'event','after it, the page relays through the content script');
+  const s=stateOf();
+  const task=P().get('jev-extension').evaluate(s,{});
+  const sent=dispatched.filter(e=>e.type==='duo-turn-request');
+  assert.equal(sent.length,1,'exactly one request event');
+  const req=JSON.parse(sent[0].detail);
+  assert.equal(req.request.url,'https://api.typesafe.ai/v1/systemone');
+  fireWindow('duo-turn-reply',{id:req.id,ok:true,status:200,text:JSON.stringify(wire(s))});
+  const out=await task;
+  assert.ok(out&&out.boundary);
+  assert.equal(calls.length,0);
+  assert.equal(Object.keys(B().pending).length,0,'and nothing is left waiting');
+});
+test('a reply for an unknown id is ignored instead of resolving the wrong call',async()=>{
+  reset({turnDecisionProvider:'jev-extension'});
+  B().wired=false;B().wire();fireWindow('duo-turn-bridge',{ready:true});
+  const s=stateOf();
+  const task=P().get('jev-extension').evaluate(s,{});
+  const req=JSON.parse(dispatched.filter(e=>e.type==='duo-turn-request')[0].detail);
+  fireWindow('duo-turn-reply',{id:'someone-else',ok:true,status:200,text:'{}'});
+  assert.equal(Object.keys(B().pending).length,1,'the real call is still waiting');
+  fireWindow('duo-turn-reply',{id:req.id,ok:true,status:200,text:JSON.stringify(wire(s))});
+  assert.ok(await task);
+});
+test('losing the content script fails the calls in flight instead of hanging',async()=>{
+  reset({turnDecisionProvider:'jev-extension'});
+  B().wired=false;B().wire();fireWindow('duo-turn-bridge',{ready:true});
+  const task=P().get('jev-extension').evaluate(stateOf(),{});
+  assert.equal(Object.keys(B().pending).length,1);
+  fireWindow('duo-turn-bridge',{ready:false});
+  let err=null;try{await task;}catch(e){err=e;}
+  assert.ok(err,'the call must end');
+  assert.equal(err.unreachable,true);
+  assert.equal(B().mode(),'','and the relay is marked gone');
+  assert.equal(Object.keys(B().pending).length,0);
+});
+test('a relay refusal that needs setup is reported as setup, not as a network failure',async()=>{
+  reset({turnDecisionProvider:'jev-extension'});
+  ctx.chrome={runtime:{id:'abc',lastError:null,
+    sendMessage:(msg,cb)=>cb({ok:false,needsSetup:true,error:'判断層の接続先が未設定です'})}};
+  let err=null;
+  try{await P().get('jev-extension').evaluate(stateOf(),{});}catch(e){err=e;}
+  assert.ok(err);
+  assert.equal(err.needsSetup,true);
+  assert.ok(!err.status,'a refusal by the add-on is not an HTTP status');
+});
+test('an HTTP error relayed by the add-on keeps its status so NEVER_RETRY still fires',async()=>{
+  reset({turnDecisionProvider:'jev-extension'});
+  ctx.chrome={runtime:{id:'abc',lastError:null,
+    sendMessage:(msg,cb)=>cb({ok:true,status:401,text:'no'})}};
+  D().observe(stateOf());
+  await new Promise(r=>setTimeout(r,0));
+  assert.equal(ctx.CFG.turnDecisionMode,'off','401 through the relay must still stop the layer');
+  assert.ok(logs.some(l=>l[0]==='turn-decision-fallback'&&/http-401/.test(JSON.stringify(l[1]))));
+});
+test('the relay honours an abort',async()=>{
+  reset({turnDecisionProvider:'jev-extension'});
+  B().wired=false;B().wire();fireWindow('duo-turn-bridge',{ready:true});
+  const ac=new AbortController();
+  const task=P().get('jev-extension').evaluate(stateOf(),{signal:ac.signal});
+  ac.abort();
+  let err=null;try{await task;}catch(e){err=e;}
+  assert.equal(err&&err.name,'AbortError');
+  assert.equal(Object.keys(B().pending).length,0,'and stops waiting for the reply');
+});
+test('a chrome.runtime failure is a bridge problem, not a CORS problem',async()=>{
+  reset({turnDecisionProvider:'jev-extension'});
+  ctx.chrome={runtime:{id:'abc',lastError:{message:'Receiving end does not exist'},
+    sendMessage:(msg,cb)=>cb(undefined)}};
+  let err=null;
+  try{await P().get('jev-extension').evaluate(stateOf(),{});}catch(e){err=e;}
+  assert.ok(err);
+  assert.equal(err.needsBridge,true);
+  assert.match(err.message,/アドオン/);
+});
+test('the direct route still goes out over fetch',async()=>{
+  reset({turnDecisionProvider:'jev-direct'});
+  const s=stateOf();fetchImpl=reply(wire(s));
+  await P().get('jev-direct').evaluate(s,{});
+  assert.equal(calls.length,1,'the direct route must not be routed through the add-on');
+  assert.equal(calls[0].url,'https://api.typesafe.ai/v1/systemone');
+});
+test('probe over the relay reports the parsed decision, and the missing relay separately',async()=>{
+  reset({turnDecisionProvider:'jev-extension'});
+  let res=await P().probe('jev-extension');
+  assert.equal(res.ok,false);
+  assert.equal(res.needsBridge,true,'no relay must not read as CORS');
+  ctx.chrome={runtime:{id:'abc',lastError:null,
+    sendMessage:(msg,cb)=>cb({ok:true,status:200,text:JSON.stringify(PROBE_ANSWER)})}};
+  res=await P().probe('jev-extension');
+  assert.equal(res.ok,true);
+  assert.equal(res.parsed,true);
+  assert.equal(res.choice,'C_FULL_28');
 });
 
 (async()=>{
