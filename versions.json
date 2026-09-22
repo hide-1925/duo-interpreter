@@ -54,10 +54,18 @@
     "v1.49.4": {
       "build": "20260923-v1494-state-projection",
       "extension": "1.4.15",
-      "commit": null,
+      "commit": "8a93c36",
       "indexHtmlSha256": "f8fd7157fae941c778f47dbac30b5c63bf4786568e6ba0ad0b531d98c9225263",
       "extensionAppJsSha256": "2b967c63f4a7165b8c912bd6cc94de0f9d619721523a4dd2910f61236f5fd5bf",
       "summary": "公式の Models と jaggedness を読み、文脈上限の誤りを直し、質問が名指ししない state を送らないようにする"
+    },
+    "v1.49.5": {
+      "build": "20260923-v1495-route-log-dedup",
+      "extension": "1.4.16",
+      "commit": null,
+      "indexHtmlSha256": "888cbfc6aec3dbde3bd0e70dbe65f6d9a505776ca2ed444ee3e540a53db45042",
+      "extensionAppJsSha256": "2f2e4067c6d7c74511d857fbcc7606a5fd0ee74805f02ebcd1383f895d8d56db",
+      "summary": "streaming TTS がPCMバッファごとに同じ経路判定を書いて診断ログを埋めていたのを、結果が変わったときだけに絞る"
     }
   }
 }
