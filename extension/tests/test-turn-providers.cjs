@@ -47,7 +47,7 @@ function reset(over){
     turnDecisionApiKey:'k',turnDecisionBaseUrl:'https://api.typesafe.ai',
     /* active では alias を拒否するので、既定で固定version を入れておく。 */
     turnDecisionModel:'jev-1.13.0'},over||{});
-  D().cache={};D().inflight={};D().circuit={};D()._lastSend={};D()._qsh=null;
+  D().cache={};D().inflight={};D().circuit={};D()._lastSend={};D()._confirm={};D()._qsh=null;
 }
 const card=(o)=>Object.assign({id:'e1',utteranceId:'u1',seat:'A',srcLang:'ja',
   segment:{revision:3,final:false},segments:[]},o||{});

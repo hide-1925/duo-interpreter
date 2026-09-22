@@ -64,7 +64,8 @@ function reset(over){
     turnDecisionLangEn:'shadow',turnDecisionLangJa:'shadow',turnDecisionContextTurns:0,
     turnFloorMaxWaitMs:3000,turnFloorExpiry:'speak',turnTraceMode:'off',
     turnDecisionProsody:true},over||{});
-  peeked.count=0; D().cache={}; D().inflight={}; D().sessionSalt=null; T().reset();
+  peeked.count=0; D().cache={}; D().inflight={}; D().sessionSalt=null;
+  D()._confirm={}; D()._lastSend={}; D().circuit={}; T().reset();
 }
 const card=(over)=>Object.assign({id:'e1',utteranceId:'u1',seat:'A',srcLang:'ja',dstLang:'en',
   segment:{revision:3,final:false},segments:[]},over||{});
@@ -180,16 +181,127 @@ test('pick refuses an offset beyond the stable prefix',()=>{
 test('HOLD becomes an explicit wait, not a commit',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
   const i=input(),s=D().stateOf(card(),{},i,D().rules(i),250,Date.now());
-  const d=D().pick(s,{boundary:{choice:'HOLD',confidence:0.9}});
+  const d=D().pick(s,{boundary:{choice:'HOLD',confidence:0.9,probabilities:{HOLD:0.9}}});
   assert.equal(d.length,0); assert.equal(d.waiting,'provider-hold'); assert.equal(d.source,'provider');
 });
 test('a valid choice commits exactly at the candidate offset and is tagged provider',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
-  const i=input(),s=D().stateOf(card(),{},i,D().rules(i),250,Date.now());
+  /* 日本語の音響guardは450msなので、それを満たす無音を渡す。 */
+  const i=input(),s=D().stateOf(card(),{},i,D().rules(i),900,Date.now());
   /* 同一 offset の候補は重複排除されるので、先頭の候補を使う。 */
-  const cand=s.candidateBoundaries[0];
-  const d=D().pick(s,{boundary:{choice:cand.id,confidence:0.9}});
+  const cand=s.candidateBoundaries[0],probs={HOLD:0.02};probs[cand.id]=0.98;
+  /* rule も同じ位置を選んでいるので、2回確認は要らない。 */
+  const d=D().pick(s,{boundary:{choice:cand.id,confidence:0.9,probabilities:probs},
+    turnState:{choice:'COMPLETE',confidence:0.9},safeToSpeak:0.95,repairLikelihood:0.01},
+    {length:cand.offset,reasons:['semantic-sentence','stable']});
   assert.equal(d.length,cand.offset); assert.equal(d.source,'provider');
+});
+
+/* ── 閾値は confidence ではなく probabilities に置く ────────────────────── */
+/* 公式の confidence は選択肢数 N に依存する統計量である。docs の近似式は
+   (N × p_max − 1) / (N − 1)。boundary_choice の N は HOLD＋候補1〜5件で毎回
+   変わるので、固定の confidence 下限は「Duo が何件候補を作ったか」で合否が
+   変わる。turn_state は4択固定なので confidence を使ってよい。 */
+const approxConfidence=(probs)=>{
+  const vals=Object.values(probs),n=vals.length,peak=Math.max(...vals);
+  return Math.max(0,Math.min(1,(n*peak-1)/(n-1)));
+};
+
+test('the documented confidence statistic moves with the option count, not just certainty',()=>{
+  /* 同じ p_max でも候補数が違えば confidence が違う。これが固定下限を使えない理由。 */
+  const two=approxConfidence({HOLD:0.3,A:0.7});
+  const six=approxConfidence({HOLD:0.3,A:0.7,B:0,C:0,D:0,E:0});
+  assert.ok(six>two+0.15,'N=6 ('+six.toFixed(2)+') must read far higher than N=2 ('+two.toFixed(2)+')');
+  /* 0.60 の下限だと、確信は同じでも候補数で合否が割れる。 */
+  assert.ok(two<0.60&&six>0.60,'a fixed 0.60 floor would split the same certainty');
+});
+
+test('the boundary gate ignores confidence and reads the probabilities',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active'});
+  const i=input({lang:'en',stableLength:12}),s=D().stateOf(card({srcLang:'en'}),{},i,D().rules(i),900,Date.now());
+  const id=s.candidateBoundaries[0].id;
+  /* confidence を 0 にしても、確率が閾値を満たしていれば commit する。 */
+  const probs={HOLD:0.05};probs[id]=0.95;
+  const d=D().pick(s,{boundary:{choice:id,confidence:0,probabilities:probs},
+    turnState:{choice:'COMPLETE',confidence:0.9},safeToSpeak:0.9,repairLikelihood:0.02},null);
+  assert.ok(d,'a low confidence with a concentrated probability must still commit');
+  assert.equal(d.length,s.candidateBoundaries[0].offset);
+  /* 逆に confidence が高くても、選ばれた候補の確率が低ければ Rules へ落とす。 */
+  const weak={HOLD:0.05};weak[id]=0.40;
+  assert.equal(D().pick(s,{boundary:{choice:id,confidence:0.99,probabilities:weak},
+    turnState:{choice:'COMPLETE',confidence:0.9},safeToSpeak:0.9,repairLikelihood:0.02},null),null);
+});
+
+test('a strong HOLD probability waits even when another option was chosen',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active'});
+  const i=input({lang:'en',stableLength:12}),s=D().stateOf(card({srcLang:'en'}),{},i,D().rules(i),900,Date.now());
+  const id=s.candidateBoundaries[0].id,probs={HOLD:0.45};probs[id]=0.55;
+  const d=D().pick(s,{boundary:{choice:id,confidence:0.5,probabilities:probs},
+    turnState:{choice:'COMPLETE',confidence:0.9},safeToSpeak:0.9,repairLikelihood:0.02},null);
+  assert.equal(d.length,0); assert.equal(d.waiting,'provider-hold');
+});
+
+test('CONTINUING and SELF_REPAIR hold; UNKNOWN falls back to rules',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active'});
+  const i=input({lang:'en',stableLength:12}),s=D().stateOf(card({srcLang:'en'}),{},i,D().rules(i),900,Date.now());
+  const id=s.candidateBoundaries[0].id,probs={HOLD:0.05};probs[id]=0.95;
+  const base={boundary:{choice:id,confidence:0.9,probabilities:probs},safeToSpeak:0.9,repairLikelihood:0.02};
+  for(const st of ['CONTINUING','SELF_REPAIR']){
+    const d=D().pick(s,Object.assign({},base,{turnState:{choice:st,confidence:0.9}}),null);
+    assert.equal(d.length,0,st); assert.match(d.waiting,/provider-/);
+  }
+  assert.equal(D().pick(s,Object.assign({},base,{turnState:{choice:'UNKNOWN',confidence:0.9}}),null),null);
+});
+
+test('a low turn_state confidence falls back, since that option count is fixed',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active'});
+  const i=input({lang:'en',stableLength:12}),s=D().stateOf(card({srcLang:'en'}),{},i,D().rules(i),900,Date.now());
+  const id=s.candidateBoundaries[0].id,probs={HOLD:0.05};probs[id]=0.95;
+  assert.equal(D().pick(s,{boundary:{choice:id,confidence:0.9,probabilities:probs},
+    turnState:{choice:'COMPLETE',confidence:0.3},safeToSpeak:0.9,repairLikelihood:0.02},null),null);
+});
+
+test('a likely self-repair waits, because a wrong spoken translation cannot be undone',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active'});
+  const i=input({lang:'en',stableLength:12}),s=D().stateOf(card({srcLang:'en'}),{},i,D().rules(i),900,Date.now());
+  const id=s.candidateBoundaries[0].id,probs={HOLD:0.05};probs[id]=0.95;
+  const d=D().pick(s,{boundary:{choice:id,confidence:0.9,probabilities:probs},
+    turnState:{choice:'COMPLETE',confidence:0.9},safeToSpeak:0.9,repairLikelihood:0.9},null);
+  assert.equal(d.waiting,'provider-repair');
+});
+
+test('the acoustic guard is per language and an unknown meter waits for final',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active',turnDecisionLangJa:'active'});
+  const mk=(lang,silence,final)=>{
+    const i=input({lang,stableLength:12,final});
+    return D().stateOf(card({srcLang:lang}),{},i,D().rules(i),silence,Date.now());
+  };
+  const answer=(s)=>{const id=s.candidateBoundaries[0].id,p={HOLD:0.03};p[id]=0.97;
+    return {boundary:{choice:id,confidence:0.9,probabilities:p},
+      turnState:{choice:'COMPLETE',confidence:0.9},safeToSpeak:0.95,repairLikelihood:0.01};};
+  /* 英語は 250ms、日本語は 450ms から。 */
+  let s=mk('en',300,false); assert.ok(D().pick(s,answer(s),null),'en at 300ms should pass');
+  s=mk('ja',300,false); assert.equal(D().pick(s,answer(s),null),null,'ja at 300ms should not');
+  s=mk('ja',500,false); assert.ok(D().pick(s,answer(s),null),'ja at 500ms should pass');
+  /* meter 不明は final まで待つ。 */
+  s=mk('en',null,false); assert.equal(D().pick(s,answer(s),null),null,'unknown meter, not final');
+  s=mk('en',null,true);  assert.ok(D().pick(s,answer(s),null),'unknown meter but final');
+});
+
+test('Japanese needs two agreeing decisions when the rules disagree',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const i=input({stableLength:12}),s=D().stateOf(card(),{},i,D().rules(i),900,Date.now());
+  const id=s.candidateBoundaries[0].id,probs={HOLD:0.02};probs[id]=0.98;
+  const hit={boundary:{choice:id,confidence:0.9,probabilities:probs},
+    turnState:{choice:'COMPLETE',confidence:0.9},safeToSpeak:0.95,repairLikelihood:0.01};
+  /* rule が別の位置を出しているときは1回目は確認待ち、2回目で commit。 */
+  const other={length:3,reasons:['x']};
+  const first=D().pick(s,hit,other);
+  assert.equal(first.waiting,'provider-confirming');
+  assert.ok(D().pick(s,hit,other).length>0,'the second agreeing decision commits');
+  /* rule が同じ位置なら確認は要らない。 */
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  assert.ok(D().pick(s,hit,{length:s.candidateBoundaries[0].offset,reasons:[]}).length>0);
 });
 
 /* ── プライバシー ───────────────────────────────────────────────────────── */
