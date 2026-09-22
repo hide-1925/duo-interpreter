@@ -1,0 +1,3 @@
+# probe-jev.ps1 が保存する実応答。会議の本文は入らないが、アカウント固有の
+# 応答なので版管理には載せない。
+tools/probe-jev-response.json
