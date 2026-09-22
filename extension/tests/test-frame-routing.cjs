@@ -13,7 +13,7 @@ const probe=(frameId,count,relay=true)=>({frameId,documentId:'doc-'+frameId,resu
  const report=c.conferencePublic();assert(report.diagnostics.some(d=>d.event==='frame-discovery'&&d.frames.length===2));tests.push('Diagnostic output retains per-frame discovery counts');
  await c.conferenceStop('test');assert(sent.slice(-2).some(s=>s[2].documentId==='doc-7'));tests.push('Disconnect restores the selected child document');
  const ambiguous=env([probe(0,1),probe(7,1)]);await assert.rejects(ambiguous.c.conferenceToggle(popup),/複数/);assert.equal(ambiguous.sent.length,0);tests.push('Multiple eligible frames are not silently selected');
- const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json')));assert.equal(manifest.version,'1.4.8');assert.deepEqual(manifest.content_scripts[0].js.slice(0,2),['conference-adapters/mic-provenance.js','conference-adapters/teams.js']);assert(manifest.content_scripts.every(s=>s.all_frames));tests.push('Package installs provenance before adapter in matched Teams frames');
+ const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json')));assert.equal(manifest.version,'1.4.9');assert.deepEqual(manifest.content_scripts[0].js.slice(0,2),['conference-adapters/mic-provenance.js','conference-adapters/teams.js']);assert(manifest.content_scripts.every(s=>s.all_frames));tests.push('Package installs provenance before adapter in matched Teams frames');
  // Execute the real popup export callback and inspect its generated Blob.
  const callbacks={},nodes=new Map();let blob;
  function node(id){if(!nodes.has(id))nodes.set(id,{addEventListener:(type,fn)=>{callbacks[id+':'+type]=fn;},classList:{toggle(){}},setAttribute(){},click(){},remove(){},value:'',textContent:''});return nodes.get(id);}

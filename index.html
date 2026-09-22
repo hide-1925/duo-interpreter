@@ -1784,7 +1784,10 @@ var AudioEndpointManager={
   apply:function(){['A','B'].forEach(function(view){var source=AudioEndpointManager.legacySource(view);CFG['src'+view]=source;var el=$('src'+view);if(el)el.value=source;});}
 };
 var STT_ADAPTER_CAPABILITIES={
-  webspeech:{microphone:true,systemAudio:false,arbitraryTrack:false},
+  /* Web SpeechはChrome 135+のSpeechRecognition.start(audioTrack)で共有音声Trackを
+     直接認識できる。WebSpeechTrackEngineがその経路の実装であり、開始できない実機は
+     エンジン側が理由を出して止まる。テーブルで先に塞がない。 */
+  webspeech:{microphone:true,systemAudio:true,arbitraryTrack:true},
   openai:{microphone:true,systemAudio:true,arbitraryTrack:true},
   xai:{microphone:true,systemAudio:true,arbitraryTrack:true},
   groq:{microphone:true,systemAudio:true,arbitraryTrack:true},
@@ -1842,8 +1845,19 @@ function duoRefreshEndpoints(){var el=$('duoEndpointInfo');if(el)el.textContent=
 function duoValidateInputs(){
   AudioEndpointManager.apply();
   var caps=STT_ADAPTER_CAPABILITIES[CFG.sttProvider]||STT_ADAPTER_CAPABILITIES.openai;
-  if(Object.values(duoSession.endpoints).some(function(ep){return ep.enabled&&ep.type==='system-audio';})&&!caps.systemAudio){
-    toast('Webプリセットの共有音声にはOpenAI / Groq / Geminiの音声認識を選んでください。Web Speechは通常のマイク入力で使用できます。');return false;
+  /* endpointが有効かどうかではなく、A／Bのどちらかが認識源としてタブ／システム
+     音声に束ねられているかで判定する。会議音声をTTSの送出先にしか使わない構成を
+     巻き込んで止めないため。 */
+  var recognisingShared=['A','B'].some(function(view){return AudioEndpointManager.legacySource(view)==='display';});
+  if(!recognisingShared)return true;
+  /* 経路ごとに必要な能力が違う。directはTrackを直接渡し、apiはBlobを送る。
+     vbは仮想入力デバイスなので通常のマイク扱いで、どのadapterでも通る。 */
+  var route=effectiveDisplaySttRoute();
+  if(route==='direct'&&!caps.arbitraryTrack){
+    toast('この音声認識では共有音声Trackを直接認識できません。<br>⚙→音声 で共有音声の認識経路を「VB-CABLE」または「外部API」にしてください。');return false;
+  }
+  if(route==='api'&&!caps.systemAudio){
+    toast('共有音声を外部APIで認識するには OpenAI / xAI / Groq / Gemini のいずれかを選んでください。<br>Web Speechは共有音声Trackの直接認識（⚙→音声）で使えます。');return false;
   }
   return true;
 }
@@ -2146,6 +2160,83 @@ function duoRelayList(){
 var duoRouteGates=[];
 function duoRefreshRouteGates(){duoRouteGates=duoRouteGates.filter(function(r){if(Date.now()-r.at>600000){r.gate.disconnect();return false;}r.gate.gain.value=AudioRoutingPolicy.resolve(r.job).conferenceMic?1:0;return true;});}
 function duoSttTiming(e){if(!e)return;var now=Date.now();if(e.srcText&&e.srcText!=='（認識中…）'&&!e.firstPartialAt){e.firstPartialAt=now;dlog('speaker','stt-first-partial',{utteranceId:e.utteranceId,startedAt:e.startedAt,at:now});}if(!e.interim&&!e.sttFinalAt){e.sttFinalAt=now;dlog('speaker','stt-final',{utteranceId:e.utteranceId,startedAt:e.startedAt,endedAt:e.audioEndedAt||e.endedAt,at:now});}}
+/* 判断層の設定UI。extension/app.html と index.html の両方へ同じ markup を置くと
+   3ファイル目の同期先が増えるので、duoNextInstall と同じくJSから注入する。
+   bindSettings() は読み込み時に一度だけ走るため、ここで simple() を呼んで
+   既存の永続化経路へ相乗りする。独自のonchangeは書かない。 */
+function turnDecisionInstall(){
+  var host=$('p2');if(!host)return;
+  var box=document.createElement('details');box.className='adv';box.id='turnDecisionSettings';
+  box.innerHTML='<summary>発話交代の判断層（実験）</summary>'
+    +'<p>既定は OFF です。OFF のあいだは境界判定と読み上げ開始が v1.47.1 と同一に動き、'
+    +'外部への送信も判断用の音響計算も行いません。</p>'
+    +'<label>判断モード <select id="turnDecisionMode">'
+      +'<option value="off">off — 使わない（既定）</option>'
+      +'<option value="shadow">shadow — 記録するが動作へ反映しない</option>'
+      +'<option value="assist">assist — 高確信のときだけ採用</option>'
+      +'<option value="active">active — 主経路にする</option>'
+    +'</select></label>'
+    +'<label>英語 <select id="turnDecisionLangEn">'
+      +'<option value="off">off</option><option value="shadow">shadow</option>'
+      +'<option value="assist">assist</option><option value="active">active</option>'
+    +'</select></label>'
+    +'<label>日本語 <select id="turnDecisionLangJa">'
+      +'<option value="off">off</option><option value="shadow">shadow</option>'
+      +'<option value="assist">assist</option><option value="active">active</option>'
+    +'</select></label>'
+    +'<p>ドイツ語・イタリア語・中国語は既存ルールの接続表現判定を使い、判断層の対象外です。</p>'
+    +'<label class="settings-check switch"><input type="checkbox" id="turnDecisionProsody"> 音響特徴を渡す（ピッチ・エネルギー・間）</label>'
+    +'<label>送る直近ターン数 <input id="turnDecisionContextTurns" type="number" min="0" max="6" step="1"></label>'
+    +'<label>読み上げ開始の待ち上限 ms <input id="turnFloorMaxWaitMs" type="number" min="500" max="10000" step="100"></label>'
+    +'<label>上限に達したら <select id="turnFloorExpiry">'
+      +'<option value="speak">読み上げる</option><option value="drop">字幕だけにする</option>'
+    +'</select></label>'
+    +'<hr><p><b>計測</b>　判断層とは独立に動きます。OFF のままでも記録できます。</p>'
+    +'<label>trace 記録 <select id="turnTraceMode">'
+      +'<option value="off">off（既定）</option><option value="record">record — 記録する</option>'
+    +'</select></label>'
+    +'<label class="settings-check switch"><input type="checkbox" id="turnDecisionRawLog"> 認識した原文も記録する</label>'
+    +'<p>原文の記録は replayer の再現検査に必要ですが、会議の発言が端末内の trace に残ります。'
+    +'外部へは送られません。保管と削除の扱いを決めてから有効にしてください。</p>'
+    +'<button type="button" id="turnTraceExport">trace を書き出す</button> '
+    +'<button type="button" id="turnTraceClear">trace を破棄する</button>'
+    +'<small id="turnDecisionStatus" aria-live="off" data-fold="off"></small>';
+  host.appendChild(box);
+
+  ['turnDecisionMode','turnDecisionLangEn','turnDecisionLangJa','turnDecisionProsody',
+   'turnDecisionContextTurns','turnFloorMaxWaitMs','turnFloorExpiry',
+   'turnTraceMode','turnDecisionRawLog'].forEach(function(prop){
+    var spec=CONFIG_BY_PROP[prop];if(!spec||!$(spec.el))return;
+    if(spec.type==='bool')$(spec.el).checked=!!CFG[prop];else $(spec.el).value=CFG[prop];
+    simple(spec);
+  });
+
+  $('turnTraceExport').onclick=function(){
+    if(!TurnTrace.rows.length){toast('記録された trace がありません。<br>trace 記録を record にして会議を行ってください。');return;}
+    var name='turn-trace-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';
+    var blob=new Blob([TurnTrace.export()],{type:'application/json'});
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);},10000);
+    dlog('segment','turn-trace-export',{rows:TurnTrace.rows.length,dropped:TurnTrace.dropped,file:name});
+    toast(TurnTrace.rows.length+'行を書き出しました。<br>node extension/tools/turn-trace-replay.js '+name);
+  };
+  $('turnTraceClear').onclick=function(){
+    var n=TurnTrace.rows.length;TurnTrace.reset();turnDecisionStatus();
+    toast(n?n+'行の trace を破棄しました。':'trace は空です。');
+  };
+  setInterval(turnDecisionStatus,1000);turnDecisionStatus();
+}
+/* 現在の状態を1行で出す。OFFで沈黙していることを目で確かめられるようにする。 */
+function turnDecisionStatus(){
+  var el=$('turnDecisionStatus');if(!el)return;
+  var mode=CFG.turnDecisionMode||'off';
+  var parts=['判断 '+mode];
+  if(mode!=='off')parts.push('en='+(CFG.turnDecisionLangEn||'shadow')+' / ja='+(CFG.turnDecisionLangJa||'shadow'));
+  parts.push('trace '+(String(CFG.turnTraceMode||'off')==='record'?TurnTrace.rows.length+'行'+(TurnTrace.dropped?'（上限超過あり）':''):'off'));
+  parts.push('確定 rules '+(SEG.committedBySource.rules||0)+' / provider '+(SEG.committedBySource.provider||0));
+  parts.push('確定後訂正 rules '+(SEG.correctedBySource.rules||0)+' / provider '+(SEG.correctedBySource.provider||0));
+  el.textContent=parts.join(' ／ ');
+}
 function duoNextInstall(){
   var descriptions=['対面会議','ブラウザから音声取り込み','Web会議（複数話者）','ショップツアーやプレゼン時'];
   Array.from($('duoPresetMenu').children).forEach(function(b,i){var desc=document.createElement('small');desc.className='preset-description';desc.textContent=descriptions[i];b.appendChild(desc);b.setAttribute('aria-description',descriptions[i]);});
@@ -2160,8 +2251,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.47.1';
-var APP_BUILD = '20260921-v1471-conference-handshake';
+var APP_VERSION = 'v1.48.0';
+var APP_BUILD = '20260922-v1480-turn-decision';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -2357,6 +2448,28 @@ var CONFIG_SCHEMA = [
   { prop:"segmentStability", key:'di.segmentStability', embed:'segmentStability', def:'0', portable:true, el:"segmentStability", bind:'custom' },
   { prop:"segmentSilence", key:'di.segmentSilence', embed:'segmentSilence', def:'0', portable:true, el:"segmentSilence", bind:'custom' },
   { prop:"segmentDebt", key:'di.segmentDebt', embed:'segmentDebt', def:'8', portable:true, el:"segmentDebt", bind:'custom' },
+  /* 判断層。turnDecisionMode=off が既定で、そのときv1.47.1と同一の挙動になる。
+     言語別の上書きは en/ja だけで、他言語はRulesProviderのcontinuing判定に任せる。
+     判断用キーは翻訳キーから流用せず、設定埋込みHTMLにも含めない。 */
+  { prop:"turnDecisionMode", key:'di.tdMode', embed:'turnDecisionMode', def:'off', portable:true, el:"turnDecisionMode" },
+  { prop:"turnDecisionProvider", key:'di.tdProv', embed:'turnDecisionProvider', def:'rules', portable:true },
+  { prop:"turnDecisionModel", key:'di.tdModel', embed:'turnDecisionModel', def:'', portable:true },
+  { prop:"turnDecisionBaseUrl", key:'di.tdBase', embed:'turnDecisionBaseUrl', def:'', portable:true },
+  { prop:"turnDecisionApiKey", key:'di.tdKey.local', def:'', localOnly:true, portable:false, note:"判断層のAPIキー。翻訳用キーと分離し書き出さない" },
+  { prop:"turnDecisionTimeoutMs", key:'di.tdTimeout', embed:'turnDecisionTimeoutMs', def:'900', portable:true },
+  { prop:"turnDecisionSoftMs", key:'di.tdSoft', embed:'turnDecisionSoftMs', def:'350', portable:true },
+  { prop:"turnDecisionLangEn", key:'di.tdEn', embed:'turnDecisionLangEn', def:'shadow', portable:true, el:"turnDecisionLangEn" },
+  { prop:"turnDecisionLangJa", key:'di.tdJa', embed:'turnDecisionLangJa', def:'shadow', portable:true, el:"turnDecisionLangJa" },
+  { prop:"turnDecisionContextTurns", key:'di.tdCtx', embed:'turnDecisionContextTurns', def:'0', portable:true, el:"turnDecisionContextTurns" },
+  { prop:"turnDecisionProsody", key:'di.tdProsody', embed:'turnDecisionProsody', def:'1', type:'bool', portable:true, el:"turnDecisionProsody" },
+  { prop:"turnFloorMaxWaitMs", key:'di.tdFloorMax', embed:'turnFloorMaxWaitMs', def:'3000', portable:true, el:"turnFloorMaxWaitMs" },
+  { prop:"turnFloorExpiry", key:'di.tdFloorExp', embed:'turnFloorExpiry', def:'speak', portable:true, el:"turnFloorExpiry" },
+  { prop:"turnDecisionRawLog", key:'di.tdRawLog', embed:'turnDecisionRawLog', def:'0', type:'bool', portable:true, el:"turnDecisionRawLog" },
+  { prop:"turnInterruptMode", key:'di.tdInterrupt', embed:'turnInterruptMode', def:'preplay', portable:true },
+  { prop:"turnTraceMode", key:'di.tdTrace', embed:'turnTraceMode', def:'off', portable:true, el:"turnTraceMode" },
+  /* LocalModelProvider の学習済み重み。turn-trace-replay.js --fit が作る JSON を入れる。
+     手置きの係数では校正の意味が消えるため、未設定のあいだ local は動かない。 */
+  { prop:"turnDecisionLocalWeights", key:'di.tdWeights', type:'json', embed:'turnDecisionLocalWeights', def:'', portable:true },
   { prop:"ttsMode", key:'di.tts', embed:'ttsMode', def:'off', portable:true, el:"ttsMode" },
   { prop:"ttsWho", key:'di.ttsw', embed:'ttsWho', def:'B2A', portable:true, el:"ttsWho" },
   { prop:"focus", key:'di.focus', embed:'focus', def:'split', portable:true },
@@ -5034,6 +5147,57 @@ ProsodyAnalyzer.prototype.finalize=function(){
       clusterGapMs:clusterGapMs,acousticClusters:clusters.length,selectedCluster:selectedIndex+1,
       discardedClusters:isWebSpeech?Math.max(0,clusters.length-1):0,discardedSpanMs:Math.round(discardedSpanMs),
       selectionMode:isWebSpeech?'latest-valid-cluster':'vad-segment'}
+  };
+};
+/* 発話途中の非破壊スナップショット。finalize()は内部でbeginSegment()を呼びframes
+   をリセットするため、判断層からは呼べない。判断層はテキストしか見ないモデルへ
+   音響を数値で渡す必要があるので、末尾windowMsだけを読んで相対値を返す。
+   絶対周波数は話者間で比較できないため、平均比と区間比だけを出す。 */
+ProsodyAnalyzer.prototype.peek=function(windowMs){
+  if (this.closed || !this.frames || this.frames.length<3) return {available:false,reason:'no_analysis_frames'};
+  var now=Date.now(), span=windowMs>0?windowMs:1500, frames=[], i;
+  for (i=this.frames.length-1;i>=0;i--){ if (now-this.frames[i].t>span) break; frames.unshift(this.frames[i]); }
+  if (frames.length<3) return {available:false,reason:'window_too_short'};
+  var diffs=[]; for (i=1;i<frames.length;i++) if (frames[i].t>frames[i-1].t) diffs.push(frames[i].t-frames[i-1].t);
+  var frameMs=prosodyClamp(prosodyMedian(diffs)||80,20,160);
+  var voice=[]; for (i=0;i<frames.length;i++) if (frames[i].voice) voice.push(frames[i]);
+  if (voice.length<2) return {available:false,reason:'no_voiced_frames'};
+  var first=voice[0].t, end=voice[voice.length-1].t+frameMs;
+  var spanMs=Math.max(frameMs,end-first), runStart=first, runLast=first, runDur=[], pauses=[], activeMs=0;
+  for (i=1;i<voice.length;i++){
+    var gap=voice[i].t-runLast-frameMs;
+    if (gap>=Math.max(140,frameMs*1.5)){ runDur.push(Math.max(frameMs,runLast+frameMs-runStart)); pauses.push(Math.round(gap)); runStart=voice[i].t; }
+    runLast=voice[i].t;
+  }
+  runDur.push(Math.max(frameMs,runLast+frameMs-runStart));
+  for (i=0;i<runDur.length;i++) activeMs+=runDur[i];
+  var internalPauseMs=Math.max(0,spanMs-activeMs), maxPause=0;
+  for (i=0;i<pauses.length;i++) maxPause=Math.max(maxPause,pauses[i]);
+  var pauseRatio=prosodyClamp(internalPauseMs/spanMs,0,1);
+  var runCv=runDur.length>1 ? prosodyStd(runDur)/Math.max(1,prosodyMean(runDur)) : 0;
+  var pv=[], ev=[];
+  for (i=0;i<voice.length;i++){ ev.push(voice[i].db); if (voice[i].pitch) pv.push(voice[i].pitch); }
+  var pmean=pv.length?prosodyMean(pv):0, slope=null, drop=null, q;
+  /* 終端の傾きは末尾1/4とその手前1/4の差を平均で割った比。下降調は完結の証拠。 */
+  if (pv.length>=4 && pmean>0){
+    q=Math.max(1,Math.floor(pv.length/4));
+    slope=prosodyRound((prosodyMean(pv.slice(pv.length-q))-prosodyMean(pv.slice(pv.length-2*q,pv.length-q)))/pmean,3);
+  }
+  if (ev.length>=4){
+    q=Math.max(1,Math.floor(ev.length/4));
+    drop=prosodyRound(prosodyPercentile(ev,0.95)-prosodyMean(ev.slice(ev.length-q)),1);
+  }
+  var coverage=prosodyClamp(activeMs/spanMs,0,1);
+  return {
+    available:true, windowMs:Math.round(spanMs),
+    terminalPitchSlope:slope,
+    pitchRelativeRange:pv.length>=2?prosodyRound((prosodyPercentile(pv,0.90)-prosodyPercentile(pv,0.10))/Math.max(1,pmean),3):null,
+    terminalEnergyDrop:drop,
+    internalPauseRatio:prosodyRound(pauseRatio,3),
+    maxInternalPauseMs:Math.round(maxPause),
+    tempoVariability:prosodyRound(prosodyClamp(pauseRatio*1.5+runCv*0.35,0,1),3),
+    voiceRuns:runDur.length, coverage:prosodyRound(coverage,3),
+    quality:prosodyRound(prosodyClamp(voice.length/8,0,1)*(0.4+0.6*prosodyClamp((coverage-0.18)/0.47,0,1)),3)
   };
 };
 ProsodyAnalyzer.prototype.stop=function(){ this.closed=true; this.frames=[]; };
@@ -12582,8 +12746,654 @@ INITIAL_FEED_EMPTY=document.querySelector('#feedA .empty').cloneNode(true);
  * Audio debt and scheduled starts are estimates, never measured acoustic latency.
  */
 var SEG = {cards:[], queue:[], active:null, epoch:0, timer:null, translations:0, requests:[],
-  retranslations:[], voice:{}, received:{}, uiTimer:null, committed:0, corrected:0, lastReason:'—', lastTick:0,cardOrder:0,dispatchOrder:0,dispatchRate:1,adaptive:{}};
+  retranslations:[], voice:{}, received:{}, uiTimer:null, committed:0, corrected:0, lastReason:'—', lastTick:0,cardOrder:0,dispatchOrder:0,dispatchRate:1,adaptive:{},
+  /* commitと確定後訂正をdecisionSource別に数える。合計値はadaptiveが従来どおり
+     参照するが、判断層をoffへ戻したあとの累積比の残留と、shadow比較のbaseline
+     汚染をこの分離で切り分ける。 */
+  committedBySource:{provider:0,rules:0}, correctedBySource:{provider:0,rules:0}};
 function segEnabled(){return CFG.segmentMode!=='off' && /^(balanced|fast|adaptive)$/.test(CFG.segmentMode) && CFG.sttProvider!=='realtime';}
+/* ── Turn decision layer ───────────────────────────────────────────────────
+   STT更新後の「どこまで確定するか」と、翻訳後の「いつ読み上げるか」を、固定秒では
+   なく候補＋証拠＋期限の合成で決めるための契約層。RulesProviderはv1.47.1の二実装
+   をそのまま正本として常時搭載する。
+   turnDecisionMode=off のときboundary/floorはRulesProviderの戻り値を素通しする
+   だけなので、v1.47.1と同一の挙動になる。判断層のための音響計算も走らせない。
+   INV-08 判断の不在はゼロコスト。remoteの返答を待ってcommitを遅らせない。
+   INV-09 floor待ちは turnFloorMaxWaitMs を超えて保持しない。                  */
+/* ── Provider adapters（Phase 2）─────────────────────────────────────────
+   判断契約を Duo が所有し、ベンダーを adapter で差し替える。既定の
+   turnDecisionProvider='rules' では registry を一切引かないので、shadow でも
+   ネットワークは発生しない。
+   正規化はここに集約する。schema 外の選択肢、確率の合計不正、欠落field、NaN、
+   巨大応答は必ず拒否し、adapter conformance error として捨てる。      */
+var TurnProviders={
+  /* 応答を契約の形へ正規化する。通らなかったものは null を返して捨てる。 */
+  normalize:function(raw,state,meta){
+    if(!raw||typeof raw!=='object')return null;
+    var out={decisionId:String(raw.decisionId||('d'+Date.now())),
+      sessionId:state.sessionId,utteranceId:state.utteranceId,revision:state.revision,
+      provider:meta.provider,model:String(meta.model||''),questionSetHash:meta.questionSetHash,
+      latencyMs:Math.round(meta.latencyMs||0),probabilitySemantics:meta.semantics,
+      receivedAt:Date.now()};
+    /* Number(null) は 0 になる。欠落した Noul を「確率0」として通すと、
+       読み上げを永久に抑止したり誤って開始したりする。型で弾く。 */
+    var num=function(v){return typeof v==='number'&&isFinite(v)&&v>=0&&v<=1?v:null;};
+    /* boundary は HOLD か、state が提示した候補IDのどれかでなければならない。 */
+    var ids=['HOLD'],i,list=state.candidateBoundaries||[];
+    for(i=0;i<list.length;i++)ids.push(list[i].id);
+    var b=raw.boundary;
+    if(!b||typeof b!=='object')return null;
+    if(ids.indexOf(String(b.choice))<0)return null;
+    var conf=num(b.confidence);if(conf===null)return null;
+    out.boundary={choice:String(b.choice),confidence:conf,probabilities:{}};
+    if(b.probabilities&&typeof b.probabilities==='object'){
+      var sum=0,keys=Object.keys(b.probabilities);
+      if(keys.length>64)return null;
+      for(i=0;i<keys.length;i++){
+        if(ids.indexOf(keys[i])<0)return null;              /* 選択肢外の確率は不正 */
+        var pv=num(b.probabilities[keys[i]]);if(pv===null)return null;
+        out.boundary.probabilities[keys[i]]=pv;sum+=pv;
+      }
+      if(keys.length&&(sum<0.5||sum>1.5))return null;        /* 合計が破綻している */
+    }
+    var t=raw.turnState;
+    if(t&&typeof t==='object'){
+      if(['COMPLETE','CONTINUING','SELF_REPAIR','UNKNOWN'].indexOf(String(t.choice))<0)return null;
+      var tc=num(t.confidence);if(tc===null)return null;
+      out.turnState={choice:String(t.choice),confidence:tc};
+    }else out.turnState={choice:'UNKNOWN',confidence:0};
+    /* Noul には confidence が無い。値だけを検査する。 */
+    out.safeToSpeak=num(raw.safeToSpeak);
+    out.repairLikelihood=num(raw.repairLikelihood);
+    if(out.safeToSpeak===null||out.repairLikelihood===null)return null;
+    return out;
+  },
+
+  /* 公式の契約は question ごとに instructions と criteria を持つ。criteria は
+     「選択肢名 → その説明」の map で、options 配列ではない。質問IDはモデルへ
+     送られないので、意味は instructions と criteria に全部書く。
+     この文面が変われば実質のモデル入力が変わるので、questionSetHash で校正を
+     無効化する（§9.1）。 */
+  /* instructions と criteria は英語で書く。state と引用した文脈は原語のまま渡す。
+     公式が「英語が最も強い言語で、CJK は受理されるが精度は同等でない」と明記して
+     いるため、モデルへの指示文は英語のほうが安全である。判断対象の日本語は state
+     と候補の左右文脈として渡るので、原語の情報は失われない。
+     この選択自体は shadow で検証する。 */
+  template:{
+    /* state のフィールドをバッククォートで参照して意味を書く。Jev はテキストしか
+       見ないので、prosody の数値は説明しなければ解釈できずノイズになる。
+       送るフィールドは PROSODY_SENT に限り、その全部をここで説明する。 */
+    boundary_choice:{type:'choice',
+      instructions:'A live interpreter is translating this speaker as they talk.\n'
+        +'`currentText` is the tail of what they have said that is not translated yet, in their own language.\n'
+        +'`stablePrefixChars` is how many leading characters of it the recogniser now treats as settled.\n'
+        +'`silenceMs` is the acoustic silence since they last made a sound; null means the microphone level is unknown, which is not the same as zero.\n'
+        +'`lastDeltaMs` is how long since the recogniser last added text.\n'
+        +'`sttFinal` is true when the recogniser has closed the utterance.\n'
+        +'`prosody` is absent when the acoustics are unavailable. When present:\n'
+        +'`prosody.terminalPitchSlope` is negative when their pitch falls at the end, which usually means they finished, and positive when it rises.\n'
+        +'`prosody.terminalEnergyDrop` in dB is larger when their voice tails off.\n'
+        +'`prosody.internalPauseRatio` is larger when they paused a lot inside what they just said.\n'
+        +'`prosody.maxInternalPauseMs` is their longest pause inside it.\n'
+        +'`prosody.tempoVariability` is larger when their pace is uneven, which often means hesitation.\n'
+        +'`prosody.quality` is how trustworthy these acoustic numbers are; treat them as weak evidence when it is low.\n'
+        +'`recentTurns` holds a little earlier conversation when it is available.\n'
+        +'Pick the one boundary that is safe to translate now, or HOLD. Safe means the text before the boundary is a complete unit of meaning and the speaker is not mid-clause, mid-repair, or trailing into a connective.'},
+    turn_state:{type:'choice',
+      instructions:'Classify whether the speaker has finished this utterance. Judge the tail of `currentText`, using `silenceMs`, `lastDeltaMs`, `sttFinal` and `prosody` as described in the other questions.',
+      criteria:{COMPLETE:'Finished. Another person may take the floor.',
+        CONTINUING:'More is coming. The speaker is mid-sentence or mid-clause.',
+        SELF_REPAIR:'Restating. The speaker is correcting what they just said.',
+        UNKNOWN:'Cannot be told from what is available.'}},
+    safe_to_speak:{type:'noul',
+      instructions:'Would starting the translated audio right now avoid cutting the speaker off? `tts.active` is true when translated audio is already playing, and `tts.queueDebtMs` is how far behind the queue is. `silenceMs` is null when the microphone level is unknown.',
+      criteria:{'true':'Starting now would not interrupt; the speaker has yielded the floor.',
+        'false':'Starting now would talk over the speaker.'}},
+    repair_likelihood:{type:'noul',
+      instructions:'Is the speaker about to restate what they just said? Look at the tail of `currentText` for fillers and false starts, and at `prosody.tempoVariability` for an uneven pace.',
+      criteria:{'true':'A self-repair or restatement is likely to follow immediately.',
+        'false':'No restatement is expected.'}}
+  },
+  /* 似ていて混同しやすい選択肢には、1文の説明ではなく項目に分けた criteria を渡す
+     のが公式の推奨（/primitives/choice）。HOLD と「ここで切る」はこの設計で最も
+     混同しやすい対なので、what／not_for／examples に分けて書く。フィールド名は
+     呼び出し側が決めてよい。 */
+  HOLD_CRITERION:{
+    what:'Do not cut anywhere yet. More is coming from this speaker.',
+    not_for:'Not for a tail that is merely short, and not because `silenceMs` is null. Judge whether the tail itself is finished, not how much text there is.',
+    examples:'A trailing connective or conjunction; a dangling particle or preposition; a filler such as "uh" or "ええと"; the first half of a self-repair.'
+  },
+  questions:function(state){
+    var list=state.candidateBoundaries||[],crit={HOLD:this.HOLD_CRITERION},i,c;
+    for(i=0;i<list.length;i++){
+      c=list[i];
+      /* 候補IDは code のためのもの。モデルには前後の文脈で意味を渡す。HOLD と
+         見分けがつくよう、同じ項目立てで書く。 */
+      crit[c.id]={
+        what:'Cut between `before` and `after`. Everything up to the cut is translated and spoken now; the rest waits.',
+        not_for:'Not when `before` stops mid-clause, and not when `after` carries on the same clause as `before`.',
+        before:String(c.left||''),
+        after:String(c.right||'')
+      };
+    }
+    /* noul の criteria は任意だが、yes/no の意味を書いておくほうが判断が安定する。 */
+    return {
+      boundary_choice:{type:'choice',instructions:this.template.boundary_choice.instructions,criteria:crit},
+      turn_state:{type:'choice',instructions:this.template.turn_state.instructions,
+        criteria:this.template.turn_state.criteria},
+      safe_to_speak:{type:'noul',instructions:this.template.safe_to_speak.instructions,
+        criteria:this.template.safe_to_speak.criteria},
+      repair_likelihood:{type:'noul',instructions:this.template.repair_likelihood.instructions,
+        criteria:this.template.repair_likelihood.criteria}
+    };
+  },
+
+  /* 公式の応答は answers を自分の質問IDで引く形。choice は choice／probabilities／
+     confidence、noul は noul の値だけを持ち confidence はない。0.5 は「中くらい」
+     ではなく「判断がつかない」を意味する。 */
+  fromAnswers:function(raw,state,meta){
+    if(!raw||typeof raw!=='object'||!raw.answers||typeof raw.answers!=='object')return null;
+    var a=raw.answers,b=a.boundary_choice,t=a.turn_state,s=a.safe_to_speak,r=a.repair_likelihood;
+    if(!b||b.type!=='choice'||!t||t.type!=='choice')return null;
+    if(!s||s.type!=='noul'||!r||r.type!=='noul')return null;
+    var out=this.normalize({
+      decisionId:raw.id||raw.request_id||('d'+Date.now()),
+      boundary:{choice:b.choice,confidence:b.confidence,probabilities:b.probabilities},
+      turnState:{choice:t.choice,confidence:t.confidence},
+      safeToSpeak:s.noul,repairLikelihood:r.noul
+    },state,{provider:meta.provider,model:String(raw.model||meta.model||''),
+      semantics:meta.semantics,latencyMs:meta.latencyMs,questionSetHash:meta.questionSetHash});
+    /* usage を残す。レート制限が 1,200 req/min と 250,000 tok/s のアカウント単位
+       なので、実測のトークン消費を見ないと同時会議数の上限が読めない。 */
+    if(out&&raw.usage&&typeof raw.usage==='object')
+      out.usage={inputTokens:Number(raw.usage.input_tokens)||0,
+        outputTokens:Number(raw.usage.output_tokens)||0};
+    return out;
+  },
+
+  /* 再試行しない status。会話内ではどれも待たず Rules へ落とすが、設定・実装の
+     誤りは判断層を止めるべきなので区別する。既知の不一致として、本来 422 の
+     リクエスト検証エラーが 400 で返ることがある。 */
+  NEVER_RETRY:[400,401,403,404,422],
+
+  'jev-direct':{
+    id:'jev-direct',
+    capabilities:function(){return {probabilitySemantics:'native_calibrated',supportsChoice:true,
+      supportsNoul:true,structuredOutput:true,abortable:true,maxChoices:255,textOnly:true,local:false};},
+    evaluate:function(state,opts){
+      var key=String(CFG.turnDecisionApiKey||'');
+      if(!key)return Promise.reject(new Error('turnDecisionApiKey が未設定です'));
+      var base=String(CFG.turnDecisionBaseUrl||'https://api.typesafe.ai');
+      if(!/^https:\/\//.test(base))return Promise.reject(new Error('判断層のURLはHTTPSのみ許可します'));
+      /* model は必須。active では alias ではなく校正済み version を pin する（§8.5）。 */
+      var model=String(CFG.turnDecisionModel||'')||'jev-latest';
+      if(TurnDecision.applies(state.sourceLanguage)&&/latest/i.test(model))
+        return Promise.reject(new Error('active では model に固定versionを指定してください（いまは '+model+'）'));
+      var t0=Date.now();
+      return fetch(base.replace(/\/+$/,'')+'/v1/systemone',{
+        method:'POST',signal:opts.signal,cache:'no-store',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,
+          /* ZDR と no-train は経路を変えると落ちる。adapter ごとに明示して送る。 */
+          'X-TypeSafe-Zero-Data-Retention':'true','X-TypeSafe-No-Training':'true'},
+        body:JSON.stringify({model:model,state:state,questions:TurnProviders.questions(state)})
+      }).then(function(r){
+        if(!r.ok){var e=new Error('HTTP '+r.status);e.status=r.status;throw e;}
+        return r.text();
+      }).then(function(text){
+        if(text.length>200000)throw new Error('応答が大きすぎます');
+        var j;try{j=JSON.parse(text);}catch(err){throw new Error('JSONではない応答');}
+        return TurnProviders.fromAnswers(j,state,{provider:'jev-direct',model:model,
+          semantics:'native_calibrated',latencyMs:Date.now()-t0,
+          questionSetHash:TurnDecision.questionSetHash()});
+      });
+    }
+  },
+
+  /* ブラウザ内の小さな合成器。遅延ゼロ・外部送信なし・レート制限なしで、
+     Jev と同じ契約を返す。重みは §9.1 の学習で決めるものなので、学習済みの
+     重みが無いあいだは動かさない。手置きの係数で動かすと校正の意味が消える。 */
+  local:{
+    id:'local',
+    capabilities:function(){return {probabilitySemantics:'post_calibrated',supportsChoice:true,
+      supportsNoul:true,structuredOutput:true,abortable:false,maxChoices:255,textOnly:false,local:true};},
+    /* 重みは言語別に持つ。ja と en を1つのモデルで済ませると、公式が明記している
+       「日本語は英語の閾値を流用せず独自評価が必要」をそのまま踏み抜く（§9.3）。
+       閾値も学習時に precision 目標から逆算した値を使い、ここでは決め打ちしない。 */
+    weights:function(lang){
+      var raw=CFG.turnDecisionLocalWeights;
+      if(!raw)return null;
+      var w;try{w=typeof raw==='string'?JSON.parse(raw):raw;}catch(err){return null;}
+      if(!w||!w.languages)return null;
+      var l=String(lang||'').split('-')[0],m=w.languages[l];
+      if(!m||!m.features||typeof m.bias!=='number')return null;
+      var th=typeof m.threshold==='number'?m.threshold
+        :(m.calibration&&typeof m.calibration.threshold==='number'?m.calibration.threshold:null);
+      if(th===null||!(th>0&&th<1))return null;   /* 校正された閾値が無ければ動かさない */
+      return {version:String(w.version||'local'),lang:l,bias:m.bias,features:m.features,threshold:th};
+    },
+    features:function(state){
+      var p=state.prosody||{},last=state.lastDeltaMs,sil=state.silenceMs;
+      return {bias:1,
+        silence:sil===null?0:Math.min(sil,2000)/1000,
+        meterKnown:sil===null?0:1,
+        lastDelta:last===null?0:Math.min(last,3000)/1000,
+        final:state.sttFinal?1:0,
+        stableRatio:state.currentText.length?state.stablePrefixChars/state.currentText.length:0,
+        pitchSlope:typeof p.terminalPitchSlope==='number'?p.terminalPitchSlope:0,
+        energyDrop:typeof p.terminalEnergyDrop==='number'?Math.min(p.terminalEnergyDrop,40)/40:0,
+        pauseRatio:typeof p.internalPauseRatio==='number'?p.internalPauseRatio:0,
+        tempoVar:typeof p.tempoVariability==='number'?p.tempoVariability:0,
+        prosodyQuality:typeof p.quality==='number'?p.quality:0};
+    },
+    evaluate:function(state){
+      var lang=state.sourceLanguage;
+      var w=this.weights(lang);
+      if(!w)return Promise.reject(new Error('この言語（'+(String(lang||'?').split('-')[0])
+        +'）の学習済み重みがありません。turn-trace-replay.js --fit で作ってください'));
+      var f=this.features(state),z=w.bias,k;
+      for(k in w.features)if(typeof f[k]==='number')z+=w.features[k]*f[k];
+      var complete=1/(1+Math.exp(-z));
+      /* 候補が無いときは HOLD しか返せない。 */
+      var list=state.candidateBoundaries||[],pick=list.length?list[list.length-1].id:'HOLD';
+      var choice=complete>=w.threshold&&list.length?pick:'HOLD';
+      var probs={};probs.HOLD=+(1-complete).toFixed(4);
+      if(list.length)probs[pick]=+complete.toFixed(4);
+      return Promise.resolve(TurnProviders.normalize({
+        decisionId:'local-'+state.revision,
+        boundary:{choice:choice,confidence:+Math.abs(2*complete-1).toFixed(4),probabilities:probs},
+        turnState:{choice:complete>=0.5?'COMPLETE':'CONTINUING',confidence:+Math.abs(2*complete-1).toFixed(4)},
+        safeToSpeak:+complete.toFixed(4),repairLikelihood:+(1-complete).toFixed(4)
+      },state,{provider:'local',model:w.version+':'+w.lang,semantics:'post_calibrated',
+        latencyMs:0,questionSetHash:TurnDecision.questionSetHash()}));
+    }
+  }
+};
+var TURN_STATE_SCHEMA='duo.turn-state.v1';
+/* Choice は255件まで選択肢を取り、1件あたりのコストは数トークンしかない。
+   公式は「モデルは並べなかった値を選べない」として絞り込みを避けるよう書いている
+   ので、上限は安全弁としてだけ置く。HOLDを足しても255に遠く届かない値にする。 */
+var TURN_MAX_CANDIDATES=64;
+/* Provider へ送る prosody フィールド。ここに足したら instructions でも説明する。
+   test-turn-providers が「送るのに説明のないフィールド」を落とす。 */
+var TURN_PROSODY_SENT=['terminalPitchSlope','terminalEnergyDrop','internalPauseRatio',
+  'maxInternalPauseMs','tempoVariability','quality'];
+var TurnDecision={
+  cache:{}, inflight:{}, sessionSalt:null,
+
+  /* 言語別mode。de/it/zh/mixedはsegSemanticTailのcontinuing判定が既にあるので
+     remote判断の対象にせず、Rules固定にする。 */
+  modeFor:function(lang){
+    if(String(CFG.turnDecisionMode||'off')==='off')return 'off';
+    var l=String(lang||'').split('-')[0];
+    if(l==='en')return String(CFG.turnDecisionLangEn||'shadow');
+    if(l==='ja')return String(CFG.turnDecisionLangJa||'shadow');
+    return 'off';
+  },
+  observes:function(lang){return this.modeFor(lang)!=='off';},
+  applies:function(lang){var m=this.modeFor(lang);return m==='assist'||m==='active';},
+
+  /* RulesProvider。契約の戻り値 {length, reasons, waiting} は既存実装のまま。 */
+  rules:function(input){
+    return segSemanticEnabled()?segSemanticDecision(input):segDecision(input);
+  },
+
+  /* 判断層がoffの間はpeekを呼ばない。60ms周期のYIN抽出を無駄に走らせないため。 */
+  prosodyOf:function(lang){
+    if(!this.observes(lang)||!CFG.turnDecisionProsody||!micProsody)return null;
+    var p=micProsody.peek(1500);
+    return (p&&p.available)?p:null;
+  },
+
+  /* 平文のspeakerIdを外部へ出さない。session単位のsaltでハッシュ化し、会議を
+     越えて同一人物を追跡しない。speakerIdが無ければseatを使う。 */
+  speakerKeyOf:function(e){
+    var id=e&&e.speaker&&e.speaker.id;
+    if(!id)return 'seat:'+((e&&e.seat)||'A');
+    if(!this.sessionSalt)this.sessionSalt=String(Math.random()).slice(2)+String(Date.now());
+    var h=0,str=this.sessionSalt+'|'+id,i;
+    for(i=0;i<str.length;i++)h=(h*31+str.charCodeAt(i))|0;
+    return 'spk:'+(h>>>0).toString(36);
+  },
+
+  /* 境界候補はDuoが作り、モデルにはHOLDか候補IDしか選ばせない。存在しない文字
+     位置や原文改変を構造上防ぐ。offsetは常に安定prefix以内に収める。 */
+  candidatesOf:function(input,ruleResult){
+    var text=String(input.text||''),stable=Math.min(text.length,input.stableLength||0),
+        out=[],sent=[],m,seen={},room;
+    /* criteria は map なので、同じIDが2つあると衝突して候補が消える。offsetごとに
+       一意なIDを振り、左右の文脈を添えてモデルへ意味を渡す。 */
+    var add=function(list,kind,offset){
+      if(!(offset>0)||offset>stable&&kind!=='C_FULL')return;
+      if(seen[offset])return;
+      seen[offset]=1;
+      list.push({id:kind+'_'+offset,kind:kind,offset:offset,
+        left:text.slice(Math.max(0,offset-24),offset),right:text.slice(offset,offset+24)});
+    };
+    /* 構造上の候補（rulesの答え・安定prefixの端・最終文末）は数を問わず必ず載せる。
+       以前は文末候補と同じ枠を争っていたので、文の多い発話では final のときでも
+       C_FULL が落ち、正解が選択肢に無い状態になっていた。 */
+    add(out,'C_RULES',ruleResult&&ruleResult.length);
+    add(out,'C_STABLE',stable);
+    if(input.final)add(out,'C_FULL',text.length);
+    /* 文末候補は絞らずに全部渡す。currentText が800字なので実際は数十件で収まる。 */
+    var rx=/[。！？!?]|\.(?=\s|$)/g;
+    while((m=rx.exec(text)))add(sent,'C_SENTENCE',m.index+1);
+    /* 病的に文末が多いときだけ切り落とす。切る判断に効くのは末尾側なので後ろを残す。 */
+    room=TURN_MAX_CANDIDATES-out.length;
+    if(sent.length>room)sent=sent.slice(room>0?-room:sent.length);
+    return out.concat(room>0?sent:[]);
+  },
+
+  contextOf:function(e){
+    var n=Number(CFG.turnDecisionContextTurns||0),self=this;
+    if(!(n>0))return [];
+    var index=S.entries.indexOf(e);
+    return (index<0?[]:S.entries.slice(0,index).filter(function(x){return !x.interim&&x.srcText;}).slice(-n))
+      .map(function(x){return {speakerKey:self.speakerKeyOf(x),language:x.srcLang,text:String(x.srcText).slice(-200)};});
+  },
+
+  /* TurnDecisionStateV1。silenceMsはmeter不明をnullで表す。Rules側が使う-1は
+     内部規約なので契約へ漏らさない。0と不明を同じ値にしない。 */
+  stateOf:function(e,s,input,ruleResult,silence,now){
+    var text=String(input.text||''),full=this.prosodyOf(e.srcLang),meter=(silence!==null&&silence!==undefined);
+    /* 説明のない数値は送らない。instructions で意味を書いたフィールドだけに絞る。 */
+    var prosody=null,pi;
+    if(full){prosody={};for(pi=0;pi<TURN_PROSODY_SENT.length;pi++)
+      if(full[TURN_PROSODY_SENT[pi]]!==undefined)prosody[TURN_PROSODY_SENT[pi]]=full[TURN_PROSODY_SENT[pi]];}
+    return {
+      schemaVersion:TURN_STATE_SCHEMA,
+      sessionId:'s'+sessionGen,
+      utteranceId:e.utteranceId||e.id,
+      revision:e.segment?e.segment.revision:0,
+      speakerKey:this.speakerKeyOf(e),
+      sourceLanguage:e.srcLang||'',
+      currentText:text.slice(-800),
+      stablePrefixChars:Math.min(text.length,input.stableLength||0),
+      lastDeltaMs:input.idleMs==null?null:Math.round(input.idleMs),
+      silenceMs:meter?Math.round(silence):null,
+      sttFinal:!!input.final,
+      speechEvent:input.final?'stopped':'unknown',
+      candidateBoundaries:this.candidatesOf(input,ruleResult),
+      prosody:prosody,
+      recentTurns:this.contextOf(e),
+      tts:{active:!!SEG.active,queueDebtMs:Math.round(segDebt()*1000),
+        pendingFirstAudio:!!(SEG.active&&!SEG.active.started),overlapMode:CFG.segmentOverlap||'auto'},
+      evidence:{meterAvailable:meter,partialAvailable:!input.final,
+        speakerReliable:!!DuoSpeakers.available,prosodyAvailable:!!prosody}
+    };
+  },
+
+  /* instructions 本文のハッシュ。文面を1行直せば実質のモデル入力が変わるので、
+     変わったら校正記録を無効として扱う（§9.1）。 */
+  questionSetHash:function(){
+    if(this._qsh)return this._qsh;
+    /* 発話ごとに変わる候補の criteria は除き、質問の雛形だけを対象にする。 */
+    var s=JSON.stringify(TurnProviders.template)+JSON.stringify(TurnProviders.HOLD_CRITERION),h=0,i;
+    for(i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;
+    return (this._qsh='qs_'+(h>>>0).toString(36));
+  },
+
+  /* circuit breaker。provider＋言語単位。30秒内に3回の transport／schema 障害で
+     OPEN 60秒。OPEN中はAPIを呼ばずRulesを使う。字幕・翻訳・TTSは継続する。 */
+  circuit:{},
+  circuitOf:function(id,lang){
+    var k=id+'|'+String(lang||'').split('-')[0];
+    return this.circuit[k]||(this.circuit[k]={fails:[],openUntil:0,halfOpen:false,ok:0});
+  },
+  circuitOpen:function(id,lang){
+    var c=this.circuitOf(id,lang),now=Date.now();
+    if(now<c.openUntil)return true;
+    if(c.openUntil&&!c.halfOpen){c.halfOpen=true;c.ok=0;
+      dlog('segment','turn-circuit-half-open',{provider:id,language:lang});}
+    return false;
+  },
+  circuitFail:function(id,lang,reason){
+    var c=this.circuitOf(id,lang),now=Date.now();
+    c.fails=c.fails.filter(function(t){return now-t<30000;});c.fails.push(now);
+    if(c.halfOpen||c.fails.length>=3){
+      c.openUntil=now+60000;c.halfOpen=false;c.fails=[];
+      dlog('segment','turn-circuit-open',{provider:id,language:lang,reason:reason,until:c.openUntil});
+    }
+  },
+  circuitOk:function(id,lang){
+    var c=this.circuitOf(id,lang);
+    if(c.halfOpen){c.ok++;if(c.ok>=2){c.halfOpen=false;c.openUntil=0;c.fails=[];
+      dlog('segment','turn-circuit-close',{provider:id,language:lang});}}
+    else {c.openUntil=0;c.fails=[];}
+  },
+
+  /* 同じ text／候補／音響bucketでは300ms以内に再送しない。音響bucketは100ms刻みで
+     量子化するので、テキストが止まって無音が伸びる状態は正当に新しいstateになる。 */
+  bucket:function(state){
+    var ids=(state.candidateBoundaries||[]).map(function(c){return c.id+'@'+c.offset;}).join(',');
+    var sil=state.silenceMs===null?-1:Math.floor(state.silenceMs/100);
+    return [state.currentText.length,state.stablePrefixChars,ids,sil,state.sttFinal?1:0].join('|');
+  },
+  throttled:function(state){
+    var b=this.bucket(state),now=Date.now(),last=this._lastSend&&this._lastSend[state.speakerKey];
+    if(last&&last.bucket===b&&now-last.at<300)return true;
+    if(!this._lastSend)this._lastSend={};
+    this._lastSend[state.speakerKey]={bucket:b,at:now};
+    return false;
+  },
+  key:function(state){
+    return [state.sessionId,state.speakerKey,state.utteranceId,state.revision,TURN_STATE_SCHEMA,
+      String(CFG.turnDecisionProvider||'rules'),String(CFG.turnDecisionModel||'')].join('|');
+  },
+  read:function(state){
+    var hit=this.cache[this.key(state)];
+    if(!hit)return null;
+    if(hit.revision!==state.revision||hit.utteranceId!==state.utteranceId||hit.sessionId!==state.sessionId){
+      dlog('segment','turn-decision-stale',{requestRevision:hit.revision,currentRevision:state.revision,reason:'key-mismatch'});
+      return null;
+    }
+    return hit;
+  },
+
+  /* 非同期に一件だけ投げる。結果はcacheへ置くだけで、ここでは何も待たない。
+     provider=rulesの間はregistryを引かないので外部通信は発生しない。 */
+  observe:function(state){
+    var id=String(CFG.turnDecisionProvider||'rules');
+    if(id==='rules')return;
+    var p=TurnProviders[id];
+    if(!p){dlog('segment','turn-decision-fallback',{reason:'unknown-provider:'+id,ruleAction:'rules',elapsedMs:0});return;}
+    var lang=state.sourceLanguage,self=this;
+    if(this.inflight[state.speakerKey])return;            /* speakerKeyごとに同時1件 */
+    if(this.circuitOpen(id,lang))return;
+    if(this.throttled(state))return;
+    var ctrl=null;try{ctrl=new AbortController();}catch(err){}
+    var timeoutMs=Math.max(200,Math.min(2000,Number(CFG.turnDecisionTimeoutMs)||900));
+    var timer=setTimeout(function(){if(ctrl&&ctrl.abort)try{ctrl.abort();}catch(e){}},timeoutMs);
+    var rec={abort:ctrl&&ctrl.abort?function(){try{ctrl.abort();}catch(e){}}:null,
+      revision:state.revision,at:Date.now()};
+    this.inflight[state.speakerKey]=rec;
+    dlog('segment','turn-decision-request',{provider:id,model:CFG.turnDecisionModel||'',language:lang,
+      speakerKey:state.speakerKey,revision:state.revision,
+      candidates:(state.candidateBoundaries||[]).length,textChars:state.currentText.length,
+      questionSetHash:this.questionSetHash()});
+    var done=function(){clearTimeout(timer);if(self.inflight[state.speakerKey]===rec)delete self.inflight[state.speakerKey];};
+    Promise.resolve(p.evaluate(state,{signal:ctrl&&ctrl.signal,deadlineMs:timeoutMs}))
+      .then(function(norm){
+        done();
+        if(!norm){self.circuitFail(id,lang,'schema');
+          dlog('segment','turn-decision-fallback',{reason:'schema',ruleAction:'rules',elapsedMs:Date.now()-rec.at});return;}
+        self.circuitOk(id,lang);
+        /* 停止・revision変更・speaker変更後の応答は適用しない。 */
+        if(norm.sessionId!=='s'+sessionGen){
+          dlog('segment','turn-decision-stale',{requestRevision:norm.revision,currentRevision:state.revision,reason:'session'});return;}
+        self.cache[self.key(state)]=norm;
+        dlog('segment','turn-decision-result',{latency:norm.latencyMs,choice:norm.boundary.choice,
+          probabilities:norm.boundary.probabilities,confidence:norm.boundary.confidence,
+          safeToSpeak:norm.safeToSpeak,modelVersion:norm.model,
+          inputTokens:norm.usage?norm.usage.inputTokens:null});
+      },function(err){
+        done();
+        var status=err&&err.status,reason=status?('http-'+status):String((err&&err.message)||err).slice(0,80);
+        /* 再試行しない status は設定か実装の誤り。自動再試行せず判断層を止める。
+           429／529／5xx は会話内では待たず Rules へ落ち、circuit breaker が扱う。 */
+        if(status&&TurnProviders.NEVER_RETRY.indexOf(status)>=0){
+          self.circuitFail(id,lang,reason);
+          toast('判断層の設定エラー（'+status+'）。判断モードをoffに戻しました。');
+          CFG.turnDecisionMode='off';persistSetting('turnDecisionMode','off');
+        }else self.circuitFail(id,lang,reason);
+        dlog('segment','turn-decision-fallback',{reason:reason,ruleAction:'rules',elapsedMs:Date.now()-rec.at});
+      });
+  },
+
+  /* 言語別の初期閾値。校正前の出荷値であり、§9.1 の学習で置き換える。
+     boundary の判定を confidence ではなく probabilities に置いているのが要点。
+     公式の confidence は選択肢数 N に依存する統計量で、boundary_choice の N は
+     HOLD＋候補1〜5件で毎回変わる。同じ p_max でも候補を多く作った回ほど
+     confidence が高く出るため、固定の下限を置くと「Duo が何件候補を作ったか」で
+     合否が変わってしまう。turn_state は選択肢が4つ固定なので confidence を使える。 */
+  thresholds:function(lang){
+    var l=String(lang||'').split('-')[0];
+    if(l==='ja')return {holdMax:0.10,chosenMin:0.80,turnConfMin:0.50,
+      continuingMax:0.10,repairMax:0.12,silenceMin:450,confirm:2};
+    return {holdMax:0.15,chosenMin:0.70,turnConfMin:0.50,
+      continuingMax:0.15,repairMax:0.20,silenceMin:250,confirm:1};
+  },
+
+  /* ヒステリシス。同じ offset をN回連続で支持したときだけ commit する。
+     閾値付近で判定が振動しても、一度の揺れで確定させない。 */
+  confirmed:function(state,offset,need){
+    if(!(need>1))return true;
+    var c=this._confirm||(this._confirm={}),e=c[state.speakerKey];
+    if(!e||e.offset!==offset||e.utteranceId!==state.utteranceId||e.sessionId!==state.sessionId){
+      c[state.speakerKey]={offset:offset,utteranceId:state.utteranceId,sessionId:state.sessionId,n:1};
+      return false;
+    }
+    e.n++;return e.n>=need;
+  },
+
+  /* 候補外のoffsetは採用しない。安定prefixを越えるものも採らない。そのうえで
+     確率・音響・期限を合成する。null を返すと Rules の結果がそのまま通る。 */
+  pick:function(state,hit,ruleResult){
+    var b=hit&&hit.boundary;
+    if(!b||!b.choice)return null;
+    var th=this.thresholds(state.sourceLanguage),probs=b.probabilities||{},i;
+    var num=function(v){return typeof v==='number'&&isFinite(v)?v:null;};
+    var pHold=num(probs.HOLD);
+
+    /* HOLD を選んだ、または HOLD の確率が上限を超えるなら待つ。 */
+    if(b.choice==='HOLD'||(pHold!==null&&pHold>th.holdMax))
+      return {length:0,reasons:[],waiting:'provider-hold',source:'provider'};
+
+    var list=state.candidateBoundaries||[],cand=null;
+    for(i=0;i<list.length;i++)if(list[i].id===b.choice)cand=list[i];
+    if(!cand||cand.offset>state.stablePrefixChars)return null;
+
+    /* 選ばれた候補そのものの確率で見る。候補数に依存しない量。 */
+    var pChosen=num(probs[b.choice]);
+    if(pChosen!==null&&pChosen<th.chosenMin)return null;
+
+    /* turn_state は選択肢4つ固定なので confidence が比較可能。 */
+    var ts=hit.turnState||{},tsConf=num(ts.confidence);
+    if(ts.choice==='CONTINUING'||ts.choice==='SELF_REPAIR')
+      return {length:0,reasons:[],waiting:'provider-'+String(ts.choice).toLowerCase(),source:'provider'};
+    if(ts.choice==='UNKNOWN')return null;
+    if(tsConf!==null&&tsConf<th.turnConfMin)return null;
+    var pCont=num((ts.probabilities||{}).CONTINUING);
+    if(pCont!==null&&pCont>th.continuingMax)return null;
+
+    /* 言い直しが来そうなら待つ。誤った訳音声は後から戻せない。 */
+    var repair=num(hit.repairLikelihood);
+    if(repair!==null&&repair>th.repairMax)
+      return {length:0,reasons:[],waiting:'provider-repair',source:'provider'};
+
+    /* 最低音響guard。meter 不明のまま意味だけで早期commitしない。 */
+    if(state.silenceMs===null){ if(!state.sttFinal)return null; }
+    else if(state.silenceMs<th.silenceMin&&!state.sttFinal)return null;
+
+    /* 現行ruleが既に同じ位置を選んでいるなら確認は要らない。 */
+    var agrees=ruleResult&&ruleResult.length===cand.offset;
+    if(!agrees&&!this.confirmed(state,cand.offset,th.confirm))
+      return {length:0,reasons:[],waiting:'provider-confirming',source:'provider'};
+
+    return {length:cand.offset,reasons:['provider-'+cand.kind,'stable'],source:'provider'};
+  },
+
+  /* Boundary Gate。offとshadowはRulesProviderの結果をそのまま返す。assist以上でも
+     有効なcache結果が無ければ即Rulesへ進む。待たないことがINV-08の実装である。 */
+  boundary:function(e,s,input,ruleResult,silence,now){
+    var mode=this.modeFor(e.srcLang);
+    if(mode==='off')return ruleResult;
+    var state=this.stateOf(e,s,input,ruleResult,silence,now);
+    TurnTrace.decision(state,ruleResult);
+    this.observe(state);
+    if(mode==='shadow')return ruleResult;
+    var hit=this.read(state);
+    if(!hit)return ruleResult;
+    return this.pick(state,hit,ruleResult)||ruleResult;
+  },
+
+  /* Floor Gate の座席。Phase 3で判断を入れる。判断層がoffのあいだはnullを返し、
+     segPumpは既存のoverlap ruleだけで進む。INV-09の上限だけ先に実装しておく。 */
+  floor:function(job,silence,now){
+    var e=job&&job.card;
+    if(!e||!this.applies(e.srcLang)){if(job)job.floorSince=0;return null;}
+    if(!job.floorSince)job.floorSince=now;
+    var waited=now-job.floorSince;
+    if(waited>=Number(CFG.turnFloorMaxWaitMs||3000))
+      return {action:String(CFG.turnFloorExpiry||'speak')==='drop'?'drop':'speak',reason:'floor-max-wait',waitMs:waited};
+    return null;
+  },
+
+  reset:function(why){
+    var self=this;
+    Object.keys(this.inflight).forEach(function(k){
+      var c=self.inflight[k];if(c&&c.abort){try{c.abort();}catch(err){}}
+    });
+    this.cache={};this.inflight={};this.sessionSalt=null;this.circuit={};this._lastSend={};this._confirm={};
+    /* offのときは診断ログも出さない。判断層を切った状態の出力をv1.47.1と揃える。 */
+    if(String(CFG.turnDecisionMode||'off')!=='off')
+      dlog('segment','turn-decision-reset',{why:why,mode:CFG.turnDecisionMode});
+  }
+};
+
+/* Phase 0 計測。製品動作を変えずに、STT・音響・話者イベントとRulesが何を決めたか
+   を時刻付きで記録する。replayerが同じ列を流し直すことで、生の会議では不可能な
+   「同一入力でRulesとProviderを比較する」が成立する。turnTraceMode=recordのとき
+   だけ動き、offでは行を1本も積まない。 */
+var TurnTrace={
+  rows:[], startedAt:0, dropped:0,
+  enabled:function(){return String(CFG.turnTraceMode||'off')==='record';},
+  push:function(kind,data){
+    if(!this.enabled())return;
+    if(!this.startedAt)this.startedAt=Date.now();
+    if(this.rows.length>=40000){this.dropped++;return;}
+    this.rows.push({t:Date.now()-this.startedAt,kind:kind,data:data});
+  },
+  /* 原文はturnDecisionRawLogが明示的にonのときだけ残す。既定では文字数だけ。 */
+  text:function(e,text,final){
+    this.push('stt',{cardId:e.id,utteranceId:e.utteranceId,seat:e.seat,lang:e.srcLang,
+      chars:String(text||'').length,final:!!final,
+      raw:CFG.turnDecisionRawLog?String(text||''):undefined});
+  },
+  voice:function(seat,rms){this.push('vad',{seat:seat,rms:Math.round(rms*10000)/10000});},
+  decision:function(state,ruleResult){
+    if(!this.enabled())return;
+    this.push('decision',{utteranceId:state.utteranceId,revision:state.revision,speakerKey:state.speakerKey,
+      lang:state.sourceLanguage,chars:state.currentText.length,stable:state.stablePrefixChars,
+      silenceMs:state.silenceMs,lastDeltaMs:state.lastDeltaMs,final:state.sttFinal,
+      candidates:(state.candidateBoundaries||[]).map(function(c){return c.id+'@'+c.offset;}),
+      prosody:state.prosody,
+      rule:{length:ruleResult.length,reasons:ruleResult.reasons,waiting:ruleResult.waiting||''}});
+  },
+  firstAudio:function(j,at){
+    this.push('first-audio',{cardId:j.card.id,segmentId:j.segment.id,
+      startedAt:j.card.startedAt||null,endedAt:j.card.audioEndedAt||j.card.endedAt||null,at:at});
+  },
+  reset:function(){this.rows=[];this.startedAt=0;this.dropped=0;},
+  export:function(){
+    return JSON.stringify({schema:'duo.turn-trace.v1',build:APP_BUILD,recordedAt:new Date().toISOString(),
+      config:{segmentMode:CFG.segmentMode,segmentBoundary:CFG.segmentBoundary,segmentOverlap:CFG.segmentOverlap,
+        turnDecisionMode:CFG.turnDecisionMode,vad:CFG.vad,sttProvider:CFG.sttProvider},
+      counters:{committed:SEG.committed,corrected:SEG.corrected,
+        committedBySource:SEG.committedBySource,correctedBySource:SEG.correctedBySource},
+      dropped:this.dropped,rows:this.rows},null,1);
+  }
+};
 function segNumber(v,f,min,max){v=Number(v);return isFinite(v)&&v>0?Math.max(min,Math.min(max,v)):f;}
 function segPolicy(mode){var fast=mode==='fast';return {
   min:segNumber(CFG.segmentMin,fast?8:12,4,100), max:fast?28:48,
@@ -12682,7 +13492,8 @@ function segRefreshProgress(){
   });
 }
 function segStartProgress(){
-  SEG.received={};SEG.voice={};SEG.adaptive={};if(SEG.uiTimer)clearInterval(SEG.uiTimer);
+  SEG.received={};SEG.voice={};SEG.adaptive={};TurnDecision.reset('session-start');TurnTrace.reset();
+  if(SEG.uiTimer)clearInterval(SEG.uiTimer);
   SEG.uiTimer=setInterval(segRefreshProgress,250);segRefreshProgress();
 }
 function segStopProgress(){if(SEG.uiTimer)clearInterval(SEG.uiTimer);SEG.uiTimer=null;}
@@ -12697,7 +13508,7 @@ function segEchoCandidate(text){
     return r.t.indexOf(n)>=0||(n.indexOf(r.t)>=0&&r.t.length/n.length>=0.85)||biDice(n,r.t)>=0.85;
   });
 }
-function segVoice(seat,rms){var talking=rms>CFG.vad/1000;segObservePause(seat,SEG.voice[seat],talking);SEG.voice[seat]={talking:talking,at:Date.now(),last:rms>CFG.vad/1000?Date.now():((SEG.voice[seat]||{}).last||Date.now())};}
+function segVoice(seat,rms){var talking=rms>CFG.vad/1000;TurnTrace.voice(seat,rms);segObservePause(seat,SEG.voice[seat],talking);SEG.voice[seat]={talking:talking,at:Date.now(),last:rms>CFG.vad/1000?Date.now():((SEG.voice[seat]||{}).last||Date.now())};}
 function segAttachMeter(owner,track,seat){
   if(owner._segmentMeter||!segEnabled())return;
   try{
@@ -12728,7 +13539,8 @@ function segDebt(){
 }
 function segReviseCommittedSource(e,s,replacement,revision){
   if(replacement===s.sourceText)return;
-  if(!s.corrected){s.corrected=true;SEG.corrected++;}
+  if(!s.corrected){s.corrected=true;SEG.corrected++;
+    var src=s.decisionSource||'rules';SEG.correctedBySource[src]=(SEG.correctedBySource[src]||0)+1;}
   s.correctionCount=(s.correctionCount||0)+1;s.correctedAt=Date.now();
   s.sourceRevision=revision;s.sourceText=replacement;
   s.translationRevision=(s.translationRevision||0)+1;s.translationReady=false;
@@ -12757,6 +13569,7 @@ function segUpdate(e,text,final){
       s.start=at;s.end=mapped;at=mapped;
     });
     b.text=text;
+    TurnTrace.text(e,text,final);
   }
   b.final=!!final;e.interim=b.cancelled?false:!final;e.status=b.cancelled?'stopped':final?'final':'active';
   if(final)e.endedAt=now;
@@ -12802,7 +13615,8 @@ function segCheck(e){
     var silence=segSilence(e,now);
     var decisionInput={text:s.sourceText,stableLength:b.final?s.sourceText.length:stable,policy:p,lang:e.srcLang,idleMs:now-b.lastUpdate,
       mode:p.mode,debt:debt,silenceMs:silence===null?-1:silence,final:b.final};
-    var d=segSemanticEnabled()?segSemanticDecision(decisionInput):segDecision(decisionInput);
+    var ruleResult=TurnDecision.rules(decisionInput);
+    var d=TurnDecision.boundary(e,s,decisionInput,ruleResult,silence,now);
     if(d.waiting)b.boundaryWaiting=d.waiting;else b.boundaryWaiting='';
     if(!d.length)break;
     s.end=s.start+d.length;s.sourceText=b.text.slice(s.start,s.end);s.id=e.id+'-s'+s.seq;
@@ -12815,10 +13629,12 @@ function segCheck(e){
       dlog('segment','echo-suppressed',{cardId:e.id,seq:s.seq,chars:s.sourceText.length,displayPreserved:true});
     }else if(!duoAutomaticAllowed(e)||b.audioMuted){s.audio.status='cancelled';s.audio.skipReason='speech-stopped';}
     else SEG.queue.push({card:e,segment:s,epoch:SEG.epoch,cancelled:false});
+    s.decisionSource=d.source||'rules';
     SEG.committed++;
+    SEG.committedBySource[s.decisionSource]=(SEG.committedBySource[s.decisionSource]||0)+1;
     SEG.lastReason=d.reasons.join(' + ');
     dlog('segment','commit',{cardId:e.id,seq:s.seq,text:s.sourceText,chars:s.sourceText.length,reason:d.reasons,
-      stabilityMs:s.stabilityMs,debtEstimateSeconds:debt});segDraft(e);
+      decisionSource:s.decisionSource,stabilityMs:s.stabilityMs,debtEstimateSeconds:debt});segDraft(e);
   }
 }
 function segTranslate(e,s,manual){
@@ -12912,6 +13728,13 @@ function segPump(){
     var silence=segSilence(e,Date.now()),overlap=segOverlapFor(e,segDebt());
     // Without a trustworthy input meter, avoid-overlap waits for STT final.
     if(overlap==='avoid'&&!e.segment.final&&(silence===null||silence<segPolicyFor(e,segDebt()).silence)){segTtsWait(j,'input-silence');return;}
+    /* Floor Gate の座席。判断層がoffならnullが返り、既存のoverlap ruleだけで進む。
+       INV-09により、待ちはturnFloorMaxWaitMsを超えて保持されない。 */
+    var floor=TurnDecision.floor(j,silence,Date.now());
+    if(floor&&floor.action==='hold'){segTtsWait(j,'floor',{waitMs:floor.waitMs,floorReason:floor.reason});return;}
+    if(floor&&floor.action==='drop'){s.audio.status='cancelled';s.audio.skipReason='floor-expired';s.state='skipped';
+      SEG.queue.shift();segRefreshPlayback(j);
+      dlog('segment','floor-drop',{cardId:e.id,seq:s.seq,waitMs:floor.waitMs});continue;}
     var useSource=j.manual||CFG.ttsSrc,lang=useSource?e.srcLang:e.dstLang;
     var group=[j],source=s.sourceText,target=s.translationText||'';
     if(ttsProv().segmentJapaneseBatch&&lang==='ja'){
@@ -12971,6 +13794,7 @@ function segAudioEvent(msg,data){
   var j=SEG.active;if(!j)return;var s=j.segment,a=s.audio,now=Date.now();
   if(/^(browser-start|wa-play|rate-play|play-start|aivis-first|openai-first|vv-start)$/.test(msg)&&!a.firstAudioAt){
     a.firstAudioAt=now+((data&&data.leadMs)||0);a.generatedAt=now;a.status='playing';s.state='playing';
+    TurnTrace.firstAudio(j,a.firstAudioAt);
     if(!j.card.firstAudioAt)j.card.firstAudioAt=a.firstAudioAt;
     segRefreshPlayback(j);
     a.startEvidence=/first|wa-play/.test(msg)?'scheduled-estimate':'playback-event';
@@ -13050,6 +13874,7 @@ function segCancelAll(why){
     if(e.srcText.trim()){e.interim=false;e.status='stopped';e.endedAt=Date.now();render(e);}
   });
   SEG.queue=[];SEG.active=null;SEG.cards=[];if(SEG.timer)clearInterval(SEG.timer);SEG.timer=null;
+  TurnDecision.reset('cancel-all');
   dlog('segment','cancel',{why:why,epoch:SEG.epoch});segStatus();
 }
 function segRemove(e){if(!e||!e.segment)return;e.segment.cancelled=true;
@@ -13427,15 +14252,25 @@ function segAdaptiveDecision(input){
   }else if(input.samples>=3)reason='balanced-tempo';
   return {profile:profile,mode:mode,min:min,max:max,stability:stability,silence:silence,rate:rate,reason:reason};
 }
+/* adaptiveが参照する確定数と訂正数。decisionSource別カウンタから、その発話の
+   言語でいま採用されている判断源の分を返す。 */
+function segCorrectionCounts(e){
+  var src=TurnDecision.applies(e&&e.srcLang)?'provider':'rules';
+  return {committed:SEG.committedBySource[src]||0,corrected:SEG.correctedBySource[src]||0};
+}
 function segAdaptiveState(e,debt){
   var a=segTempoState(e.seat),now=Date.now();
   if(a.decision&&now-a.checkedAt<1000)return a.decision;
   a.checkedAt=now;a.events=a.events.filter(function(x){return now-x.at<=10000;});
   var span=a.events.length?now-a.events[0].at:0;
   a.cps=span>=2000?a.events.reduce(function(n,x){return n+x.chars;},0)/(span/1000):0;
+  /* 訂正率は「いま効いている判断源」の分だけで見る。判断層をoffへ戻したあとに
+     稼働期間の訂正が累積比へ残り、adaptiveが導入前を再現しなくなるのを防ぐ。
+     offのあいだは全commitがrules由来なので、合計値と一致し挙動は変わらない。 */
+  var counted=segCorrectionCounts(e);
   var next=segAdaptiveDecision({debt:debt,cps:a.cps,samples:a.events.length,spanMs:span,pauseMs:a.pauseMs,
     fastCps:/^(ja|zh)/.test(e.srcLang)?5:13,previous:a.decision&&a.decision.profile,
-    committed:SEG.committed,correctionRate:SEG.committed?SEG.corrected/SEG.committed:0});
+    committed:counted.committed,correctionRate:counted.committed?counted.corrected/counted.committed:0});
   if(a.decision&&next.profile!==a.decision.profile&&now-a.changedAt<3000&&next.profile!=='cautious')return a.decision;
   if(!a.decision||next.profile!==a.decision.profile){
     a.changedAt=now;
@@ -13635,6 +14470,7 @@ iosSetup();
 unlockAudioOnce();
 duoInstallUI();
 duoNextInstall();
+turnDecisionInstall();
 
 /* 音声リストは遅れて読み込まれるので、先に一度読ませておく
    （最初の読み上げで声が選べずに失敗するのを防ぐ） */
