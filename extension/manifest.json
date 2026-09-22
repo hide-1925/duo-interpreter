@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.19",
-  "version_name": "1.4.19 HTML v1.49.8 と対。繰越カードの区間を文字数比で置く",
+  "version": "1.4.20",
+  "version_name": "1.4.20 HTML v1.49.9 と対。OpenAI音声の上限を見えるようにする",
   "optional_host_permissions": [
     "https://*/*"
   ],
