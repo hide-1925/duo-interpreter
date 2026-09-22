@@ -334,6 +334,24 @@ function duoSpeakerResolve(e,now){
   }
   return {id:null,displayName:now-end<SPEAKER_WINDOW.pending?'話者判定中…':'話者不明',source:'unknown',confidence:0,candidates:[],quality:'unknown'};
 }
+/* 繰越した末尾カードが受け持つ音声は、直前のカードを確定した位置から始まる。
+   ここを元カードの startedAt のまま引き継ぐと、話し続けている間ずっと最初の発話開始
+   時刻に固定され、10秒の録音ごとに区間が伸びていく。実測ログでは e1〜e8 の startedAt
+   が全部同じで、区間が40秒に達していた。害は3つある。
+
+     1. duoSpeakerResolve の照合窓が広がる。40秒の窓には複数の話者が入るので
+        「複数話者」になり confidence 0 で帰属が落ちる。ratio の分母も膨らむ。
+     2. duoAutomaticAllowed が resumeAfter と比べるので、再開後に生まれた末尾カードが
+        「再開前のもの」と判定されて自動読み上げから外れうる。
+     3. L1TextProxyMs が firstAudioAt-startedAt なので、遅延ではなく「話し始めてからの
+        経過時間」になり、際限なく伸びる。
+
+   startedAt と対になるのは audioEndedAt（録音の meta から入る組）なので、それを次の
+   区間の始まりとして使う。無いときは従来どおりに落とす。 */
+function fourOTailStart(e){
+  if(!e)return Date.now();
+  return e.audioEndedAt||e.endedAt||e.startedAt||Date.now();
+}
 function duoSpeakerUpdate(e){
   if(!duoSpeakerEligible(e))return;
   if(!e.speaker)e.speaker=duoSpeakerDefault();
@@ -622,8 +640,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.5';
-var APP_BUILD = '20260923-v1495-route-log-dedup';
+var APP_VERSION = 'v1.49.6';
+var APP_BUILD = '20260923-v1496-tail-card-span';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -8153,7 +8171,7 @@ FourOFileBuffer.prototype.drain=function(){
     if(parts.ready){
       fourOCardText(e,parts.ready,true,'sentence-prefix');fourOFinalize(e,'sentence-prefix',false);
       if(parts.tail){
-        tail=addEntry(q.seat,'',true);tail.startedAt=e.startedAt;tail.audioEndedAt=e.audioEndedAt;tail.srcLang=q.srcLang;tail.dstLang=q.dstLang;
+        tail=addEntry(q.seat,'',true);tail.startedAt=fourOTailStart(e);tail.audioEndedAt=e.audioEndedAt;tail.srcLang=q.srcLang;tail.dstLang=q.dstLang;
         tail.fourOState={pending:true,reason:'tail',model:this.model,request:q.id};
         if(segEnabled())segInit(tail);fourOPlaceAfter(tail,e);fourOCardText(tail,parts.tail,false,'tail');
       }
