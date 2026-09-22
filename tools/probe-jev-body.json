@@ -1,40 +1,16 @@
 {
   "model": "jev-latest",
   "state": {
-    "schemaVersion": "duo.turn-state.v1",
-    "sessionId": "probe",
-    "utteranceId": "probe",
-    "revision": 0,
-    "speakerKey": "probe",
-    "sourceLanguage": "en",
     "currentText": "This is a connectivity check.",
     "stablePrefixChars": 28,
     "lastDeltaMs": 400,
     "silenceMs": 600,
     "sttFinal": true,
-    "speechEvent": "stopped",
-    "candidateBoundaries": [
-      {
-        "id": "C_FULL_28",
-        "kind": "C_FULL",
-        "offset": 28,
-        "left": "connectivity check.",
-        "right": ""
-      }
-    ],
     "prosody": null,
     "recentTurns": [],
     "tts": {
       "active": false,
-      "queueDebtMs": 0,
-      "pendingFirstAudio": false,
-      "overlapMode": "auto"
-    },
-    "evidence": {
-      "meterAvailable": true,
-      "partialAvailable": false,
-      "speakerReliable": false,
-      "prosodyAvailable": false
+      "queueDebtMs": 0
     }
   },
   "questions": {

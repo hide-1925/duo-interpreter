@@ -46,10 +46,18 @@
     "v1.49.3": {
       "build": "20260923-v1493-extension-transport",
       "extension": "1.4.14",
-      "commit": null,
+      "commit": "0f144b1",
       "indexHtmlSha256": "3762a9f5409e628aa3a86bd4afcecd71b25ab12cff30a68d63ffc65febcd0d72",
       "extensionAppJsSha256": "9406822eb8a672ec4b7202189ac5c9fa75b36a55f33a86fb06ed1017562db7b4",
       "summary": "api.typesafe.ai が CORS 応答ヘッダを出さないことを実測で確定したので、判断層の往復をアドオンのバックグラウンドに肩代わりさせる経路を足す"
+    },
+    "v1.49.4": {
+      "build": "20260923-v1494-state-projection",
+      "extension": "1.4.15",
+      "commit": null,
+      "indexHtmlSha256": "f8fd7157fae941c778f47dbac30b5c63bf4786568e6ba0ad0b531d98c9225263",
+      "extensionAppJsSha256": "2b967c63f4a7165b8c912bd6cc94de0f9d619721523a4dd2910f61236f5fd5bf",
+      "summary": "公式の Models と jaggedness を読み、文脈上限の誤りを直し、質問が名指ししない state を送らないようにする"
     }
   }
 }

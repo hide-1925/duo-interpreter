@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.14",
-  "version_name": "1.4.14 HTML v1.49.3 と対。判断層の往復をアドオンが肩代わりする",
+  "version": "1.4.15",
+  "version_name": "1.4.15 HTML v1.49.4 と対。質問が名指ししない state は送らない",
   "optional_host_permissions": [
     "https://*/*"
   ],
