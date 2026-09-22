@@ -132,13 +132,14 @@ test('an unknown turn state is refused, and an absent one becomes UNKNOWN',()=>{
 });
 
 /* ── jev-direct ───────────────────────────────────────────────────────── */
-test('the request carries ZDR and no-training headers on the direct path',async()=>{
+/* かつては ZDR と no-training のヘッダを常に送っていたが、公式リファレンスに記載が
+   無く、私が足したものだった。別オリジンへの preflight を増やすだけで疎通を落とす
+   ので既定では送らない（実機で "Failed to fetch" になった）。 */
+test('the request goes to the documented endpoint with bearer auth',async()=>{
   reset({turnDecisionProvider:'jev-direct'});
   const s=stateOf();fetchImpl=reply(wire(s));
   await P().get('jev-direct').evaluate(s,{});
   const h=calls[0].opt.headers;
-  assert.equal(h['X-TypeSafe-Zero-Data-Retention'],'true');
-  assert.equal(h['X-TypeSafe-No-Training'],'true');
   assert.match(calls[0].url,/\/v1\/systemone$/);
   assert.equal(h.Authorization,'Bearer k');
 });
@@ -331,6 +332,80 @@ test('the OpenRouter route refuses a payload past its smaller context',async()=>
   s.recentTurns=[];for(let i=0;i<400;i++)s.recentTurns.push({speakerKey:'s'+i,language:'ja',text:'あ'.repeat(200)});
   await assert.rejects(()=>P().get('jev-openrouter').evaluate(s,{}),/文脈上限/);
   assert.equal(calls.length,0,'nothing may be sent once it is over the limit');
+});
+
+/* ── 疎通と到達不能 ───────────────────────────────────────────────────── */
+/* 公式に記載の無いヘッダを送ると preflight が増え、サーバが許可していなければ
+   本リクエストが飛ばずに "Failed to fetch" になる。既定では送らない。 */
+test('the direct route sends only the documented headers by default',async()=>{
+  reset({turnDecisionProvider:'jev-direct'});
+  const s=stateOf();fetchImpl=reply(wire(s));
+  await P().get('jev-direct').evaluate(s,{});
+  const h=calls[0].opt.headers;
+  assert.equal(h.Authorization,'Bearer k');
+  assert.equal(h['Content-Type'],'application/json');
+  for(const k of Object.keys(h))
+    assert.ok(!/^X-TypeSafe/i.test(k),'undocumented header forces a preflight: '+k);
+});
+test('the undocumented headers can still be turned back on per route',async()=>{
+  reset({turnDecisionProvider:'jev-direct'});
+  const route=P().ROUTES['jev-direct'];
+  route.extraHeaders=true;
+  try{
+    const s=stateOf();fetchImpl=reply(wire(s));
+    await P().get('jev-direct').evaluate(s,{});
+    assert.equal(calls[0].opt.headers['X-TypeSafe-No-Training'],'true');
+  } finally { route.extraHeaders=false; }
+});
+test('a fetch that never answers is reported as unreachable, not as a bad response',async()=>{
+  reset({turnDecisionProvider:'jev-direct'});
+  /* ブラウザは CORS でも DNS でも同じ TypeError を投げる。status は付かない。 */
+  fetchImpl=()=>Promise.reject(new TypeError('Failed to fetch'));
+  const err=await P().get('jev-direct').evaluate(stateOf(),{}).then(()=>null,e=>e);
+  assert.ok(err,'it must reject');
+  assert.equal(err.unreachable,true,'the layer must be able to tell this apart');
+  assert.match(err.message,/CORS/,'the message must say what to check: '+err.message);
+});
+test('an HTTP error keeps its status and is not mistaken for unreachable',async()=>{
+  reset({turnDecisionProvider:'jev-direct'});
+  fetchImpl=()=>Promise.resolve({ok:false,status:401,text:()=>Promise.resolve('')});
+  const err=await P().get('jev-direct').evaluate(stateOf(),{}).then(()=>null,e=>e);
+  assert.equal(err.status,401);
+  assert.equal(err.unreachable,undefined);
+});
+test('an abort stays an abort, so a timeout is not reported as a CORS problem',async()=>{
+  reset({turnDecisionProvider:'jev-direct'});
+  fetchImpl=()=>{const e=new Error('aborted');e.name='AbortError';return Promise.reject(e);};
+  const err=await P().get('jev-direct').evaluate(stateOf(),{}).then(()=>null,e=>e);
+  assert.equal(err.name,'AbortError');
+  assert.equal(err.unreachable,undefined);
+});
+
+test('probe reaches the route with a real contract body and reports the outcome',async()=>{
+  reset({turnDecisionProvider:'jev-direct'});
+  fetchImpl=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve('{}')});
+  const res=await P().probe('jev-direct');
+  assert.equal(res.ok,true);
+  assert.equal(calls[0].url,'https://api.typesafe.ai/v1/systemone');
+  const body=JSON.parse(calls[0].opt.body);
+  assert.ok(body.state&&body.questions&&body.model,'the probe must use the real contract shape');
+  assert.equal(body.state.candidateBoundaries.length,1,'and offer a candidate like a real call');
+});
+test('probe separates unreachable from refused, so the message can differ',async()=>{
+  reset({turnDecisionProvider:'jev-direct'});
+  fetchImpl=()=>Promise.reject(new TypeError('Failed to fetch'));
+  const a=await P().probe('jev-direct');
+  assert.equal(a.ok,false);assert.equal(a.unreachable,true);
+  fetchImpl=()=>Promise.resolve({ok:false,status:401,text:()=>Promise.resolve('bad key')});
+  const b=await P().probe('jev-direct');
+  assert.equal(b.ok,false);assert.equal(b.unreachable,undefined);assert.equal(b.status,401);
+  assert.match(b.detail,/bad key/);
+});
+test('probe does not depend on the decision mode, so it works while off',async()=>{
+  reset({turnDecisionMode:'off',turnDecisionLangEn:'off',turnDecisionLangJa:'off',
+    turnDecisionProvider:'jev-direct'});
+  fetchImpl=()=>Promise.resolve({ok:true,status:200,text:()=>Promise.resolve('{}')});
+  assert.equal((await P().probe('jev-direct')).ok,true);
 });
 
 /* ── 確率の出どころ ───────────────────────────────────────────────────── */
