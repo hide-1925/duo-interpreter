@@ -11120,12 +11120,20 @@ var TurnProviders={
     id:'local',
     capabilities:function(){return {probabilitySemantics:'post_calibrated',supportsChoice:true,
       supportsNoul:true,structuredOutput:true,abortable:false,maxChoices:255,textOnly:false,local:true};},
-    weights:function(){
+    /* 重みは言語別に持つ。ja と en を1つのモデルで済ませると、公式が明記している
+       「日本語は英語の閾値を流用せず独自評価が必要」をそのまま踏み抜く（§9.3）。
+       閾値も学習時に precision 目標から逆算した値を使い、ここでは決め打ちしない。 */
+    weights:function(lang){
       var raw=CFG.turnDecisionLocalWeights;
       if(!raw)return null;
       var w;try{w=typeof raw==='string'?JSON.parse(raw):raw;}catch(err){return null;}
-      if(!w||!w.features||typeof w.bias!=='number')return null;
-      return w;
+      if(!w||!w.languages)return null;
+      var l=String(lang||'').split('-')[0],m=w.languages[l];
+      if(!m||!m.features||typeof m.bias!=='number')return null;
+      var th=typeof m.threshold==='number'?m.threshold
+        :(m.calibration&&typeof m.calibration.threshold==='number'?m.calibration.threshold:null);
+      if(th===null||!(th>0&&th<1))return null;   /* 校正された閾値が無ければ動かさない */
+      return {version:String(w.version||'local'),lang:l,bias:m.bias,features:m.features,threshold:th};
     },
     features:function(state){
       var p=state.prosody||{},last=state.lastDeltaMs,sil=state.silenceMs;
@@ -11142,14 +11150,16 @@ var TurnProviders={
         prosodyQuality:typeof p.quality==='number'?p.quality:0};
     },
     evaluate:function(state){
-      var w=this.weights();
-      if(!w)return Promise.reject(new Error('学習済みの重みがありません。turn-trace-replay.js --fit で作ってください'));
+      var lang=state.sourceLanguage;
+      var w=this.weights(lang);
+      if(!w)return Promise.reject(new Error('この言語（'+(String(lang||'?').split('-')[0])
+        +'）の学習済み重みがありません。turn-trace-replay.js --fit で作ってください'));
       var f=this.features(state),z=w.bias,k;
       for(k in w.features)if(typeof f[k]==='number')z+=w.features[k]*f[k];
       var complete=1/(1+Math.exp(-z));
       /* 候補が無いときは HOLD しか返せない。 */
       var list=state.candidateBoundaries||[],pick=list.length?list[list.length-1].id:'HOLD';
-      var choice=complete>=0.5&&list.length?pick:'HOLD';
+      var choice=complete>=w.threshold&&list.length?pick:'HOLD';
       var probs={};probs.HOLD=+(1-complete).toFixed(4);
       if(list.length)probs[pick]=+complete.toFixed(4);
       return Promise.resolve(TurnProviders.normalize({
@@ -11157,7 +11167,7 @@ var TurnProviders={
         boundary:{choice:choice,confidence:+Math.abs(2*complete-1).toFixed(4),probabilities:probs},
         turnState:{choice:complete>=0.5?'COMPLETE':'CONTINUING',confidence:+Math.abs(2*complete-1).toFixed(4)},
         safeToSpeak:+complete.toFixed(4),repairLikelihood:+(1-complete).toFixed(4)
-      },state,{provider:'local',model:String(w.version||'local-1'),semantics:'post_calibrated',
+      },state,{provider:'local',model:w.version+':'+w.lang,semantics:'post_calibrated',
         latencyMs:0,questionSetHash:TurnDecision.questionSetHash()}));
     }
   }
