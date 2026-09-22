@@ -10,7 +10,7 @@
 'use strict';
 const {execFileSync}=require('node:child_process'),path=require('node:path');
 
-const GATE=['test-turn-decision.cjs','test-file-sync.cjs','test-turn-trace-replay.cjs',
+const GATE=['test-turn-decision.cjs','test-file-sync.cjs','test-release-manifest.cjs','test-turn-trace-replay.cjs',
   'test-input-validation.cjs','test-turn-providers.cjs',
   'test-teams.cjs','test-next.cjs','test-controller.cjs','test-frame-routing.cjs',
   'test-bridge-target.cjs','test-mic-discovery.cjs'];
