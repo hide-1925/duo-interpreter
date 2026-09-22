@@ -11,6 +11,23 @@ test('Three participants with the same language can switch local identity by con
 test('Policy denies missing identity and every manual replay',()=>{for(const mode of ['tts-only','original-plus-tts','original-only']){c.conferenceAudioState.mode=mode;assert(!c.AudioRoutingPolicy.resolve({...job,playbackIntent:'manual-replay'}).conferenceMic);assert(!c.AudioRoutingPolicy.resolve({...job,utteranceId:null}).conferenceMic);}});
 test('Only automatic local audio is eligible by default in on and mix',()=>{for(const mode of ['tts-only','original-plus-tts']){c.conferenceAudioState.mode=mode;assert(c.AudioRoutingPolicy.resolve(job).conferenceMic);assert(!c.AudioRoutingPolicy.resolve({...job,sourceScope:'remote',speakerId:'x'}).conferenceMic);}});
 test('Remote relay requires opt-in, selected identity, translation and automatic intent',()=>{const s=c.conferenceAudioState;s.mode='tts-only';s.relay=true;s.relayParticipants.add('x');const r={...job,sourceScope:'remote',speakerId:'x'};assert(c.AudioRoutingPolicy.resolve(r).conferenceMic);for(const override of [{speakerId:null},{speakerId:'y'},{ttsType:'original'},{playbackIntent:'manual-replay'}])assert(!c.AudioRoutingPolicy.resolve({...r,...override}).conferenceMic);s.mode='original-only';assert(!c.AudioRoutingPolicy.resolve(r).conferenceMic);s.mode='tts-only';assert(c.AudioRoutingPolicy.resolve(r).conferenceMic);});
+/* 繰越した末尾カードの区間。実機ログ（v1.49.5）で e1〜e8 の startedAt が全部同じで、
+   話し続けている40秒がまるごと1枚の窓になっていた。10秒の録音ごとに窓が伸びる。 */
+test('A carried tail starts where the finalised part ended, not where the speaker started',()=>{
+  const T=1790097366503;
+  const first={startedAt:T,endedAt:T+10026,audioEndedAt:T+10026};
+  assert.equal(c.fourOTailStart(first),T+10026,'the tail owns the audio after the split');
+  /* 繰越が続いても、そのたびに前の終わりから始まる。伸びていかないことが要点。 */
+  const second={startedAt:T+10026,endedAt:T+20042,audioEndedAt:T+20042};
+  assert.equal(c.fourOTailStart(second),T+20042);
+  assert.ok(c.fourOTailStart(second)>c.fourOTailStart(first),'monotone');
+});
+test('The tail start falls back rather than inventing a time',()=>{
+  const T=1790097366503;
+  assert.equal(c.fourOTailStart({startedAt:T,endedAt:T+500}),T+500,'endedAt when no audioEndedAt');
+  assert.equal(c.fourOTailStart({startedAt:T}),T,'the old behaviour when neither is set');
+  assert.ok(c.fourOTailStart(null)>0,'and never undefined');
+});
 /* streaming TTS は PCM バッファごとに ConferenceMicBus.connect へ来る。実測ログでは
    61秒・475件の半分近くが同じ2行の繰り返しで埋まっていた。1時間の記録では trace 上限
    40,000 行に早々に届き、肝心の行が落ちる。判定は job と bus の状態だけで決まるので、
@@ -64,4 +81,24 @@ test('No speaker metadata falls back without blocking text processing',()=>{cons
 test('Manual export is authoritative and revisions enter minutes fingerprint',()=>{c.duoSpeakerSet(entry,'meeting:p2');const x=c.duoSpeakerExport(entry);assert.equal(x.speaker,'Alex');assert(x.speakerAttribution.manuallyCorrected);assert(x.speakerAttribution.revision>0);assert(source.includes('revision:s.revision'));const full=fs.readFileSync(path.join(__dirname,'../app.js'),'utf8');assert(full.includes('schemaVersion:2'));assert(full.includes('cards.push(Object.assign(duoSpeakerExport(e)'));assert(full.includes("'speaker_revision'"));});
 test('Automatic off skips all old cards on resume; manual intent remains routable locally',()=>{c.duoSession=c.duoSessionConfig('web');c.conferenceAudioState.connected=true;c.conferenceAudioState.mode='original-only';assert(!c.duoAutomaticAllowed(entry));c.conferenceAudioState.mode='tts-only';c.conferenceAudioState.resumeAfter=now+3000;assert(!c.duoAutomaticAllowed(entry));assert(c.duoAutomaticAllowed({...entry,startedAt:now+3001}));});
 test('Legacy and segment manual jobs are tagged before synthesis',()=>{c.manualSayKey='e1:A';let j=c.duoTtsJob('e1:A');assert.equal(j.playbackIntent,'manual-replay');c.manualSayKey='';c.SEG.active={manual:true};j=c.duoTtsJob('e1:A');assert.equal(j.playbackIntent,'manual-replay');c.SEG.active=null;j=c.duoTtsJob('e1:A');assert.equal(j.playbackIntent,'automatic');});
+/* 害の本体。DuoSpeakers の状態を差し替えるので、他の試験に影響しないよう最後に置く。
+   窓が広いと、その窓でいちばん長く話していた人が選ばれる。末尾カードが
+   受け持つのは最後の数秒なのに、それより前に長く話していた別人に帰属してしまう。
+   「複数話者」で落ちるのではなく、静かに間違った名前が付くほうが厄介。 */
+test('A window widened by the old inheritance attributes the wrong speaker',()=>{
+  const T=Date.now()-60000;
+  /* p1 が30秒話し、そのあと p2 が8秒話した。末尾カードの音声は p2 のぶんだけ。 */
+  c.DuoSpeakers.timeline=[{id:'m:p1',start:T,end:T+30000,session:'m'},
+                          {id:'m:p2',start:T+32000,end:T+40000,session:'m'}];
+  c.DuoSpeakers.registry=new Map([['m:p1',{displayName:'A',speakerKey:'p1'}],
+                                  ['m:p2',{displayName:'B',speakerKey:'p2'}]]);
+  const card=(start)=>({id:'x',utteranceId:'u',seat:'B',speakerSession:'m',
+    ts:new Date(start).toISOString(),startedAt:start,endedAt:T+40000,audioEndedAt:T+40000});
+  const wide=c.duoSpeakerResolve(card(T),Date.now());
+  assert.equal(wide.id,'m:p1','the inherited start picks whoever talked longest in 40s');
+  const narrow=c.duoSpeakerResolve(card(T+32000),Date.now());
+  assert.equal(narrow.id,'m:p2','starting where the tail really starts picks the right one');
+  assert.ok(narrow.confidence>=wide.confidence,'and is at least as certain');
+});
+
 console.log(JSON.stringify({passed:tests.length,tests},null,2));
