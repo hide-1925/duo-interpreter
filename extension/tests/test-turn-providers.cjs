@@ -26,7 +26,8 @@ const ctx={console,Math,Date,JSON,Object,Array,String,Number,isFinite,RegExp,Pro
   hasSpeechContent:t=>/[\p{L}\p{N}]/u.test(String(t||'')),
   fetch:(url,opt)=>{calls.push({url,opt});return fetchImpl(url,opt);}};
 const c=vm.createContext(ctx);
-for(const b of [segBlock(),block('function segEnabled()'),block('function segDecision(input){'),
+for(const b of [segBlock(),block('var TURN_PROSODY_SENT='),
+                block('function segEnabled()'),block('function segDecision(input){'),
                 block('function segSemanticEnabled()'),block('function segSemanticTail(text,lang){'),
                 block('function segSemanticDecision(input){'),
                 block('var TurnProviders={'),block('var TURN_STATE_SCHEMA='),
@@ -273,6 +274,38 @@ test('local uses the calibrated threshold, not a hardcoded 0.5',async()=>{
 test('local is declared local so it is exempt from transport guards',()=>{
   assert.equal(P().local.capabilities().local,true);
   assert.equal(P()['jev-direct'].capabilities().local,false);
+});
+
+/* ── 送る数値はすべて説明されていること ──────────────────────────────── */
+test('every prosody field we send is explained in the instructions',()=>{
+  /* Jev はテキストしか見ないので、説明のない数値は解釈できずノイズになる。
+     送るフィールドを足して説明を忘れる事故をここで止める。 */
+  const instr=Object.values(P().template).map(q=>JSON.stringify(q.instructions)).join('\n');
+  for(const f of c.TURN_PROSODY_SENT)
+    assert.ok(instr.includes('prosody.'+f),'sent but never explained: prosody.'+f);
+});
+
+test('only the documented prosody fields reach the provider',async()=>{
+  reset({turnDecisionProvider:'jev-direct',turnDecisionLangJa:'active'});
+  /* peek は説明していないフィールドも返す。state へは乗せないこと。 */
+  ctx.micProsody={peek:()=>({available:true,windowMs:1500,terminalPitchSlope:-0.2,
+    pitchRelativeRange:0.3,terminalEnergyDrop:11,internalPauseRatio:0.1,
+    maxInternalPauseMs:120,tempoVariability:0.2,voiceRuns:3,coverage:0.8,quality:0.7})};
+  const s=stateOf();
+  assert.ok(s.prosody,'prosody must be attached when observing');
+  const sent=Object.keys(s.prosody).sort().join(','),want=Array.from(c.TURN_PROSODY_SENT).sort().join(',');
+  assert.equal(sent,want);
+  for(const undoc of ['windowMs','pitchRelativeRange','voiceRuns','coverage'])
+    assert.equal(s.prosody[undoc],undefined,'undocumented field leaked: '+undoc);
+  ctx.micProsody=null;
+});
+
+test('the instructions name the state fields they depend on',()=>{
+  const instr=JSON.stringify(P().template.boundary_choice.instructions);
+  for(const f of ['currentText','stablePrefixChars','silenceMs','lastDeltaMs','sttFinal'])
+    assert.ok(instr.includes('`'+f+'`'),'state field not referenced: '+f);
+  /* null と 0 を混同させないことを明記しているか。 */
+  assert.match(instr,/null/);
 });
 
 /* ── circuit breaker ──────────────────────────────────────────────────── */

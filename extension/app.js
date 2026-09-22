@@ -11073,20 +11073,37 @@ var TurnProviders={
      と候補の左右文脈として渡るので、原語の情報は失われない。
      この選択自体は shadow で検証する。 */
   template:{
+    /* state のフィールドをバッククォートで参照して意味を書く。Jev はテキストしか
+       見ないので、prosody の数値は説明しなければ解釈できずノイズになる。
+       送るフィールドは PROSODY_SENT に限り、その全部をここで説明する。 */
     boundary_choice:{type:'choice',
-      instructions:'A live interpreter is translating this speaker as they talk. Pick the one boundary that is safe to translate now, or HOLD. Safe means the text before the boundary is a complete unit of meaning and the speaker is not mid-clause, mid-repair, or trailing into a connective.'},
+      instructions:'A live interpreter is translating this speaker as they talk.\n'
+        +'`currentText` is the tail of what they have said that is not translated yet, in their own language.\n'
+        +'`stablePrefixChars` is how many leading characters of it the recogniser now treats as settled.\n'
+        +'`silenceMs` is the acoustic silence since they last made a sound; null means the microphone level is unknown, which is not the same as zero.\n'
+        +'`lastDeltaMs` is how long since the recogniser last added text.\n'
+        +'`sttFinal` is true when the recogniser has closed the utterance.\n'
+        +'`prosody` is absent when the acoustics are unavailable. When present:\n'
+        +'`prosody.terminalPitchSlope` is negative when their pitch falls at the end, which usually means they finished, and positive when it rises.\n'
+        +'`prosody.terminalEnergyDrop` in dB is larger when their voice tails off.\n'
+        +'`prosody.internalPauseRatio` is larger when they paused a lot inside what they just said.\n'
+        +'`prosody.maxInternalPauseMs` is their longest pause inside it.\n'
+        +'`prosody.tempoVariability` is larger when their pace is uneven, which often means hesitation.\n'
+        +'`prosody.quality` is how trustworthy these acoustic numbers are; treat them as weak evidence when it is low.\n'
+        +'`recentTurns` holds a little earlier conversation when it is available.\n'
+        +'Pick the one boundary that is safe to translate now, or HOLD. Safe means the text before the boundary is a complete unit of meaning and the speaker is not mid-clause, mid-repair, or trailing into a connective.'},
     turn_state:{type:'choice',
-      instructions:'Classify whether the speaker has finished this utterance.',
+      instructions:'Classify whether the speaker has finished this utterance. Judge the tail of `currentText`, using `silenceMs`, `lastDeltaMs`, `sttFinal` and `prosody` as described in the other questions.',
       criteria:{COMPLETE:'Finished. Another person may take the floor.',
         CONTINUING:'More is coming. The speaker is mid-sentence or mid-clause.',
         SELF_REPAIR:'Restating. The speaker is correcting what they just said.',
         UNKNOWN:'Cannot be told from what is available.'}},
     safe_to_speak:{type:'noul',
-      instructions:'Would starting the translated audio right now avoid cutting the speaker off?',
+      instructions:'Would starting the translated audio right now avoid cutting the speaker off? `tts.active` is true when translated audio is already playing, and `tts.queueDebtMs` is how far behind the queue is. `silenceMs` is null when the microphone level is unknown.',
       criteria:{'true':'Starting now would not interrupt; the speaker has yielded the floor.',
         'false':'Starting now would talk over the speaker.'}},
     repair_likelihood:{type:'noul',
-      instructions:'Is the speaker about to restate what they just said?',
+      instructions:'Is the speaker about to restate what they just said? Look at the tail of `currentText` for fillers and false starts, and at `prosody.tempoVariability` for an uneven pace.',
       criteria:{'true':'A self-repair or restatement is likely to follow immediately.',
         'false':'No restatement is expected.'}}
   },
@@ -11231,6 +11248,10 @@ var TurnProviders={
   }
 };
 var TURN_STATE_SCHEMA='duo.turn-state.v1';
+/* Provider へ送る prosody フィールド。ここに足したら instructions でも説明する。
+   test-turn-providers が「送るのに説明のないフィールド」を落とす。 */
+var TURN_PROSODY_SENT=['terminalPitchSlope','terminalEnergyDrop','internalPauseRatio',
+  'maxInternalPauseMs','tempoVariability','quality'];
 var TurnDecision={
   cache:{}, inflight:{}, sessionSalt:null,
 
@@ -11301,7 +11322,11 @@ var TurnDecision={
   /* TurnDecisionStateV1。silenceMsはmeter不明をnullで表す。Rules側が使う-1は
      内部規約なので契約へ漏らさない。0と不明を同じ値にしない。 */
   stateOf:function(e,s,input,ruleResult,silence,now){
-    var text=String(input.text||''),prosody=this.prosodyOf(e.srcLang),meter=(silence!==null&&silence!==undefined);
+    var text=String(input.text||''),full=this.prosodyOf(e.srcLang),meter=(silence!==null&&silence!==undefined);
+    /* 説明のない数値は送らない。instructions で意味を書いたフィールドだけに絞る。 */
+    var prosody=null,pi;
+    if(full){prosody={};for(pi=0;pi<TURN_PROSODY_SENT.length;pi++)
+      if(full[TURN_PROSODY_SENT[pi]]!==undefined)prosody[TURN_PROSODY_SENT[pi]]=full[TURN_PROSODY_SENT[pi]];}
     return {
       schemaVersion:TURN_STATE_SCHEMA,
       sessionId:'s'+sessionGen,
