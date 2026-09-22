@@ -560,8 +560,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.48.0';
-var APP_BUILD = '20260922-v1480-turn-decision';
+var APP_VERSION = 'v1.49.0';
+var APP_BUILD = '20260922-v1490-turn-routes';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
