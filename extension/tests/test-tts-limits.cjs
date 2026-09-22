@@ -15,6 +15,12 @@ function block(startsWith){
   for(let j=i+1;j<lines.length;j++) if(lines[j]==='}'||lines[j]==='};') return lines.slice(i,j+1).join('\n');
   throw new Error('unterminated: '+startsWith);
 }
+/* 1行で書かれた関数や変数は block() では終端が取れないので、行ごと取り出す。 */
+function line(startsWith){
+  const l=lines.find(l=>l.startsWith(startsWith));
+  assert.ok(l!==undefined,'line not found: '+startsWith);
+  return l;
+}
 const logs=[];
 const ctx={console,Date,String,Number,Object,Error,JSON,setTimeout,
   dlog:(...a)=>logs.push(a)};
@@ -158,6 +164,97 @@ test('a 429 both blocks the provider and keeps the limits for the diagnostics',(
     'x-ratelimit-remaining-requests':'0','x-ratelimit-limit-requests':'500'}),'','speech-wav');
   assert.ok(c.OPENAI_RATE_BLOCK_UNTIL-Date.now()>19000,'the next utterance must not retry immediately');
   assert.equal(c.OPENAI_LAST_RATE.remainingRequests,'0');
+});
+
+/* ── Aivis：予測（こちら側の数え）と事実（429）を混ぜない ─────────────
+   Aivis の公表値は60秒10回だが、上位プランでは超過分をクレジットで払う設定に
+   できる。つまりこちら側の数えは上限そのものではなく予測でしかない。v1.49.10 は
+   この予測で送信を止めてブラウザ内蔵音声へ回していたため、超過分の課金を許可
+   しているアカウントでも声が替わっていた。予測と事実を分けられているかを検査する。 */
+const mem={};
+ctx.store={get:(k,d)=>(k in mem?mem[k]:d),set:(k,v)=>{mem[k]=String(v);},del:(k)=>{delete mem[k];}};
+ctx.CFG={};
+for(const b of [line('var AIVIS_RATE='),
+                block('function aivisRateLoad(){'),
+                line('function aivisRateSave(){'),
+                block('function aivisOverLimitMode(){'),
+                line('function aivisServerWait(){'),
+                block('function aivisWindowWait(){'),
+                block('function aivisRateWait(){'),
+                block('function aivisFallbackWait(){')]) vm.runInContext(b,c);
+/* n回ぶんの送信記録を「いま」に寄せて作る。10回で枠を使い切る。 */
+const sentNow=(n,agoMs)=>{const now=Date.now();
+  c.AIVIS_RATE.sent=[];c.AIVIS_RATE.blockedUntil=0;c.AIVIS_RATE.loaded=true;
+  for(let i=0;i<n;i++) c.AIVIS_RATE.sent.push(now-(agoMs===undefined?100:agoMs));};
+
+test('an unknown or empty policy is read as send, so a bad stored value cannot mute Aivis',()=>{
+  ctx.CFG.aivisOverLimit='';       assert.equal(c.aivisOverLimitMode(),'send');
+  ctx.CFG.aivisOverLimit='nonsense';assert.equal(c.aivisOverLimitMode(),'send');
+  ctx.CFG.aivisOverLimit='browser'; assert.equal(c.aivisOverLimitMode(),'browser');
+  ctx.CFG.aivisOverLimit='wait';    assert.equal(c.aivisOverLimitMode(),'wait');
+});
+test('by default the counted window never stops a request, because it is only a prediction',()=>{
+  ctx.CFG.aivisOverLimit='send';sentNow(10);
+  assert.ok(c.aivisWindowWait()>59000,'the window itself is exhausted');
+  assert.equal(c.aivisRateWait(),0,'but sending is not held back');
+  assert.equal(c.aivisFallbackWait(),0,'and the voice is not swapped for the browser one');
+});
+test('the browser policy diverts on the prediction without holding the request',()=>{
+  ctx.CFG.aivisOverLimit='browser';sentNow(10);
+  assert.ok(c.aivisFallbackWait()>59000,'the segment is read with the built-in voice');
+  assert.equal(c.aivisRateWait(),0,'waiting would only lengthen the queue');
+});
+test('the wait policy restores the behaviour of v1.49.9 and earlier',()=>{
+  ctx.CFG.aivisOverLimit='wait';sentNow(10);
+  assert.ok(c.aivisRateWait()>59000,'the request waits for the window');
+  assert.equal(c.aivisFallbackWait(),0,'and the voice never changes');
+});
+test('a 429 from Aivis is a fact, so it blocks under every policy',()=>{
+  for(const mode of ['send','browser','wait']){
+    ctx.CFG.aivisOverLimit=mode;sentNow(0);
+    c.AIVIS_RATE.blockedUntil=Date.now()+5000;
+    assert.ok(c.aivisServerWait()>4000,mode+': the server block is visible');
+    if(mode==='wait') assert.ok(c.aivisRateWait()>4000,'wait: the request waits it out');
+    else assert.ok(c.aivisFallbackWait()>4000,mode+': the segment goes to the built-in voice');
+  }
+});
+test('the prediction can never shorten a server block',()=>{
+  ctx.CFG.aivisOverLimit='wait';sentNow(10,59000);
+  c.AIVIS_RATE.blockedUntil=Date.now()+120000;
+  assert.ok(c.aivisWindowWait()<2000,'the window reopens in about a second');
+  assert.ok(c.aivisRateWait()>119000,'but the server said two minutes');
+});
+test('records older than the window are dropped, so the count cannot grow forever',()=>{
+  ctx.CFG.aivisOverLimit='browser';sentNow(10,61000);
+  assert.equal(c.aivisFallbackWait(),0);
+  assert.equal(c.AIVIS_RATE.sent.length,0,'and the old records are gone');
+});
+test('the wait is measured from the tenth request back, not from the newest one',()=>{
+  ctx.CFG.aivisOverLimit='wait';
+  const now=Date.now();c.AIVIS_RATE.sent=[];c.AIVIS_RATE.blockedUntil=0;
+  for(let i=11;i>=0;i--) c.AIVIS_RATE.sent.push(now-i*1000);   /* 12回、1秒おき */
+  const ms=c.aivisRateWait();
+  assert.ok(ms>50000&&ms<52000,'expected about 51s, got '+ms);
+});
+test('the window survives a reload and future timestamps are discarded',()=>{
+  const now=Date.now();
+  mem['di.aivisRateWindow']=JSON.stringify({sent:[now-1000,now+600000],blockedUntil:now+3000});
+  c.AIVIS_RATE.sent=[];c.AIVIS_RATE.blockedUntil=0;c.AIVIS_RATE.loaded=false;
+  ctx.CFG.aivisOverLimit='send';
+  assert.ok(c.aivisServerWait()>2000,'a block that outlived the reload still holds');
+  assert.equal(c.AIVIS_RATE.sent.length,1,'a timestamp from the future is not trusted');
+});
+test('every option the UI offers is a policy the code understands',()=>{
+  const html=fs.readFileSync(path.join(__dirname,'../../index.html'),'utf8');
+  const sel=html.match(/<select id="aivisOverLimit">([\s\S]*?)<\/select>/);
+  assert.ok(sel,'the picker has to exist in the page');
+  const values=[...sel[1].matchAll(/value="([^"]*)"/g)].map(m=>m[1]);
+  assert.deepEqual(values,['send','browser','wait']);
+  for(const v of values){ctx.CFG.aivisOverLimit=v;
+    assert.equal(c.aivisOverLimitMode(),v,v+' must not silently fall back to another policy');}
+  const schema=src.match(/\{ prop:"aivisOverLimit"[^\n]*\}/);
+  assert.ok(schema&&/def:'send'/.test(schema[0]),
+    'the default has to be send, or an account that pays for the overage gets muted');
 });
 
 console.log(JSON.stringify({passed:tests.length,tests},null,2));

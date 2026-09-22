@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.21",
-  "version_name": "1.4.21 HTML v1.49.10 と対。上限以降はブラウザ内蔵音声で読む",
+  "version": "1.4.22",
+  "version_name": "1.4.22 HTML v1.49.11 と対。Aivisの超過はクレジットに任せる",
   "optional_host_permissions": [
     "https://*/*"
   ],

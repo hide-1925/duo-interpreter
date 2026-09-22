@@ -102,10 +102,18 @@
     "v1.49.10": {
       "build": "20260923-v14910-rate-browser-voice",
       "extension": "1.4.21",
-      "commit": null,
+      "commit": "778637a",
       "indexHtmlSha256": "1bb9136f8c60676aae8127e362a4277fa7597d8906acafa558e6787d1d3ca2be",
       "extensionAppJsSha256": "bd6a4e21eec2d04590caf19d7f5d35c9ca3412689bbd734f92d8dc8acdff2835",
       "summary": "API読み上げがレート上限に達している間は待たずにブラウザ内蔵音声で読む。待つ設計では実測でTTS待ちが20〜40秒に達していた"
+    },
+    "v1.49.11": {
+      "build": "20260923-v14911-aivis-overage-policy",
+      "extension": "1.4.22",
+      "commit": null,
+      "indexHtmlSha256": "f86b5d3b74971213c9bed0d95cac844666cba3c886339e772d9510728f9b6ba2",
+      "extensionAppJsSha256": "c82b85dcb4f0c34aab3653c062721d8256b94b7193e8cd09efa8ea6cd36d90fc",
+      "summary": "v1.49.10のAivis判定はこちら側の予測（60秒10回）で送信を止めており、超過分をクレジットで払う設定のアカウントでも声がブラウザ内蔵音声に替わっていた。予測（設定可・既定は止めない）とサーバの429（必ず従う）を分けた"
     }
   }
 }
