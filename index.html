@@ -13214,15 +13214,77 @@ var TurnDecision={
       });
   },
 
-  /* 候補外のoffsetは採用しない。安定prefixを越えるものも採らない。合成スコアの
-     重みはPhase 2の学習で決めるため、ここでは構造的な安全条件だけを検査する。 */
-  pick:function(state,hit){
-    if(!hit.boundary||!hit.boundary.choice||hit.boundary.choice==='HOLD')
+  /* 言語別の初期閾値。校正前の出荷値であり、§9.1 の学習で置き換える。
+     boundary の判定を confidence ではなく probabilities に置いているのが要点。
+     公式の confidence は選択肢数 N に依存する統計量で、boundary_choice の N は
+     HOLD＋候補1〜5件で毎回変わる。同じ p_max でも候補を多く作った回ほど
+     confidence が高く出るため、固定の下限を置くと「Duo が何件候補を作ったか」で
+     合否が変わってしまう。turn_state は選択肢が4つ固定なので confidence を使える。 */
+  thresholds:function(lang){
+    var l=String(lang||'').split('-')[0];
+    if(l==='ja')return {holdMax:0.10,chosenMin:0.80,turnConfMin:0.50,
+      continuingMax:0.10,repairMax:0.12,silenceMin:450,confirm:2};
+    return {holdMax:0.15,chosenMin:0.70,turnConfMin:0.50,
+      continuingMax:0.15,repairMax:0.20,silenceMin:250,confirm:1};
+  },
+
+  /* ヒステリシス。同じ offset をN回連続で支持したときだけ commit する。
+     閾値付近で判定が振動しても、一度の揺れで確定させない。 */
+  confirmed:function(state,offset,need){
+    if(!(need>1))return true;
+    var c=this._confirm||(this._confirm={}),e=c[state.speakerKey];
+    if(!e||e.offset!==offset||e.utteranceId!==state.utteranceId||e.sessionId!==state.sessionId){
+      c[state.speakerKey]={offset:offset,utteranceId:state.utteranceId,sessionId:state.sessionId,n:1};
+      return false;
+    }
+    e.n++;return e.n>=need;
+  },
+
+  /* 候補外のoffsetは採用しない。安定prefixを越えるものも採らない。そのうえで
+     確率・音響・期限を合成する。null を返すと Rules の結果がそのまま通る。 */
+  pick:function(state,hit,ruleResult){
+    var b=hit&&hit.boundary;
+    if(!b||!b.choice)return null;
+    var th=this.thresholds(state.sourceLanguage),probs=b.probabilities||{},i;
+    var num=function(v){return typeof v==='number'&&isFinite(v)?v:null;};
+    var pHold=num(probs.HOLD);
+
+    /* HOLD を選んだ、または HOLD の確率が上限を超えるなら待つ。 */
+    if(b.choice==='HOLD'||(pHold!==null&&pHold>th.holdMax))
       return {length:0,reasons:[],waiting:'provider-hold',source:'provider'};
-    var list=state.candidateBoundaries||[],cand=null,i;
-    for(i=0;i<list.length;i++)if(list[i].id===hit.boundary.choice)cand=list[i];
+
+    var list=state.candidateBoundaries||[],cand=null;
+    for(i=0;i<list.length;i++)if(list[i].id===b.choice)cand=list[i];
     if(!cand||cand.offset>state.stablePrefixChars)return null;
-    return {length:cand.offset,reasons:['provider-'+cand.id,'stable'],source:'provider'};
+
+    /* 選ばれた候補そのものの確率で見る。候補数に依存しない量。 */
+    var pChosen=num(probs[b.choice]);
+    if(pChosen!==null&&pChosen<th.chosenMin)return null;
+
+    /* turn_state は選択肢4つ固定なので confidence が比較可能。 */
+    var ts=hit.turnState||{},tsConf=num(ts.confidence);
+    if(ts.choice==='CONTINUING'||ts.choice==='SELF_REPAIR')
+      return {length:0,reasons:[],waiting:'provider-'+String(ts.choice).toLowerCase(),source:'provider'};
+    if(ts.choice==='UNKNOWN')return null;
+    if(tsConf!==null&&tsConf<th.turnConfMin)return null;
+    var pCont=num((ts.probabilities||{}).CONTINUING);
+    if(pCont!==null&&pCont>th.continuingMax)return null;
+
+    /* 言い直しが来そうなら待つ。誤った訳音声は後から戻せない。 */
+    var repair=num(hit.repairLikelihood);
+    if(repair!==null&&repair>th.repairMax)
+      return {length:0,reasons:[],waiting:'provider-repair',source:'provider'};
+
+    /* 最低音響guard。meter 不明のまま意味だけで早期commitしない。 */
+    if(state.silenceMs===null){ if(!state.sttFinal)return null; }
+    else if(state.silenceMs<th.silenceMin&&!state.sttFinal)return null;
+
+    /* 現行ruleが既に同じ位置を選んでいるなら確認は要らない。 */
+    var agrees=ruleResult&&ruleResult.length===cand.offset;
+    if(!agrees&&!this.confirmed(state,cand.offset,th.confirm))
+      return {length:0,reasons:[],waiting:'provider-confirming',source:'provider'};
+
+    return {length:cand.offset,reasons:['provider-'+cand.kind,'stable'],source:'provider'};
   },
 
   /* Boundary Gate。offとshadowはRulesProviderの結果をそのまま返す。assist以上でも
@@ -13236,7 +13298,7 @@ var TurnDecision={
     if(mode==='shadow')return ruleResult;
     var hit=this.read(state);
     if(!hit)return ruleResult;
-    return this.pick(state,hit)||ruleResult;
+    return this.pick(state,hit,ruleResult)||ruleResult;
   },
 
   /* Floor Gate の座席。Phase 3で判断を入れる。判断層がoffのあいだはnullを返し、
@@ -13256,7 +13318,7 @@ var TurnDecision={
     Object.keys(this.inflight).forEach(function(k){
       var c=self.inflight[k];if(c&&c.abort){try{c.abort();}catch(err){}}
     });
-    this.cache={};this.inflight={};this.sessionSalt=null;this.circuit={};this._lastSend={};
+    this.cache={};this.inflight={};this.sessionSalt=null;this.circuit={};this._lastSend={};this._confirm={};
     /* offのときは診断ログも出さない。判断層を切った状態の出力をv1.47.1と揃える。 */
     if(String(CFG.turnDecisionMode||'off')!=='off')
       dlog('segment','turn-decision-reset',{why:why,mode:CFG.turnDecisionMode});
