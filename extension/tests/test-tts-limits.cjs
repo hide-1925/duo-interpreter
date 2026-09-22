@@ -19,7 +19,14 @@ const logs=[];
 const ctx={console,Date,String,Number,Object,Error,JSON,setTimeout,
   dlog:(...a)=>logs.push(a)};
 const c=vm.createContext(ctx);
+/* ttsRateWaitMs はプロバイダ表を引くので、表そのものではなく引き方だけを差し替える。 */
+ctx.ttsProv=(mode)=>ctx.__providers[mode===undefined?ctx.__mode:mode]||{};
+ctx.__providers={};ctx.__mode='aivis';
 for(const b of ['var OPENAI_LAST_RATE=null;','var openaiRateWarned=false;',
+                'var OPENAI_RATE_BLOCK_UNTIL=0;',
+                block('function openaiRateBlock(ms){'),
+                block('function ttsRateWaitMs(mode){'),
+                block('function openaiRetryDelayMs(m){'),
                 block('function openaiRateMeta(r){'),
                 block('function openaiLogRate(r,where){'),
                 block('function openaiTtsHttpError(r,raw,where){')]) vm.runInContext(b,c);
@@ -95,6 +102,61 @@ test('a 429 still records the limits, so the diagnostics show why it happened',(
   c.openaiTtsHttpError(res(429,{'x-ratelimit-limit-requests':'500',
     'x-ratelimit-remaining-requests':'0','retry-after':'20'}),'','speech-wav');
   assert.ok(logs.some(l=>l[1]==='openai-ratelimit'));
+  assert.equal(c.OPENAI_LAST_RATE.remainingRequests,'0');
+});
+
+/* ── 上限中はブラウザ内蔵音声へ逃がす ─────────────────────────────────
+   待つ設計では待ち行列が伸びる（実測で TTS 待ちが20〜40秒）。声は落ちるが
+   間に合うほうを選ぶ、という判断。上限の見え方はプロバイダごとに違うので、
+   「あと何ms 塞がっているか」の1つの形に揃えているかを検査する。 */
+test('a provider with no rate limit of its own never diverts',()=>{
+  ctx.__providers={browser:{label:'ブラウザ'}};ctx.__mode='browser';
+  assert.equal(c.ttsRateWaitMs(),0,'no rateWait function means nothing to wait for');
+});
+test('the remaining block is read from the provider',()=>{
+  ctx.__providers={aivis:{label:'Aivis',rateWait:()=>4200}};ctx.__mode='aivis';
+  assert.equal(c.ttsRateWaitMs(),4200);
+  ctx.__providers.aivis.rateWait=()=>0;
+  assert.equal(c.ttsRateWaitMs(),0,'and zero once the window reopens');
+});
+test('a negative or broken rateWait is treated as open, not as a block',()=>{
+  ctx.__providers={aivis:{rateWait:()=>-500}};ctx.__mode='aivis';
+  assert.equal(c.ttsRateWaitMs(),0);
+  ctx.__providers.aivis.rateWait=()=>null;
+  assert.equal(c.ttsRateWaitMs(),0);
+});
+test('OpenAI is blocked only after a 429, since its ceiling is not knowable in advance',()=>{
+  ctx.__providers={openai:{rateWait:()=>Math.max(0,c.OPENAI_RATE_BLOCK_UNTIL-Date.now())}};
+  ctx.__mode='openai';
+  c.OPENAI_RATE_BLOCK_UNTIL=0;
+  assert.equal(c.ttsRateWaitMs(),0,'nothing is avoided until the server says so');
+  c.openaiRateBlock(5000);
+  assert.ok(c.ttsRateWaitMs()>4000);
+});
+test('a later block extends the wait but a shorter one never shortens it',()=>{
+  c.OPENAI_RATE_BLOCK_UNTIL=0;
+  c.openaiRateBlock(30000);const long=c.OPENAI_RATE_BLOCK_UNTIL;
+  c.openaiRateBlock(1000);
+  assert.equal(c.OPENAI_RATE_BLOCK_UNTIL,long,'a 1s hint must not cancel a 30s block');
+});
+test('the wait is parsed from whichever header the server sent',()=>{
+  assert.equal(c.openaiRetryDelayMs({retryAfter:'12'}),12000,'Retry-After is in seconds');
+  assert.equal(c.openaiRetryDelayMs({resetRequests:'120ms'}),120);
+  assert.equal(c.openaiRetryDelayMs({resetRequests:'1.5s'}),1500);
+  assert.equal(c.openaiRetryDelayMs({resetTokens:'800ms'}),800);
+  assert.equal(c.openaiRetryDelayMs({retryAfter:'',resetRequests:'6s'}),6000,'an empty header is skipped');
+});
+test('an unparseable wait becomes a conservative minute, not zero',()=>{
+  assert.equal(c.openaiRetryDelayMs({retryAfter:'Wed, 21 Oct 2026 07:28:00 GMT'}),60000,
+    'an HTTP-date is not guessed at; zero would hammer the API');
+  assert.equal(c.openaiRetryDelayMs({}),60000);
+  assert.equal(c.openaiRetryDelayMs(null),60000);
+});
+test('a 429 both blocks the provider and keeps the limits for the diagnostics',()=>{
+  c.OPENAI_RATE_BLOCK_UNTIL=0;logs.length=0;
+  c.openaiTtsHttpError(res(429,{'retry-after':'20',
+    'x-ratelimit-remaining-requests':'0','x-ratelimit-limit-requests':'500'}),'','speech-wav');
+  assert.ok(c.OPENAI_RATE_BLOCK_UNTIL-Date.now()>19000,'the next utterance must not retry immediately');
   assert.equal(c.OPENAI_LAST_RATE.remainingRequests,'0');
 });
 
