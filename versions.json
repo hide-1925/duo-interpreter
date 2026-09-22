@@ -86,10 +86,18 @@
     "v1.49.8": {
       "build": "20260923-v1498-tail-window-share",
       "extension": "1.4.19",
-      "commit": null,
+      "commit": "0f7670a",
       "indexHtmlSha256": "bdde398ad961cba87dd6ee78069c978e9ed73ffe3a4e0f0501b357f9f2947db6",
       "extensionAppJsSha256": "266a3a9df851e74fc11543d692b093e024df75d3004de12d03018ea6fb58b3cb",
       "summary": "v1.49.6 の繰越カード修正で、無音で解放された末尾カードの区間が0秒に潰れていたのを、文字数比で窓の内側に置くようにする"
+    },
+    "v1.49.9": {
+      "build": "20260923-v1499-openai-tts-limits",
+      "extension": "1.4.20",
+      "commit": null,
+      "indexHtmlSha256": "911b97f620018db8afccc7ea3b5701c76a0d4244499b56282cbabe05c56e0ca8",
+      "extensionAppJsSha256": "8b25d76bd7bb7821315b81d4077b2b1d93aa387b788fb6db22fbe44d1ff03c80",
+      "summary": "OpenAI音声には429の扱いが無く上限に当たると黙って音声を捨てていたので、応答ヘッダの実上限を記録し429を他の失敗と分ける"
     }
   }
 }
