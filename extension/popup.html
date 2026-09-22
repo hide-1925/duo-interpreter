@@ -29,6 +29,14 @@
     </div>
     <div id="htmlConnection" role="status"></div>
   </section>
+  <section>
+    <label class="label" for="turnOrigin">判断層（Jev）の接続先</label>
+    <div class="grid source-row">
+      <input id="turnOrigin" type="url" autocomplete="off" spellcheck="false" aria-describedby="turnConnection" placeholder="https://api.typesafe.ai">
+      <button id="allowTurn">この接続先を許可</button>
+    </div>
+    <div id="turnConnection" role="status"></div>
+  </section>
   <div class="grid">
     <button id="openApp">HTML本体を開く</button>
     <button id="openOverlaySettings">オーバーレイ表示設定</button>
