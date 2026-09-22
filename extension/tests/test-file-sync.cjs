@@ -32,6 +32,7 @@ const SHARED=[
   'function segAudioEvent(msg,data){',
   'function segAdaptiveState(e,debt){',
   'function segCorrectionCounts(e){',
+  'var TurnProviders={',
   'var TurnDecision={',
   'var TurnTrace={',
   'ProsodyAnalyzer.prototype.peek=function(windowMs){'
