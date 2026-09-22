@@ -13,20 +13,37 @@ test('Only automatic local audio is eligible by default in on and mix',()=>{for(
 test('Remote relay requires opt-in, selected identity, translation and automatic intent',()=>{const s=c.conferenceAudioState;s.mode='tts-only';s.relay=true;s.relayParticipants.add('x');const r={...job,sourceScope:'remote',speakerId:'x'};assert(c.AudioRoutingPolicy.resolve(r).conferenceMic);for(const override of [{speakerId:null},{speakerId:'y'},{ttsType:'original'},{playbackIntent:'manual-replay'}])assert(!c.AudioRoutingPolicy.resolve({...r,...override}).conferenceMic);s.mode='original-only';assert(!c.AudioRoutingPolicy.resolve(r).conferenceMic);s.mode='tts-only';assert(c.AudioRoutingPolicy.resolve(r).conferenceMic);});
 /* 繰越した末尾カードの区間。実機ログ（v1.49.5）で e1〜e8 の startedAt が全部同じで、
    話し続けている40秒がまるごと1枚の窓になっていた。10秒の録音ごとに窓が伸びる。 */
-test('A carried tail starts where the finalised part ended, not where the speaker started',()=>{
-  const T=1790097366503;
-  const first={startedAt:T,endedAt:T+10026,audioEndedAt:T+10026};
-  assert.equal(c.fourOTailStart(first),T+10026,'the tail owns the audio after the split');
-  /* 繰越が続いても、そのたびに前の終わりから始まる。伸びていかないことが要点。 */
-  const second={startedAt:T+10026,endedAt:T+20042,audioEndedAt:T+20042};
-  assert.equal(c.fourOTailStart(second),T+20042);
-  assert.ok(c.fourOTailStart(second)>c.fourOTailStart(first),'monotone');
+test('A carried tail is placed inside the window its audio came from',()=>{
+  /* 実測ログ（v1.49.7）の e6/e7。窓は 1790107393993〜1790107404014（10021ms）で、
+     確定38字・末尾93字。末尾は窓の約71%を占めるので、始まりは終わりから約7.1秒手前。 */
+  const T=1790107393993,end=1790107404014;
+  const s=c.fourOTailStart({startedAt:T,endedAt:end,audioEndedAt:end},38,93);
+  assert.ok(s>T&&s<end,'inside the window, not at either edge: '+s);
+  assert.equal(s,end-Math.round((end-T)*(93/131)));
+  /* v1.49.6 は窓の終わりを返していた。次の録音を取り込まないまま無音で解放されると
+     endedAt が進まないので、実測ログの e7 は区間が0秒になっていた。 */
+  assert.notEqual(s,end,'the window must not collapse when the tail is released on silence');
+});
+test('A bigger tail reaches further back, and the window it came from is the limit',()=>{
+  const T=1000000,end=1010000,e={startedAt:T,endedAt:end,audioEndedAt:end};
+  assert.ok(c.fourOTailStart(e,10,90)<c.fourOTailStart(e,90,10),'more text means more audio');
+  assert.ok(c.fourOTailStart(e,0,100)>=T,'never before the window it came from');
+  assert.ok(c.fourOTailStart(e,100,0)<=end);
+});
+test('Successive carries do not accumulate',()=>{
+  /* 話し続けるほど区間が伸びるのが元のバグ。窓ごとに独立して決まることを見る。 */
+  const a=c.fourOTailStart({startedAt:1000,endedAt:11000,audioEndedAt:11000},50,50);
+  const b=c.fourOTailStart({startedAt:11000,endedAt:21000,audioEndedAt:21000},50,50);
+  assert.equal(b-a,10000,'each window contributes only its own length');
 });
 test('The tail start falls back rather than inventing a time',()=>{
   const T=1790097366503;
-  assert.equal(c.fourOTailStart({startedAt:T,endedAt:T+500}),T+500,'endedAt when no audioEndedAt');
-  assert.equal(c.fourOTailStart({startedAt:T}),T,'the old behaviour when neither is set');
-  assert.ok(c.fourOTailStart(null)>0,'and never undefined');
+  assert.equal(c.fourOTailStart({startedAt:T,endedAt:T+500},0,0),T+500,
+    'with no character counts there is nothing to apportion, so use the window end');
+  assert.equal(c.fourOTailStart({startedAt:T},10,10),T,'no end at all: the old behaviour');
+  assert.ok(c.fourOTailStart(null,10,10)>0,'and never undefined');
+  assert.equal(c.fourOTailStart({startedAt:T,endedAt:T,audioEndedAt:T},10,10),T,
+    'a zero-length window cannot be apportioned');
 });
 /* streaming TTS は PCM バッファごとに ConferenceMicBus.connect へ来る。実測ログでは
    61秒・475件の半分近くが同じ2行の繰り返しで埋まっていた。1時間の記録では trace 上限
