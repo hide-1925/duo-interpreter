@@ -22,14 +22,15 @@ function segBlock(){
   return m[0];
 }
 
-const peeked={count:0};
+const peeked={count:0},dlogs=[];
 const ctx={
   console,Math,Date,JSON,Object,Array,String,Number,isFinite,RegExp,
   APP_BUILD:'test-build', sessionGen:1,
   /* peek だけを検査するので、コンストラクタは prototype の置き場として空で足りる。 */
   ProsodyAnalyzer:function(){},
   CFG:{}, S:{entries:[]}, DuoSpeakers:{available:false},
-  dlog:()=>{},
+  /* commit-retouch を検査したいので記録する。 */
+  dlog:(...a)=>dlogs.push(a),
   segDebt:()=>0,
   hasSpeechContent:t=>/[\p{L}\p{N}]/u.test(String(t||'')),
   /* peek が呼ばれたかを数える。off のとき 0 でなければ計算が漏れている。 */
@@ -51,6 +52,7 @@ for(const b of [segBlock(),
                 block('ProsodyAnalyzer.prototype.peek=function(windowMs){'),
                 block('var TURN_STATE_SCHEMA='),
                 block('function segCorrectionCounts(e){'),
+                block('function segReviseCommittedSource(e,s,replacement,revision){'),
                 block('var TurnDecision={'),
                 block('var TurnTrace={')]) vm.runInContext(b,c);
 
@@ -449,4 +451,45 @@ test('peek reports unavailable instead of guessing on a short window',()=>{
   assert.equal(c.ProsodyAnalyzer.prototype.peek.call(an,1500).available,false);
 });
 
+/* 訂正率は判断層の安全性を測る基準の数字。末尾繰越の結合で末尾に空白が1つ付くだけで
+   訂正として数えていたため、実測ログ（v1.49.6）では 0% から 13.3% に跳ねていた。
+   ここが騒がしいと Rules と Jev の比較そのものが濁る。 */
+test('a whitespace-only revision is not a correction',()=>{
+  c.SEG.corrected=0;c.SEG.correctedBySource={provider:0,rules:0};
+  const s={seq:1,sourceText:'この天候点というのが、高気圧の縁から偏西風に乗り換えるタイミングなんですね。',
+    decisionSource:'rules',translationReady:true,translationRevision:1};
+  c.segReviseCommittedSource({id:'e4'},s,s.sourceText+' ',3);
+  assert.equal(c.SEG.corrected,0,'a trailing space is not a correction');
+  assert.equal(c.SEG.correctedBySource.rules,0);
+  assert.equal(s.correctionCount,undefined,'and does not bump the per-part count');
+  assert.equal(s.sourceText,'この天候点というのが、高気圧の縁から偏西風に乗り換えるタイミングなんですね。 ',
+    'but the text is still updated');
+  assert.equal(s.sourceRevision,3,'and the revision advances');
+  assert.equal(s.translationReady,true,'re-translating for a space is waste');
+  assert.equal(s.translationRevision,1);
+  assert.ok(dlogs.some(l=>l[1]==='commit-retouch'),'and it is still visible in the log');
+});
+test('a change to the words is still a correction',()=>{
+  c.SEG.corrected=0;c.SEG.correctedBySource={provider:0,rules:0};
+  const s={seq:1,sourceText:'転換点と言うんですけれども',decisionSource:'rules',
+    translationReady:true,translationRevision:1};
+  c.segReviseCommittedSource({id:'e2'},s,'転向点と言うんですけれども',4);
+  assert.equal(c.SEG.corrected,1);
+  assert.equal(c.SEG.correctedBySource.rules,1);
+  assert.equal(s.correctionCount,1);
+  assert.equal(s.translationReady,false,'the translation has to be redone');
+});
+test('whitespace inside the words is still a correction',()=>{
+  c.SEG.corrected=0;c.SEG.correctedBySource={provider:0,rules:0};
+  const s={seq:1,sourceText:'東京と勝浦',decisionSource:'rules',translationReady:true};
+  c.segReviseCommittedSource({id:'e7'},s,'東京 と 勝浦',5);
+  assert.equal(c.SEG.corrected,1,'only leading and trailing whitespace is exempt');
+});
+test('an identical revision is still ignored entirely',()=>{
+  c.SEG.corrected=0;
+  const s={seq:1,sourceText:'同じ',decisionSource:'rules',sourceRevision:1};
+  c.segReviseCommittedSource({id:'e1'},s,'同じ',9);
+  assert.equal(c.SEG.corrected,0);
+  assert.equal(s.sourceRevision,1,'nothing is touched at all');
+});
 console.log(JSON.stringify({passed:tests.length,tests},null,2));
