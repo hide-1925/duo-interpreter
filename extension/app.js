@@ -640,8 +640,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.6';
-var APP_BUILD = '20260923-v1496-tail-card-span';
+var APP_VERSION = 'v1.49.7';
+var APP_BUILD = '20260923-v1497-correction-metric';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -12466,6 +12466,18 @@ function segDebt(){
 }
 function segReviseCommittedSource(e,s,replacement,revision){
   if(replacement===s.sourceText)return;
+  /* 前後の空白だけの差は訂正ではない。末尾繰越の結合で1文字の空白が付くことがあり、
+     実測ログ（v1.49.6）では 38→39字・34→35字の空白1つで訂正率が 0% から 13.3% に
+     跳ねていた。訂正率は判断層の安全性を測る基準の数字なので、ここが騒がしいと
+     Rules と Jev の比較そのものが濁る。読み上げも翻訳も内容は変わらないので、
+     本文と revision だけ更新し、訂正としては数えず再翻訳も起こさない。
+     黙って捨てるのではなく別の名前で記録する。内部の空白の変化は訂正のまま。 */
+  if(String(replacement).trim()===String(s.sourceText||'').trim()){
+    s.sourceRevision=revision;s.sourceText=replacement;
+    dlog('segment','commit-retouch',{cardId:e.id,seq:s.seq,revision:revision,
+      why:'whitespace-only',audioAlreadyDispatched:!!s.dispatched});
+    return;
+  }
   if(!s.corrected){s.corrected=true;SEG.corrected++;
     var src=s.decisionSource||'rules';SEG.correctedBySource[src]=(SEG.correctedBySource[src]||0)+1;}
   s.correctionCount=(s.correctionCount||0)+1;s.correctedAt=Date.now();

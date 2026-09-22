@@ -70,10 +70,18 @@
     "v1.49.6": {
       "build": "20260923-v1496-tail-card-span",
       "extension": "1.4.17",
-      "commit": null,
+      "commit": "f965439",
       "indexHtmlSha256": "e8dda5cb5ed01fc8ccda8f241f17ec46aa7056d398f1bd60abcbeb99c3ade14b",
       "extensionAppJsSha256": "7228b6ee28aa145a3a832db7f9cc3d0b21dec6f4664043ce4a8cfafbc6c11114",
       "summary": "繰越した末尾カードが元の発話開始時刻を引き継いでいたため、話者帰属の照合窓が話し続けるほど広がり誤帰属していたのを正す"
+    },
+    "v1.49.7": {
+      "build": "20260923-v1497-correction-metric",
+      "extension": "1.4.18",
+      "commit": null,
+      "indexHtmlSha256": "b46b9a2e9ad19c327f1a6503345175d24dce7bee2f17545db75bea1fb28f3586",
+      "extensionAppJsSha256": "057852b59980e9edbfb9fc406ba19bf7d6e97efce0b41ce688a599ce94ef24db",
+      "summary": "前後の空白だけの差を訂正として数えていたため、判断層の評価基準である訂正率が0%から13.3%に跳ねていたのを正す"
     }
   }
 }
