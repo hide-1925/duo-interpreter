@@ -11107,13 +11107,27 @@ var TurnProviders={
       criteria:{'true':'A self-repair or restatement is likely to follow immediately.',
         'false':'No restatement is expected.'}}
   },
-  HOLD_CRITERION:'Do not cut yet. The tail is a connective, a particle, a filler, or a self-repair in progress, so more is coming.',
+  /* 似ていて混同しやすい選択肢には、1文の説明ではなく項目に分けた criteria を渡す
+     のが公式の推奨（/primitives/choice）。HOLD と「ここで切る」はこの設計で最も
+     混同しやすい対なので、what／not_for／examples に分けて書く。フィールド名は
+     呼び出し側が決めてよい。 */
+  HOLD_CRITERION:{
+    what:'Do not cut anywhere yet. More is coming from this speaker.',
+    not_for:'Not for a tail that is merely short, and not because `silenceMs` is null. Judge whether the tail itself is finished, not how much text there is.',
+    examples:'A trailing connective or conjunction; a dangling particle or preposition; a filler such as "uh" or "ええと"; the first half of a self-repair.'
+  },
   questions:function(state){
     var list=state.candidateBoundaries||[],crit={HOLD:this.HOLD_CRITERION},i,c;
     for(i=0;i<list.length;i++){
       c=list[i];
-      /* 候補IDは code のためのもの。モデルには左右の文脈で意味を渡す。 */
-      crit[c.id]='Cut here. Left: "'+String(c.left||'')+'" | Right: "'+String(c.right||'')+'"';
+      /* 候補IDは code のためのもの。モデルには前後の文脈で意味を渡す。HOLD と
+         見分けがつくよう、同じ項目立てで書く。 */
+      crit[c.id]={
+        what:'Cut between `before` and `after`. Everything up to the cut is translated and spoken now; the rest waits.',
+        not_for:'Not when `before` stops mid-clause, and not when `after` carries on the same clause as `before`.',
+        before:String(c.left||''),
+        after:String(c.right||'')
+      };
     }
     /* noul の criteria は任意だが、yes/no の意味を書いておくほうが判断が安定する。 */
     return {
@@ -11248,6 +11262,10 @@ var TurnProviders={
   }
 };
 var TURN_STATE_SCHEMA='duo.turn-state.v1';
+/* Choice は255件まで選択肢を取り、1件あたりのコストは数トークンしかない。
+   公式は「モデルは並べなかった値を選べない」として絞り込みを避けるよう書いている
+   ので、上限は安全弁としてだけ置く。HOLDを足しても255に遠く届かない値にする。 */
+var TURN_MAX_CANDIDATES=64;
 /* Provider へ送る prosody フィールド。ここに足したら instructions でも説明する。
    test-turn-providers が「送るのに説明のないフィールド」を落とす。 */
 var TURN_PROSODY_SENT=['terminalPitchSlope','terminalEnergyDrop','internalPauseRatio',
@@ -11293,22 +11311,30 @@ var TurnDecision={
   /* 境界候補はDuoが作り、モデルにはHOLDか候補IDしか選ばせない。存在しない文字
      位置や原文改変を構造上防ぐ。offsetは常に安定prefix以内に収める。 */
   candidatesOf:function(input,ruleResult){
-    var text=String(input.text||''),stable=Math.min(text.length,input.stableLength||0),out=[],m,seen={};
+    var text=String(input.text||''),stable=Math.min(text.length,input.stableLength||0),
+        out=[],sent=[],m,seen={},room;
     /* criteria は map なので、同じIDが2つあると衝突して候補が消える。offsetごとに
        一意なIDを振り、左右の文脈を添えてモデルへ意味を渡す。 */
-    var add=function(kind,offset){
+    var add=function(list,kind,offset){
       if(!(offset>0)||offset>stable&&kind!=='C_FULL')return;
-      if(seen[offset]||out.length>=5)return;
+      if(seen[offset])return;
       seen[offset]=1;
-      out.push({id:kind+'_'+offset,kind:kind,offset:offset,
+      list.push({id:kind+'_'+offset,kind:kind,offset:offset,
         left:text.slice(Math.max(0,offset-24),offset),right:text.slice(offset,offset+24)});
     };
-    if(ruleResult&&ruleResult.length)add('C_RULES',ruleResult.length);
+    /* 構造上の候補（rulesの答え・安定prefixの端・最終文末）は数を問わず必ず載せる。
+       以前は文末候補と同じ枠を争っていたので、文の多い発話では final のときでも
+       C_FULL が落ち、正解が選択肢に無い状態になっていた。 */
+    add(out,'C_RULES',ruleResult&&ruleResult.length);
+    add(out,'C_STABLE',stable);
+    if(input.final)add(out,'C_FULL',text.length);
+    /* 文末候補は絞らずに全部渡す。currentText が800字なので実際は数十件で収まる。 */
     var rx=/[。！？!?]|\.(?=\s|$)/g;
-    while((m=rx.exec(text))&&out.length<4)add('C_SENTENCE',m.index+1);
-    add('C_STABLE',stable);
-    if(input.final)add('C_FULL',text.length);
-    return out;
+    while((m=rx.exec(text)))add(sent,'C_SENTENCE',m.index+1);
+    /* 病的に文末が多いときだけ切り落とす。切る判断に効くのは末尾側なので後ろを残す。 */
+    room=TURN_MAX_CANDIDATES-out.length;
+    if(sent.length>room)sent=sent.slice(room>0?-room:sent.length);
+    return out.concat(room>0?sent:[]);
   },
 
   contextOf:function(e){
@@ -11355,7 +11381,7 @@ var TurnDecision={
   questionSetHash:function(){
     if(this._qsh)return this._qsh;
     /* 発話ごとに変わる候補の criteria は除き、質問の雛形だけを対象にする。 */
-    var s=JSON.stringify(TurnProviders.template)+TurnProviders.HOLD_CRITERION,h=0,i;
+    var s=JSON.stringify(TurnProviders.template)+JSON.stringify(TurnProviders.HOLD_CRITERION),h=0,i;
     for(i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;
     return (this._qsh='qs_'+(h>>>0).toString(36));
   },
