@@ -163,7 +163,7 @@ test('candidates never point past the stable prefix',()=>{
   for(const st of [0,3,7,12]){
     const i=input({stableLength:st});
     for(const cand of D().candidatesOf(i,D().rules(i)))
-      if(cand.id!=='C_FULL') assert.ok(cand.offset<=st,cand.id+'@'+cand.offset+' > '+st);
+      if(cand.kind!=='C_FULL') assert.ok(cand.offset<=st,cand.id+'@'+cand.offset+' > '+st);
   }
 });
 test('pick refuses a choice that is not among the candidates',()=>{
@@ -186,8 +186,9 @@ test('HOLD becomes an explicit wait, not a commit',()=>{
 test('a valid choice commits exactly at the candidate offset and is tagged provider',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
   const i=input(),s=D().stateOf(card(),{},i,D().rules(i),250,Date.now());
-  const cand=s.candidateBoundaries.find(x=>x.id==='C_STABLE');
-  const d=D().pick(s,{boundary:{choice:'C_STABLE',confidence:0.9}});
+  /* 同一 offset の候補は重複排除されるので、先頭の候補を使う。 */
+  const cand=s.candidateBoundaries[0];
+  const d=D().pick(s,{boundary:{choice:cand.id,confidence:0.9}});
   assert.equal(d.length,cand.offset); assert.equal(d.source,'provider');
 });
 
