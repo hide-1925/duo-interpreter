@@ -198,19 +198,21 @@ test('a valid choice commits exactly at the candidate offset and is tagged provi
 });
 
 /* ── 閾値は confidence ではなく probabilities に置く ────────────────────── */
-/* 公式の confidence は選択肢数 N に依存する統計量である。docs の近似式は
-   (N × p_max − 1) / (N − 1)。boundary_choice の N は HOLD＋候補1〜5件で毎回
-   変わるので、固定の confidence 下限は「Duo が何件候補を作ったか」で合否が
-   変わる。turn_state は4択固定なので confidence を使ってよい。 */
-const approxConfidence=(probs)=>{
+/* 公式の confidence は選択肢数 N に依存する統計量で、式は
+   (N × p_max − 1) / (N − 1)。/primitives/choice の実例（4択で p_max=0.40 →
+   confidence 0.20）が式と小数点以下まで一致するので、近似ではなく定義である。
+   boundary_choice の N は HOLD＋候補で毎回変わる（候補の上限を外したのでなお
+   さら変わる）ため、固定の confidence 下限は「Duo が何件候補を作ったか」で合否
+   が変わる。turn_state は4択固定なので confidence を使ってよい。 */
+const docConfidence=(probs)=>{
   const vals=Object.values(probs),n=vals.length,peak=Math.max(...vals);
   return Math.max(0,Math.min(1,(n*peak-1)/(n-1)));
 };
 
 test('the documented confidence statistic moves with the option count, not just certainty',()=>{
   /* 同じ p_max でも候補数が違えば confidence が違う。これが固定下限を使えない理由。 */
-  const two=approxConfidence({HOLD:0.3,A:0.7});
-  const six=approxConfidence({HOLD:0.3,A:0.7,B:0,C:0,D:0,E:0});
+  const two=docConfidence({HOLD:0.3,A:0.7});
+  const six=docConfidence({HOLD:0.3,A:0.7,B:0,C:0,D:0,E:0});
   assert.ok(six>two+0.15,'N=6 ('+six.toFixed(2)+') must read far higher than N=2 ('+two.toFixed(2)+')');
   /* 0.60 の下限だと、確信は同じでも候補数で合否が割れる。 */
   assert.ok(two<0.60&&six>0.60,'a fixed 0.60 floor would split the same certainty');
