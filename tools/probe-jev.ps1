@@ -132,11 +132,53 @@ $postOrigin = Get-HeaderValue $post.Headers 'Access-Control-Allow-Origin'
 Write-Host ('  HTTP                        : ' + (Fallback $post.Status '応答なし'))
 Write-Host ('  Access-Control-Allow-Origin : ' + (Fallback $postOrigin '（無し）'))
 if ($post.Err) { Write-Host ('  curl: ' + $post.Err) }
+$savedTo = ''
 if ($post.Body) {
+  $savedTo = Join-Path $PSScriptRoot 'probe-jev-response.json'
+  try { Set-Content -Path $savedTo -Value $post.Body -Encoding utf8 } catch { $savedTo = '' }
   $cut = $post.Body
-  if ($cut.Length -gt 800) { $cut = $cut.Substring(0, 800) + ' …（以下省略）' }
+  if ($cut.Length -gt 2000) { $cut = $cut.Substring(0, 2000) + ' …（以下省略。全文はファイルに保存しました）' }
   Write-Host '  応答本文:'
   Write-Host ('    ' + $cut.Replace("`r", '').Replace("`n", "`n    "))
+  if ($savedTo) { Write-Host ('  全文: ' + $savedTo) }
+}
+
+# HTTP 200 が返っただけでは「使える」と言えない。アプリ側の疎通ボタンも同じ理由で
+# 実際の解析を通すように直した。ここも4つの答えが契約どおり揃っているかまで見る。
+$parsed = $null
+$contractOk = $false
+$missing = @()
+if ($post.Status -ge 200 -and $post.Status -lt 300 -and $post.Body) {
+  try { $parsed = $post.Body | ConvertFrom-Json } catch { $parsed = $null }
+  if ($parsed -and $parsed.answers) {
+    $have = @($parsed.answers.PSObject.Properties.Name)
+    foreach ($id in @('boundary_choice','turn_state','safe_to_speak','repair_likelihood')) {
+      if ($have -notcontains $id) { $missing += $id }
+    }
+    $contractOk = ($missing.Count -eq 0)
+  }
+}
+if ($parsed) {
+  Write-Host ''
+  Write-Host '-- 解析 -------------------------------------------------'
+  if ($parsed.model) { Write-Host ('  答えたモデル : ' + $parsed.model) }
+  if ($parsed.usage) {
+    Write-Host ('  入力トークン : ' + $parsed.usage.input_tokens)
+    Write-Host ('  出力トークン : ' + $parsed.usage.output_tokens)
+  }
+  if ($parsed.answers) {
+    $b = $parsed.answers.boundary_choice
+    if ($b) { Write-Host ('  境界の判断   : ' + $b.choice + '（confidence ' + $b.confidence + '）') }
+    $ts = $parsed.answers.turn_state
+    if ($ts) { Write-Host ('  発話の状態   : ' + $ts.choice + '（confidence ' + $ts.confidence + '）') }
+    $s2s = $parsed.answers.safe_to_speak
+    if ($s2s) { Write-Host ('  読み上げ可否 : ' + $s2s.noul) }
+    $rep = $parsed.answers.repair_likelihood
+    if ($rep) { Write-Host ('  言い直し確率 : ' + $rep.noul) }
+  }
+  if ($missing.Count -gt 0) {
+    Write-Host ('  欠けている答え: ' + ($missing -join ', ')) -ForegroundColor Yellow
+  }
 }
 
 Write-Host ''
@@ -153,8 +195,12 @@ if ($post.Status -eq 0) {
 } elseif ($post.Status -ge 400) {
   Write-Host ('  サーバまで届いています。HTTP ' + $post.Status + ' で拒否されました。') -ForegroundColor Yellow
   Write-Host '  → 上の応答本文が理由を書いています。'
+} elseif (-not $contractOk) {
+  Write-Host '  サーバは応答しましたが、契約の形に解析できません。' -ForegroundColor Yellow
+  Write-Host '  → 上の解析欄と応答本文をご確認ください。version やエンドポイントの'
+  Write-Host '     取り違えの可能性があります。'
 } else {
-  Write-Host '  API は動いています。' -ForegroundColor Green
+  Write-Host '  API は動いていて、4つの答えが契約どおり揃っています。' -ForegroundColor Green
   if ($postOrigin) {
     Write-Host '  ブラウザからも読めます。⚙→音声→判断層の「この経路へ疎通を試す」が通るはずです。' -ForegroundColor Green
   } else {
