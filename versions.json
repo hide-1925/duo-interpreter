@@ -26,6 +26,14 @@
    "indexHtmlSha256": "a3bd0bc6431998f303f344afcb4ef22837c65dc36224a1ec7d0e2bd03cfa0b7a",
    "extensionAppJsSha256": "fe4fe0b38f8f85420a575d3142779d9091283cf3cd3175ed067d0785daeca508",
    "summary": "判断層の経路レジストリ・経路選択とAPIキーのUI・診断ログ。Jevへ繋げる最初の版"
+  },
+  "v1.49.1": {
+   "build": "20260922-v1491-route-reachability",
+   "extension": "1.4.12",
+   "commit": null,
+   "indexHtmlSha256": "4cf94269b036ccb55c75438398962eab58ed241cad43b0f76b69da7dc47ca8f8",
+   "extensionAppJsSha256": "f6bd01f1749fdfb1fc71a5859bdf4ad22e767dd3dd6df1e5e1c62c2e3fe86c4e",
+   "summary": "jev-direct から未記載ヘッダを外し、到達不能を CORS として切り分け、経路の疎通確認を追加"
   }
  }
 }
