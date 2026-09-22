@@ -9,7 +9,13 @@
 
   使い方（PowerShell）:
     cd <このフォルダ>
+    Set-ExecutionPolicy -Scope Process Bypass -Force   # この窓の中だけ許可する
     .\probe-jev.ps1
+
+  Windows の既定では署名の無い .ps1 は実行できない。上の1行はこの PowerShell の
+  窓を閉じるまでしか効かないので、PC の設定は変わらない。
+  窓を開くのも面倒なら、これ1行でも同じ:
+    powershell -ExecutionPolicy Bypass -File .\probe-jev.ps1
 
   キーは伏せ字で聞く。画面にも履歴にもファイルにも残さない。
 
