@@ -1502,6 +1502,17 @@
         <button class="btn ghost" id="aivisFetch" title="モデル UUID からスタイル一覧を取得" style="align-self:flex-end">🔄 スタイル取得</button>
       </div>
       <small class="keychk" id="aivisStyleMsg"></small>
+      <div class="sublabel">60秒に10回を超えたとき</div>
+      <select id="aivisOverLimit">
+        <option value="send">そのまま送る — 超過分は Aivis 側の設定（クレジット消費）に任せる</option>
+        <option value="browser">ブラウザ内蔵音声で読む — 超過分を課金しない</option>
+        <option value="wait">枠が空くまで待つ — 声は替わらないが読み上げが遅れる</option>
+      </select>
+      <small>Aivis の公表値は「60秒に10回」です。<b>この回数を数えているのはこちら側なので、あくまで予測です。</b>
+      Aivis のダッシュボードで<b>超過分のクレジット消費を許可している場合は「そのまま送る」（既定）にしてください</b>。
+      「ブラウザ内蔵音声で読む」にすると、10回を超えた分は Aivis に送らず内蔵音声で読み上げます（課金は増えませんが声が替わります）。
+      「枠が空くまで待つ」は v1.49.9 以前と同じ動作で、読み上げが数十秒遅れることがあります。<br>
+      なお <b>Aivis が実際に 429 を返して止めてきたとき</b>は、どの設定でも最後はブラウザ内蔵音声で読み上げます（発話を捨てないため）。</small>
       <details class="adv" id="aivisAdv">
         <summary>話し方の調整</summary>
         <label class="sl"><span>話速</span>
@@ -2401,8 +2412,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.10';
-var APP_BUILD = '20260923-v14910-rate-browser-voice';
+var APP_VERSION = 'v1.49.11';
+var APP_BUILD = '20260923-v14911-aivis-overage-policy';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -2709,6 +2720,9 @@ var CONFIG_SCHEMA = [
   { prop:"aivisStream", key:'di.aistr', embed:'aivisStream', def:'0', type:'bool', portable:true },
   { prop:"aivisSpk", key:'di.aisp', embed:'aivisSpk', def:'', portable:true },
   { prop:"aivisSpkB", key:'di.aispa', embed:'aivisSpkB', def:'', portable:true },
+  /* 60秒10回はAivisの公表値。ただし上位プランでは超過分をクレジットで払う設定に
+     できるので、こちら側の数え（＝予測）で送信を止めてはいけない。既定は送る。 */
+  { prop:"aivisOverLimit", key:'di.aiovl', embed:'aivisOverLimit', def:'send', portable:true, el:"aivisOverLimit" },
   { prop:"elModel", key:'di.elm', embed:'elModel', def:'eleven_flash_v2_5', portable:true, el:"elModel", bind:'custom' },
   { prop:"elVoice", key:'di.elv', embed:'elVoice', def:'', portable:true, el:"elVoice", bind:'custom' },
   { prop:"elVoiceLbl", key:'di.elvl', embed:'elVoiceLbl', def:'', portable:true },
@@ -5966,6 +5980,7 @@ function apiSpeakBlob(text, lang, seat, prosody, plan, key){
       /* 捨てずに読む。上限に当たった1つが無音になると、聞き手には理由が分からない。
          finish() はブラウザ再生の完了で呼ぶ。先に呼ぶと読み上げスロットが空いて
          次の発話が走り出し、音が重なる。VOICEVOX の fallback と同じ形にする。 */
+      finish.holdPhase('browser-fallback');
       browserSpeak(text,L(lang).tts,prosody,function(){finish();});
       return;
     }
@@ -6553,13 +6568,16 @@ function openaiRetryDelayMs(m){
   return 60000;
 }
 function jaOnlyMode(mode){ return ttsProv(mode).jaOnly; }
-function ttsFallback(text, lang, why, warnMsg, flagName, prosody){
+/* onFinish を渡した場合だけ、ブラウザ再生の完了で呼び戻す。読み上げスロットを
+   持っている呼び出し側（Aivis / OpenAI の上限時）は、これを使って解放を遅らせる。
+   先に解放すると次の発話が走り出し、2つの声が重なる。 */
+function ttsFallback(text, lang, why, warnMsg, flagName, prosody, onFinish){
   dlog('tts','fallback',{ mode: CFG.ttsMode, why: why, lang: lang });
   if (warnMsg && !window[flagName]){
     window[flagName] = true;
     toast(warnMsg + '<br>今回はブラウザ内蔵の音声で読み上げます。');
   }
-  browserSpeak(text, L(lang).tts, prosody);
+  browserSpeak(text, L(lang).tts, prosody, onFinish);
 }
 /* 鳴らし始めが欠けるのを防ぐ ------------------------------------------
    Bluetoothヘッドセットや一部のオーディオ機器は、無音が続くと省電力状態に入り、
@@ -7252,9 +7270,20 @@ function aivisSpeakBlob(text, lang, seat, prosody){
     if(finish.gen!==ttsGen||finish.done||err.name==='AbortError')return;
     var m = String((err && err.message) || err);
     dlog('tts','aivis-FAIL',{ err:m.slice(0,140), ms:Date.now()-t0 });
-    finish();
     if(err&&err.aivisBilling)aivisLogBilling(err.aivisBilling,'blob-error');
-    if(err.status===429){toast('Aivisの上限待ちが続いています。時間を置いてカードを再生してください。');return;}
+    /* 上限に当たった発話も捨てずに読む。黙って飛ばすと、聞き手には無音の理由が
+       分からない。finish() はブラウザ再生の完了で呼ぶ（先に呼ぶと音が重なる）。 */
+    if(err.status===429){
+      /* 合成用に張ってあった時計を外す。残り時間のほうが短いと、ブラウザ再生の
+         途中で guard が finish() を呼んで次の発話と重なる。ブラウザ側は自前の
+         watchdog を持っているので、解放が取り残されることはない。 */
+      finish.holdPhase('browser-fallback');
+      ttsFallback(text,lang,'rate-limit','Aivisの利用上限に達しました。',
+        'aivisRateFallbackWarned',prosody,function(){finish();});
+      setTimeout(function(){window.aivisRateFallbackWarned=false;},30000);
+      return;
+    }
+    finish();
     var hint=aivisFailureHint(err);
     ttsFallback(text, lang, 'API失敗', hint, 'aivisWarned',prosody);
   });
@@ -7421,8 +7450,16 @@ function aivisSpeakStream(text, lang, seat, prosody){
     dlog('tts','aivis-stream-FAIL',{ err:m.slice(0,140), ms:Date.now()-t0, started:started, style:stLog });
     if(err&&err.aivisBilling)aivisLogBilling(err.aivisBilling,'stream-error');
     if (started){ endAfterBuffered('failed'); return; }
+    /* まだ音が出ていない上限失敗は、ブラウザ内蔵音声で読んでから解放する。
+       streamEnd を先に呼ぶと読み上げスロットが空いて次の発話と重なる。 */
+    if(err.status===429){
+      clearTimeout(streamWatchdog);finish.holdPhase('browser-fallback');
+      ttsFallback(text,lang,'rate-limit','Aivisの利用上限に達しました。',
+        'aivisRateFallbackWarned',prosody,function(){streamEnd('rate-limit');});
+      setTimeout(function(){window.aivisRateFallbackWarned=false;},30000);
+      return;
+    }
     streamEnd('failed');
-    if(err.status===429){toast('Aivisの上限待ちが続いています。時間を置いてカードを再生してください。');return;}
     /* まだ音が出ていなければ、確実な従来方式でやり直す。
        途中まで鳴っている場合にやり直すと二重に聞こえるので、そこでは諦める。 */
     if (!started && !(err&&err.status>=400&&err.status<500)) aivisSpeakBlob(text, lang, seat, prosody);
@@ -9080,8 +9117,9 @@ var TTS_PROVIDERS = {
   },
   aivis: {
     label:"Aivis Cloud API",
-    /* 公表値（60秒10回）をこちら側で数えているので、送る前に分かる。 */
-    rateWait:function(){return aivisRateWait();},
+    /* こちら側の数えは予測にすぎない。ブラウザ内蔵音声へ回すかは aivisOverLimit
+       に従う（既定は回さない＝超過分はAivis側の設定＝クレジットに任せる）。 */
+    rateWait:function(){return aivisFallbackWait();},
     optionLabel:"Aivis Cloud API（高品質・低遅延・日本語のみ）",
     uiField:"aivisField",
     enabled:true,
@@ -9138,6 +9176,14 @@ var TTS_PROVIDERS = {
     {section:"settings",order:46,label:'Aivis課金モード（直近応答）',value:function(){ return AIVIS_LAST_BILLING ? ((AIVIS_LAST_BILLING.mode||'(headerなし)')
          +(AIVIS_LAST_BILLING.creditsRemaining?' / 残クレジット '+AIVIS_LAST_BILLING.creditsRemaining:'')
          +(AIVIS_LAST_BILLING.rateRemaining?' / 残リクエスト '+AIVIS_LAST_BILLING.rateRemaining:'')) : '(まだAivis応答なし)'; },inactive:'(未使用)'},
+    /* 予測（こちら側の数え）と事実（Aivisの429）を1行で並べる。声が替わった理由を
+       後から追えるようにするため、どちらで止まったのかが分かる形にしておく。 */
+    {section:"settings",order:46.2,label:'Aivis 60秒10回を超えたとき',value:function(){
+      var srv=aivisServerWait(),win=aivisWindowWait();
+      return {send:'そのまま送る（超過分はAivis側の設定に任せる）',browser:'ブラウザ内蔵音声で読む',wait:'枠が空くまで待つ'}[aivisOverLimitMode()]
+        +' ／ 直近60秒 '+AIVIS_RATE.sent.length+'回'
+        +(srv>0?' ／ Aivisが429で停止中 あと'+(srv/1000).toFixed(1)+'秒'
+          :win>0?' ／ 予測では枠切れ あと'+(win/1000).toFixed(1)+'秒':' ／ 送信可能'); },inactive:'(未使用)'},
     /* OpenAI の上限はアカウントの usage tier で決まるので、公表値では自分の枠が分からない。
        応答ヘッダに入っている実値をそのまま出す。Aivis と併用するなら、どちらが先に
        詰まるのかはこの2行を並べて見るのがいちばん早い。 */
@@ -9154,7 +9200,14 @@ var TTS_PROVIDERS = {
       return out.length?out.join(' / '):'(上限ヘッダなし)'; },inactive:'(未使用)'}
   ],
     segmentJapaneseBatch:true,
-    segmentStatus:function(){return ' ／ Aivis 10回/分 · '+(aivisRateWait()>0?'次の送信まで '+(aivisRateWait()/1000).toFixed(1)+'秒':'送信可能');}
+    segmentStatus:function(){
+      var srv=aivisServerWait(),win=aivisWindowWait();
+      var policy={send:'超過はAivis側の設定（クレジット）',browser:'超過はブラウザ内蔵音声',wait:'超過は待つ'}[aivisOverLimitMode()];
+      return ' ／ Aivis 10回/分（'+policy+'） · '
+        +(srv>0?'Aivisが停止中（あと'+(srv/1000).toFixed(1)+'秒）'
+          :win>0?'この60秒の枠は使い切り（あと'+(win/1000).toFixed(1)+'秒）'
+          :'送信可能');
+    }
   },
   localvv: {
     label:"ローカルエンジン",
@@ -14559,15 +14612,19 @@ function segPump(){
     var useSource=j.manual||CFG.ttsSrc,lang=useSource?e.srcLang:e.dstLang;
     var group=[j],source=s.sourceText,target=s.translationText||'';
     if(ttsProv().segmentJapaneseBatch&&lang==='ja'&&!j.forceBrowserTts){
-      /* 上限に当たったら待たない。ブラウザ内蔵音声で読んで先へ進む。待つ設計では
-         実測で TTS 待ちが20〜40秒に達していた。Aivis 用のまとめ処理（同一声・
-         500文字まで）は飛ばす。まとめるのは Aivis の枠を節約するためなので、
-         その枠を使わないのなら意味が無い。 */
-      var rateWait=aivisRateWait();
+      /* ここで逃がすのは、こちら側の数え（＝予測）では無く aivisOverLimit が
+         「回す」と言っている場合か、Aivis が429で実際に止めている場合だけ。
+         既定（send）では予測で止めないので、超過分は Aivis 側の設定＝クレジットに
+         任せる。逃がすときに待たないのは、待つ設計では実測で TTS 待ちが20〜40秒に
+         達していたから。逃がすあいだは Aivis 用のまとめ処理（同一声・500文字まで）
+         を飛ばす。まとめるのは Aivis の枠を節約するためなので、その枠を使わない
+         のなら意味が無い。 */
+      var rateWait=aivisFallbackWait();
       if(rateWait>0){
         j.forceBrowserTts=true;
         dlog('segment','tts-rate-fallback',{cardId:e.id,seq:s.seq,
-          why:AIVIS_RATE.blockedUntil>Date.now()?'aivis-server-limit':'aivis-window-limit',
+          why:aivisServerWait()>0?'aivis-server-limit':'aivis-window-limit',
+          overLimit:aivisOverLimitMode(),
           waitMs:rateWait,count60s:AIVIS_RATE.sent.length,limit:10});
       }
       var voiceKey=segAivisVoiceKey(e);
@@ -15146,12 +15203,33 @@ function aivisRateLoad(){
   }catch(err){}
 }
 function aivisRateSave(){try{store.set('di.aivisRateWindow',JSON.stringify({sent:AIVIS_RATE.sent,blockedUntil:AIVIS_RATE.blockedUntil}));}catch(err){}}
-function aivisRateWait(){
+/* 上限の扱いは2種類あり、混ぜてはいけない。
+   - 予測（aivisWindowWait）：こちら側で数えた60秒10回。公表値ではあるが、上位プラン
+     では超過分をクレジットで払う設定にできるので、これは「上限」ではない。
+   - 事実（aivisServerWait）：Aivisが429で止めてきた時間。これは必ず従う。
+   v1.49.10は予測で送信を止めてブラウザ内蔵音声へ回していたため、超過分の課金を
+   許可しているアカウントでも声が替わっていた。既定（send）では予測で止めない。 */
+function aivisOverLimitMode(){
+  var m=String((typeof CFG!=='undefined'&&CFG&&CFG.aivisOverLimit)||'send');
+  return m==='browser'||m==='wait'?m:'send';
+}
+function aivisServerWait(){ aivisRateLoad(); return Math.max(0,AIVIS_RATE.blockedUntil-Date.now()); }
+function aivisWindowWait(){
   aivisRateLoad();var now=Date.now();
   // Keep 100 ms of clock/network margin at the rolling-window boundary.
   AIVIS_RATE.sent=AIVIS_RATE.sent.filter(function(t){return now-t<60100;});
   var sent=AIVIS_RATE.sent;
-  return Math.max(0,AIVIS_RATE.blockedUntil-now,sent.length>=10?sent[sent.length-10]+60100-now:0);
+  return sent.length>=10?Math.max(0,sent[sent.length-10]+60100-now):0;
+}
+/* 送信を止めておく時間。aivisLimitedFetch がこの値で待つ。 */
+function aivisRateWait(){
+  return aivisOverLimitMode()==='wait'?Math.max(aivisServerWait(),aivisWindowWait()):aivisServerWait();
+}
+/* ブラウザ内蔵音声へ回すかどうか。待つ設定のときは回さない（v1.49.9以前と同じ）。 */
+function aivisFallbackWait(){
+  var mode=aivisOverLimitMode();
+  if(mode==='wait')return 0;
+  return mode==='browser'?Math.max(aivisServerWait(),aivisWindowWait()):aivisServerWait();
 }
 function aivisRetryDelay(r){
   var reset=r.headers&&r.headers.get('X-Aivis-RateLimit-Requests-Reset');
@@ -15184,6 +15262,7 @@ function aivisLimitedFetch(url,options,life){
     if(delay)dlog('tts','aivis-rate-wait',{waitMs:delay,limit:10,windowMs:60000});
     return wait().then(function(){
       if(cancelled())abort();
+      aivisWindowWait();                       /* 60秒より古い記録を落としてから積む */
       AIVIS_RATE.sent.push(Date.now());aivisRateSave();
       if(life.finish)life.finish.armPhase('synthesis',life.guardMs||90000);
       if(life.send)life.send();
