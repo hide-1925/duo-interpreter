@@ -508,7 +508,9 @@ function turnDecisionInstall(){
     +'<label>経路 <select id="turnDecisionProvider"></select></label>'
     +'<label>モデル <input id="turnDecisionModel" type="text" spellcheck="false" placeholder="（経路の既定）"></label>'
     +'<label>APIキー <input id="turnDecisionKey" type="password" spellcheck="false" autocomplete="off" placeholder="（未設定）"></label>'
-    +'<p id="turnDecisionKeyNote" class="sublabel"></p>'
+    +'<p id="turnDecisionKeyState" class="sublabel"></p>'
+    +'<details class="settings-help" id="turnDecisionKeyHelp"><summary>このキーについて</summary>'
+      +'<p id="turnDecisionKeyNote"></p></details>'
     +'<label>Base URL <input id="turnDecisionBaseUrl" type="text" spellcheck="false" placeholder="（経路の既定）"></label>'
     +'<details class="settings-help"><summary>キーの扱い</summary>'
       +'<p>キーは経路ごとに別々に保存します。翻訳用のキーは流用しません。'
@@ -564,23 +566,33 @@ function turnDecisionInstall(){
     return list[0];
   }
   function keyRefresh(){
-    var r=routeOf(),box=$('turnDecisionKey'),note=$('turnDecisionKeyNote');
+    var r=routeOf(),box=$('turnDecisionKey'),note=$('turnDecisionKeyNote'),
+        state=$('turnDecisionKeyState'),help=$('turnDecisionKeyHelp');
     var needsKey=!r.local;
     box.disabled=!needsKey;
     $('turnDecisionModel').placeholder=r.defaultModel||'（経路の既定）';
-    if(!needsKey){box.value='';note.textContent='この経路は外部へ送らないので、キーは要りません。';return;}
+    /* いま何が起きているかは常に見せ、背景の説明だけたたむ（設定UI設計指針.md §3）。
+       「アドオンを経由できません」を隠すと、キーを入れても動かない理由が画面から
+       消える。逆に、経路の仕様の説明は毎回読む必要がない。 */
+    if(!needsKey){
+      box.value='';state.textContent='この経路は外部へ送らないので、キーは要りません。';
+      note.textContent='';help.hidden=true;return;
+    }
     var cur=TurnProviders.keyFor(r.vendor);
     box.value='';
     box.placeholder=cur?'設定済み（'+cur.length+'文字）':'（未設定）';
+    var now=[];
+    if(r.bridge)now.push(TurnBridge.available()?'アドオンに接続できています。'
+      :'いまアドオンを経由できません。ポップアップから接続してください。');
+    if(!r.verified)now.push('この経路のリクエスト形式は未検証です。実機で疎通を確認してください。');
+    state.textContent=now.join(' ');
     /* 公式が「英語が主な学習言語で精度も最良。CJK を含む他言語は扱えるが同等では
        ない」と明記している。日英の通訳が主用途なので、ここは黙っていられない。 */
     note.textContent=(r.keyHint||'APIキー')+'。'+(r.contextNote?r.contextNote+'。':'')
       +(r.vendor==='typesafe'?'active では alias（jev-latest／jev-preview）を拒否します。'
         +'固定versionを入れてください（例 jev-1.13.0）。日本語は公式が「英語と同等では'
-        +'ない」と明記しているので、日本語側は必ず shadow で確かめてください。':'')
-      +(r.bridge?(TurnBridge.available()?'アドオンに接続できています。'
-        :'いまアドオンを経由できません。ポップアップから接続してください。'):'')
-      +(r.verified?'':'この経路のリクエスト形式は未検証です。実機で疎通を確認してください。');
+        +'ない」と明記しているので、日本語側は必ず shadow で確かめてください。':'');
+    help.hidden=false;
   }
   $('turnDecisionKey').onchange=function(){
     var r=routeOf();if(r.local)return;
@@ -678,8 +690,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.14';
-var APP_BUILD = '20260923-v14914-settings-type-scale';
+var APP_VERSION = 'v1.49.15';
+var APP_BUILD = '20260923-v14915-key-note-fold';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';

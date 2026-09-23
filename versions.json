@@ -134,10 +134,18 @@
     "v1.49.14": {
       "build": "20260923-v14914-settings-type-scale",
       "extension": "1.4.25",
-      "commit": null,
+      "commit": "9f1986a",
       "indexHtmlSha256": "e3294e8a53a7b24a19353eeb63ac6972b93dc1c425cc31cd64568af6dc56dd99",
       "extensionAppJsSha256": "17d26a1fbc9b13033a4cfcbabd80bed8229be0396c8da235bf82e7e9c8a23314",
       "summary": "設定UIの文字の段を3つ（本文11.5・操作12.5・入力16）に揃え、設定UI設計指針.mdと検査で縛った。JSから注入するパネルがクラス不足でブラウザ既定の16pxになっていたのが不揃いの原因。長い説明は押して開く形にした"
+    },
+    "v1.49.15": {
+      "build": "20260923-v14915-key-note-fold",
+      "extension": "1.4.26",
+      "commit": null,
+      "indexHtmlSha256": "fb6c26188b9dd4ee9f2afce74f194202747e23747dfd0f9bee3a6be3849d3c07",
+      "extensionAppJsSha256": "b55f1de4a277f5f24b1784ae49a0de491c349cedf4fa68cc70b82178fe1ff298",
+      "summary": "JevのAPIキーの説明をたたんだ。ただし「いまアドオンを経由できません」のような状態は残す。隠すとキーを入れても動かない理由が画面から消えるため。外部へ送らない経路では折りたたみごと消す"
     }
   }
 }
