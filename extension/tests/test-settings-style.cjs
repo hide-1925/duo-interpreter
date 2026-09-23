@@ -86,7 +86,7 @@ test('the folded explanation reads as the same control as the automatic one',()=
 test('the long explanations in the decision panel are folded, not always on screen',()=>{
   const panel=/function turnDecisionInstall\(\)\{[\s\S]*?host\.appendChild\(box\);/.exec(appJs)[0];
   const folds=(panel.match(/class="settings-help"/g)||[]).length;
-  assert.ok(folds>=4,'expected the four long notes to be folded, found '+folds);
+  assert.ok(folds>=5,'expected the five long notes to be folded, found '+folds);
   /* たたんだ外に残ってよいのは、設定を選ぶために読む必要がある短い文だけ。 */
   const loose=[...panel.matchAll(/\+'<p>([^']{120,})/g)].map(m=>m[1].slice(0,40));
   assert.deepEqual(loose,[],'these paragraphs are long enough to fold: '+loose.join(' / '));
