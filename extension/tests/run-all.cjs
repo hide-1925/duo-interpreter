@@ -12,6 +12,7 @@ const {execFileSync}=require('node:child_process'),path=require('node:path');
 
 const GATE=['test-turn-decision.cjs','test-file-sync.cjs','test-release-manifest.cjs','test-turn-trace-replay.cjs',
   'test-input-validation.cjs','test-turn-providers.cjs','test-turn-proxy.cjs','test-tts-limits.cjs',
+  'test-backchannel.cjs',
   'test-teams.cjs','test-next.cjs','test-controller.cjs','test-frame-routing.cjs',
   'test-bridge-target.cjs','test-mic-discovery.cjs'];
 /* tools/ の3スイートは実物の service-worker.js などを読み込む。gate の外に置いた

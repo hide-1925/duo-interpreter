@@ -110,10 +110,18 @@
     "v1.49.11": {
       "build": "20260923-v14911-aivis-overage-policy",
       "extension": "1.4.22",
-      "commit": null,
+      "commit": "af2a51c",
       "indexHtmlSha256": "f86b5d3b74971213c9bed0d95cac844666cba3c886339e772d9510728f9b6ba2",
       "extensionAppJsSha256": "c82b85dcb4f0c34aab3653c062721d8256b94b7193e8cd09efa8ea6cd36d90fc",
       "summary": "v1.49.10のAivis判定はこちら側の予測（60秒10回）で送信を止めており、超過分をクレジットで払う設定のアカウントでも声がブラウザ内蔵音声に替わっていた。予測（設定可・既定は止めない）とサーバの429（必ず従う）を分けた"
+    },
+    "v1.49.12": {
+      "build": "20260923-v14912-backchannel-skip",
+      "extension": "1.4.23",
+      "commit": null,
+      "indexHtmlSha256": "31df4a1fc9257cabd4bcef65e5731a0bebb8d5256214467c980bf34684dfc919",
+      "extensionAppJsSha256": "a5e378dfdb1eba938677c299144a8f1182ce260796be12c6444ce2f77073a192",
+      "summary": "相づちを読み上げない設定（既定OFF）。B-8bの三択のうち①読まないと③そのまま読むのハイブリッドで、語の一覧で切る。文字数だけでは実測4件のうち1件しか正しく判定できない。答えになりうる語は既定の一覧に入れない"
     }
   }
 }
