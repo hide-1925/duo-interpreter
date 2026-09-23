@@ -654,8 +654,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.11';
-var APP_BUILD = '20260923-v14911-aivis-overage-policy';
+var APP_VERSION = 'v1.49.12';
+var APP_BUILD = '20260923-v14912-backchannel-skip';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -879,6 +879,14 @@ var CONFIG_SCHEMA = [
   { prop:"turnDecisionLocalWeights", key:'di.tdWeights', type:'json', embed:'turnDecisionLocalWeights', def:'', portable:true },
   { prop:"ttsMode", key:'di.tts', embed:'ttsMode', def:'off', portable:true, el:"ttsMode" },
   { prop:"ttsWho", key:'di.ttsw', embed:'ttsWho', def:'B2A', portable:true, el:"ttsWho" },
+  /* 相づちを読み上げるか。既定は read＝全部読む（従来どおり）。実測ログの短い発話は
+     「Hm.」「そう。」「あかんな。」「อึ้ย」で、文字数だけで切ると後ろ2つ（中身のある
+     短文と、タイ語の間投詞）まで落ちる。だから既定の判定は語の一覧で行う。
+     肯定・否定の返事（はい／いいえ／Yes／No／うん／yeah）は一覧に入れない。質問への
+     答えとして使われたときに意味が消え、聞き手には落ちたことも分からないため。 */
+  { prop:"ttsShortMode", key:'di.ttsshort', embed:'ttsShortMode', def:'read', portable:true, el:"ttsShortMode" },
+  { prop:"ttsShortChars", key:'di.ttsshortn', embed:'ttsShortChars', def:'3', portable:true, el:"ttsShortChars" },
+  { prop:"ttsBackchannelWords", key:'di.ttsbcw', embed:'ttsBackchannelWords', def:'', portable:true, el:"ttsBackchannelWords" },
   { prop:"focus", key:'di.focus', embed:'focus', def:'split', portable:true },
   { prop:"rtDirection", key:'di.rtdirection', embed:'rtDirection', def:null, legacy:[{key:'di.rtboth',embed:'rtBoth',def:'0'},{key:'di.rtdir',embed:'rtDir',def:'B'}], coerce:function(raw,s){ if(raw==='A2B'||raw==='B2A'||raw==='both')return raw; return String(readConfigValue(s.legacy[0]))==='1'?'both':(readConfigValue(s.legacy[1])==='A'?'B2A':'A2B'); }, portable:true, el:"rtDirection" },
   { prop:"rtVolume", key:'di.rtVolume', embed:'rtVolume', def:100, coerce:function(raw){ return realtimeVolume(raw); }, portable:true, el:"rtVolume", bind:'custom' },
@@ -4810,6 +4818,73 @@ function openaiRetryDelayMs(m){
   return 60000;
 }
 function jaOnlyMode(mode){ return ttsProv(mode).jaOnly; }
+
+/* ---------------- 相づちを読み上げない（任意・既定はOFF） ----------------
+   「読まない（文字数と品詞で切る）」と「そのまま読む（従来）」の中間。落とすのは
+   音声だけで、会話カード・議事録・ログには必ず残す。カードの手動再生はここを
+   通らないので、押せば必ず読む。
+   語で見る理由：文字数だけで切ると「あかんな。」のような中身のある短文が落ちる。
+   一覧に入れない語：はい／いいえ／うん／Yes／No／yeah／okay／なるほど。単独で
+   質問の答えになりうるので、落とすと意味が消える。必要なら手書きの一覧で足せる。 */
+var BACKCHANNEL_WORDS={
+  ja:['あ','あー','ああ','あの','あのー','えー','ええと','えーと','えと','おお','おー',
+      'んー','うーん','ふーん','ふん','へー','へえ','はあ','ほう','おっと','あれ'],
+  en:['uh','um','umm','er','erm','ah','oh','hmm','hm','mm','mhm','mm-hmm','uh-huh','oops']
+};
+function ttsShortMode(){ var m=String(CFG.ttsShortMode||'read'); return m==='filler'||m==='short'?m:'read'; }
+function ttsShortChars(){ var n=parseInt(CFG.ttsShortChars,10); return isFinite(n)&&n>0?Math.min(20,n):3; }
+/* 比較用に整える。
+   - 全角英数は半角へ、カタカナはひらがなへ（「ウン」「ＵＨ」も同じ語として扱う）
+   - 句読点・引用符・空白・ハイフンは落とす（「Hm.」「うーん、」「uh-huh」）
+   - 長音符（ー）は語の一部なので残す
+   plain は畳む前の長さ判定用、key は同じ字の連続を1つに畳んだ照合用
+     「hmmm」→ hm ／「えーーー」→ えー ／「ええ」→ え */
+function ttsUtteranceKey(text){
+  var s=String(text==null?'':text).toLowerCase();
+  s=s.replace(/[\uFF01-\uFF5E]/g,function(c){return String.fromCharCode(c.charCodeAt(0)-0xFEE0);});
+  s=s.replace(/[\u30A1-\u30F6]/g,function(c){return String.fromCharCode(c.charCodeAt(0)-0x60);});
+  s=s.replace(/[。、．，・…‥!?！？,.;:'"`´‘’“”「」『』（）()\[\]【】〜~\-–—\s\u3000]/g,'');
+  return {plain:s,key:s.replace(/(.)\1+/g,'$1')};
+}
+/* 空なら言語別の既定、書いてあればそれだけを使う（言語は問わない）。空に戻せば既定へ
+   戻るので、取り返しのつかない設定にはならない。 */
+function ttsBackchannelList(lang){
+  var custom=String(CFG.ttsBackchannelWords||'').trim();
+  if(custom)return custom.split(/[,、\n\r]+/);
+  return BACKCHANNEL_WORDS[String(lang||'').split('-')[0]]||[];
+}
+function ttsBackchannelSet(lang){
+  var list=ttsBackchannelList(lang),set={},i,k;
+  for(i=0;i<list.length;i++){k=ttsUtteranceKey(list[i]).key;if(k)set[k]=true;}
+  return set;
+}
+/* 既定の一覧を画面に出すための文字列。コードと表示がずれないよう表から作る。 */
+function ttsBackchannelDefaultsText(){
+  return Object.keys(BACKCHANNEL_WORDS).map(function(l){
+    return l+'：'+BACKCHANNEL_WORDS[l].join('、');}).join(' ／ ');
+}
+/* 落とす理由（'filler' / 'short'）を返す。読むなら空文字。 */
+function ttsShortSkipReason(text,lang){
+  var mode=ttsShortMode();
+  if(mode==='read')return '';
+  var u=ttsUtteranceKey(text);
+  if(!u.key)return '';
+  if(ttsBackchannelSet(lang)[u.key])return 'filler';
+  if(mode==='short'&&u.plain.length<=ttsShortChars())return 'short';
+  return '';
+}
+/* 読む予定の文と原文の両方が相づちのときだけ落とす。訳文だけが短いのは翻訳の失敗
+   （要約・欠落）なので、そこで落とすと発言そのものが消える。 */
+function ttsShortSkipFor(e,useSource){
+  if(ttsShortMode()==='read')return '';
+  var say=useSource?(e&&e.srcText):(e&&e.dstText);
+  var why=ttsShortSkipReason(say,useSource?(e&&e.srcLang):(e&&e.dstLang));
+  if(!why)return '';
+  if(!useSource&&String((e&&e.srcText)||'').trim()&&!ttsShortSkipReason(e.srcText,e.srcLang))return '';
+  return why;
+}
+var TTS_SHORT_SKIPPED=0;
+function ttsShortSkipLabel(why){ return why==='filler'?'相づち（一覧の語）':'相づち（文字数）'; }
 /* onFinish を渡した場合だけ、ブラウザ再生の完了で呼び戻す。読み上げスロットを
    持っている呼び出し側（Aivis / OpenAI の上限時）は、これを使って解放を遅らせる。
    先に解放すると次の発話が走り出し、2つの声が重なる。 */
@@ -7724,6 +7799,15 @@ function speak(e){
       toast('読み上げはONですが、対象が「' + whoLabel() + '」のため、いまの発言は読み上げていません。<br>'
           + '⚙→音声 の「読み上げ対象」で変更できます。');
     }
+    return;
+  }
+  /* 相づちを読まない設定。音声だけ落とし、カード・議事録・ログには残す。
+     segPump からの proxy は先に同じ判定を通しているので、ここへは来ない。 */
+  var shortWhy=ttsShortSkipFor(e,useSrc);
+  if(shortWhy){
+    TTS_SHORT_SKIPPED++;
+    dlog('tts','skip',{why:ttsShortSkipLabel(shortWhy),mode:ttsShortMode(),lang:sayLang,
+      chars:String(sayText).trim().length,text:String(sayText).trim().slice(0,24)});
     return;
   }
   ttsSkipStreak = 0;
@@ -10722,6 +10806,8 @@ function simple(spec){
   };
 }
 bindSettings();
+/* 既定の一覧は表から書き出す。画面とコードがずれないようにするため。 */
+(function(){var el=$('ttsBackchannelDefaults');if(el)el.textContent=ttsBackchannelDefaultsText();})();
 
 ['segmentMode','segmentBoundary','segmentOverlap','segmentMin','segmentStability','segmentSilence','segmentDebt'].forEach(function(k){
   $(k).onchange=function(){var wasRunning=S.running;stopSpeaking('逐次読み上げ設定変更');if(wasRunning)stopAll();CFG[k]=this.value;persistSetting(k,this.value);segStatus();if(wasRunning)toast('逐次読み上げ設定を変更しました。「開始」で認識を再開してください。');};
@@ -11057,6 +11143,14 @@ var DIAG_ROWS = [
   {section:"settings",order:26,label:'再生操作',value:function(ctx){ return 'カード全体・部分ごとの原文／訳文再生・部分再翻訳／古い訳の手動再生を防止／一括合成は範囲を強調'; }},
   {section:"settings",order:27,label:'再生順序',value:function(ctx){ return 'カード受付順＋部分seq／送信本文・結合した部分IDをdispatchに記録'; }},
   {section:"settings",order:28,label:'TTS逐次読み上げ',value:function(ctx){ return CFG.segmentMode+' / 重なり '+CFG.segmentOverlap; }},
+  /* 相づちを落とした数。落とした音声は聞き手には存在しないので、ここに出さないと
+     「読まれなかった」ことに気付けない。 */
+  {section:"settings",order:28.5,label:'相づちの読み上げ',value:function(ctx){
+    var m=ttsShortMode();
+    return ({read:'全部読む（既定）',filler:'一覧のつなぎ語だけ読まない',
+             short:'一覧＋'+ttsShortChars()+'文字以下も読まない'})[m]
+      +' ／ このセッションで落とした数 '+TTS_SHORT_SKIPPED
+      +' ／ 一覧は'+(String(CFG.ttsBackchannelWords||'').trim()?'手書き':'既定'); }},
   {section:"settings",order:29,label:'逐次確定・訂正',value:function(ctx){ return SEG.committed+' / '+SEG.corrected+'（訂正率 '+(SEG.committed?(100*SEG.corrected/SEG.committed).toFixed(1):'0')+'%）'; }},
   /* 判断層の状態。これが無いと、診断ログを見ても Jev が効いているのか
      旧ルールのままなのかが読み取れない。キーは値を出さず有無と長さだけ書く。 */
@@ -12852,6 +12946,20 @@ function segPump(){
       SEG.queue.shift();segRefreshPlayback(j);
       dlog('segment','floor-drop',{cardId:e.id,seq:s.seq,waitMs:floor.waitMs});continue;}
     var useSource=j.manual||CFG.ttsSrc,lang=useSource?e.srcLang:e.dstLang;
+    /* 相づちを読まない設定。手動再生は対象外（押したら必ず読む）。ここで落とすのは
+       Aivis のまとめ処理より前なので、相づちが後続の文と束ねられることはない。 */
+    if(!j.manual){
+      var shortWhy=ttsShortSkipFor({srcText:s.sourceText,dstText:s.translationText||'',
+        srcLang:e.srcLang,dstLang:e.dstLang},!!CFG.ttsSrc);
+      if(shortWhy){
+        TTS_SHORT_SKIPPED++;
+        s.audio.status='cancelled';s.audio.skipReason='backchannel';s.state='skipped';
+        SEG.queue.shift();segRefreshPlayback(j);
+        dlog('segment','backchannel-skip',{cardId:e.id,seq:s.seq,why:shortWhy,mode:ttsShortMode(),
+          text:String((CFG.ttsSrc?s.sourceText:s.translationText)||'').trim().slice(0,24)});
+        continue;
+      }
+    }
     var group=[j],source=s.sourceText,target=s.translationText||'';
     if(ttsProv().segmentJapaneseBatch&&lang==='ja'&&!j.forceBrowserTts){
       /* ここで逃がすのは、こちら側の数え（＝予測）では無く aivisOverLimit が
