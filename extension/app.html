@@ -757,6 +757,16 @@
 .preset-description{display:block;font-size:11px;opacity:.75;font-weight:normal}
 @media(hover:hover) and (pointer:fine){.preset-description{visibility:hidden;max-height:0;overflow:hidden}#duoPresetMenu button:hover .preset-description,#duoPresetMenu button:focus .preset-description{visibility:visible;max-height:40px;transition:visibility 0s .4s,max-height 0s .4s}}
 #conferenceRelayParticipants label{display:block}
+
+/* 判断層の説明は量が多い。本文と同じ大きさだと設定欄全体を押し出してしまうので、
+   このパネルの中だけ小さくする。見出しと入力欄は押しやすさのため据え置き。 */
+#turnDecisionSettings{font-size:11.5px}
+#turnDecisionSettings p{font-size:11px;line-height:1.5;margin:6px 0}
+#turnDecisionSettings small{font-size:10.5px;line-height:1.45}
+#turnDecisionSettings label{font-size:11.5px}
+#turnDecisionSettings summary{font-size:13px}
+#turnDecisionSettings select,#turnDecisionSettings input[type=text],
+#turnDecisionSettings input[type=password],#turnDecisionSettings input[type=number]{font-size:12px}
 </style>
 </head>
 <body>
@@ -1132,6 +1142,12 @@
           <span>現在のTTSへの反映</span><b id="prosodyTts">OFF</b>
         </div>
       </details>
+      <!-- マイク感度は「どこから発話とみなすか」なので、読み上げ側ではなく認識側に置く。 -->
+      <div class="field">
+        <label>マイク感度（無音判定のしきい値）</label>
+        <input type="range" id="vad" min="10" max="120" value="35">
+        <small>API音声認識のとき、どのくらいの音量から発話とみなすか。周囲がうるさい場合は右へ。</small>
+      </div>
       </div>
       <small id="xaiSttNote" style="display:none">xAI の音声認識はモデルを選ぶ必要がありません。
       キーは翻訳プロバイダの xAI と共通で、上の欄が空ならそちらのキーを使います。<br>
@@ -1249,6 +1265,27 @@
           <option value="B2A">相手(B)の発言だけ読み上げる（推奨）</option>
           <option value="A2B">自分(A)の発言だけ読み上げる</option>
         </select>
+      </div>
+      <div class="tts-target-field" id="ttsShortField">
+        <label for="ttsShortMode">相づちの読み上げ</label>
+        <select id="ttsShortMode">
+          <option value="read">全部読む — 従来どおり（既定）</option>
+          <option value="filler">つなぎ語だけ読まない — 「えー」「あのー」「um」など一覧の語のみ</option>
+          <option value="short">一覧＋短い発話も読まない — 中身のある短文も落ちます</option>
+        </select>
+        <details class="settings-help" id="ttsShortHelp"><summary>説明</summary>
+          <p>落とすのは<b>音声だけ</b>です。会話カード・議事録・CSV・診断ログには<b>必ず残ります</b>。カードの<b>▶で再生すれば必ず読みます</b>。</p>
+          <p><b>「つなぎ語だけ読まない」を推奨します。</b>相づちは1回ごとに読み上げの枠を1つ使うので、落とすと後続の発話が早く鳴ります。一覧には<b>単独で意味を持たない語だけ</b>を入れてあります。</p>
+          <p><b>一覧に入れていない語があります。</b>「はい」「いいえ」「うん」「Yes」「No」「yeah」「okay」「なるほど」は<b>質問の答えになりうる</b>ので落としません。落とすと意味が反転することがあり、しかも聞き手には落ちたことが分かりません。落としたい場合は下の一覧に自分で書いてください。</p>
+          <p><b>「一覧＋短い発話も読まない」は文字数で切ります。</b>実測ログの短い発話は「Hm.」「そう。」「あかんな。」「อึ้ย」でした。3文字以下にすると前の2つは落ちますが、<b>「あかんな。」のような中身のある短文も落ちる設定です</b>。ご承知のうえでお使いください。</p>
+          <label for="ttsShortChars">短いと見なす文字数（上の3番目でのみ使用・記号は数えません）</label>
+          <input id="ttsShortChars" type="number" min="1" max="20" step="1">
+          <label for="ttsBackchannelWords">読まない語の一覧（空＝既定・カンマか改行で区切る）</label>
+          <textarea id="ttsBackchannelWords" rows="3" spellcheck="false" placeholder="空のままなら下の既定を使います"></textarea>
+          <small>書くと<b>言語に関係なくこの一覧だけ</b>を使います。空に戻せば既定に戻ります。
+          大小文字・全角半角・カタカナ／ひらがな・句読点・同じ字の連続は同一視します（「Hmmm.」＝「hmm」、「ウーン」＝「うーん」）。<br>
+          既定の一覧 — <span id="ttsBackchannelDefaults"></span></small>
+        </details>
       </div>
       <div class="field" id="segmentSettings">
         <label for="segmentMode">TTS逐次読み上げ</label>
@@ -1502,6 +1539,17 @@
         <button class="btn ghost" id="aivisFetch" title="モデル UUID からスタイル一覧を取得" style="align-self:flex-end">🔄 スタイル取得</button>
       </div>
       <small class="keychk" id="aivisStyleMsg"></small>
+      <div class="sublabel">60秒に10回を超えたとき</div>
+      <select id="aivisOverLimit">
+        <option value="send">そのまま送る — 超過分は Aivis 側の設定（クレジット消費）に任せる</option>
+        <option value="browser">ブラウザ内蔵音声で読む — 超過分を課金しない</option>
+        <option value="wait">枠が空くまで待つ — 声は替わらないが読み上げが遅れる</option>
+      </select>
+      <small>Aivis の公表値は「60秒に10回」です。<b>この回数を数えているのはこちら側なので、あくまで予測です。</b>
+      Aivis のダッシュボードで<b>超過分のクレジット消費を許可している場合は「そのまま送る」（既定）にしてください</b>。
+      「ブラウザ内蔵音声で読む」にすると、10回を超えた分は Aivis に送らず内蔵音声で読み上げます（課金は増えませんが声が替わります）。
+      「枠が空くまで待つ」は v1.49.9 以前と同じ動作で、読み上げが数十秒遅れることがあります。<br>
+      なお <b>Aivis が実際に 429 を返して止めてきたとき</b>は、どの設定でも最後はブラウザ内蔵音声で読み上げます（発話を捨てないため）。</small>
       <details class="adv" id="aivisAdv">
         <summary>話し方の調整</summary>
         <label class="sl"><span>話速</span>
@@ -1614,11 +1662,6 @@
       <div class="note" id="vvCredit"></div>
     </div>
 
-    <div class="field">
-      <label>マイク感度（無音判定のしきい値）</label>
-      <input type="range" id="vad" min="10" max="120" value="35">
-      <small>API音声認識のとき、どのくらいの音量から発話とみなすか。周囲がうるさい場合は右へ。</small>
-    </div>
   </div>
 
   <!-- ===== タブ3: 用語集 ===== -->

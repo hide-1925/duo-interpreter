@@ -110,7 +110,9 @@ const CONTROLS=['turnDecisionMode','turnDecisionLangEn','turnDecisionLangJa','tu
     });
     test('the route picker is built from the registry, not from hand-written markup',()=>{
       assert.ok(r.routes.includes('rules'),'rules missing');
-      assert.ok(r.routes.includes('local'),'local missing');
+      /* Local は学習済みの重みがあるときだけ出す。重みを入れる画面がまだ無いので、
+         既定のブラウザでは「選んでも Rules のまま動く設定」になってしまう。 */
+      assert.ok(!r.routes.includes('local'),'local must not be offered without fitted weights');
       assert.ok(r.routes.includes('jev-direct'),'jev-direct missing');
       assert.ok(r.routes.includes('jev-openrouter'),'jev-openrouter missing');
       /* 実測で api.typesafe.ai は CORS 応答ヘッダを出さない。直叩きだけを出すと

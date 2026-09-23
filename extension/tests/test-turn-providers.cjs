@@ -264,13 +264,26 @@ test('the route list drives the picker, so a new route needs no UI edit',()=>{
   reset();
   const ids=P().list().map(r=>r.id);
   /* vm と host で Array の realm が違うので deepEqual は使えない。値で比べる。 */
-  assert.equal(ids.slice(0,2).join(','),'rules,local','local-only routes come first');
+  assert.equal(ids[0],'rules','the offline route comes first');
   for(const id of Object.keys(P().ROUTES)) assert.ok(ids.includes(id),id+' missing from the picker list');
   for(const r of P().list()){
     assert.equal(typeof r.label,'string');
     assert.equal(typeof r.verified,'boolean');
     assert.equal(typeof r.local,'boolean');
   }
+});
+/* Local は学習済みの重みを入れて初めて動く。重みを入れる画面がまだ無いので、
+   選択肢だけ出ていると「選んでも Rules のまま動く設定」になる。 */
+test('Local stays out of the picker until weights exist, but still resolves',()=>{
+  reset({turnDecisionLocalWeights:''});
+  assert.ok(!P().list().map(r=>r.id).includes('local'),
+    'an unusable route must not be offered');
+  assert.ok(P().get('local'),'the route itself still resolves, so a stored value is not lost');
+  reset({turnDecisionLocalWeights:JSON.stringify({version:'w1',languages:{
+    ja:{bias:-1,features:{silence:2},threshold:0.6}}})});
+  const ids=P().list().map(r=>r.id);
+  assert.equal(ids.slice(0,2).join(','),'rules,local','once fitted, it sits with the other offline route');
+  assert.equal(P().list().filter(r=>r.id==='local')[0].local,true);
 });
 test('a TurnProviders method name cannot be used as a provider',()=>{
   reset();
