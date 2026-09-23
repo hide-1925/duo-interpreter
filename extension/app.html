@@ -455,7 +455,7 @@
   .tts-target-field{display:flex;flex-direction:column;gap:6px}
   .tts-target-field>label{font-size:11.5px;color:var(--dim);font-weight:800;letter-spacing:.05em}
   .field > label{font-size:11.5px;color:var(--dim);font-weight:800;letter-spacing:.05em}
-  .field small{font-size:11px;color:var(--dim);line-height:1.65}
+  .field small{font-size:11.5px;color:var(--dim);line-height:1.65}
   /* 長い説明は既定でたたむ。小さなボタンで開閉する */
   .notetog{
     align-self:flex-start;border:1px solid var(--line);background:transparent;color:var(--dim);
@@ -466,9 +466,11 @@
   .notetog:hover{color:var(--txt);background:#26303f}
   .notetog.warn{color:var(--warn);border-color:var(--warn)}
   .field small.folded,.field .note.folded{display:none}
+  /* 文字サイズはここでは決めない。下の「iOSの自動ズーム防止」で全プラットフォーム
+     16px に揃えている。ここに書くと後勝ちで効かず、死んだ数値が残る。 */
   input[type=text],input[type=password],select,textarea{
     background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:9px;
-    padding:9px 11px;font-size:13.5px;font-family:inherit;width:100%;
+    padding:9px 11px;font-family:inherit;width:100%;
   }
   textarea{resize:vertical;min-height:64px}
   .row{display:flex;gap:8px;align-items:center}
@@ -524,7 +526,7 @@
   .keyrow .btn{flex:0 0 auto}
   .keyrow:has(>.keychk:only-child:empty){display:none}
   .row.wrap{flex-wrap:wrap}
-  .switch{display:flex;align-items:center;gap:9px;font-size:13.5px;cursor:pointer}
+  .switch{display:flex;align-items:center;gap:9px;font-size:11.5px;cursor:pointer}
   .switch input{width:17px;height:17px;accent-color:var(--a);flex:0 0 auto}
   .btn{border:1px solid var(--line);background:var(--panel-2);color:var(--txt);border-radius:9px;padding:9px 12px;font-size:12.5px;font-weight:700;cursor:pointer;flex:1;white-space:nowrap}
   .btn:hover{background:#26303f}
@@ -609,7 +611,8 @@
     top:var(--view-top,0px);bottom:auto;height:var(--view-height,100%)}
   body.viewport-fit #drawer{padding-top:max(0px,calc(env(safe-area-inset-top,0px) - var(--view-top,0px)))}
   .feed{-webkit-overflow-scrolling:touch}
-  /* iOSでは入力欄のフォントが16px未満だと自動ズームするので下限を16pxにする */
+  /* iOSは入力欄のフォントが16px未満だとタップで自動ズームする。プラットフォームを
+     見分けずに全体を16pxにしてある（設定UI設計指針.md §1）。ここが唯一の指定。 */
   input[type=text],input[type=password],select,textarea{font-size:16px}
   #drawer{padding-top:env(safe-area-inset-top);padding-bottom:var(--sab)}
   /* タップ領域をiOSの推奨サイズ（44px以上）に */
@@ -674,9 +677,35 @@
 
 .overlay-action-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
 .overlay-action-row .btn{min-width:0;white-space:normal;padding:10px 6px}
-.settings-help{margin-top:8px;font-size:13px;line-height:1.6;color:var(--dim)}
-.settings-help summary{cursor:pointer}
+/* ---- 設定ドロワーの文字の段（設定UI設計指針.md）--------------------------
+   本文 11.5px ／ 操作 12.5px ／ 入力 13.5px（iOSのみ16px）。見出しと本文は
+   大きさでは分けず、太さ・色・字間で分ける。パネルの #id にフォントサイズを
+   書かない ―― 書くと次のパネルでまた別の値が足され、段が増える。 */
+.settings-help{margin-top:8px;font-size:11.5px;line-height:1.65;color:var(--dim)}
 .settings-help p{margin:8px 0}
+/* たたんだ説明の見出しは、自動でたたむ側（.notetog）と同じピルにする。
+   仕組みが2つあることを利用者に見せない。 */
+.settings-help>summary{
+  display:inline-block;align-self:flex-start;border:1px solid var(--line);
+  background:transparent;color:var(--dim);border-radius:999px;padding:2px 10px;
+  font-size:10.5px;font-weight:700;line-height:1.7;cursor:pointer;white-space:nowrap;
+  list-style:none;-webkit-user-select:none;user-select:none;
+}
+.settings-help>summary::-webkit-details-marker{display:none}
+.settings-help>summary:hover{color:var(--txt);background:#26303f}
+/* JSから注入するパネルは素の <p> と <label> を使う。クラスを付け忘れると
+   ブラウザ既定の16pxで出て、隣の区画（11.5px）と1.4倍の差がつく。
+   実際に「Web会議への音声送出」と「発話交代の判断層」がそうなっていた。 */
+/* チェックボックスの行だけは横並びのまま。ドロワー側に専用の規則があるので、
+   ここで縦積みにすると印と文字が上下に割れる。 */
+details.adv.panel-form label:not(.settings-check){
+  display:flex;flex-direction:column;gap:5px;margin:10px 0 0;
+  font-size:11.5px;color:var(--dim);font-weight:800;letter-spacing:.05em;
+}
+details.adv.panel-form label.settings-check{margin:12px 0 0}
+details.adv.panel-form p{font-size:11.5px;color:var(--dim);line-height:1.65;margin:8px 0}
+details.adv.panel-form hr{border:0;border-top:1px solid var(--line);margin:12px 0}
+details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
 #phase2AudioRoutes select{max-width:100%}
 
 /* Settings checkbox typography matches the original key-save label. */
@@ -702,10 +731,6 @@
 }
 #sttCheckboxGroup{display:flex;flex-direction:column;gap:var(--settings-check-row-gap)}
 #drawer #sttCheckboxGroup>label{margin:0;min-height:22px;line-height:1.35}
-#segmentSettings>details>summary{
-  font-family:inherit;font-size:13px;font-weight:400;line-height:1.6;
-  color:var(--dim);cursor:pointer;
-}
 
 /* Part controls inherit the card font and stay collapsed during ordinary use. */
 .segment-controls{margin-top:8px;border-top:1px solid var(--line);font-size:12px;line-height:1.5;font-family:inherit}
@@ -757,6 +782,7 @@
 .preset-description{display:block;font-size:11px;opacity:.75;font-weight:normal}
 @media(hover:hover) and (pointer:fine){.preset-description{visibility:hidden;max-height:0;overflow:hidden}#duoPresetMenu button:hover .preset-description,#duoPresetMenu button:focus .preset-description{visibility:visible;max-height:40px;transition:visibility 0s .4s,max-height 0s .4s}}
 #conferenceRelayParticipants label{display:block}
+
 </style>
 </head>
 <body>
@@ -1132,6 +1158,12 @@
           <span>現在のTTSへの反映</span><b id="prosodyTts">OFF</b>
         </div>
       </details>
+      <!-- マイク感度は「どこから発話とみなすか」なので、読み上げ側ではなく認識側に置く。 -->
+      <div class="field">
+        <label>マイク感度（無音判定のしきい値）</label>
+        <input type="range" id="vad" min="10" max="120" value="35">
+        <small>API音声認識のとき、どのくらいの音量から発話とみなすか。周囲がうるさい場合は右へ。</small>
+      </div>
       </div>
       <small id="xaiSttNote" style="display:none">xAI の音声認識はモデルを選ぶ必要がありません。
       キーは翻訳プロバイダの xAI と共通で、上の欄が空ならそちらのキーを使います。<br>
@@ -1250,6 +1282,27 @@
           <option value="A2B">自分(A)の発言だけ読み上げる</option>
         </select>
       </div>
+      <div class="tts-target-field" id="ttsShortField">
+        <label for="ttsShortMode">相づちの読み上げ</label>
+        <select id="ttsShortMode">
+          <option value="read">全部読む — 従来どおり（既定）</option>
+          <option value="filler">つなぎ語だけ読まない — 「えー」「あのー」「um」など一覧の語のみ</option>
+          <option value="short">一覧＋短い発話も読まない — 中身のある短文も落ちます</option>
+        </select>
+        <details class="settings-help" id="ttsShortHelp"><summary>説明</summary>
+          <p>落とすのは<b>音声だけ</b>です。会話カード・議事録・CSV・診断ログには<b>必ず残ります</b>。カードの<b>▶で再生すれば必ず読みます</b>。</p>
+          <p><b>「つなぎ語だけ読まない」を推奨します。</b>相づちは1回ごとに読み上げの枠を1つ使うので、落とすと後続の発話が早く鳴ります。一覧には<b>単独で意味を持たない語だけ</b>を入れてあります。</p>
+          <p><b>一覧に入れていない語があります。</b>「はい」「いいえ」「うん」「Yes」「No」「yeah」「okay」「なるほど」は<b>質問の答えになりうる</b>ので落としません。落とすと意味が反転することがあり、しかも聞き手には落ちたことが分かりません。落としたい場合は下の一覧に自分で書いてください。</p>
+          <p><b>「一覧＋短い発話も読まない」は文字数で切ります。</b>実測ログの短い発話は「Hm.」「そう。」「あかんな。」「อึ้ย」でした。3文字以下にすると前の2つは落ちますが、<b>「あかんな。」のような中身のある短文も落ちる設定です</b>。ご承知のうえでお使いください。</p>
+          <label for="ttsShortChars">短いと見なす文字数（上の3番目でのみ使用・記号は数えません）</label>
+          <input id="ttsShortChars" type="number" min="1" max="20" step="1">
+          <label for="ttsBackchannelWords">読まない語の一覧（空＝既定・カンマか改行で区切る）</label>
+          <textarea id="ttsBackchannelWords" rows="3" spellcheck="false" placeholder="空のままなら下の既定を使います"></textarea>
+          <small>書くと<b>言語に関係なくこの一覧だけ</b>を使います。空に戻せば既定に戻ります。
+          大小文字・全角半角・カタカナ／ひらがな・句読点・同じ字の連続は同一視します（「Hmmm.」＝「hmm」、「ウーン」＝「うーん」）。<br>
+          既定の一覧 — <span id="ttsBackchannelDefaults"></span></small>
+        </details>
+      </div>
       <div class="field" id="segmentSettings">
         <label for="segmentMode">TTS逐次読み上げ</label>
         <select id="segmentMode"><option value="off">OFF — カード確定後に全文</option><option value="balanced">Balanced — 自然さと待ち時間の均衡</option><option value="fast">Fast — 早い追従を優先</option><option value="adaptive">Adaptive — 会話テンポに自動適応（試験）</option></select>
@@ -1262,14 +1315,14 @@
           <p>安定した部分から翻訳し、発話の区切りで会話カードを確定します。Aivisは句点（。）を基本にまとめ、直近60秒で10回の送信上限に達した場合に待機します。枠が残っていれば前の再生後に次を送信します。同じ声・言語・実際の音声設定の確定部分は最大500文字までまとめます。短文が続いて上限に達すると、Fastでも待ち時間が生じます。途中結果を返さない音声認識では、認識結果の到着後から分割処理します。重なりを避ける設定は再生開始を待ちます。再生中の音声は最後まで読みます。</p>
           <p>Adaptiveは文字の到着速度・観測した無音区間・待ち音声をもとに区切りを調整します。Aivisのみ話速を最大8%補正します（既存設定との合成後は上限2）。手動の詳細値は優先されます。重なりを自動調整する場合は「自動」を選んでください。</p>
         </details>
-        <details><summary>逐次読み上げの詳細設定</summary>
+        <details class="adv"><summary>逐次読み上げの詳細設定</summary>
           <label for="segmentMin">最小文字数（0＝モード既定）</label><input id="segmentMin" type="number" min="0" max="100" step="1">
           <label for="segmentStability">認識の安定待ち ms（0＝既定）</label><input id="segmentStability" type="number" min="0" max="2000" step="50">
           <label for="segmentSilence">無音区間 ms（0＝既定）</label><input id="segmentSilence" type="number" min="0" max="3000" step="50">
           <label for="segmentDebt">待ち音声の注意目安 秒</label><input id="segmentDebt" type="number" min="2" max="60" step="1">
           <small data-fold="off">待ち音声が増えても、認識文字の表示・発話確定・翻訳は継続します。Aivisの送信待ちでは同じ声・言語の確定部分をまとめ、原文・訳文は省略しません。</small>
         </details>
-        <details><summary>逐次読み上げの診断</summary><small id="segmentStatus" aria-live="off" data-fold="off"></small></details>
+        <details class="adv"><summary>逐次読み上げの診断</summary><small id="segmentStatus" aria-live="off" data-fold="off"></small></details>
       </div>
       <div id="ttsRememberField" style="display:none">
         <label class="settings-check switch key-save"><input type="checkbox" id="rememberTts" checked> このブラウザに保存する</label>
@@ -1502,6 +1555,17 @@
         <button class="btn ghost" id="aivisFetch" title="モデル UUID からスタイル一覧を取得" style="align-self:flex-end">🔄 スタイル取得</button>
       </div>
       <small class="keychk" id="aivisStyleMsg"></small>
+      <div class="sublabel">60秒に10回を超えたとき</div>
+      <select id="aivisOverLimit">
+        <option value="send">そのまま送る — 超過分は Aivis 側の設定（クレジット消費）に任せる</option>
+        <option value="browser">ブラウザ内蔵音声で読む — 超過分を課金しない</option>
+        <option value="wait">枠が空くまで待つ — 声は替わらないが読み上げが遅れる</option>
+      </select>
+      <small>Aivis の公表値は「60秒に10回」です。<b>この回数を数えているのはこちら側なので、あくまで予測です。</b>
+      Aivis のダッシュボードで<b>超過分のクレジット消費を許可している場合は「そのまま送る」（既定）にしてください</b>。
+      「ブラウザ内蔵音声で読む」にすると、10回を超えた分は Aivis に送らず内蔵音声で読み上げます（課金は増えませんが声が替わります）。
+      「枠が空くまで待つ」は v1.49.9 以前と同じ動作で、読み上げが数十秒遅れることがあります。<br>
+      なお <b>Aivis が実際に 429 を返して止めてきたとき</b>は、どの設定でも最後はブラウザ内蔵音声で読み上げます（発話を捨てないため）。</small>
       <details class="adv" id="aivisAdv">
         <summary>話し方の調整</summary>
         <label class="sl"><span>話速</span>
@@ -1614,11 +1678,6 @@
       <div class="note" id="vvCredit"></div>
     </div>
 
-    <div class="field">
-      <label>マイク感度（無音判定のしきい値）</label>
-      <input type="range" id="vad" min="10" max="120" value="35">
-      <small>API音声認識のとき、どのくらいの音量から発話とみなすか。周囲がうるさい場合は右へ。</small>
-    </div>
   </div>
 
   <!-- ===== タブ3: 用語集 ===== -->
