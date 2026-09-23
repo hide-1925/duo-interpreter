@@ -455,7 +455,7 @@
   .tts-target-field{display:flex;flex-direction:column;gap:6px}
   .tts-target-field>label{font-size:11.5px;color:var(--dim);font-weight:800;letter-spacing:.05em}
   .field > label{font-size:11.5px;color:var(--dim);font-weight:800;letter-spacing:.05em}
-  .field small{font-size:11px;color:var(--dim);line-height:1.65}
+  .field small{font-size:11.5px;color:var(--dim);line-height:1.65}
   /* 長い説明は既定でたたむ。小さなボタンで開閉する */
   .notetog{
     align-self:flex-start;border:1px solid var(--line);background:transparent;color:var(--dim);
@@ -466,9 +466,11 @@
   .notetog:hover{color:var(--txt);background:#26303f}
   .notetog.warn{color:var(--warn);border-color:var(--warn)}
   .field small.folded,.field .note.folded{display:none}
+  /* 文字サイズはここでは決めない。下の「iOSの自動ズーム防止」で全プラットフォーム
+     16px に揃えている。ここに書くと後勝ちで効かず、死んだ数値が残る。 */
   input[type=text],input[type=password],select,textarea{
     background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:9px;
-    padding:9px 11px;font-size:13.5px;font-family:inherit;width:100%;
+    padding:9px 11px;font-family:inherit;width:100%;
   }
   textarea{resize:vertical;min-height:64px}
   .row{display:flex;gap:8px;align-items:center}
@@ -524,7 +526,7 @@
   .keyrow .btn{flex:0 0 auto}
   .keyrow:has(>.keychk:only-child:empty){display:none}
   .row.wrap{flex-wrap:wrap}
-  .switch{display:flex;align-items:center;gap:9px;font-size:13.5px;cursor:pointer}
+  .switch{display:flex;align-items:center;gap:9px;font-size:11.5px;cursor:pointer}
   .switch input{width:17px;height:17px;accent-color:var(--a);flex:0 0 auto}
   .btn{border:1px solid var(--line);background:var(--panel-2);color:var(--txt);border-radius:9px;padding:9px 12px;font-size:12.5px;font-weight:700;cursor:pointer;flex:1;white-space:nowrap}
   .btn:hover{background:#26303f}
@@ -609,7 +611,8 @@
     top:var(--view-top,0px);bottom:auto;height:var(--view-height,100%)}
   body.viewport-fit #drawer{padding-top:max(0px,calc(env(safe-area-inset-top,0px) - var(--view-top,0px)))}
   .feed{-webkit-overflow-scrolling:touch}
-  /* iOSでは入力欄のフォントが16px未満だと自動ズームするので下限を16pxにする */
+  /* iOSは入力欄のフォントが16px未満だとタップで自動ズームする。プラットフォームを
+     見分けずに全体を16pxにしてある（設定UI設計指針.md §1）。ここが唯一の指定。 */
   input[type=text],input[type=password],select,textarea{font-size:16px}
   #drawer{padding-top:env(safe-area-inset-top);padding-bottom:var(--sab)}
   /* タップ領域をiOSの推奨サイズ（44px以上）に */
@@ -674,9 +677,35 @@
 
 .overlay-action-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
 .overlay-action-row .btn{min-width:0;white-space:normal;padding:10px 6px}
-.settings-help{margin-top:8px;font-size:13px;line-height:1.6;color:var(--dim)}
-.settings-help summary{cursor:pointer}
+/* ---- 設定ドロワーの文字の段（設定UI設計指針.md）--------------------------
+   本文 11.5px ／ 操作 12.5px ／ 入力 13.5px（iOSのみ16px）。見出しと本文は
+   大きさでは分けず、太さ・色・字間で分ける。パネルの #id にフォントサイズを
+   書かない ―― 書くと次のパネルでまた別の値が足され、段が増える。 */
+.settings-help{margin-top:8px;font-size:11.5px;line-height:1.65;color:var(--dim)}
 .settings-help p{margin:8px 0}
+/* たたんだ説明の見出しは、自動でたたむ側（.notetog）と同じピルにする。
+   仕組みが2つあることを利用者に見せない。 */
+.settings-help>summary{
+  display:inline-block;align-self:flex-start;border:1px solid var(--line);
+  background:transparent;color:var(--dim);border-radius:999px;padding:2px 10px;
+  font-size:10.5px;font-weight:700;line-height:1.7;cursor:pointer;white-space:nowrap;
+  list-style:none;-webkit-user-select:none;user-select:none;
+}
+.settings-help>summary::-webkit-details-marker{display:none}
+.settings-help>summary:hover{color:var(--txt);background:#26303f}
+/* JSから注入するパネルは素の <p> と <label> を使う。クラスを付け忘れると
+   ブラウザ既定の16pxで出て、隣の区画（11.5px）と1.4倍の差がつく。
+   実際に「Web会議への音声送出」と「発話交代の判断層」がそうなっていた。 */
+/* チェックボックスの行だけは横並びのまま。ドロワー側に専用の規則があるので、
+   ここで縦積みにすると印と文字が上下に割れる。 */
+details.adv.panel-form label:not(.settings-check){
+  display:flex;flex-direction:column;gap:5px;margin:10px 0 0;
+  font-size:11.5px;color:var(--dim);font-weight:800;letter-spacing:.05em;
+}
+details.adv.panel-form label.settings-check{margin:12px 0 0}
+details.adv.panel-form p{font-size:11.5px;color:var(--dim);line-height:1.65;margin:8px 0}
+details.adv.panel-form hr{border:0;border-top:1px solid var(--line);margin:12px 0}
+details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
 #phase2AudioRoutes select{max-width:100%}
 
 /* Settings checkbox typography matches the original key-save label. */
@@ -702,10 +731,6 @@
 }
 #sttCheckboxGroup{display:flex;flex-direction:column;gap:var(--settings-check-row-gap)}
 #drawer #sttCheckboxGroup>label{margin:0;min-height:22px;line-height:1.35}
-#segmentSettings>details>summary{
-  font-family:inherit;font-size:13px;font-weight:400;line-height:1.6;
-  color:var(--dim);cursor:pointer;
-}
 
 /* Part controls inherit the card font and stay collapsed during ordinary use. */
 .segment-controls{margin-top:8px;border-top:1px solid var(--line);font-size:12px;line-height:1.5;font-family:inherit}
@@ -758,15 +783,6 @@
 @media(hover:hover) and (pointer:fine){.preset-description{visibility:hidden;max-height:0;overflow:hidden}#duoPresetMenu button:hover .preset-description,#duoPresetMenu button:focus .preset-description{visibility:visible;max-height:40px;transition:visibility 0s .4s,max-height 0s .4s}}
 #conferenceRelayParticipants label{display:block}
 
-/* 判断層の説明は量が多い。本文と同じ大きさだと設定欄全体を押し出してしまうので、
-   このパネルの中だけ小さくする。見出しと入力欄は押しやすさのため据え置き。 */
-#turnDecisionSettings{font-size:11.5px}
-#turnDecisionSettings p{font-size:11px;line-height:1.5;margin:6px 0}
-#turnDecisionSettings small{font-size:10.5px;line-height:1.45}
-#turnDecisionSettings label{font-size:11.5px}
-#turnDecisionSettings summary{font-size:13px}
-#turnDecisionSettings select,#turnDecisionSettings input[type=text],
-#turnDecisionSettings input[type=password],#turnDecisionSettings input[type=number]{font-size:12px}
 </style>
 </head>
 <body>
@@ -1299,14 +1315,14 @@
           <p>安定した部分から翻訳し、発話の区切りで会話カードを確定します。Aivisは句点（。）を基本にまとめ、直近60秒で10回の送信上限に達した場合に待機します。枠が残っていれば前の再生後に次を送信します。同じ声・言語・実際の音声設定の確定部分は最大500文字までまとめます。短文が続いて上限に達すると、Fastでも待ち時間が生じます。途中結果を返さない音声認識では、認識結果の到着後から分割処理します。重なりを避ける設定は再生開始を待ちます。再生中の音声は最後まで読みます。</p>
           <p>Adaptiveは文字の到着速度・観測した無音区間・待ち音声をもとに区切りを調整します。Aivisのみ話速を最大8%補正します（既存設定との合成後は上限2）。手動の詳細値は優先されます。重なりを自動調整する場合は「自動」を選んでください。</p>
         </details>
-        <details><summary>逐次読み上げの詳細設定</summary>
+        <details class="adv"><summary>逐次読み上げの詳細設定</summary>
           <label for="segmentMin">最小文字数（0＝モード既定）</label><input id="segmentMin" type="number" min="0" max="100" step="1">
           <label for="segmentStability">認識の安定待ち ms（0＝既定）</label><input id="segmentStability" type="number" min="0" max="2000" step="50">
           <label for="segmentSilence">無音区間 ms（0＝既定）</label><input id="segmentSilence" type="number" min="0" max="3000" step="50">
           <label for="segmentDebt">待ち音声の注意目安 秒</label><input id="segmentDebt" type="number" min="2" max="60" step="1">
           <small data-fold="off">待ち音声が増えても、認識文字の表示・発話確定・翻訳は継続します。Aivisの送信待ちでは同じ声・言語の確定部分をまとめ、原文・訳文は省略しません。</small>
         </details>
-        <details><summary>逐次読み上げの診断</summary><small id="segmentStatus" aria-live="off" data-fold="off"></small></details>
+        <details class="adv"><summary>逐次読み上げの診断</summary><small id="segmentStatus" aria-live="off" data-fold="off"></small></details>
       </div>
       <div id="ttsRememberField" style="display:none">
         <label class="settings-check switch key-save"><input type="checkbox" id="rememberTts" checked> このブラウザに保存する</label>
