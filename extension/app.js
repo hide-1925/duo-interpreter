@@ -473,10 +473,13 @@ function duoSttTiming(e){if(!e)return;var now=Date.now();if(e.srcText&&e.srcText
    既存の永続化経路へ相乗りする。独自のonchangeは書かない。 */
 function turnDecisionInstall(){
   var host=$('p2');if(!host)return;
-  var box=document.createElement('details');box.className='adv';box.id='turnDecisionSettings';
+  /* panel-form は 設定UI設計指針.md §4。素の <p> と <label> を本文11.5pxで出すために要る。 */
+  var box=document.createElement('details');box.className='adv panel-form';box.id='turnDecisionSettings';
   box.innerHTML='<summary>発話交代の判断層（実験）</summary>'
-    +'<p>既定は OFF です。OFF のあいだは境界判定と読み上げ開始が v1.47.1 と同一に動き、'
-    +'外部への送信も判断用の音響計算も行いません。</p>'
+    +'<details class="settings-help"><summary>この機能について</summary>'
+      +'<p>既定は OFF です。OFF のあいだは境界判定と読み上げ開始が v1.47.1 と同一に動き、'
+      +'外部への送信も判断用の音響計算も行いません。</p>'
+    +'</details>'
     +'<label>判断モード <select id="turnDecisionMode">'
       +'<option value="off">off — 使わない（既定）</option>'
       +'<option value="shadow">shadow — 記録するが動作へ反映しない</option>'
@@ -492,20 +495,25 @@ function turnDecisionInstall(){
       +'<option value="assist">assist</option><option value="active">active</option>'
     +'</select></label>'
     +'<p>ドイツ語・イタリア語・中国語は既存ルールの接続表現判定を使い、判断層の対象外です。</p>'
-    +'<hr><p><b>判断の経路</b>　<b>Rules</b>（既定）は既存ルールだけで判定し、外部へ何も送りません。'
+    +'<hr><p><b>判断の経路</b>　Rules（既定）は外部へ何も送りません。Jev を選ぶと会話の内容が外部へ出ます。</p>'
+    +'<details class="settings-help"><summary>経路の選び方と、つなぎ方</summary>'
+      +'<p><b>Rules</b>（既定）は既存ルールだけで判定し、外部へ何も送りません。'
       +'<b>Jev</b> を選ぶと、認識中の原文と、下の「音響特徴を渡す」がONなら話速・ピッチ・間も'
-      +' TypeSafe へ送られます。会話の内容が外部へ出ます。</p>'
-    +'<p><b>ブラウザから直接は繋がりません。</b>api.typesafe.ai は CORS の応答ヘッダを返さないため、'
+      +' TypeSafe へ送られます。</p>'
+      +'<p><b>ブラウザから直接は繋がりません。</b>api.typesafe.ai は CORS の応答ヘッダを返さないため、'
       +'API が正常に動いていてもページ側では結果を読めません（200 も 404 も区別できません）。'
       +'<b>「Jev — アドオン経由」を選び、アドオンのポップアップ下部「判断層（Jev）の接続先」で'
       +'許可してください。</b>中継するのは許可したオリジン1つだけです。</p>'
+    +'</details>'
     +'<label>経路 <select id="turnDecisionProvider"></select></label>'
     +'<label>モデル <input id="turnDecisionModel" type="text" spellcheck="false" placeholder="（経路の既定）"></label>'
     +'<label>APIキー <input id="turnDecisionKey" type="password" spellcheck="false" autocomplete="off" placeholder="（未設定）"></label>'
     +'<p id="turnDecisionKeyNote" class="sublabel"></p>'
     +'<label>Base URL <input id="turnDecisionBaseUrl" type="text" spellcheck="false" placeholder="（経路の既定）"></label>'
-    +'<p>キーは経路ごとに別々に保存します。翻訳用のキーは流用しません。'
+    +'<details class="settings-help"><summary>キーの扱い</summary>'
+      +'<p>キーは経路ごとに別々に保存します。翻訳用のキーは流用しません。'
       +'設定の書き出しにも埋込みHTMLにも含まれません。</p>'
+    +'</details>'
     +'<label class="settings-check switch"><input type="checkbox" id="turnDecisionProsody"> 音響特徴を渡す（ピッチ・エネルギー・間）</label>'
     +'<label>送る直近ターン数 <input id="turnDecisionContextTurns" type="number" min="0" max="6" step="1"></label>'
     +'<label>読み上げ開始の待ち上限 ms <input id="turnFloorMaxWaitMs" type="number" min="500" max="10000" step="100"></label>'
@@ -517,12 +525,16 @@ function turnDecisionInstall(){
       +'<option value="off">off（既定）</option><option value="record">record — 記録する</option>'
     +'</select></label>'
     +'<label class="settings-check switch"><input type="checkbox" id="turnDecisionRawLog"> 認識した原文も記録する</label>'
-    +'<p>原文の記録は replayer の再現検査に必要ですが、会議の発言が端末内の trace に残ります。'
-    +'外部へは送られません。保管と削除の扱いを決めてから有効にしてください。</p>'
-    +'<button type="button" id="turnTraceExport">trace を書き出す</button> '
-    +'<button type="button" id="turnTraceClear">trace を破棄する</button> '
-    +'<button type="button" id="turnDecisionKeyClear">この経路のキーを消す</button> '
-    +'<button type="button" id="turnDecisionProbe">この経路へ疎通を試す</button>'
+    +'<details class="settings-help"><summary>原文を記録するときの注意</summary>'
+      +'<p>原文の記録は replayer の再現検査に必要ですが、会議の発言が端末内の trace に残ります。'
+      +'外部へは送られません。保管と削除の扱いを決めてから有効にしてください。</p>'
+    +'</details>'
+    +'<div class="row wrap">'
+    +'<button type="button" class="btn ghost" id="turnTraceExport">trace を書き出す</button>'
+    +'<button type="button" class="btn ghost" id="turnTraceClear">trace を破棄する</button>'
+    +'<button type="button" class="btn ghost" id="turnDecisionKeyClear">この経路のキーを消す</button>'
+    +'<button type="button" class="btn ghost" id="turnDecisionProbe">この経路へ疎通を試す</button>'
+    +'</div>'
     +'<small id="turnDecisionStatus" aria-live="off" data-fold="off"></small>';
   host.appendChild(box);
 
@@ -651,8 +663,9 @@ function turnDecisionStatus(){
 function duoNextInstall(){
   var descriptions=['対面会議','ブラウザから音声取り込み','Web会議（複数話者）','ショップツアーやプレゼン時'];
   Array.from($('duoPresetMenu').children).forEach(function(b,i){var desc=document.createElement('small');desc.className='preset-description';desc.textContent=descriptions[i];b.appendChild(desc);b.setAttribute('aria-description',descriptions[i]);});
-  var box=document.createElement('details');box.className='adv';box.id='conferenceSettings';
-  box.innerHTML='<summary>Web会議への音声送出</summary><p id="conferenceConnection"></p><label>現在のモード <select id="conferenceMode"><option value="tts-only">on — TTS音声のみ</option><option value="original-plus-tts">mix — TTS音声 + オリジナル音声</option><option value="original-only">off — TTS OFF・オリジナル音声のみ</option></select></label><div id="conferenceMixLevels" hidden><label>オリジナル音声 <input id="conferenceMicGain" type="range" min="0" max="100" value="70"><output>70%</output></label><label>TTS音声 <input id="conferenceTtsGain" type="range" min="0" max="100" value="100"><output>100%</output></label></div><label>会議へ流す翻訳音声 <select id="conferenceRelay"><option value="local">自分の発言のみ（推奨）</option><option value="selected">選択した他の参加者も含む</option></select></label><p>他の参加者の翻訳音声を会議へ戻す場合、同じ会議では原則1台のDuoのみを中継役にしてください。</p><div id="conferenceRelayParticipants"></div>';
+  /* panel-form は 設定UI設計指針.md §4。 */
+  var box=document.createElement('details');box.className='adv panel-form';box.id='conferenceSettings';
+  box.innerHTML='<summary>Web会議への音声送出</summary><p id="conferenceConnection"></p><label>現在のモード <select id="conferenceMode"><option value="tts-only">on — TTS音声のみ</option><option value="original-plus-tts">mix — TTS音声 + オリジナル音声</option><option value="original-only">off — TTS OFF・オリジナル音声のみ</option></select></label><div id="conferenceMixLevels" hidden><label>オリジナル音声 <input id="conferenceMicGain" type="range" min="0" max="100" value="70"><output>70%</output></label><label>TTS音声 <input id="conferenceTtsGain" type="range" min="0" max="100" value="100"><output>100%</output></label></div><label>会議へ流す翻訳音声 <select id="conferenceRelay"><option value="local">自分の発言のみ（推奨）</option><option value="selected">選択した他の参加者も含む</option></select></label><details class="settings-help"><summary>中継するときの注意</summary><p>他の参加者の翻訳音声を会議へ戻す場合、同じ会議では原則1台のDuoのみを中継役にしてください。</p></details><div id="conferenceRelayParticipants"></div>';
   /* 読み上げ（TTS）のすぐ下へ置く。会議へ送るのは読み上げた音声なので、
      読み上げの設定から離すと、どちらを触ればよいのか分からなくなる。
      マイク感度を音声認識側へ移したので、p2 の末尾＝TTS区画の直後になる。 */
@@ -665,8 +678,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.13';
-var APP_BUILD = '20260923-v14913-settings-layout';
+var APP_VERSION = 'v1.49.14';
+var APP_BUILD = '20260923-v14914-settings-type-scale';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';

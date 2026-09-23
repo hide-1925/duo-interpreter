@@ -126,10 +126,18 @@
     "v1.49.13": {
       "build": "20260923-v14913-settings-layout",
       "extension": "1.4.24",
-      "commit": null,
+      "commit": "92fd24b",
       "indexHtmlSha256": "73d027cf1cfcd01b0137cbbcbb99d72937d58ea041fd26771e3054a78de4e276",
       "extensionAppJsSha256": "e5de0a13ef1c91f76001bdf2394f9ebde784b282e83146552d1770844eecc535",
       "summary": "設定欄とポップアップの並び替え。あわせてextension/app.htmlの版ずれを修正（v1.49.11のAivis超過設定とv1.49.12の相づち設定が拡張のページに入っていなかった）。再発防止の検査を追加"
+    },
+    "v1.49.14": {
+      "build": "20260923-v14914-settings-type-scale",
+      "extension": "1.4.25",
+      "commit": null,
+      "indexHtmlSha256": "e3294e8a53a7b24a19353eeb63ac6972b93dc1c425cc31cd64568af6dc56dd99",
+      "extensionAppJsSha256": "17d26a1fbc9b13033a4cfcbabd80bed8229be0396c8da235bf82e7e9c8a23314",
+      "summary": "設定UIの文字の段を3つ（本文11.5・操作12.5・入力16）に揃え、設定UI設計指針.mdと検査で縛った。JSから注入するパネルがクラス不足でブラウザ既定の16pxになっていたのが不揃いの原因。長い説明は押して開く形にした"
     }
   }
 }
