@@ -13,7 +13,7 @@ const HTML=fs.readFileSync(path.join(__dirname,'../../index.html'));
 const CONTROLS=['turnDecisionMode','turnDecisionLangEn','turnDecisionLangJa','turnDecisionProsody',
   'turnDecisionContextTurns','turnFloorMaxWaitMs','turnFloorExpiry','turnTraceMode','turnDecisionRawLog',
   'turnDecisionProvider','turnDecisionModel','turnDecisionKey','turnDecisionBaseUrl',
-  'turnDecisionKeyNote','turnDecisionKeyClear'];
+  'turnDecisionKeyNote','turnDecisionKeyState','turnDecisionKeyClear'];
 
 (async()=>{
   const server=http.createServer((q,r)=>{r.setHeader('content-type','text/html; charset=utf-8');r.end(HTML);});
