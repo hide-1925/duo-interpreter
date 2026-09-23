@@ -118,10 +118,18 @@
     "v1.49.12": {
       "build": "20260923-v14912-backchannel-skip",
       "extension": "1.4.23",
-      "commit": null,
+      "commit": "7394f18",
       "indexHtmlSha256": "31df4a1fc9257cabd4bcef65e5731a0bebb8d5256214467c980bf34684dfc919",
       "extensionAppJsSha256": "a5e378dfdb1eba938677c299144a8f1182ce260796be12c6444ce2f77073a192",
       "summary": "相づちを読み上げない設定（既定OFF）。B-8bの三択のうち①読まないと③そのまま読むのハイブリッドで、語の一覧で切る。文字数だけでは実測4件のうち1件しか正しく判定できない。答えになりうる語は既定の一覧に入れない"
+    },
+    "v1.49.13": {
+      "build": "20260923-v14913-settings-layout",
+      "extension": "1.4.24",
+      "commit": null,
+      "indexHtmlSha256": "73d027cf1cfcd01b0137cbbcbb99d72937d58ea041fd26771e3054a78de4e276",
+      "extensionAppJsSha256": "e5de0a13ef1c91f76001bdf2394f9ebde784b282e83146552d1770844eecc535",
+      "summary": "設定欄とポップアップの並び替え。あわせてextension/app.htmlの版ずれを修正（v1.49.11のAivis超過設定とv1.49.12の相づち設定が拡張のページに入っていなかった）。再発防止の検査を追加"
     }
   }
 }

@@ -432,6 +432,9 @@ function duoConferenceAudioUI(){
   if(b){if(!badge){badge=document.createElement('span');badge.className='conference-badge';b.appendChild(badge);}badge.hidden=!active;badge.textContent=conferenceModeLabel(st.mode);b.disabled=!!st.pending;
     if(active){b.style.display='';b.classList.toggle('muted',st.mode==='original-only');b.querySelector('.ic').textContent=st.mode==='original-only'?'🔇':'🔊';b.title=['TTS音声のみ\nクリック：TTS音声 + オリジナル音声','TTS音声 + オリジナル音声\nクリック：TTSをOFFにしてオリジナル音声のみ','TTS OFF・オリジナル音声のみ\nクリック：TTS音声のみに戻る'][CONFERENCE_MODES.indexOf(st.mode)];}}
   var select=$('conferenceMode');if(select){select.value=st.mode;select.disabled=!active||st.pending;$('conferenceMixLevels').hidden=st.mode!=='original-plus-tts';$('conferenceConnection').textContent=active?'':'Web会議マイク音声を接続すると変更できます。';}
+  /* 出力先の一覧にも同じ状態を映す。アドオンのボタンだけで切り替えても、
+     設定画面の「読み上げの出力先デバイス」が古いままにならないようにする。 */
+  if(typeof renderOutDevs==='function'&&$('outDevLocal'))renderOutDevs();
 }
 function duoStopAutomatic(){
   // Manual playback has its own queue intent; never stop it for mode changes.
@@ -489,8 +492,13 @@ function turnDecisionInstall(){
       +'<option value="assist">assist</option><option value="active">active</option>'
     +'</select></label>'
     +'<p>ドイツ語・イタリア語・中国語は既存ルールの接続表現判定を使い、判断層の対象外です。</p>'
-    +'<hr><p><b>判断の経路</b>　rules と local は外部へ何も送りません。'
-      +'それ以外を選ぶと、認識中の原文と音響特徴が選んだ事業者へ送られます。</p>'
+    +'<hr><p><b>判断の経路</b>　<b>Rules</b>（既定）は既存ルールだけで判定し、外部へ何も送りません。'
+      +'<b>Jev</b> を選ぶと、認識中の原文と、下の「音響特徴を渡す」がONなら話速・ピッチ・間も'
+      +' TypeSafe へ送られます。会話の内容が外部へ出ます。</p>'
+    +'<p><b>ブラウザから直接は繋がりません。</b>api.typesafe.ai は CORS の応答ヘッダを返さないため、'
+      +'API が正常に動いていてもページ側では結果を読めません（200 も 404 も区別できません）。'
+      +'<b>「Jev — アドオン経由」を選び、アドオンのポップアップ下部「判断層（Jev）の接続先」で'
+      +'許可してください。</b>中継するのは許可したオリジン1つだけです。</p>'
     +'<label>経路 <select id="turnDecisionProvider"></select></label>'
     +'<label>モデル <input id="turnDecisionModel" type="text" spellcheck="false" placeholder="（経路の既定）"></label>'
     +'<label>APIキー <input id="turnDecisionKey" type="password" spellcheck="false" autocomplete="off" placeholder="（未設定）"></label>'
@@ -645,7 +653,10 @@ function duoNextInstall(){
   Array.from($('duoPresetMenu').children).forEach(function(b,i){var desc=document.createElement('small');desc.className='preset-description';desc.textContent=descriptions[i];b.appendChild(desc);b.setAttribute('aria-description',descriptions[i]);});
   var box=document.createElement('details');box.className='adv';box.id='conferenceSettings';
   box.innerHTML='<summary>Web会議への音声送出</summary><p id="conferenceConnection"></p><label>現在のモード <select id="conferenceMode"><option value="tts-only">on — TTS音声のみ</option><option value="original-plus-tts">mix — TTS音声 + オリジナル音声</option><option value="original-only">off — TTS OFF・オリジナル音声のみ</option></select></label><div id="conferenceMixLevels" hidden><label>オリジナル音声 <input id="conferenceMicGain" type="range" min="0" max="100" value="70"><output>70%</output></label><label>TTS音声 <input id="conferenceTtsGain" type="range" min="0" max="100" value="100"><output>100%</output></label></div><label>会議へ流す翻訳音声 <select id="conferenceRelay"><option value="local">自分の発言のみ（推奨）</option><option value="selected">選択した他の参加者も含む</option></select></label><p>他の参加者の翻訳音声を会議へ戻す場合、同じ会議では原則1台のDuoのみを中継役にしてください。</p><div id="conferenceRelayParticipants"></div>';
-  $('p2').prepend(box);$('conferenceMode').onchange=function(){duoSetConferenceMode(this.value,'drawer');};
+  /* 読み上げ（TTS）のすぐ下へ置く。会議へ送るのは読み上げた音声なので、
+     読み上げの設定から離すと、どちらを触ればよいのか分からなくなる。
+     マイク感度を音声認識側へ移したので、p2 の末尾＝TTS区画の直後になる。 */
+  $('p2').appendChild(box);$('conferenceMode').onchange=function(){duoSetConferenceMode(this.value,'drawer');};
   [['conferenceMicGain','micGain'],['conferenceTtsGain','ttsGain']].forEach(function(pair){$(pair[0]).oninput=function(){conferenceAudioState[pair[1]]=Number(this.value)/100;this.nextElementSibling.textContent=this.value+'%';if(duoConferenceApplicable())duoConferenceSend({kind:'gain',token:duoConferenceToken,micGain:conferenceAudioState.micGain,ttsGain:conferenceAudioState.ttsGain});dlog('conference','conference-mix-gain',{micGain:conferenceAudioState.micGain,ttsGain:conferenceAudioState.ttsGain,at:Date.now()});};});
   $('conferenceRelay').onchange=function(){conferenceAudioState.relay=this.value==='selected';duoRelayList();};
   var oldClick=$('ttsToggle').onclick;$('ttsToggle').onclick=function(){if(duoConferenceApplicable()){duoSetConferenceMode(CONFERENCE_MODES[(CONFERENCE_MODES.indexOf(conferenceAudioState.mode)+1)%3],'speaker-button');return;}oldClick.call(this);};
@@ -654,8 +665,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.12';
-var APP_BUILD = '20260923-v14912-backchannel-skip';
+var APP_VERSION = 'v1.49.13';
+var APP_BUILD = '20260923-v14913-settings-layout';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -4604,6 +4615,11 @@ function virtualRouteFamily(label){
   if (/virtual/.test(s)) return s.replace(/\b(input|output|speaker|microphone|mic)\b/g,'').trim();
   return '';
 }
+/* 出力先の一覧に混ぜる、デバイスではない行き先。保存はしない。 */
+var OUT_CONFERENCE='__conference__';
+function conferenceOutputActive(){
+  return duoConferenceApplicable()&&conferenceAudioState.mode!=='original-only';
+}
 function sinkForSeat(seat){
   var remote=(seat||'A')==='A';
   return {id:remote?(CFG.outDevRemote||''):(CFG.outDevLocal||''),
@@ -4643,7 +4659,11 @@ function outNoteText(){
   var hasCable = outDevs.some(function(d){ return isVirtualDev(d.label); });
   var t = '<b>自分向け</b>はBの発言の翻訳をヘッドホン／スピーカーへ、'
         + '<b>相手向け</b>はAの発言の翻訳を会議用仮想ケーブルへ送ります。'
-        + 'ブラウザ内蔵音声は仕様上、出力先を分けられません。';
+        + 'ブラウザ内蔵音声は仕様上、出力先を分けられません。'
+        + '<br><b>🎧 Web会議マイク音声（アドオン）</b>は仮想ケーブルの代わりになります。'
+        + 'アドオンの「Web会議マイク音声」で会議タブに接続すると選べます。'
+        + '<b>会議へのトラックは1本</b>なので、これは自分向け・相手向けで共通の入り切りです'
+        + '（アドオンのボタンと同じ状態を指します）。選んでもデバイス指定は消えず、会議を切ると戻ります。';
   if (!labeled && outDevs.length){
     t += '<br>デバイス名が出ていません。一度「● 開始」でマイクを許可してから 🔄 更新 を押してください。';
     return t;
@@ -4683,6 +4703,14 @@ function renderOneOutDev(id, cfgId, cfgLabel, storeId, storeLabel, seat, buttonI
   }
   sel.removeAttribute('aria-label');
   var o0=document.createElement('option');o0.value='';o0.textContent='既定のスピーカー';sel.appendChild(o0);
+  /* Web会議マイク音声。物理デバイスではなく、アドオンが張った会議への送出そのもの。
+     A席・B席で別々には持てない（会議へのトラックは1本）ので、両方の欄が同じ状態を映す。
+     選んだ値は保存しない。会議が切れたら、もとのデバイス指定へ戻す。 */
+  var oc=document.createElement('option');oc.value=OUT_CONFERENCE;
+  oc.textContent='🎧 Web会議マイク音声（アドオン）';
+  oc.disabled=!duoConferenceApplicable();
+  if(oc.disabled)oc.textContent+='（未接続）';
+  sel.appendChild(oc);
   outDevs.forEach(function(d,i){var o=document.createElement('option');o.value=d.deviceId;
     var lbl=d.label||('出力デバイス '+(i+1)+'（名称は未取得）');o.textContent=(isVirtualDev(d.label)?'🎚 ':'')+lbl;sel.appendChild(o);});
   var value=CFG[cfgId]||'';
@@ -4691,7 +4719,8 @@ function renderOneOutDev(id, cfgId, cfgLabel, storeId, storeLabel, seat, buttonI
     if(byLabel){value=byLabel.deviceId;CFG[cfgId]=value;store.set(storeId,value);}
     else if(outDevs.length)value='';
   }
-  sel.value=value;
+  /* 会議へ送出中は、保存してあるデバイスではなく会議を映す。 */
+  sel.value=conferenceOutputActive()?OUT_CONFERENCE:value;
 }
 function renderOutDevs(){
   renderOneOutDev('outDevLocal','outDevLocal','outDevLocalLbl','di.outdev.local','di.outdevl.local','B','outChooseLocal');
@@ -11008,6 +11037,17 @@ $('elVoiceId').onchange=function(){ elSetManualVoice('A', this.value); };
 $('elVoiceIdB').onchange=function(){ elSetManualVoice('B', this.value); };
 function bindOutDev(id,seat,cfgId,cfgLbl,keyId,keyLbl){
   $(id).onchange=function(){var sel=this,value=sel.value,dev=outDevs.filter(function(d){return d.deviceId===value;})[0];
+    /* 会議への送出は保存しない。ここは「いま会議へ流すかどうか」の入り切りで、
+       アドオンの「Web会議マイク音声」ボタンと同じ1つの状態を指す。 */
+    if(value===OUT_CONFERENCE){
+      if(!duoConferenceApplicable()){
+        toast('先にアドオンの「Web会議マイク音声」で会議に接続してください。');renderOutDevs();return;
+      }
+      if(conferenceAudioState.mode==='original-only')duoSetConferenceMode('tts-only','output-device');
+      renderOutDevs();return;
+    }
+    /* 会議へ流している最中にデバイスを選び直したら、送出をやめる合図として扱う。 */
+    if(conferenceOutputActive())duoSetConferenceMode('original-only','output-device');
     CFG[cfgId]=value;CFG[cfgLbl]=value?((dev&&dev.label)||sel.options[sel.selectedIndex].textContent||''):'';
     store.set(keyId,CFG[cfgId]);store.set(keyLbl,CFG[cfgLbl]);renderAudioRouteWarning();applySink(seat,true).then(refreshVvUI);};
 }
@@ -11997,8 +12037,12 @@ var TurnProviders={
   },
   /* UI と診断はこの一覧から作る。経路を足したら選択肢にも自動で出る。 */
   list:function(){
-    var out=[{id:'rules',label:'Rules — 既存ルールのみ（外部送信なし）',vendor:'',verified:true,local:true},
-      {id:'local',label:'Local — 端末内の学習済み重み（外部送信なし）',vendor:'',verified:true,local:true}],k;
+    var out=[{id:'rules',label:'Rules — 既存ルールのみ（外部送信なし）',vendor:'',verified:true,local:true}],k;
+    /* Local は学習済みの重みを入れて初めて動く。重みを入れる画面がまだ無いのに
+       選択肢だけ出ていると、選んでも Rules のまま動く「効かない設定」になる。
+       重みがあるときだけ出す。 */
+    if(this.local.weights('ja')||this.local.weights('en'))
+      out.push({id:'local',label:'Local — 端末内の学習済み重み（外部送信なし）',vendor:'',verified:true,local:true});
     for(k in this.ROUTES)if(Object.prototype.hasOwnProperty.call(this.ROUTES,k))
       out.push({id:k,label:this.ROUTES[k].label,vendor:this.ROUTES[k].vendor,
         verified:!!this.ROUTES[k].verified,local:false,keyHint:this.ROUTES[k].keyHint,
