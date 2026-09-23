@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.23",
-  "version_name": "1.4.23 HTML v1.49.12 と対。相づちを読まない設定（既定OFF）",
+  "version": "1.4.25",
+  "version_name": "1.4.25 HTML v1.49.14 と対。設定UIの文字の段をそろえる",
   "optional_host_permissions": [
     "https://*/*"
   ],
