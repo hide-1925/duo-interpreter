@@ -18,7 +18,7 @@
 #duo-caption-surface .duo-entry[data-seat="A"]{border-left-color:#3ddc97!important}
 #duo-caption-surface .duo-entry[data-seat="B"]{border-left-color:#dd88a4!important}
 #duo-caption-surface .duo-main{all:initial!important;display:block!important;color:var(--duo-main,#fff)!important;font:700 var(--duo-font,26px)/var(--duo-line,1.35) -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif!important;text-shadow:var(--duo-outline,0 2px 5px rgba(0,0,0,.95))!important;opacity:var(--duo-text-opacity,.92)!important;white-space:pre-wrap!important}
-#duo-caption-surface .duo-sub{all:initial!important;display:block!important;margin-top:4px!important;color:var(--duo-sub,#d6deea)!important;font:500 calc(var(--duo-font,26px)*.58)/1.32 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif!important;opacity:.9!important;white-space:pre-wrap!important}
+#duo-caption-surface .duo-sub{all:initial!important;display:block!important;margin-top:4px!important;color:var(--duo-sub,#d6deea)!important;font:500 calc(var(--duo-font,26px)*var(--duo-sub-ratio,.6))/1.32 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif!important;opacity:.9!important;white-space:pre-wrap!important}
 #duo-caption-surface .duo-entry.duo-interim{opacity:.68!important}
 #duo-caption-surface .duo-resize{all:initial!important;position:absolute!important;width:18px!important;height:18px!important;box-sizing:border-box!important;touch-action:none!important;pointer-events:auto!important;opacity:.35!important}
 #duo-caption-surface:hover .duo-resize{opacity:1!important}

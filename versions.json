@@ -158,10 +158,18 @@
     "v1.49.17": {
       "build": "20260924-v14917-stability-range",
       "extension": "1.4.28",
-      "commit": null,
+      "commit": "a9074d3",
       "indexHtmlSha256": "519a794c6205799b1aac2f5bf595c8febf219466a8e9b5422248a384711f1c55",
       "extensionAppJsSha256": "fffd6660207dcfad5c1dcc0a79821899048e24f4dfd671526adfa6e1e106af06",
       "summary": "認識の安定待ちを10ms刻み・実効100〜2000msへ。下限はコード側で200msに丸められており、100と入力しても画面は100のまま200で動いていた。入力欄とコードの丸めの一致を検査で縛った"
+    },
+    "v1.49.18": {
+      "build": "20260924-v14918-src-font-ratio",
+      "extension": "1.4.29",
+      "commit": null,
+      "indexHtmlSha256": "539aba256fd40a1285edc9ab7a0e1b71f3b9debd5d7a36c8cc61ac952e45ac94",
+      "extensionAppJsSha256": "da0fcb3456a9b21c8589193d283c386b8ba931fac84eb3cdad0628431241e635",
+      "summary": "原文（併記）の大きさを訳文比の％で1か所に集約し、会話バブル50%／タブ内字幕58%／別ウィンドウ字幕65%の直書きを既定60%の1つの設定へ統一した。あわせて Jev 経路の既定 model を alias から固定version（jev-1.13.0）に変え、alias のまま assist／active にしている状態を状態行に出す。行動ログの保持を800→3000件にし、audio-start も上限を守る経路で記録する（読み上げが始まらなかった原因の audio-cancel が窓の外に落ちていた）"
     }
   }
 }

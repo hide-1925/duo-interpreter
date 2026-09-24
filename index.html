@@ -112,7 +112,7 @@
   .bubble.from-A .who{color:var(--a)}
   .bubble.from-B .who{color:var(--b)}
   .bubble .main{font-size:var(--fs);line-height:1.35;font-weight:600;word-break:break-word}
-  .bubble .sub{font-size:calc(var(--fs)*.5);line-height:1.45;color:var(--dim);margin-top:5px;word-break:break-word}
+  .bubble .sub{font-size:calc(var(--fs)*var(--src-ratio,.6));line-height:1.45;color:var(--dim);margin-top:5px;word-break:break-word}
   .bubble.pending .main{opacity:.4;font-style:italic}
   .bubble.interim{opacity:1;border-left-style:dashed}
   .live-rec{font-size:11px;color:var(--dim);margin-left:8px;white-space:normal}
@@ -1718,8 +1718,9 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
     <div class="field">
       <label>表示</label>
       <div class="row"><span style="font-size:11.5px;color:var(--dim);width:72px">文字サイズ</span><input type="range" id="fsize" min="16" max="72" value="30"></div>
+      <div class="row"><span style="font-size:11.5px;color:var(--dim);width:72px">原文サイズ</span><input type="range" id="srcRatio" min="40" max="100" step="5" value="60"><span id="srcRatioNow" style="font-size:11.5px;color:var(--dim);width:36px">60%</span></div>
       <label class="settings-check switch"><input type="checkbox" id="flipTop"> 相手（B）側のパネルを180°回転 — 対面で端末を挟むとき</label>
-      <label class="settings-check switch"><input type="checkbox" id="showSrc" checked> 原文も小さく併記する</label>
+      <label class="settings-check switch"><input type="checkbox" id="showSrc" checked> 原文も併記する（大きさは上の「原文サイズ」）</label>
       <label class="settings-check switch"><input type="checkbox" id="swapSides"> AとBの表示位置を入れ替える</label>
       <label class="settings-check switch"><input type="checkbox" id="interimOn" checked> 認識途中の文字も表示する</label>
       <label class="settings-check switch"><input type="checkbox" id="syncScroll" checked> A/B会話ログのスクロールを連動</label>
@@ -2407,8 +2408,8 @@ function turnDecisionInstall(){
     /* 公式が「英語が主な学習言語で精度も最良。CJK を含む他言語は扱えるが同等では
        ない」と明記している。日英の通訳が主用途なので、ここは黙っていられない。 */
     note.textContent=(r.keyHint||'APIキー')+'。'+(r.contextNote?r.contextNote+'。':'')
-      +(r.vendor==='typesafe'?'active では alias（jev-latest／jev-preview）を拒否します。'
-        +'固定versionを入れてください（例 jev-1.13.0）。日本語は公式が「英語と同等では'
+      +(r.vendor==='typesafe'?'assist／active では alias（jev-latest／jev-preview）を拒否します。'
+        +'既定は jev-1.13.0 です。日本語は公式が「英語と同等では'
         +'ない」と明記しているので、日本語側は必ず shadow で確かめてください。':'');
     help.hidden=false;
   }
@@ -2488,7 +2489,28 @@ function turnDecisionStatus(){
     +'/解析失敗'+(st.parseFailed||0)+'/到達不能'+(st.unreachable||0)+'/適用'+(st.applied||0));
   parts.push('確定 rules '+(SEG.committedBySource.rules||0)+' / provider '+(SEG.committedBySource.provider||0));
   parts.push('確定後訂正 rules '+(SEG.correctedBySource.rules||0)+' / provider '+(SEG.correctedBySource.provider||0));
+  var warn=turnDecisionModelWarning();
+  if(warn)parts.push('⚠ '+warn);
   el.textContent=parts.join(' ／ ');
+}
+/* 経路の既定を含めた「実際に送る model」。 */
+function turnDecisionEffectiveModel(){
+  var id=String(CFG.turnDecisionProvider||'rules'),list=TurnProviders.list(),i,r=null;
+  for(i=0;i<list.length;i++)if(list[i].id===id)r=list[i];
+  return String(CFG.turnDecisionModel||'')||(r&&r.defaultModel)||'';
+}
+/* alias のまま assist／active にすると httpProvider がその場で全部拒否する。
+   v1.49.17 の実測では「送信13／応答0／適用0」で Rules が全部を運んでいたのに、
+   その理由は診断ログの中だけにあった。1秒ごとに目に入る場所へ出す。 */
+function turnDecisionModelWarning(){
+  var m=turnDecisionEffectiveModel();
+  if(!m||!/latest|preview/i.test(m))return '';
+  var langs=[];
+  if(TurnDecision.applies('en'))langs.push('英語');
+  if(TurnDecision.applies('ja'))langs.push('日本語');
+  if(!langs.length)return '';
+  return langs.join('・')+'が '+TurnDecision.modeFor(langs[0]==='英語'?'en':'ja')
+    +' ですが model が '+m+'（alias）なので送信は毎回拒否されます。jev-1.13.0 のように固定versionを入れてください。';
 }
 function duoNextInstall(){
   var descriptions=['対面会議','ブラウザから音声取り込み','Web会議（複数話者）','ショップツアーやプレゼン時'];
@@ -2508,8 +2530,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.17';
-var APP_BUILD = '20260924-v14917-stability-range';
+var APP_VERSION = 'v1.49.18';
+var APP_BUILD = '20260924-v14918-src-font-ratio';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -2774,6 +2796,10 @@ var CONFIG_SCHEMA = [
   { prop:"nameA", key:'di.na', embed:'nameA', def:'', portable:true, el:"nameA" },
   { prop:"nameB", key:'di.nb', embed:'nameB', def:'', portable:true, el:"nameB" },
   { prop:"fsize", key:'di.fs', embed:'fsize', def:function(){ return window.innerWidth <= 480 ? '22' : '30'; }, portable:true, el:"fsize", bind:'custom' },
+  /* 原文（併記されるほう）の大きさを訳文比の％で持つ。以前は .bubble .sub が50%、
+     タブ内字幕が58%、別ウィンドウ字幕が65%と面ごとに違う値を直書きしていた。
+     3面ともこの1つの数字を見る。 */
+  { prop:"srcRatio", key:'di.srcratio', embed:'srcRatio', def:'60', coerce:function(raw){ var n=parseInt(raw,10); return isFinite(n) ? String(Math.max(40,Math.min(100,Math.round(n/5)*5))) : '60'; }, portable:true, el:"srcRatio", bind:'custom' },
   { prop:"flipTop", key:'di.flip', embed:'flipTop', def:'0', type:'bool', portable:true, el:"flipTop" },
   { prop:"showSrc", key:'di.src', embed:'showSrc', def:'1', type:'bool', portable:true, el:"showSrc" },
   { prop:"swap", key:'di.swap', embed:'swap', def:'0', type:'bool', portable:true, el:"swapSides" },
@@ -4421,7 +4447,7 @@ async function openCaptionPip(){
       header strong{margin-right:3px;white-space:nowrap;font-size:12px;line-height:1}button,select{font:inherit;line-height:1;height:22px;min-width:0;background:#263952;color:#fff;border:1px solid #60738d;border-radius:4px;padding:0 4px;cursor:pointer}button:disabled{opacity:.4;cursor:default}button:focus-visible,select:focus-visible,main:focus-visible{outline:2px solid #8acbff;outline-offset:-2px}
       label{display:flex;align-items:center;gap:3px;font-size:12px;line-height:1;white-space:nowrap}label input{margin:0;width:13px;height:13px}#pipFont{font-size:12px;font-variant-numeric:tabular-nums}#pipFeed{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px;scrollbar-gutter:stable;overflow-anchor:none}
       article{width:100%;margin:0 0 10px;padding:10px;background:var(--caption-bg);border-left:3px solid var(--seat);border-radius:9px;overflow-wrap:anywhere;line-height:var(--caption-line)}article.square{border-radius:0}article.interim{border-left-style:dashed}article.shadow .main,article.shadow .sub{text-shadow:0 2px 4px #000,0 0 2px #000}article.outline .main,article.outline .sub{-webkit-text-stroke:.45px #000}
-      .meta{font-size:11px;opacity:.7;margin-bottom:4px}.main{font-size:var(--caption-font);white-space:pre-wrap;opacity:var(--text-alpha)}.sub{font-size:calc(var(--caption-font)*.65);white-space:pre-wrap;margin-top:6px;opacity:var(--text-alpha)}.empty{color:#b8c7da;padding:18px 6px;font-size:14px}footer{flex:none;padding:5px 10px;font-size:11px;color:#b8c7da;background:#1c293b}
+      .meta{font-size:11px;opacity:.7;margin-bottom:4px}.main{font-size:var(--caption-font);white-space:pre-wrap;opacity:var(--text-alpha)}.sub{font-size:calc(var(--caption-font)*var(--src-ratio,.6));white-space:pre-wrap;margin-top:6px;opacity:var(--text-alpha)}.empty{color:#b8c7da;padding:18px 6px;font-size:14px}footer{flex:none;padding:5px 10px;font-size:11px;color:#b8c7da;background:#1c293b}
     `;
     style.textContent+=SEG_PLAYBACK_CSS;doc.head.appendChild(style);
     var header=doc.createElement('header'),title=doc.createElement('strong');title.textContent='Duo 字幕';header.appendChild(title);
@@ -4498,6 +4524,7 @@ function renderCaptionPip(){
   if(!rows.length&&!empty){empty=doc.createElement('div');empty.id='pipEmpty';empty.className='empty';empty.textContent='字幕はここに表示されます。Duo本体で音声認識を開始してください。';feed.appendChild(empty);}
   var style=doc.body.style;
   style.setProperty('--caption-font',overlayNum(CFG.ovCapFont,26,12,64)+'px');
+  style.setProperty('--src-ratio',String(srcRatioNum()/100));
   style.setProperty('--caption-line',overlayNum(CFG.ovCapLine,1.35,1,2));
   style.setProperty('--caption-bg',overlayHexRgba(CFG.ovCapBg,overlayNum(CFG.ovCapBgOpacity,35,0,100)/100));
   style.setProperty('--text-alpha',overlayNum(CFG.ovCapTextOpacity,92,20,100)/100);
@@ -4991,7 +5018,10 @@ function verifyLvv(){
    文字列化・整形・書き出しはダウンロードを押したときにまとめて行う。
    音声レベル監視のような高頻度ループ（60ms毎）からは絶対に呼ばないこと。
    ========================================================================= */
-var DLOG = [], DLOG_MAX = 800, DLOG_T0 = Date.now();
+/* 800件では7分の会議で最初の6分が消えていた。「1箇所だけ読み上げが始まらない」の
+   原因（audio-cancel の why）が窓の外に落ちるため、原因を出せない診断になる。
+   1件はおよそ200バイトで、3000件でも600KB程度。 */
+var DLOG = [], DLOG_MAX = 3000, DLOG_T0 = Date.now();
 function dlog(cat, msg, data){
   if (DLOG.length >= DLOG_MAX) DLOG.shift();   // 古いものから捨てて上限を超えない
   DLOG.push({ t: Date.now() - DLOG_T0, c: cat, m: msg, d: data });
@@ -12109,6 +12139,7 @@ function applyCfg(){
 
   $('vad').value = CFG.vad;
   $('fsize').value = CFG.fsize;
+  $('srcRatio').value = srcRatioNum();
 
   applyCaptureControls();
   applyCaptureProfile();
@@ -12118,6 +12149,7 @@ function applyCfg(){
   $('rememberTts').checked = CFG.rememberTts;
 
   document.documentElement.style.setProperty('--fs', CFG.fsize+'px');
+  applySrcRatio();
   refreshProviderUI();
   glRender();
   layout();
@@ -12497,6 +12529,21 @@ function setFs(v){
   document.documentElement.style.setProperty('--fs', v+'px');
   $('fsize').value = v;
 }
+/* 原文の大きさは訳文に対する比で持つ。文字サイズを変えても比は変わらない。 */
+function srcRatioNum(){ var n=parseInt(CFG.srcRatio,10); if(!isFinite(n))n=60; return Math.max(40,Math.min(100,n)); }
+function applySrcRatio(){
+  var n=srcRatioNum();
+  document.documentElement.style.setProperty('--src-ratio', String(n/100));
+  var out=$('srcRatioNow'); if(out)out.textContent=n+'%';
+}
+function setSrcRatio(v){
+  var n=Math.max(40,Math.min(100,parseInt(v,10)||60));
+  CFG.srcRatio = String(n); persistSetting("srcRatio", CFG.srcRatio);
+  applySrcRatio(); $('srcRatio').value = n;
+  /* タブ内字幕は profile で受け取る。拡張が居なければ何も起きない。 */
+  if(globalThis.DuoExtension && DuoExtension.publishProfile)DuoExtension.publishProfile();
+  renderCaptionPip();
+}
 var OVERLAY_FONT_STEPS=[12,14,16,18,20,22,26,30,36,44];
 function setOverlayFont(v){
   v=Math.max(12,Math.min(64,parseInt(v,10)||26));
@@ -12520,6 +12567,7 @@ function syncFontControlTitles(){
 $('fsUp').onclick   = function(){ if(overlaySession.opened) adjustOverlayFont(1); else setFs(parseInt(CFG.fsize,10)+3); };
 $('fsDown').onclick = function(){ if(overlaySession.opened) adjustOverlayFont(-1); else setFs(parseInt(CFG.fsize,10)-3); };
 $('fsize').oninput  = function(){ setFs(parseInt($('fsize').value,10)); };
+$('srcRatio').oninput = function(){ setSrcRatio($('srcRatio').value); };
 
 /* OFFにする前のモードを覚えておき、ONに戻すときはそれを復元する
    （VOICEVOXを選んでいたのに毎回ブラウザ内蔵音声へ戻ってしまうのを防ぐ） */
@@ -13194,7 +13242,7 @@ function diagText(devices){
   out.push('## 逐次読み上げの部分別状態', '');
   S.entries.filter(function(e){return e.segment;}).forEach(function(e){
     var b=e.segment;out.push('- '+cell(e.id)+' / '+cell(e.status)+' / 部分数 '+e.segments.length+' / overlap '+(b.playMs?(100*b.overlapMs/b.playMs).toFixed(1):'0')+'%（入力レベルからの推定）');
-    e.segments.forEach(function(s){out.push('  - seq='+s.seq+' '+cell(s.state)+' / '+s.sourceText.length+'文字 / '+cell((s.commitReason||[]).join('+'))+' / 訂正 '+(s.corrected?'あり':'なし')+' / audio '+cell(s.audio?s.audio.status:'none'));});
+    e.segments.forEach(function(s){out.push('  - seq='+s.seq+' '+cell(s.state)+' / '+s.sourceText.length+'文字 / '+cell((s.commitReason||[]).join('+'))+' / 訂正 '+(s.corrected?'あり':'なし')+' / audio '+cell(s.audio?s.audio.status+(s.audio.skipReason?'（'+s.audio.skipReason+'）':''):'none'));});
   });out.push('');
   out.push('## Speaker / Conference', '',JSON.stringify({conference:{mode:conferenceAudioState.mode,connected:conferenceAudioState.connected,relay:conferenceAudioState.relay,micGain:conferenceAudioState.micGain,ttsGain:conferenceAudioState.ttsGain},speakerAvailable:DuoSpeakers.available,participants:Array.from(DuoSpeakers.registry.values()),cards:S.entries.map(function(e){return {cardId:e.id,utteranceId:e.utteranceId,startedAt:e.startedAt,endedAt:e.audioEndedAt||e.endedAt,speaker:e.speaker};})},null,2),'');
   out.push('## 動作ログ', '');
@@ -13744,7 +13792,7 @@ var TurnProviders={
       verified:true,
       semantics:'native_calibrated',
       defaultBase:'https://api.typesafe.ai',
-      defaultModel:'jev-latest',
+      defaultModel:'jev-1.13.0',
       keyHint:'TypeSafe の API キー',
       /* 公式の Models ページ: 1リクエスト 64k tokens、うち state ＋最長の質問で 32k。
          32k は OpenRouter 固有の制限ではなく直叩きにも掛かる。前版で「OpenRouter は
@@ -13790,7 +13838,7 @@ var TurnProviders={
       semantics:'native_calibrated',
       transport:'extension',
       defaultBase:'https://api.typesafe.ai',
-      defaultModel:'jev-latest',
+      defaultModel:'jev-1.13.0',
       keyHint:'TypeSafe の API キー',
       contextNote:'64k context（state＋最長の質問で32k）・アドオンが往復を肩代わりします',
       maxBodyChars:24000,
@@ -13954,11 +14002,12 @@ var TurnProviders={
         var base=String(CFG.turnDecisionBaseUrl||'')||route.defaultBase;
         if(!/^https:\/\//.test(base))return Promise.reject(new Error('判断層のURLはHTTPSのみ許可します'));
         var model=String(CFG.turnDecisionModel||'')||route.defaultModel;
-        /* active では alias ではなく校正済み version を pin する（§8.5）。alias は
-           新版が出ると勝手に動き、こちら側の変更なしに答えが変わる。公式の
-           Models ページでは jev-latest も jev-preview も jev-1.13.0 を指している。 */
+        /* 判断を採用するモード（assist／active）では alias ではなく校正済み version を
+           pin する（§8.5）。alias は新版が出ると勝手に動き、こちら側の変更なしに答えが
+           変わる。公式の Models ページでは jev-latest も jev-preview も jev-1.13.0 を指す。
+           経路の既定を固定versionにしたので、ここに来るのは自分で alias を入れたときだけ。 */
         if(TurnDecision.applies(state.sourceLanguage)&&/latest|preview/i.test(model))
-          return Promise.reject(new Error('active では model に固定versionを指定してください'
+          return Promise.reject(new Error('assist／active では model に固定versionを指定してください'
             +'（いまは '+model+'。例: jev-1.13.0）'));
         var body;try{body=JSON.stringify(route.body(state,model));}catch(err){
           return Promise.reject(new Error('リクエストを組み立てられません'));}
@@ -14969,8 +15018,8 @@ function segAudioEvent(msg,data){
     segRefreshPlayback(j);
     a.startEvidence=/first|wa-play/.test(msg)?'scheduled-estimate':'playback-event';
     // L2 proxy is commit-to-playback, not a measured semantic boundary.
-    DLOG.push({t:now-DLOG_T0,c:'segment',m:'audio-start',d:{cardId:j.card.id,seq:s.seq,manualReplay:!!j.manual,
-      L1TextProxyMs:a.firstAudioAt-j.card.startedAt,L2CommitProxyMs:a.firstAudioAt-s.committedAt,evidence:a.startEvidence}});
+    dlog('segment','audio-start',{cardId:j.card.id,seq:s.seq,manualReplay:!!j.manual,
+      L1TextProxyMs:a.firstAudioAt-j.card.startedAt,L2CommitProxyMs:a.firstAudioAt-s.committedAt,evidence:a.startEvidence});
   }
   if(/FAIL|ERROR|TIMEOUT|timeout|SILENT|drop/.test(msg))a.error=msg;
 }
