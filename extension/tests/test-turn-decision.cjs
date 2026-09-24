@@ -73,7 +73,7 @@ function reset(over){
     segmentOverlap:'auto',vad:12,turnDecisionMode:'off',turnDecisionProvider:'rules',
     turnDecisionLangEn:'shadow',turnDecisionLangJa:'shadow',turnDecisionContextTurns:0,
     turnFloorMaxWaitMs:3000,turnFloorExpiry:'speak',turnFloorSafeToSpeak:true,turnTraceMode:'off',
-    turnDecisionProsody:true},over||{});
+    turnDecisionCommitWaitMs:300,turnDecisionProsody:true},over||{});
   peeked.count=0; D().cache={}; D().inflight={}; D().sessionSalt=null;
   D()._confirm={}; D()._lastSend={}; D().circuit={}; T().reset();
 }
@@ -648,6 +648,89 @@ test('boundary leaves the answer on the part, so the floor never asks again',()=
   assert.equal(seg.floorHint.safeToSpeak,0.12);
   assert.equal(seg.floorHint.at,now);
   assert.equal(seg.floorHint.decisionId,'d9');
+});
+
+/* ── INV-10 有界の待ち ─────────────────────────────────────────────────────
+   質問は commit と同じ tick で飛ぶ。待たなければ答えは必ず一手遅れ、
+   録音分割RESTのように確定文が一度に届く経路では一度も採用されない
+   （v1.49.18 実測 送信51／応答51／適用0）。待つ相手と上限を検査する。 */
+const inflightFor=(st,over)=>({abort:null,revision:st.revision,at:Date.now(),
+  key:D().key(st),...(over||{})});
+
+test('nothing is in flight with the rules provider, so active never waits',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const i=input(),rule=D().rules(i);
+  assert.equal(D().boundary(card(),{},i,rule,250,Date.now()),rule);
+});
+test('the commit waits only while this exact state is in flight',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,250,now);
+  D().inflight[st.speakerKey]=inflightFor(st);
+  const held=D().boundary(e,seg,i,rule,250,now);
+  assert.equal(held.length,0,'no boundary is taken while waiting');
+  assert.equal(held.waiting,'provider-pending');
+  assert.equal(held.source,'provider');
+  /* 別の文の答えを待っても意味がない。 */
+  const other={},seg2={};
+  D().inflight[st.speakerKey]=inflightFor(st,{key:'someone-elses-question'});
+  assert.equal(D().boundary(e,seg2,i,rule,250,now),rule,'a different question is not ours to wait for');
+  assert.ok(!other.decisionWaitUntil);
+});
+test('the wait is capped, and Rules commits once it expires',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,250,now);
+  D().inflight[st.speakerKey]=inflightFor(st);
+  assert.equal(D().boundary(e,seg,i,rule,250,now).waiting,'provider-pending');
+  assert.equal(seg.decisionWaitUntil,now+300,'the deadline is set once, from the first tick');
+  assert.equal(D().boundary(e,seg,i,rule,250,now+299).waiting,'provider-pending');
+  assert.equal(D().boundary(e,seg,i,rule,250,now+300),rule,'at the cap the rule result passes through');
+  assert.equal(D().boundary(e,seg,i,rule,250,now+5000),rule);
+});
+test('a value of 0 disables the wait entirely',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active',turnDecisionCommitWaitMs:0});
+  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,250,now);
+  D().inflight[st.speakerKey]=inflightFor(st);
+  assert.equal(D().boundary(e,seg,i,rule,250,now),rule);
+  assert.ok(!seg.decisionWaitUntil);
+});
+test('the wait is clamped to 1000ms however large the setting is',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active',turnDecisionCommitWaitMs:99999});
+  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,250,now);
+  D().inflight[st.speakerKey]=inflightFor(st);
+  D().boundary(e,seg,i,rule,250,now);
+  assert.equal(seg.decisionWaitUntil,now+1000);
+});
+test('off and shadow never wait, whatever is in flight (INV-08)',()=>{
+  for(const mode of ['off','shadow']){
+    reset({turnDecisionMode:mode,turnDecisionLangJa:mode==='off'?'active':'shadow'});
+    const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+    const st=D().stateOf(e,seg,i,rule,250,now);
+    D().inflight[st.speakerKey]=inflightFor(st);
+    assert.equal(D().boundary(e,seg,i,rule,250,now),rule,mode);
+    assert.ok(!seg.decisionWaitUntil,mode);
+  }
+});
+test('once the answer lands the wait ends and the provider boundary is taken',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,900,now);
+  D().inflight[st.speakerKey]=inflightFor(st);
+  assert.equal(D().boundary(e,seg,i,rule,900,now).waiting,'provider-pending');
+  const cand=(st.candidateBoundaries||[])[0];
+  assert.ok(cand,'the fixture must offer a candidate to choose');
+  const probs={HOLD:0.05};probs[cand.id]=0.95;
+  D().cache[D().key(st)]={sessionId:st.sessionId,utteranceId:st.utteranceId,revision:st.revision,
+    boundary:{choice:cand.id,confidence:0.9,probabilities:probs},
+    turnState:{choice:'COMPLETE',confidence:0.9,probabilities:{}},
+    safeToSpeak:0.9,repairLikelihood:0.01,decisionId:'d10'};
+  delete D().inflight[st.speakerKey];
+  const out=D().boundary(e,seg,i,rule,900,now+80);
+  assert.equal(out.length,cand.offset,'the answer that arrived is the one that decides');
+  assert.equal(out.source,'provider');
 });
 
 console.log(JSON.stringify({passed:tests.length,tests},null,2));
