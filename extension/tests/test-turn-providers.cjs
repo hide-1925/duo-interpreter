@@ -22,7 +22,7 @@ const ctx={console,Math,Date,JSON,Object,Array,String,Number,isFinite,RegExp,Pro
   setTimeout,clearTimeout,AbortController,
   APP_BUILD:'test',sessionGen:1,CFG:{},S:{entries:[]},DuoSpeakers:{available:false},
   dlog:(a,b,c)=>logs.push([b,c]),segDebt:()=>0,toast:m=>toasts.push(m),
-  persistSetting:()=>{}, micProsody:null,
+  persistSetting:()=>{}, micProsody:null, engines:[],
   hasSpeechContent:t=>/[\p{L}\p{N}]/u.test(String(t||'')),
   fetch:(url,opt)=>{calls.push({url,opt});return fetchImpl(url,opt);}};
 /* 拡張経由の経路を検査するための疑似 window / chrome。
@@ -41,6 +41,7 @@ const fireWindow=(name,detail)=>{
 };
 const c=vm.createContext(ctx);
 for(const b of [segBlock(),block('var TURN_PROSODY_SENT='),
+                block('function prosodyAnalyzerFor(seat){'),
                 block('function segEnabled()'),block('function segDecision(input){'),
                 block('function segSemanticEnabled()'),block('function segSemanticTail(text,lang){'),
                 block('function segSemanticDecision(input){'),
