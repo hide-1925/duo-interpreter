@@ -702,8 +702,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.16';
-var APP_BUILD = '20260924-v14916-assist-hold-and-floor';
+var APP_VERSION = 'v1.49.17';
+var APP_BUILD = '20260924-v14917-stability-range';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -12723,7 +12723,7 @@ var TurnTrace={
 function segNumber(v,f,min,max){v=Number(v);return isFinite(v)&&v>0?Math.max(min,Math.min(max,v)):f;}
 function segPolicy(mode){var fast=mode==='fast';return {
   min:segNumber(CFG.segmentMin,fast?8:12,4,100), max:fast?28:48,
-  stability:segNumber(CFG.segmentStability,fast?300:400,200,2000),
+  stability:segNumber(CFG.segmentStability,fast?300:400,100,2000),
   silence:segNumber(CFG.segmentSilence,fast?400:700,300,3000),
   debt:segNumber(CFG.segmentDebt,8,2,60)};}
 /* Pure function. A lack of STT deltas is not evidence of acoustic silence. */
