@@ -2334,6 +2334,23 @@ function turnDecisionInstall(){
       +'「いま投げた、この文の答え」だけで、上限を過ぎたらRulesが確定します。'
       +'読み上げは元から数秒〜数十秒遅れて進むので、0.3秒の待ちは耳では分かりません。</p>'
     +'</details>'
+    +'<label>「待て」に従う上限 ms（0＝従わない） <input id="turnDecisionHoldMaxWaitMs" type="number" min="0" max="10000" step="100"></label>'
+    +'<details class="settings-help"><summary>なぜ上限が必要か</summary>'
+      +'<p>判断層が「まだ切るな」と答えた場合、その答えは<b>同じ文の同じ版に対して'
+      +'ずっと有効なまま</b>です。認識が止まるとテキストの版は進まないので、'
+      +'止まった瞬間の「待て」を読み直し続け、そのカードは確定も翻訳も読み上げも'
+      +'されずに残ります（v1.49.19の実測で、停止まで112秒・83秒放置されたカードが'
+      +'各記録に1〜2件）。上限を過ぎたらRulesが確定させます。'
+      +'時計は確定済みの部分ごとに持つので、話が続いて文が伸びても止まりません。</p>'
+    +'</details>'
+    +'<label>同じ版を聞き直す上限回数 <input id="turnDecisionMaxAsksPerRevision" type="number" min="1" max="20" step="1"></label>'
+    +'<details class="settings-help"><summary>費用に直接効きます</summary>'
+      +'<p>質問は「テキスト・候補・無音の長さ」が変わるたびに新しい状態として飛びます。'
+      +'無音は100ms刻みで数えるので、<b>テキストが止まったまま無音だけが伸びる状態が'
+      +'延々と新しい質問になっていました</b>（v1.49.19の実測で、内容の同じ往復が'
+      +'187秒で433件、Realtimeでは406秒で1251件）。テキストの版が進まないなら'
+      +'聞き直しても判断は変わらないので、版ごとの回数で頭打ちにします。</p>'
+    +'</details>'
     +'<label>読み上げ開始の待ち上限 ms <input id="turnFloorMaxWaitMs" type="number" min="500" max="10000" step="100"></label>'
     +'<label>上限に達したら <select id="turnFloorExpiry">'
       +'<option value="speak">読み上げる</option><option value="drop">字幕だけにする</option>'
@@ -2378,7 +2395,8 @@ function turnDecisionInstall(){
   }
 
   ['turnDecisionMode','turnDecisionLangEn','turnDecisionLangJa','turnDecisionProsody',
-   'turnDecisionContextTurns','turnDecisionCommitWaitMs','turnFloorMaxWaitMs','turnFloorExpiry','turnFloorSafeToSpeak',
+   'turnDecisionContextTurns','turnDecisionCommitWaitMs','turnDecisionHoldMaxWaitMs',
+   'turnDecisionMaxAsksPerRevision','turnFloorMaxWaitMs','turnFloorExpiry','turnFloorSafeToSpeak',
    'turnDecisionProvider','turnDecisionModel','turnDecisionBaseUrl',
    'turnTraceMode','turnDecisionRawLog'].forEach(function(prop){
     var spec=CONFIG_BY_PROP[prop];if(!spec||!$(spec.el))return;
@@ -2495,7 +2513,8 @@ function turnDecisionStatus(){
   parts.push('trace '+(String(CFG.turnTraceMode||'off')==='record'?TurnTrace.rows.length+'行'+(TurnTrace.dropped?'（上限超過あり）':''):'off'));
   var st=TurnDecision.stats||{};
   if(mode!=='off')parts.push('往復 送信'+(st.requested||0)+'/応答'+(st.answered||0)
-    +'/解析失敗'+(st.parseFailed||0)+'/到達不能'+(st.unreachable||0)+'/適用'+(st.applied||0));
+    +'/解析失敗'+(st.parseFailed||0)+'/到達不能'+(st.unreachable||0)+'/適用'+(st.applied||0)
+    +'/打切り'+(st.holdExpired||0));
   parts.push('確定 rules '+(SEG.committedBySource.rules||0)+' / provider '+(SEG.committedBySource.provider||0));
   parts.push('確定後訂正 rules '+(SEG.correctedBySource.rules||0)+' / provider '+(SEG.correctedBySource.provider||0));
   var warn=turnDecisionModelWarning();
@@ -2539,8 +2558,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.19';
-var APP_BUILD = '20260925-v14919-commit-wait';
+var APP_VERSION = 'v1.49.20';
+var APP_BUILD = '20260925-v14920-hold-cap';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -2756,6 +2775,10 @@ var CONFIG_SCHEMA = [
   { prop:"turnDecisionProsody", key:'di.tdProsody', embed:'turnDecisionProsody', def:'1', type:'bool', portable:true, el:"turnDecisionProsody" },
   { prop:"turnFloorMaxWaitMs", key:'di.tdFloorMax', embed:'turnFloorMaxWaitMs', def:'3000', portable:true, el:"turnFloorMaxWaitMs" },
   { prop:"turnDecisionCommitWaitMs", key:'di.tdCommitWait', embed:'turnDecisionCommitWaitMs', def:'300', portable:true, el:"turnDecisionCommitWaitMs" },
+  /* INV-11。判断層が commit を止めていられる上限。0 で「待ちを採らない」。 */
+  { prop:"turnDecisionHoldMaxWaitMs", key:'di.tdHoldMax', embed:'turnDecisionHoldMaxWaitMs', def:'2000', portable:true, el:"turnDecisionHoldMaxWaitMs" },
+  /* 同じ revision を聞き直す上限回数。無音が伸びるだけの往復を止める。 */
+  { prop:"turnDecisionMaxAsksPerRevision", key:'di.tdAsks', embed:'turnDecisionMaxAsksPerRevision', def:'3', portable:true, el:"turnDecisionMaxAsksPerRevision" },
   /* 床で safe_to_speak を使うか。assist/active のときだけ働き、重なりを許容する
      設定（segmentOverlap=allow）では効かない。追加のAPI費用は発生しない ――
      この答えは commit のときに既に受け取っている。 */
@@ -13126,7 +13149,8 @@ var DIAG_ROWS = [
     var s=TurnDecision.stats||{};
     return '送信 '+(s.requested||0)+' / 正常応答 '+(s.answered||0)
       +' / 解析失敗 '+(s.parseFailed||0)+' / 古くて破棄 '+(s.stale||0)
-      +' / 到達不能 '+(s.unreachable||0)+' / 適用 '+(s.applied||0);
+      +' / 到達不能 '+(s.unreachable||0)+' / 適用 '+(s.applied||0)
+      +'　保持tick '+(s.holdTicks||0)+' / 打切り '+(s.holdExpired||0);
   }},
   {section:"settings",order:30,label:'逐次TTS待ち音声',value:function(ctx){ return segDebt().toFixed(1)+'秒（文字数による推定）'; }},
   {section:"settings",order:31,label:'逐次計測の定義',value:function(ctx){ return 'L1=最初の認識文字から、L2=commitからの代理値。音響的な意味単位終了時刻は未計測。'; }},
@@ -13405,7 +13429,13 @@ function segEnabled(){return CFG.segmentMode!=='off' && /^(balanced|fast|adaptiv
           turnDecisionCommitWaitMs（既定300ms・0で無効）を超えて待たず、
           超えたら Rules が確定する。録音分割RESTのように確定文が一度に届く経路では
           この待ちが無いと答えが必ず commit に間に合わず、active が構造的に空回りする
-          （v1.49.18 の実測で 送信51／応答51／適用0）。                        */
+          （v1.49.18 の実測で 送信51／応答51／適用0）。
+   INV-11 判断層が commit を止めていられるのは turnDecisionHoldMaxWaitMs（既定2000ms）
+          まで。HOLD／言い直し待ち／位置確認のいずれであっても、確定済みprefixごとの
+          時計で頭打ちにし、超えたら Rules が確定する。答えは「同じ文の同じ revision」
+          に紐づくので、認識が止まって revision が進まなくなると、止まった瞬間の
+          HOLD が期限なく残り続ける（v1.49.19 の実測で、停止まで112秒／83秒
+          放置され、最後に audio cancelled（speech-stopped）で消えたカード）。   */
 /* ── Provider adapters（Phase 2）─────────────────────────────────────────
    判断契約を Duo が所有し、ベンダーを adapter で差し替える。既定の
    turnDecisionProvider='rules' では registry を一切引かないので、shadow でも
@@ -14294,10 +14324,40 @@ var TurnDecision={
     this._lastSend[state.speakerKey]={bucket:b,at:now};
     return false;
   },
+  /* 同じ文の同じ revision を何度も聞かない。bucket は無音を100ms刻みで量子化するので、
+     テキストが凍ったまま無音だけが伸びる状態は「新しいstate」として通り続ける。
+     v1.49.19の実測では、そうして内容の同じ往復（revision:1／37文字）が187秒で433件、
+     Realtime（revision:85／78文字）では406秒で1251件に達していた。revision は新しい
+     テキストが来たときだけ進むので、聞く回数は revision で数えるのが正しい。 */
+  maxAsks:function(){
+    var n=parseInt(CFG.turnDecisionMaxAsksPerRevision,10);
+    if(!isFinite(n)||n<1)return 1;
+    return Math.min(20,n);
+  },
+  asksExhausted:function(state){
+    var a=this._asks||(this._asks={}),k=this.key(state),e=a[state.speakerKey];
+    if(!e||e.key!==k){a[state.speakerKey]={key:k,n:1,capped:false};return false;}
+    if(e.n>=this.maxAsks()){
+      if(!e.capped){e.capped=true;
+        dlog('segment','turn-decision-ask-capped',{utteranceId:state.utteranceId,
+          revision:state.revision,speakerKey:state.speakerKey,asks:e.n,
+          textChars:state.currentText.length,limit:this.maxAsks()});}
+      return true;
+    }
+    e.n++;return false;
+  },
   /* 「Jevを呼べたか」ではなく「使える答えが返って適用できたか」を数える。
      送信数だけ見ても、解析で落ちているのか古くて捨てたのか判別できない。 */
-  stats:{requested:0,answered:0,parseFailed:0,stale:0,applied:0,unreachable:0,floorHeld:0},
+  stats:{requested:0,answered:0,parseFailed:0,stale:0,applied:0,unreachable:0,floorHeld:0,
+    holdTicks:0,holdExpired:0},
   bump:function(k){this.stats[k]=(this.stats[k]||0)+1;},
+  /* 答え1件を1回だけ数える。cache は同じ答えを80ms周期で読み直すので、tick で
+     数えると送信数と比較できない数になる（v1.49.19実測 送信433／適用2450、
+     Realtime は送信1251／適用3487）。保持している tick 数は holdTicks で別に持つ。 */
+  countApplied:function(hit){
+    if(!hit||hit.appliedCounted)return;
+    hit.appliedCounted=true;this.bump('applied');
+  },
 
   key:function(state){
     return [state.sessionId,state.speakerKey,state.utteranceId,state.revision,TURN_STATE_SCHEMA,
@@ -14335,6 +14395,46 @@ var TurnDecision={
     return now<s.decisionWaitUntil;
   },
 
+  /* INV-11。判断層が commit を止めていられる時間にも上限を置く。INV-09 は床、
+     INV-10 は答えの到着だけを縛っていて、返ってきた HOLD そのものには上限が
+     無かった。revision は新しいテキストが来たときしか進まないので、STTが止まった
+     瞬間の HOLD は同じ答えを読み直し続け、そのカードは commit も翻訳も読み上げも
+     されないまま停止まで残る（v1.49.19実測 stabilityMs 112557／83967、どちらも
+     最後に audio cancelled（speech-stopped））。時計は commit 済みprefixごとに
+     持つので、テキストが伸びても止まらない。打切り後は同じprefixのあいだ静かに
+     Rules へ通す。
+
+     時計を止めるのは commit したときだけ。答えが無くて Rules がそのまま通った tick
+     では止めない。止めてしまうと、Realtime のように新しいテキストが200msごとに来る
+     経路では「答え待ちの tick」が毎回時計を戻し、HOLD が版をまたいで続くあいだ
+     カードが伸び続ける（v1.49.19実測で501文字・8部分のカード）のを縛れない。 */
+  holdMaxWaitMs:function(){
+    var n=parseInt(CFG.turnDecisionHoldMaxWaitMs,10);
+    if(!isFinite(n)||n<0)return 2000;
+    return Math.min(10000,n);
+  },
+  holdClear:function(e,out){
+    var b=e&&e.segment;if(b){b.holdSince=0;b.holdOver=false;}
+    return out;
+  },
+  holdBounded:function(e,s,state,out,ruleResult,now){
+    var b=e&&e.segment;if(!b)return out;
+    var anchor=(s&&s.start)||0,ms=this.holdMaxWaitMs();
+    if(b.holdStart!==anchor){b.holdStart=anchor;b.holdSince=0;b.holdOver=false;}
+    if(b.holdOver)return ruleResult;
+    if(!ms){b.holdOver=true;this.bump('holdExpired');return ruleResult;}
+    if(!b.holdSince){b.holdSince=now;
+      dlog('segment','turn-decision-hold',{cardId:e.id,utteranceId:state.utteranceId,
+        revision:state.revision,why:out.waiting,maxWaitMs:ms});}
+    this.bump('holdTicks');
+    if(now-b.holdSince<ms)return out;
+    b.holdOver=true;this.bump('holdExpired');
+    dlog('segment','turn-decision-hold-expired',{cardId:e.id,utteranceId:state.utteranceId,
+      revision:state.revision,why:out.waiting,waitedMs:now-b.holdSince,
+      ruleLength:(ruleResult&&ruleResult.length)||0});
+    return ruleResult;
+  },
+
   /* 非同期に一件だけ投げる。結果はcacheへ置くだけで、ここでは何も待たない。
      provider=rulesの間はregistryを引かないので外部通信は発生しない。 */
   observe:function(state){
@@ -14348,6 +14448,7 @@ var TurnDecision={
     if(this.inflight[state.speakerKey])return;            /* speakerKeyごとに同時1件 */
     if(this.circuitOpen(id,lang))return;
     if(this.throttled(state))return;
+    if(this.asksExhausted(state))return;
     var ctrl=null;try{ctrl=new AbortController();}catch(err){}
     var timeoutMs=Math.max(200,Math.min(2000,Number(CFG.turnDecisionTimeoutMs)||900));
     var timer=setTimeout(function(){if(ctrl&&ctrl.abort)try{ctrl.abort();}catch(e){}},timeoutMs);
@@ -14450,7 +14551,7 @@ var TurnDecision={
 
     /* HOLD を選んだ、または HOLD の確率が上限を超えるなら待つ。 */
     if(b.choice==='HOLD'||(pHold!==null&&pHold>th.holdMax)){
-      this.bump('applied');
+      this.countApplied(hit);
       return {length:0,reasons:[],waiting:'provider-hold',source:'provider'};}
 
     var list=state.candidateBoundaries||[],cand=null;
@@ -14489,7 +14590,7 @@ var TurnDecision={
     if(!agrees&&!this.confirmed(state,cand.offset,th.confirm))
       return {length:0,reasons:[],waiting:'provider-confirming',source:'provider'};
 
-    this.bump('applied');
+    this.countApplied(hit);
     return {length:cand.offset,reasons:['provider-'+cand.kind,'stable'],source:'provider'};
   },
 
@@ -14502,16 +14603,19 @@ var TurnDecision={
     TurnTrace.decision(state,ruleResult);
     this.observe(state);
     if(mode==='shadow')return ruleResult;
-    var hit=this.read(state);
+    var hit=this.read(state),out=null;
     if(!hit){
-      if(this.waitingFor(s,state,now))
-        return {length:0,reasons:[],waiting:'provider-pending',source:'provider'};
-      return ruleResult;
+      if(!this.waitingFor(s,state,now))return ruleResult;
+      out={length:0,reasons:[],waiting:'provider-pending',source:'provider'};
+    }else{
+      /* 床で使うために safe_to_speak を部分へ持たせる。新しく聞き直さない ――
+         この答えは commit のときに同じ1リクエストで既に払っている。 */
+      if(s)s.floorHint={safeToSpeak:hit.safeToSpeak,at:now,decisionId:hit.decisionId};
+      out=this.pick(state,hit,ruleResult,mode==='assist');
+      if(!out)return ruleResult;
     }
-    /* 床で使うために safe_to_speak を部分へ持たせる。新しく聞き直さない ――
-       この答えは commit のときに同じ1リクエストで既に払っている。 */
-    if(s)s.floorHint={safeToSpeak:hit.safeToSpeak,at:now,decisionId:hit.decisionId};
-    return this.pick(state,hit,ruleResult,mode==='assist')||ruleResult;
+    if(out.length)return this.holdClear(e,out);
+    return this.holdBounded(e,s,state,out,ruleResult,now);
   },
 
   /* Floor Gate の座席。Phase 3で判断を入れる。判断層がoffのあいだはnullを返し、
@@ -14567,7 +14671,7 @@ var TurnDecision={
     Object.keys(this.inflight).forEach(function(k){
       var c=self.inflight[k];if(c&&c.abort){try{c.abort();}catch(err){}}
     });
-    this.cache={};this.inflight={};this.sessionSalt=null;this.circuit={};this._lastSend={};this._confirm={};
+    this.cache={};this.inflight={};this.sessionSalt=null;this.circuit={};this._lastSend={};this._confirm={};this._asks={};
     /* offのときは診断ログも出さない。判断層を切った状態の出力をv1.47.1と揃える。 */
     if(String(CFG.turnDecisionMode||'off')!=='off')
       dlog('segment','turn-decision-reset',{why:why,mode:CFG.turnDecisionMode});

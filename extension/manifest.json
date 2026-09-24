@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.30",
+  "version": "1.4.31",
   "version_name": "1.4.28 HTML v1.49.17 と対。安定待ちを10ms刻み・100〜2000へ",
   "optional_host_permissions": [
     "https://*/*"
