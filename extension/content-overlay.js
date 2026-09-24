@@ -11,7 +11,7 @@
   let htmlSourceKey = '';
   const strokes = [];
   let geometry = Object.assign({}, DEFAULT_GEOMETRY);
-  let profile = { layout: 'right', width: 28, freeWidth: 28, freeHeight: 55, sideHeight: 80, bottomWidth: 80, bottomHeight: 42, x: 68, y: 18, items: 4, hold: 18, font: 26, line: 1.35, itemWidth: 100, textA: '#FFFFFF', textB: '#A7E8FF', srcA: '#D4E8DE', srcB: '#E7D3DA', bg: '#000000', textOpacity: 92, bgOpacity: 35, shadow: true, outline: false, round: true };
+  let profile = { layout: 'right', width: 28, freeWidth: 28, freeHeight: 55, sideHeight: 80, bottomWidth: 80, bottomHeight: 42, x: 68, y: 18, items: 4, hold: 18, font: 26, line: 1.35, subRatio: 60, itemWidth: 100, textA: '#FFFFFF', textB: '#A7E8FF', srcA: '#D4E8DE', srcB: '#E7D3DA', bg: '#000000', textOpacity: 92, bgOpacity: 35, shadow: true, outline: false, round: true };
   let drawing = false;
   let draft = null;
   let speechSessionId = '';
@@ -160,6 +160,7 @@
     profile = Object.assign(profile, next || {});
     root.style.setProperty('--duo-font', `${Number(profile.font) || 26}px`);
     root.style.setProperty('--duo-line', String(Number(profile.line) || 1.35));
+    root.style.setProperty('--duo-sub-ratio', String(Math.max(40, Math.min(100, Number(profile.subRatio) || 60)) / 100));
     root.style.setProperty('--duo-item-width', `${Math.max(35, Math.min(100, Number(profile.itemWidth) || 100))}%`);
     root.style.setProperty('--duo-text-opacity', String(Math.max(0, Math.min(100, Number.isFinite(Number(profile.textOpacity)) ? Number(profile.textOpacity) : 92)) / 100));
     root.style.setProperty('--duo-shadow', profile.shadow ? '0 5px 22px rgba(0,0,0,.4)' : 'none');
