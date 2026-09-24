@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.26",
-  "version_name": "1.4.26 HTML v1.49.15 と対。APIキーの説明をたたむ",
+  "version": "1.4.27",
+  "version_name": "1.4.27 HTML v1.49.16 と対。assistは待つ判断だけ／読み上げ開始にも判断層",
   "optional_host_permissions": [
     "https://*/*"
   ],

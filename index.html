@@ -2289,8 +2289,8 @@ function turnDecisionInstall(){
     +'<label>判断モード <select id="turnDecisionMode">'
       +'<option value="off">off — 使わない（既定）</option>'
       +'<option value="shadow">shadow — 記録するが動作へ反映しない</option>'
-      +'<option value="assist">assist — 高確信のときだけ採用</option>'
-      +'<option value="active">active — 主経路にする</option>'
+      +'<option value="assist">assist — 待つ判断だけ採用（切る位置はRulesのまま）</option>'
+      +'<option value="active">active — 切る位置もJevが決める</option>'
     +'</select></label>'
     +'<label>英語 <select id="turnDecisionLangEn">'
       +'<option value="off">off</option><option value="shadow">shadow</option>'
@@ -2328,6 +2328,18 @@ function turnDecisionInstall(){
     +'<label>上限に達したら <select id="turnFloorExpiry">'
       +'<option value="speak">読み上げる</option><option value="drop">字幕だけにする</option>'
     +'</select></label>'
+    +'<label class="settings-check switch"><input type="checkbox" id="turnFloorSafeToSpeak">'
+      +' 読み上げ開始にも判断層を使う（safe_to_speak）</label>'
+    +'<details class="settings-help"><summary>読み上げ開始の判断について</summary>'
+      +'<p>commit のときに同じ1リクエストで既に答えをもらっているので、'
+      +'<b>APIの費用は増えません。</b></p>'
+      +'<p><b>「話者との重なり」を「許容」にしているあいだは働きません。</b>'
+      +'同時通訳は元の話者に重ねて読むのが普通で、それは利用者の明示的な選択だからです。'
+      +'効くのは「避ける」と「自動」、つまり無音を待つとルールが決めた場面だけで、'
+      +'そこでは無音の秒数より判断層のほうが確かな根拠になります。</p>'
+      +'<p>保持は上の「読み上げ開始の待ち上限」と、答えの鮮度（2秒）の'
+      +'<b>短いほう</b>で頭打ちになります。</p>'
+    +'</details>'
     +'<hr><p><b>計測</b>　判断層とは独立に動きます。OFF のままでも記録できます。</p>'
     +'<label>trace 記録 <select id="turnTraceMode">'
       +'<option value="off">off（既定）</option><option value="record">record — 記録する</option>'
@@ -2356,7 +2368,7 @@ function turnDecisionInstall(){
   }
 
   ['turnDecisionMode','turnDecisionLangEn','turnDecisionLangJa','turnDecisionProsody',
-   'turnDecisionContextTurns','turnFloorMaxWaitMs','turnFloorExpiry',
+   'turnDecisionContextTurns','turnFloorMaxWaitMs','turnFloorExpiry','turnFloorSafeToSpeak',
    'turnDecisionProvider','turnDecisionModel','turnDecisionBaseUrl',
    'turnTraceMode','turnDecisionRawLog'].forEach(function(prop){
     var spec=CONFIG_BY_PROP[prop];if(!spec||!$(spec.el))return;
@@ -2496,8 +2508,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.15';
-var APP_BUILD = '20260923-v14915-key-note-fold';
+var APP_VERSION = 'v1.49.16';
+var APP_BUILD = '20260924-v14916-assist-hold-and-floor';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -2712,6 +2724,10 @@ var CONFIG_SCHEMA = [
   { prop:"turnDecisionContextTurns", key:'di.tdCtx', embed:'turnDecisionContextTurns', def:'0', portable:true, el:"turnDecisionContextTurns" },
   { prop:"turnDecisionProsody", key:'di.tdProsody', embed:'turnDecisionProsody', def:'1', type:'bool', portable:true, el:"turnDecisionProsody" },
   { prop:"turnFloorMaxWaitMs", key:'di.tdFloorMax', embed:'turnFloorMaxWaitMs', def:'3000', portable:true, el:"turnFloorMaxWaitMs" },
+  /* 床で safe_to_speak を使うか。assist/active のときだけ働き、重なりを許容する
+     設定（segmentOverlap=allow）では効かない。追加のAPI費用は発生しない ――
+     この答えは commit のときに既に受け取っている。 */
+  { prop:"turnFloorSafeToSpeak", key:'di.tdFloorS2S', embed:'turnFloorSafeToSpeak', def:'1', type:'bool', portable:true, el:"turnFloorSafeToSpeak" },
   { prop:"turnFloorExpiry", key:'di.tdFloorExp', embed:'turnFloorExpiry', def:'speak', portable:true, el:"turnFloorExpiry" },
   { prop:"turnDecisionRawLog", key:'di.tdRawLog', embed:'turnDecisionRawLog', def:'0', type:'bool', portable:true, el:"turnDecisionRawLog" },
   { prop:"turnInterruptMode", key:'di.tdInterrupt', embed:'turnInterruptMode', def:'preplay', portable:true },
@@ -14026,6 +14042,11 @@ var TurnProviders={
     }
   }
 };
+/* 床で safe_to_speak を使うときの2つの定数。どちらも仮値で、trace が取れたら
+   校正する。TURN_FLOOR_HINT_MS は答えの鮮度、TURN_FLOOR_SAFE_MAX は
+   「はっきり遮る」と見なす境目（noul の 0.5＝判断がつかない、より下に置く）。 */
+var TURN_FLOOR_HINT_MS=2000;
+var TURN_FLOOR_SAFE_MAX=0.25;
 var TURN_STATE_SCHEMA='duo.turn-state.v1';
 /* Choice は255件まで選択肢を取り、1件あたりのコストは数トークンしかない。
    公式は「モデルは並べなかった値を選べない」として絞り込みを避けるよう書いている
@@ -14058,6 +14079,11 @@ var TurnDecision={
   },
   observes:function(lang){return this.modeFor(lang)!=='off';},
   applies:function(lang){var m=this.modeFor(lang);return m==='assist'||m==='active';},
+  /* assist は「待て」だけを採り、切る位置は Rules のままにする。
+     実測（英語24件・日本語25件）で Jev が Rules より前で切れと言った回数は0で、
+     価値は待つ側に全部あった。外したときの被害も「少し待つ」だけで、
+     turnFloorMaxWaitMs で頭打ちになる。active は位置も採る。 */
+  holdOnly:function(lang){return this.modeFor(lang)==='assist';},
 
   /* RulesProvider。契約の戻り値 {length, reasons, waiting} は既存実装のまま。 */
   rules:function(input){
@@ -14205,7 +14231,7 @@ var TurnDecision={
   },
   /* 「Jevを呼べたか」ではなく「使える答えが返って適用できたか」を数える。
      送信数だけ見ても、解析で落ちているのか古くて捨てたのか判別できない。 */
-  stats:{requested:0,answered:0,parseFailed:0,stale:0,applied:0,unreachable:0},
+  stats:{requested:0,answered:0,parseFailed:0,stale:0,applied:0,unreachable:0,floorHeld:0},
   bump:function(k){this.stats[k]=(this.stats[k]||0)+1;},
 
   key:function(state){
@@ -14326,7 +14352,7 @@ var TurnDecision={
 
   /* 候補外のoffsetは採用しない。安定prefixを越えるものも採らない。そのうえで
      確率・音響・期限を合成する。null を返すと Rules の結果がそのまま通る。 */
-  pick:function(state,hit,ruleResult){
+  pick:function(state,hit,ruleResult,holdOnly){
     var b=hit&&hit.boundary;
     if(!b||!b.choice)return null;
     /* 確率の出どころで閾値を変える。hit.probabilitySemantics は adapter が申告する。 */
@@ -14366,6 +14392,11 @@ var TurnDecision={
     if(state.silenceMs===null){ if(!state.sttFinal)return null; }
     else if(state.silenceMs<th.silenceMin&&!state.sttFinal)return null;
 
+    /* assist は位置を採らないので、ここから先は要らない。位置を確定させるための
+       ヒステリシス（provider-confirming）で待つと、採らない位置のために遅らせる
+       だけになる。null を返して Rules の位置をそのまま通す。 */
+    if(holdOnly)return null;
+
     /* 現行ruleが既に同じ位置を選んでいるなら確認は要らない。 */
     var agrees=ruleResult&&ruleResult.length===cand.offset;
     if(!agrees&&!this.confirmed(state,cand.offset,th.confirm))
@@ -14386,7 +14417,10 @@ var TurnDecision={
     if(mode==='shadow')return ruleResult;
     var hit=this.read(state);
     if(!hit)return ruleResult;
-    return this.pick(state,hit,ruleResult)||ruleResult;
+    /* 床で使うために safe_to_speak を部分へ持たせる。新しく聞き直さない ――
+       この答えは commit のときに同じ1リクエストで既に払っている。 */
+    if(s)s.floorHint={safeToSpeak:hit.safeToSpeak,at:now,decisionId:hit.decisionId};
+    return this.pick(state,hit,ruleResult,mode==='assist')||ruleResult;
   },
 
   /* Floor Gate の座席。Phase 3で判断を入れる。判断層がoffのあいだはnullを返し、
@@ -14396,21 +14430,46 @@ var TurnDecision={
      読み上げ待ちは実測で20〜40秒に達するので、expiry=drop のままでは
      「フロアで保持した覚えのない音声」を理由なく捨てる。保持していないなら
      期限も無い。 */
-  floor:function(job,silence,now){
+  floor:function(job,silence,now,overlap){
     var e=job&&job.card;
     if(!e||!this.applies(e.srcLang)){if(job)job.floorSince=0;return null;}
-    var why=this.floorHold(job,silence,now);
+    var why=this.floorHold(job,silence,now,overlap);
     if(!why){job.floorSince=0;return null;}
-    if(!job.floorSince)job.floorSince=now;
+    if(!job.floorSince){
+      job.floorSince=now;this.bump('floorHeld');
+      /* 保持し始めた1回だけ書く。floor は80ms周期で呼ばれるので毎回書くと埋まる。 */
+      dlog('segment','floor-hold',{cardId:e.id,seq:job.segment&&job.segment.seq,
+        why:why,overlap:overlap||'',
+        safeToSpeak:job.segment&&job.segment.floorHint?job.segment.floorHint.safeToSpeak:null,
+        maxWaitMs:Number(CFG.turnFloorMaxWaitMs||3000)});
+    }
     var waited=now-job.floorSince;
     if(waited>=Number(CFG.turnFloorMaxWaitMs||3000))
       return {action:String(CFG.turnFloorExpiry||'speak')==='drop'?'drop':'speak',reason:'floor-max-wait',waitMs:waited};
     return {action:'hold',reason:why,waitMs:waited};
   },
-  /* 話者フロアの判定そのもの。Phase 3 は話者帰属の実測が前提で未実装なので、
-     保持する条件をまだ持たない。ここが null を返す間、Floor Gate は無効で、
-     読み上げ開始は既存の overlap ルールだけで決まる。 */
-  floorHold:function(){return null;},
+  /* 床の判定そのもの。commit のときに同じ1リクエストで答えてもらった
+     safe_to_speak（noul）を読む。ここで新しく問い合わせない。
+
+     「重なるか」ではなく「重なってよいか」で分ける ――
+     同時通訳は元の話者に重ねて読むのが普通で、それは segmentOverlap=allow という
+     利用者の明示的な選択である。だから allow のときは床を効かせない。効くのは
+     avoid と auto、つまり「無音を待つ」とルールが決めた場面だけで、そこでは
+     無音の秒数より safe_to_speak のほうが確かな根拠になる。
+
+     noul は 0.5 が「判断がつかない」。TURN_FLOOR_SAFE_MAX はその下側に置き、
+     はっきり「いま鳴らすと遮る」と言ったときだけ保持する。confidence では
+     閾値を切らない（noul は confidence を持たない）。 */
+  floorHold:function(job,silence,now,overlap){
+    if(!CFG.turnFloorSafeToSpeak)return null;
+    if((overlap||'allow')==='allow')return null;
+    var s=job&&job.segment,hint=s&&s.floorHint;
+    if(!hint||typeof hint.safeToSpeak!=='number')return null;
+    /* 答えは commit 時点の音響と待ち行列から出ている。待ち行列で数秒経っていれば
+       もうその場面の話ではないので使わない。保持は自然にこの窓で頭打ちになる。 */
+    if(now-hint.at>TURN_FLOOR_HINT_MS)return null;
+    return hint.safeToSpeak<=TURN_FLOOR_SAFE_MAX?'safe-to-speak':null;
+  },
 
   reset:function(why){this._toldUnreachable=false;
     var self=this;
@@ -14815,7 +14874,7 @@ function segPump(){
     if(overlap==='avoid'&&!e.segment.final&&(silence===null||silence<segPolicyFor(e,segDebt()).silence)){segTtsWait(j,'input-silence');return;}
     /* Floor Gate の座席。判断層がoffならnullが返り、既存のoverlap ruleだけで進む。
        INV-09により、待ちはturnFloorMaxWaitMsを超えて保持されない。 */
-    var floor=TurnDecision.floor(j,silence,Date.now());
+    var floor=TurnDecision.floor(j,silence,Date.now(),overlap);
     if(floor&&floor.action==='hold'){segTtsWait(j,'floor',{waitMs:floor.waitMs,floorReason:floor.reason});return;}
     if(floor&&floor.action==='drop'){s.audio.status='cancelled';s.audio.skipReason='floor-expired';s.state='skipped';
       SEG.queue.shift();segRefreshPlayback(j);

@@ -56,6 +56,14 @@ for(const b of [segBlock(),
                 block('var TurnDecision={'),
                 block('var TurnTrace={')]) vm.runInContext(b,c);
 
+/* 1行で書かれた定数は block() では終端が取れないので、行ごと入れる。 */
+function constLine(name){
+  const m=new RegExp('^var '+name+'=[^\\n]*$','m').exec(src);
+  assert.ok(m,'constant not found: '+name);
+  return m[0];
+}
+for(const name of ['TURN_FLOOR_HINT_MS','TURN_FLOOR_SAFE_MAX']) vm.runInContext(constLine(name),c);
+
 const tests=[];
 const test=(n,f)=>{f();tests.push(n);};
 const D=()=>c.TurnDecision, T=()=>c.TurnTrace;
@@ -64,7 +72,7 @@ function reset(over){
   ctx.CFG=Object.assign({segmentMode:'balanced',segmentBoundary:'semantic',sttProvider:'openai',
     segmentOverlap:'auto',vad:12,turnDecisionMode:'off',turnDecisionProvider:'rules',
     turnDecisionLangEn:'shadow',turnDecisionLangJa:'shadow',turnDecisionContextTurns:0,
-    turnFloorMaxWaitMs:3000,turnFloorExpiry:'speak',turnTraceMode:'off',
+    turnFloorMaxWaitMs:3000,turnFloorExpiry:'speak',turnFloorSafeToSpeak:true,turnTraceMode:'off',
     turnDecisionProsody:true},over||{});
   peeked.count=0; D().cache={}; D().inflight={}; D().sessionSalt=null;
   D()._confirm={}; D()._lastSend={}; D().circuit={}; T().reset();
@@ -492,4 +500,154 @@ test('an identical revision is still ignored entirely',()=>{
   assert.equal(c.SEG.corrected,0);
   assert.equal(s.sourceRevision,1,'nothing is touched at all');
 });
+/* ── assist は「待て」だけを採る ───────────────────────────────────────
+   実測（英語24件・日本語25件）で Jev が Rules より前で切れと言った回数は0だった。
+   価値は待つ側に全部あるので、assist では切る位置を Rules のままにする。
+   外したときの被害が「少し待つ」だけに収まり、turnFloorMaxWaitMs で頭打ちになる。 */
+const enPick=(over)=>{
+  const i=input({lang:'en',stableLength:12});
+  const s=D().stateOf(card({srcLang:'en'}),{},i,D().rules(i),900,Date.now());
+  const cand=s.candidateBoundaries[0],probs={};
+  probs[cand.id]=0.95;probs.HOLD=0.05;
+  const hit=Object.assign({boundary:{choice:cand.id,confidence:0.9,probabilities:probs},
+    turnState:{choice:'COMPLETE',confidence:0.9,probabilities:{COMPLETE:0.9}},
+    safeToSpeak:0.9,repairLikelihood:0.01},over||{});
+  return {s,hit,cand};
+};
+
+test('assist leaves the cut to the rules while active adopts it',()=>{
+  reset({turnDecisionMode:'assist',turnDecisionLangEn:'assist'});
+  const {s,hit,cand}=enPick();
+  assert.equal(D().pick(s,hit,null,true),null,'assist must not move the position');
+  const d=D().pick(s,hit,null,false);
+  assert.ok(d&&d.length===cand.offset,'active still adopts the position');
+});
+test('assist still adopts HOLD, which is the whole point of it',()=>{
+  reset({turnDecisionMode:'assist',turnDecisionLangEn:'assist'});
+  const {s}=enPick();
+  const d=D().pick(s,{boundary:{choice:'HOLD',confidence:0.9,probabilities:{HOLD:0.9}}},null,true);
+  assert.ok(d,'a HOLD must reach the caller');
+  assert.equal(d.length,0);
+  assert.equal(d.waiting,'provider-hold');
+  assert.equal(d.source,'provider');
+});
+test('assist still waits on CONTINUING, SELF_REPAIR and a likely restatement',()=>{
+  reset({turnDecisionMode:'assist',turnDecisionLangEn:'assist'});
+  for(const st of ['CONTINUING','SELF_REPAIR']){
+    const {s,hit}=enPick({turnState:{choice:st,confidence:0.9,probabilities:{}}});
+    const d=D().pick(s,hit,null,true);
+    assert.ok(d&&d.length===0,st+' must still hold in assist');
+    assert.equal(d.waiting,'provider-'+st.toLowerCase());
+  }
+  const {s,hit}=enPick({repairLikelihood:0.9});
+  const d=D().pick(s,hit,null,true);
+  assert.ok(d&&d.length===0);
+  assert.equal(d.waiting,'provider-repair');
+});
+test('assist never emits provider-confirming, which would delay a cut it will not take',()=>{
+  /* ヒステリシスは「別の位置を採る」ためのもの。採らないなら待つ理由が無い。 */
+  reset({turnDecisionMode:'assist',turnDecisionLangJa:'assist'});   /* ja は confirm 2回 */
+  const i=input(),s=D().stateOf(card(),{},i,D().rules(i),900,Date.now());
+  const cand=s.candidateBoundaries[0],probs={};probs[cand.id]=0.95;probs.HOLD=0.02;
+  const hit={boundary:{choice:cand.id,confidence:0.9,probabilities:probs},
+    turnState:{choice:'COMPLETE',confidence:0.9,probabilities:{}},
+    safeToSpeak:0.9,repairLikelihood:0.01};
+  assert.equal(D().pick(s,hit,null,true),null,'no waiting, no commit — the rules decide');
+  const active=D().pick(s,hit,null,false);
+  assert.ok(active&&active.waiting==='provider-confirming','active still confirms first');
+});
+test('a position assist discarded is not counted as applied',()=>{
+  reset({turnDecisionMode:'assist',turnDecisionLangEn:'assist'});
+  D().stats.applied=0;
+  const {s,hit}=enPick();
+  D().pick(s,hit,null,true);
+  assert.equal(D().stats.applied,0,'the diagnostics must not claim a decision that was dropped');
+  D().pick(s,hit,null,false);
+  assert.equal(D().stats.applied,1);
+});
+test('boundary routes assist through hold-only and keeps the rules length',()=>{
+  reset({turnDecisionMode:'assist',turnDecisionLangJa:'assist'});
+  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,900,now),cand=st.candidateBoundaries[0];
+  const probs={};probs[cand.id]=0.95;probs.HOLD=0.02;
+  D().cache[D().key(st)]={sessionId:st.sessionId,utteranceId:st.utteranceId,revision:st.revision,
+    boundary:{choice:cand.id,confidence:0.9,probabilities:probs},
+    turnState:{choice:'COMPLETE',confidence:0.9,probabilities:{}},
+    safeToSpeak:0.9,repairLikelihood:0.01,decisionId:'d1'};
+  const d=D().boundary(e,seg,i,rule,900,now);
+  assert.equal(d,rule,'assist must hand back the rules result itself');
+});
+
+/* ── 床：commit のときに既に払った safe_to_speak を読む ─────────────────
+   新しく問い合わせない。noul は 0.5 が「判断がつかない」なので、境目はその下に置く。 */
+const floorJob=(s2s,age)=>({card:card(),segment:{seq:1,
+  floorHint:s2s===null?null:{safeToSpeak:s2s,at:Date.now()-(age||0)}},floorSince:0});
+
+test('the floor holds when the model said starting now would talk over the speaker',()=>{
+  reset({turnDecisionMode:'assist',turnDecisionLangJa:'assist'});
+  const f=D().floor(floorJob(0.10),250,Date.now(),'avoid');
+  assert.ok(f,'a clear false must reach the pump');
+  assert.equal(f.action,'hold');
+  assert.equal(f.reason,'safe-to-speak');
+});
+test('the floor stays out of it when the operator chose to allow overlap',()=>{
+  /* 同時通訳は元の話者へ重ねて読むのが普通で、allow はその明示的な選択。 */
+  reset({turnDecisionMode:'assist',turnDecisionLangJa:'assist'});
+  assert.equal(D().floor(floorJob(0.05),250,Date.now(),'allow'),null);
+  assert.ok(D().floor(floorJob(0.05),250,Date.now(),'avoid'),'but avoid is where it belongs');
+});
+test('an undecided answer is not treated as a reason to wait',()=>{
+  reset({turnDecisionMode:'assist',turnDecisionLangJa:'assist'});
+  assert.equal(D().floor(floorJob(0.5),250,Date.now(),'avoid'),null,'0.5 means undecided, not false');
+  assert.equal(D().floor(floorJob(0.9),250,Date.now(),'avoid'),null);
+});
+test('an answer that went stale in the queue is not used',()=>{
+  /* 答えは commit 時点の音響と待ち行列から出ている。待ち行列で数秒経っていれば
+     もうその場面の話ではない。実測では commit から再生まで6〜13秒あった。 */
+  reset({turnDecisionMode:'assist',turnDecisionLangJa:'assist'});
+  assert.ok(D().floor(floorJob(0.1,c.TURN_FLOOR_HINT_MS-50),250,Date.now(),'avoid'),'fresh enough');
+  assert.equal(D().floor(floorJob(0.1,c.TURN_FLOOR_HINT_MS+50),250,Date.now(),'avoid'),null,'too old');
+});
+test('with no answer the floor says nothing rather than guessing',()=>{
+  reset({turnDecisionMode:'assist',turnDecisionLangJa:'assist'});
+  assert.equal(D().floor(floorJob(null),250,Date.now(),'avoid'),null);
+});
+test('the floor can be switched off on its own',()=>{
+  reset({turnDecisionMode:'assist',turnDecisionLangJa:'assist',turnFloorSafeToSpeak:false});
+  assert.equal(D().floor(floorJob(0.05),250,Date.now(),'avoid'),null);
+});
+test('off and shadow never reach the floor at all',()=>{
+  for(const mode of ['off','shadow']){
+    reset({turnDecisionMode:mode,turnDecisionLangJa:mode});
+    const job=floorJob(0.05);
+    assert.equal(D().floor(job,250,Date.now(),'avoid'),null,mode);
+    assert.equal(job.floorSince,0,mode+' must not start a timer either');
+  }
+});
+test('the hold ends at the configured ceiling, never later (INV-09)',()=>{
+  reset({turnDecisionMode:'assist',turnDecisionLangJa:'assist',turnFloorMaxWaitMs:3000});
+  const now=Date.now(),job=floorJob(0.05);
+  job.floorSince=now-3001;
+  const f=D().floor(job,250,now,'avoid');
+  assert.equal(f.action,'speak','the default releases the audio');
+  assert.equal(f.reason,'floor-max-wait');
+  ctx.CFG.turnFloorExpiry='drop';
+  job.floorSince=now-3001;
+  assert.equal(D().floor(job,250,now,'avoid').action,'drop');
+});
+test('boundary leaves the answer on the part, so the floor never asks again',()=>{
+  reset({turnDecisionMode:'assist',turnDecisionLangJa:'assist'});
+  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,900,now);
+  D().cache[D().key(st)]={sessionId:st.sessionId,utteranceId:st.utteranceId,revision:st.revision,
+    boundary:{choice:'HOLD',confidence:0.9,probabilities:{HOLD:0.9}},
+    turnState:{choice:'CONTINUING',confidence:0.9,probabilities:{}},
+    safeToSpeak:0.12,repairLikelihood:0.01,decisionId:'d9'};
+  D().boundary(e,seg,i,rule,900,now);
+  assert.ok(seg.floorHint,'the part carries the answer forward');
+  assert.equal(seg.floorHint.safeToSpeak,0.12);
+  assert.equal(seg.floorHint.at,now);
+  assert.equal(seg.floorHint.decisionId,'d9');
+});
+
 console.log(JSON.stringify({passed:tests.length,tests},null,2));

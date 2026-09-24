@@ -142,10 +142,18 @@
     "v1.49.15": {
       "build": "20260923-v14915-key-note-fold",
       "extension": "1.4.26",
-      "commit": null,
+      "commit": "566c9a5",
       "indexHtmlSha256": "fb6c26188b9dd4ee9f2afce74f194202747e23747dfd0f9bee3a6be3849d3c07",
       "extensionAppJsSha256": "b55f1de4a277f5f24b1784ae49a0de491c349cedf4fa68cc70b82178fe1ff298",
       "summary": "JevのAPIキーの説明をたたんだ。ただし「いまアドオンを経由できません」のような状態は残す。隠すとキーを入れても動かない理由が画面から消えるため。外部へ送らない経路では折りたたみごと消す"
+    },
+    "v1.49.16": {
+      "build": "20260924-v14916-assist-hold-and-floor",
+      "extension": "1.4.27",
+      "commit": null,
+      "indexHtmlSha256": "7e13cb429eaa1c78de9bdc9e1353730b34182838fbd0c62a39ea7ca3e4f9a39a",
+      "extensionAppJsSha256": "11e672dae94795be0aee65a00657f08961720e083a474841f09bc5b7c4d570e7",
+      "summary": "assistを「待つ判断だけ採用・切る位置はRulesのまま」に変えた（従来はactiveと同一だった）。実測で Jev が Rules より前で切れと言った回数は0で、価値は待つ側に全部あるため。あわせて毎回聞いて捨てていた safe_to_speak を読み上げ開始の床へつないだ。追加のAPI費用は無い"
     }
   }
 }
