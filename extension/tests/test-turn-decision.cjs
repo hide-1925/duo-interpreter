@@ -29,6 +29,8 @@ const ctx={
   /* peek だけを検査するので、コンストラクタは prototype の置き場として空で足りる。 */
   ProsodyAnalyzer:function(){},
   CFG:{}, S:{entries:[]}, DuoSpeakers:{available:false},
+  /* 解析器の解決は engines を見る。gate では常に空にして共有マイクへ落とす。 */
+  engines:[],
   /* commit-retouch を検査したいので記録する。 */
   dlog:(...a)=>dlogs.push(a),
   segDebt:()=>0,
@@ -43,6 +45,7 @@ for(const b of [segBlock(),
                 block('function segSemanticEnabled()'),
                 block('function segSemanticTail(text,lang){'),
                 block('function segSemanticDecision(input){'),
+                block('function prosodyAnalyzerFor(seat){'),
                 block('function prosodyRound('),
                 block('function prosodyClamp('),
                 block('function prosodyMean('),
@@ -458,6 +461,53 @@ test('peek reads the tail without consuming the frame buffer',()=>{
 test('peek reports unavailable instead of guessing on a short window',()=>{
   const an={closed:false,frames:[{t:Date.now(),rms:0.05,db:-40,pitch:180,voice:true}]};
   assert.equal(c.ProsodyAnalyzer.prototype.peek.call(an,1500).available,false);
+});
+
+/* ── 音響をどの解析器から読むか ───────────────────────────────────────────
+   共有マイク固定だったため、タブ音声・VB-CABLE・画面共有だけで通訳しているあいだ
+   音響が常に空だった。v1.49.19 の gpt-live-transcribe 記録では Pitch=未検出 のまま
+   provider が6件決めており、判断層は音響なしで答えていた。 */
+const fakeAnalyzer=(over)=>Object.assign({closed:false,reads:0,tag:'',
+  peek(ms){this.reads++;return {available:true,terminalPitchSlope:-0.2,quality:0.7,tag:this.tag};}},over||{});
+
+test('the layer reads the analyzer of the seat that is speaking, not only the microphone',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const mine=fakeAnalyzer({tag:'seatA'}),other=fakeAnalyzer({tag:'seatB'});
+  ctx.engines=[{seat:'B',prosody:other},{seat:'A',prosody:mine}];
+  const got=D().prosodyOf(card({seat:'A'}));
+  ctx.engines=[];
+  assert.equal(got&&got.tag,'seatA',"the other seat's analyzer must not answer for this one");
+  assert.equal(mine.reads,1);
+  assert.equal(other.reads,0);
+  assert.equal(peeked.count,0,'the shared microphone is the fallback, not the first choice');
+});
+test('a seatless engine answers when no seat matches, which is how AUTO runs',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const auto=fakeAnalyzer({tag:'auto'});
+  ctx.engines=[{prosody:auto}];
+  const got=D().prosodyOf(card({seat:'A'}));
+  ctx.engines=[];
+  assert.equal(got&&got.tag,'auto');
+});
+test('a dead engine and a closed analyzer are skipped, never read',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const gone=fakeAnalyzer({tag:'dead'}),shut=fakeAnalyzer({tag:'closed',closed:true});
+  ctx.engines=[{seat:'A',prosody:gone,dead:true},{seat:'A',prosody:shut}];
+  const got=D().prosodyOf(card({seat:'A'}));
+  ctx.engines=[];
+  assert.ok(got&&!got.tag,'it must fall through to the shared microphone');
+  assert.equal(gone.reads,0);assert.equal(shut.reads,0);
+  assert.equal(peeked.count,1);
+});
+test('off reads no analyzer at all, engine or microphone (INV-08)',()=>{
+  reset();
+  const an=fakeAnalyzer({tag:'seatA'});
+  ctx.engines=[{seat:'A',prosody:an}];
+  const i=input(),rule=D().rules(i);
+  D().boundary(card({seat:'A'}),{},i,rule,null,Date.now());
+  ctx.engines=[];
+  assert.equal(an.reads,0);
+  assert.equal(peeked.count,0);
 });
 
 /* 訂正率は判断層の安全性を測る基準の数字。末尾繰越の結合で末尾に空白が1つ付くだけで

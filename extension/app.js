@@ -751,8 +751,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.20';
-var APP_BUILD = '20260925-v14920-hold-cap';
+var APP_VERSION = 'v1.49.21';
+var APP_BUILD = '20260925-v14921-prosody-google-tts';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -1083,6 +1083,16 @@ var CONFIG_SCHEMA = [
   /* 60秒10回はAivisの公表値。ただし上位プランでは超過分をクレジットで払う設定に
      できるので、こちら側の数え（＝予測）で送信を止めてはいけない。既定は送る。 */
   { prop:"aivisOverLimit", key:'di.aiovl', embed:'aivisOverLimit', def:'send', portable:true, el:"aivisOverLimit" },
+  /* Google Cloud TTS。声の系統で名前の組み立て方が変わる（Chirp3は言語込み、Geminiは素の名前）。 */
+  { prop:"gttsFamily", key:'di.gttsfam', embed:'gttsFamily', def:'chirp3', portable:true, el:"gttsFamily", bind:'custom' },
+  { prop:"gttsVoice", key:'di.gttsv', embed:'gttsVoice', def:'Aoede', portable:true, el:"gttsVoice", bind:'custom' },
+  { prop:"gttsVoiceB", key:'di.gttsvb', embed:'gttsVoiceB', def:'', portable:true, el:"gttsVoiceB", bind:'custom' },
+  { prop:"gttsVoiceId", key:'di.gttsvid', embed:'gttsVoiceId', def:'', portable:true, el:"gttsVoiceId", bind:'custom' },
+  { prop:"gttsVoiceIdB", key:'di.gttsvidb', embed:'gttsVoiceIdB', def:'', portable:true, el:"gttsVoiceIdB", bind:'custom' },
+  { prop:"gttsModel", key:'di.gttsm', embed:'gttsModel', def:'gemini-2.5-flash-tts', portable:true, el:"gttsModel", bind:'custom' },
+  { prop:"gttsPrompt", key:'di.gttsp', embed:'gttsPrompt', def:'', portable:true, el:"gttsPrompt", bind:'custom' },
+  { prop:"gttsRate", key:'di.gttsrt', embed:'gttsRate', def:'0', portable:true, el:"gttsRate" },
+  { prop:"gttsVolume", key:'di.gttsvo', embed:'gttsVolume', def:'0', portable:true, el:"gttsVolume" },
   { prop:"elModel", key:'di.elm', embed:'elModel', def:'eleven_flash_v2_5', portable:true, el:"elModel", bind:'custom' },
   { prop:"elVoice", key:'di.elv', embed:'elVoice', def:'', portable:true, el:"elVoice", bind:'custom' },
   { prop:"elVoiceLbl", key:'di.elvl', embed:'elVoiceLbl', def:'', portable:true },
@@ -3218,6 +3228,19 @@ function verifyElKey(){
   });
 }
 /* xAI は読み上げ専用の軽い確認口がないので、モデル一覧でキーの有効性だけを見る */
+/* キーの確認と声の取得を1つにまとめる。voices.list は読み上げと同じキーで
+   同じホストを叩くので、通ればその経路がまるごと生きていると言える。 */
+function verifyGttsKey(){
+  return keyChkRun('chkGtts', 'chkGttsMsg', 'Google', function(){
+    if (!gttsKey()) return Promise.reject(new Error('APIキーが未入力です'));
+    return gttsFetchVoices(gttsSeatLang('A')).then(function(r){
+      refreshVvUI();
+      var chirp = r.names.filter(function(n){ return /Chirp3?-HD-/i.test(n); }).length;
+      return '接続できました（' + r.languageCode + ' で ' + r.names.length + ' 件'
+           + (chirp ? '、うち Chirp 3: HD が ' + chirp + ' 件' : '') + '）。';
+    });
+  });
+}
 function verifyXaiTtsKey(){
   return keyChkRun('chkXaiTts', 'chkXaiTtsMsg', 'xAI', function(){
     var key = xaiKey();
@@ -3887,13 +3910,42 @@ function attachProsody(entry, snapshot){
     thresholdRms:p.analyzer&&p.analyzer.adaptiveThresholdRms,source:p.analyzer.source
   });
 }
+/* どの解析器を読むかを1か所で決める。解析器は3系統ある ―― 共有マイク（startVU）、
+   録音分割RESTのStreamEngine、Realtime系のエンジン。判断層と字幕はこれまで
+   micProsody（共有マイク）だけを見ていたので、マイクを使わない経路
+   （タブ音声・VB-CABLE・画面共有）では音響がいつも空だった。v1.49.19の
+   gpt-live-transcribe 記録で Pitch=未検出 のまま provider が6件決めていたのは
+   これで、判断層は音響なしで答えていた。
+
+   席が一致するエンジンを優先し、席を持たないエンジン（AUTO判定）を次に見て、
+   最後に共有マイクへ落とす。 */
+function prosodyAnalyzerFor(seat){
+  var list=(typeof engines!=='undefined'&&engines)?engines:[],pass,i,e,es;
+  for(pass=0;pass<2;pass++){
+    for(i=0;i<list.length;i++){
+      e=list[i];
+      if(!e||e.dead||!e.prosody||e.prosody.closed)continue;
+      es=e.seat||e.srcSeat||null;
+      if(pass===0){ if(seat&&es===seat)return e.prosody; }
+      else if(!seat||!es)return e.prosody;
+    }
+  }
+  return (micProsody&&!micProsody.closed)?micProsody:null;
+}
+/* 診断に出す用。どの解析器が判断層へ音響を渡しているのかが分からないと、
+   Pitch=未検出 の原因が「解析器が無い」のか「見つからない」のか切り分けられない。 */
+function prosodySourceLabel(){
+  var an=prosodyAnalyzerFor(null);
+  return an?(an.source||'audio'):'無し';
+}
 var lastMicProsody = null;
-function micProsodySnapshot(text, allowReuse){
+function micProsodySnapshot(text, allowReuse, seat){
   var key=String(text||'').toLowerCase().replace(/\s+/g,'').trim(), now=Date.now();
   if (allowReuse && lastMicProsody && key && lastMicProsody.key===key && now-lastMicProsody.at<10000){
     try{ return JSON.parse(JSON.stringify(lastMicProsody.data)); }catch(e){ return lastMicProsody.data; }
   }
-  var p=micProsody ? micProsody.finalize() : null;
+  var an=prosodyAnalyzerFor(seat||null);
+  var p=an ? an.finalize() : null;
   if (p && key) lastMicProsody={key:key,at:now,data:p};
   return p;
 }
@@ -6609,6 +6661,244 @@ function xaiSpeak(text, lang, seat, prosody){
   });
 }
 
+/* ---------------- Google Cloud Text-to-Speech ----------------------------
+   texttospeech.googleapis.com は Access-Control-Allow-Origin を要求元へ返し、
+   x-goog-api-key を許可ヘッダに挙げている（実測。file:// の Origin: null も通る）。
+   つまり判断層の api.typesafe.ai と違い、ページから直接呼べる。中継は要らない。
+
+   声は2系統ある。
+   ・Chirp 3: HD  名前が「言語-Chirp3-HD-名前」。低遅延で同時通訳向き。
+                  SSML・speakingRate・pitch のいずれにも対応しない（送ると 400）。
+   ・Gemini-TTS   名前は素の「Kore」など。modelName と input.prompt で話し方を
+                  文章で指示する。表現は広いが1発話の待ちは伸びる。
+   従来の声（Neural2 / Studio / WaveNet / Standard）は名前を直接入力する経路で
+   使う。speakingRate を渡せるのはこの経路だけ。                            */
+var GTTS_URL = 'https://texttospeech.googleapis.com/v1/text:synthesize';
+var GTTS_VOICES_URL = 'https://texttospeech.googleapis.com/v1/voices';
+/* Gemini-TTS の30種。Chirp 3: HD で Google のサンプルが挙げているのは先頭8種。 */
+var GTTS_CHIRP_VOICES = ['Aoede','Puck','Charon','Kore','Fenrir','Leda','Orus','Zephyr'];
+var GTTS_GEMINI_VOICES = GTTS_CHIRP_VOICES.concat(['Achernar','Achird','Algenib','Algieba',
+  'Alnilam','Autonoe','Callirrhoe','Despina','Enceladus','Erinome','Gacrux','Iapetus',
+  'Laomedeia','Pulcherrima','Rasalgethi','Sadachbia','Sadaltager','Schedar','Sulafat',
+  'Umbriel','Vindemiatrix','Zubenelgenubi']);
+var GTTS_RATE_FACTORS = [0.75,0.88,1,1.15,1.30,1.50,1.80];
+var GTTS_GAIN_FACTORS = [0.75,0.88,1,1.12,1.25];
+/* 送った speakingRate / pitch を Google が拒んだ席を覚える。同じ設定で毎回
+   400 を取りにいかない。声の名前で覚えるので、声を変えれば再挑戦する。 */
+var GTTS_NO_AUDIO_PARAMS = {};
+var gttsWarned = false, gttsVoiceCache = {};
+
+function gttsKey(){ return (KEYS['tts:google'] || '').trim(); }
+function gttsFamily(){
+  var f=String(CFG.gttsFamily||'chirp3');
+  return (f==='gemini'||f==='direct')?f:'chirp3';
+}
+function gttsRateLevel(v){
+  var n=parseInt(v,10); if(isNaN(n))n=0;
+  return Math.max(-2,Math.min(4,n));
+}
+/* Google 側の言語タグ。Chirp 3: HD は中国語を cmn-、アラビア語を ar-XA で持つ。
+   Gemini-TTS のアラビア語は ar-001。ここを既定のBCP-47のまま送ると 400 になる。 */
+function gttsLangCode(lang){
+  var fam=gttsFamily();
+  if(lang==='zh')return 'cmn-CN';
+  if(lang==='zh-TW')return 'cmn-TW';
+  if(lang==='ar')return fam==='gemini'?'ar-001':'ar-XA';
+  return L(lang).tts||'en-US';
+}
+/* その席の発言を「どの言語で読むか」。A席の発言は既定で訳文＝B席の言語になる。
+   ttsPlanRows と同じ規則をここでも使う（原文読み上げのときは逆になる）。 */
+function gttsSeatLang(seat){
+  var useSrc=!!CFG.ttsSrc;
+  if(seat==='B')return useSrc?CFG.langB:CFG.langA;
+  return useSrc?CFG.langA:CFG.langB;
+}
+function gttsVoiceName(seat,lang){
+  var fam=gttsFamily();
+  var direct=seatPick(seat||'A',CFG.gttsVoiceIdB,CFG.gttsVoiceId);
+  if(fam==='direct')return String(direct||'').trim();
+  if(String(direct||'').trim())return String(direct).trim();   /* 直接入力が勝つ */
+  var pick=String(seatPick(seat||'A',CFG.gttsVoiceB,CFG.gttsVoice)||'Aoede').trim();
+  if(fam==='gemini')return pick;
+  return gttsLangCode(lang)+'-Chirp3-HD-'+pick;
+}
+/* この声へ speakingRate / pitch を渡してよいか。Chirp 3: HD と Gemini-TTS は
+   どちらも非対応で、送ると 400 が返る（Chirp 3 は既定値でも落ちる報告がある）。 */
+function gttsAudioParamsOk(voiceName){
+  if(gttsFamily()==='gemini')return false;
+  if(/Chirp3?-HD-/i.test(String(voiceName||'')))return false;
+  if(GTTS_NO_AUDIO_PARAMS[String(voiceName||'')])return false;
+  return true;
+}
+function gttsManualTweaks(){
+  return '話速 '+['かなり遅い','遅い','標準','速い','かなり速い','高速','最高速'][gttsRateLevel(CFG.gttsRate)+2]
+       + ' / 音量 '+['かなり小さい','小さい','標準','大きい','かなり大きい'][oaiLevel(CFG.gttsVolume)+2];
+}
+function gttsBuildPlan(lang,prosody,voiceName){
+  var map=prosodyMapForTts(prosody,lang||'','google');
+  var desired=GTTS_RATE_FACTORS[gttsRateLevel(CFG.gttsRate)+2];
+  var gain=GTTS_GAIN_FACTORS[oaiLevel(CFG.gttsVolume)+2];
+  if(map){ desired*=map.rate; gain*=map.volume; }
+  desired=prosodyRound(prosodyClamp(desired,0.70,1.80),3);
+  gain=prosodyRound(prosodyClamp(gain,0.50,1.50),3);
+  /* API が速度を受けない声では、全部をピッチ保持再生で出す。playBlob の上限は2倍。 */
+  var apiRate=gttsAudioParamsOk(voiceName)?prosodyRound(prosodyClamp(desired,0.25,2),3):1;
+  return {map:map,desiredRate:desired,apiRate:apiRate,
+    playbackRate:prosodyRound(prosodyClamp(desired/apiRate,0.5,2),3),gain:gain,
+    audioParams:gttsAudioParamsOk(voiceName)};
+}
+function gttsBody(text,lang,seat,plan,voiceName){
+  var fam=gttsFamily();
+  var body={input:{text:String(text||'')},
+    voice:{languageCode:gttsLangCode(lang),name:voiceName},
+    audioConfig:{audioEncoding:'MP3'}};
+  if(fam==='gemini'){
+    body.voice.modelName=String(CFG.gttsModel||'gemini-2.5-flash-tts');
+    var p=String(CFG.gttsPrompt||'').trim();
+    if(p)body.input.prompt=p.slice(0,800);
+  }
+  if(plan.audioParams&&plan.apiRate!==1)body.audioConfig.speakingRate=plan.apiRate;
+  return body;
+}
+/* audioContent は base64。fetch では取れないので自分で Blob へ戻す。 */
+function gttsBlobFrom(b64){
+  var bin=atob(String(b64||'')),n=bin.length,buf=new Uint8Array(n),i;
+  for(i=0;i<n;i++)buf[i]=bin.charCodeAt(i);
+  return new Blob([buf],{type:'audio/mpeg'});
+}
+function gttsHttpHint(status,message){
+  var m=String(message||'');
+  /* 鍵が無効なときの応答は 401 でも 403 でもなく 400（API_KEY_INVALID）。実測。
+     ここを他の 400 と一緒に「指定が悪い」と言うと、声の名前を疑いに行かせてしまう。 */
+  if(/API key not valid|API_KEY_INVALID|api key expired/i.test(m))
+    return 'APIキーが無効です。Google Cloud の「認証情報」で作り直すか、貼り間違いをご確認ください。';
+  if(status===400&&/speaking_rate|speakingRate|pitch/i.test(m))
+    return 'この声は話速・ピッチの指定に対応していません。指定を外して読み直します。';
+  if(status===400)return 'Google がこの指定を受け付けませんでした（声の名前と言語の組み合わせをご確認ください）。';
+  if(status===401||status===403)
+    return 'キーにこのAPIの権限が無いか、Cloud Text-to-Speech API が有効になっていません。'
+         + 'Google Cloud でAPIを有効にし、キーの制限にこのAPIを含めてください。';
+  if(status===429)return 'Google の利用上限に達しました。';
+  return 'Google でエラーが返りました（'+String(status||'')+' '+m.slice(0,70)+'）。';
+}
+function gttsRequest(body,key){
+  return fetch(GTTS_URL,{method:'POST',
+    headers:{'Content-Type':'application/json','x-goog-api-key':key},
+    body:JSON.stringify(body)}).then(function(r){
+    return r.text().then(function(raw){
+      var j=null;try{j=JSON.parse(raw);}catch(e){}
+      if(!r.ok){
+        var err=new Error(r.status+' '+String((j&&j.error&&j.error.message)||raw).slice(0,180));
+        err.status=r.status;err.detail=String((j&&j.error&&j.error.message)||'');
+        throw err;
+      }
+      if(!j||!j.audioContent)throw new Error('audioContent が空で返りました');
+      return j.audioContent;
+    });
+  });
+}
+function gttsSpeak(text,lang,seat,prosody){
+  var key=gttsKey();
+  if(!key)
+    return ttsFallback(text,lang,'未設定',
+      'Google のAPIキーが未設定です。⚙→音声 でご確認ください。','gttsWarned');
+  var voiceName=gttsVoiceName(seat,lang);
+  if(!voiceName)
+    return ttsFallback(text,lang,'未設定',
+      'Google の声が未設定です。⚙→音声 で声を選ぶか、名前を直接入力してください。','gttsWarned');
+  var t0=Date.now(),finish=ttsGuard(text,Math.min(90000,8000+text.length*150),seat);
+  var plan=gttsBuildPlan(lang,prosody,voiceName),body=gttsBody(text,lang,seat,plan,voiceName);
+  dlog('tts','google-request',{chars:text.length,seat:seat||'A',lang:lang,
+    family:gttsFamily(),voice:voiceName,languageCode:body.voice.languageCode,
+    model:body.voice.modelName||'',promptChars:(body.input.prompt||'').length,
+    desiredSpeed:plan.desiredRate,apiSpeed:plan.apiRate,playbackRate:plan.playbackRate,
+    gain:plan.gain,manual:gttsManualTweaks(),prosody:!!plan.map});
+  logProsodyMap(plan.map,{effectiveRate:plan.desiredRate,apiSpeed:plan.apiRate,
+    playbackRate:plan.playbackRate,effectiveVolume:plan.gain});
+  gttsRequest(body,key).catch(function(err){
+    /* 速度指定が原因の 400 は、指定を外して一度だけ読み直す。以後この声では送らない。
+       読み上げが1つ黙ると、聞き手には理由が分からない。 */
+    if(err&&err.status===400&&/speaking_rate|speakingRate|pitch/i.test(err.detail||err.message||'')){
+      GTTS_NO_AUDIO_PARAMS[voiceName]=true;
+      var plan2=gttsBuildPlan(lang,prosody,voiceName);
+      dlog('tts','google-retry',{voice:voiceName,why:'audio-params-unsupported',
+        playbackRate:plan2.playbackRate});
+      plan=plan2;
+      return gttsRequest(gttsBody(text,lang,seat,plan2,voiceName),key);
+    }
+    throw err;
+  }).then(function(b64){
+    var b=gttsBlobFrom(b64);
+    dlog('tts','google-ok',{chars:text.length,ms:Date.now()-t0,bytes:b.size,seat:seat||'A',
+      lang:lang,voice:voiceName,apiSpeed:plan.apiRate,playbackRate:plan.playbackRate,gain:plan.gain});
+    playBlob(b,finish,'google',{gain:plan.gain,playbackRate:plan.playbackRate});
+  }).catch(function(err){
+    var m=String((err&&err.message)||err);
+    dlog('tts','google-FAIL',{err:m.slice(0,180),status:(err&&err.status)||0,
+      ms:Date.now()-t0,seat:seat||'A',voice:voiceName});
+    finish();
+    ttsFallback(text,lang,'API失敗',
+      gttsHttpHint((err&&err.status)||0,(err&&err.detail)||m),'gttsWarned');
+  });
+}
+/* 声の一覧。キーの確認も兼ねる。読み上げ先の言語で絞り、名前だけを返す。 */
+function gttsFetchVoices(lang){
+  var key=gttsKey();
+  if(!key)return Promise.reject(new Error('キーが未設定です'));
+  var lc=gttsLangCode(lang);
+  return fetch(GTTS_VOICES_URL+'?languageCode='+encodeURIComponent(lc),
+    {headers:{'x-goog-api-key':key}}).then(function(r){
+    return r.text().then(function(raw){
+      var j=null;try{j=JSON.parse(raw);}catch(e){}
+      if(!r.ok){
+        var err=new Error(r.status+' '+String((j&&j.error&&j.error.message)||raw).slice(0,180));
+        err.status=r.status;throw err;
+      }
+      var list=(j&&j.voices)||[];
+      gttsVoiceCache[lc]=list.map(function(v){return String(v.name||'');}).filter(Boolean);
+      return {languageCode:lc,names:gttsVoiceCache[lc]};
+    });
+  });
+}
+function gttsVoiceOptions(){
+  var fam=gttsFamily();
+  if(fam==='gemini')return GTTS_GEMINI_VOICES;
+  if(fam==='chirp3')return GTTS_CHIRP_VOICES;
+  /* direct は一覧を取れていればそれを出す。取れていなければ空で、入力欄を使う。 */
+  var lc=gttsLangCode(gttsSeatLang('A'));
+  return gttsVoiceCache[lc]||[];
+}
+function gttsFillVoiceSelect(el,value,allowInherit){
+  if(!el)return;
+  var names=gttsVoiceOptions(),i,o;
+  el.innerHTML='';
+  if(allowInherit){
+    o=document.createElement('option');o.value='';o.textContent=inheritedVoiceLabel();el.appendChild(o);
+  }
+  for(i=0;i<names.length;i++){
+    o=document.createElement('option');o.value=names[i];o.textContent=names[i];el.appendChild(o);
+  }
+  var want=String(value||'');
+  if(want&&names.indexOf(want)<0){
+    o=document.createElement('option');o.value=want;o.textContent=want+'（保存値）';el.appendChild(o);
+  }
+  el.value=want;
+}
+function gttsRefreshUI(active){
+  var f=$('gttsField');if(!f)return;
+  var k=$('gttsKey');if(k&&k!==document.activeElement)k.value=KEYS['tts:google']||'';
+  var fam=$('gttsFamily');if(fam)fam.value=gttsFamily();
+  var m=$('gttsModel');if(m)m.value=CFG.gttsModel||'gemini-2.5-flash-tts';
+  var pr=$('gttsPrompt');if(pr&&pr!==document.activeElement)pr.value=CFG.gttsPrompt||'';
+  var only=$('gttsGeminiOnly');if(only)only.style.display=gttsFamily()==='gemini'?'':'none';
+  gttsFillVoiceSelect($('gttsVoice'),CFG.gttsVoice,false);
+  gttsFillVoiceSelect($('gttsVoiceB'),CFG.gttsVoiceB,true);
+  var d=$('gttsVoiceId');if(d&&d!==document.activeElement)d.value=CFG.gttsVoiceId||'';
+  var db=$('gttsVoiceIdB');if(db&&db!==document.activeElement)db.value=CFG.gttsVoiceIdB||'';
+  var r=$('gttsRate');if(r)r.value=String(gttsRateLevel(CFG.gttsRate));
+  var v=$('gttsVolume');if(v)v.value=String(oaiLevel(CFG.gttsVolume));
+}
+
 function elSpeak(text, lang, seat, prosody){
   var key = elKey(), vid = elVoiceId(seat);
   if (!key || !vid)
@@ -7494,6 +7784,56 @@ var TTS_PROVIDERS = {
     {section:"settings",order:48,label:'VOICEVOX処理',value:function(){ return '最大4件並列合成（429時は現在'+vvSynthLimit+'件へ自動抑制） / 発話順に1件ずつ再生 / 最大6件保持 / 8秒超は破棄 / 高速再生は先読み保護'; },inactive:'(未使用)'}
   ]
   },
+  google: {
+    label:"Google音声",
+    optionLabel:"Google Cloud TTS（Chirp 3: HD / Gemini-TTS）",
+    uiField:"gttsField",
+    enabled:true,
+    jaOnly:false,
+    canRouteOutput:true,
+    needsKey:'tts:google',
+    speak:function(text,lang,seat,prosody){ return gttsSpeak(text,lang,seat,prosody); },
+    seatVoice:function(seat){ return gttsVoiceName(seat,gttsSeatLang(seat))||'(未設定)'; },
+    setupMissing:function(){
+      if(!gttsKey())return 'Google のAPIキーが未設定です。';
+      if(seatUsed('A')&&!gttsVoiceName('A',gttsSeatLang('A')))return 'Google の「自分(A)の発言」の声が未設定です。';
+      if(seatUsed('B')&&!gttsVoiceName('B',gttsSeatLang('B')))return 'Google の「相手(B)の発言」の声が未設定です。';
+      return '';
+    },
+    planNote:function(rows){
+      var t='',warn=false,miss=ttsSetupMissing();
+      if(miss){
+        t+='<br><b>⚠ '+miss+'</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';
+        warn=true;
+      }else{
+        var fam=gttsFamily();
+        var names=[];
+        if(seatUsed('A'))names.push('自分(A)は <b>'+gttsVoiceName('A',gttsSeatLang('A'))+'</b>');
+        if(seatUsed('B'))names.push('相手(B)は <b>'+gttsVoiceName('B',gttsSeatLang('B'))+'</b>');
+        t+='<br>'+names.join('／')+' の声です。';
+        if(fam==='chirp3')t+='Chirp 3: HD は言語ごとに同じ名前の声があるので、どの言語も同じ声で読みます。';
+        else if(fam==='gemini')t+='Gemini-TTS（'+(CFG.gttsModel||'gemini-2.5-flash-tts')+'）で読みます。'
+          +(String(CFG.gttsPrompt||'').trim()?'話し方の指示を添えて送ります。':'話し方の指示は空欄です。');
+      }
+      return {html:t,warn:warn};
+    },
+    stream:function(){ return {kind:'off',checked:false,text:'常時OFF（v1 の REST は逐次配信に対応していません）。'}; },
+    refreshUI:function(active){ gttsRefreshUI(active); },
+    diagModel:function(){
+      var fam=gttsFamily();
+      return fam==='gemini'?(CFG.gttsModel||'gemini-2.5-flash-tts')
+        :fam==='chirp3'?'Chirp 3: HD':'(名前を直接指定)';
+    },
+    prosody:{axes:["速度","音量"],suffix:'',
+      note:'Google：速度（従来の声は speakingRate、Chirp 3: HD と Gemini-TTS はピッチ保持再生）＋音量（Web Audio）。Gemini-TTS は話し方を文章で指示'},
+    diagRows:[
+    {section:"settings",order:38.5,label:'Google 話し方の調整',value:function(){ return gttsManualTweaks(); },inactive:'(未使用)'},
+    {section:"settings",order:38.6,label:'Google 話速処理',value:function(){
+      var lg=gttsSeatLang('A'),v=gttsVoiceName('A',lg),p=gttsBuildPlan(lg,null,v);
+      return '実効 '+p.desiredRate+'倍 / API '+p.apiRate+'倍 / ピッチ保持再生 '+p.playbackRate+'倍'
+        +(p.audioParams?'':'（この声はAPI側の速度指定に非対応）'); },inactive:'(未使用)'}
+  ]
+  },
   eleven: {
     label:"ElevenLabs",
     optionLabel:"ElevenLabs（自分の声をクローン・多言語・低遅延）",
@@ -8094,10 +8434,10 @@ function buildRec(){
     }
     var seat = S.listenSeat;
     var realFin = fin.filter(function(x){ x=String(x||'').trim(); return hasSpeechContent(x) && !isEcho(x); });
-    var webBatchProsody = (CFG.prosodyOn && realFin.length) ? micProsodySnapshot(realFin.join(' '),false) : null;
+    var webBatchProsody = (CFG.prosodyOn && realFin.length) ? micProsodySnapshot(realFin.join(' '),false,seat) : null;
     var webBatchChars = realFin.reduce(function(n,x){ return n+String(x||'').trim().length; },0) || 1;
     var realFinIndex=0;
-    if (CFG.prosodyOn && fin.length && !realFin.length && micProsody) micProsody.beginSegment();
+    if (CFG.prosodyOn && fin.length && !realFin.length){ var wbAn=prosodyAnalyzerFor(seat); if(wbAn)wbAn.beginSegment(); }
     if (CFG.interimOn && itm.trim()){
       if (!itmEntry) itmEntry = addEntry(seat, itm.trim(), true);
       else { itmEntry.srcText = itm.trim(); render(itmEntry); }
@@ -8963,18 +9303,30 @@ RealtimeTranscriptionEngine.prototype.startBoundaryMonitor=function(){
     this.boundaryAn=this.boundaryAc.createAnalyser();this.boundaryAn.fftSize=512;
     this.boundaryAc.createMediaStreamSource(this.stream).connect(this.boundaryAn);
     this.boundaryBuf=new Uint8Array(this.boundaryAn.frequencyBinCount);
+    /* 境界判定用の512点とは別に、解析用の2048点を同じ入力から取る。512点では
+       YINの探索下限が48kHzで約189Hzになり、男性の話声（85〜180Hz）が丸ごと
+       範囲外に落ちる。境界判定のRMS窓は触らない。 */
+    if(CFG.prosodyOn){
+      var pan=this.boundaryAc.createAnalyser();pan.fftSize=2048;
+      this.boundaryAc.createMediaStreamSource(this.stream).connect(pan);
+      this.prosody=new ProsodyAnalyzer(pan,this.boundaryAc.sampleRate,
+        'live:'+(this.opts.isMic?'mic':(this.opts.route||'audio')));
+    }
     if(this.boundaryAc.state==='suspended'){
       var rp=this.boundaryAc.resume();if(rp&&rp.catch)rp.catch(function(){});
     }
   }catch(err){
     this.boundaryAc=null;this.boundaryAn=null;this.boundaryBuf=null;
+    if(this.prosody){try{this.prosody.stop();}catch(e2){}this.prosody=null;}
     dlog('stt','live-boundary-audio-FAIL',{err:String((err&&err.message)||err).slice(0,120)});
   }
-  dlog('stt','live-boundary-start',{mode:this.boundaryAn?'context+audio+delta':'context+delta',threshold:+(CFG.vad/1000).toFixed(4)});
+  dlog('stt','live-boundary-start',{mode:this.boundaryAn?'context+audio+delta':'context+delta',
+    threshold:+(CFG.vad/1000).toFixed(4),prosody:this.prosody?this.prosody.source:'off'});
   this.boundaryTimer=setInterval(function(){self.checkBoundaries();},80);
 };
 RealtimeTranscriptionEngine.prototype.stopBoundaryMonitor=function(){
   if(this.boundaryTimer){clearInterval(this.boundaryTimer);this.boundaryTimer=null;}
+  if(this.prosody){try{this.prosody.stop();}catch(e){}this.prosody=null;}
   if(this.boundaryAc){try{this.boundaryAc.close();}catch(e){}}
   this.boundaryAc=null;this.boundaryAn=null;this.boundaryBuf=null;
 };
@@ -8986,6 +9338,8 @@ RealtimeTranscriptionEngine.prototype.checkBoundaries=function(){
     rms=Math.sqrt(sum/this.boundaryBuf.length);this.lastRms=rms;
     if(rms>CFG.vad/1000)this.lastVoiceAt=now;
   }
+  /* rmsHint は渡さない。解析器は自分の2048点窓から改めて実効値を出す。 */
+  if(this.prosody)this.prosody.sample(now);
   if(segEnabled()){
     if(this.boundaryAn)segVoice(this.seat||S.listenSeat||'A',rms);
     segLiveBoundaries(this);return;
@@ -9012,7 +9366,7 @@ RealtimeTranscriptionEngine.prototype.finalizeSegment=function(id,x,reason,meta)
     var g=guessSeatFromText(text);holder.seat=g;holder.srcLang=langOf(g);holder.dstLang=langOf(g==='A'?'B':'A');S.listenSeat=g;updateStatus();lang=holder.srcLang;
   }
   holder.srcText=text;holder.interim=false;render(holder);
-  if(CFG.prosodyOn&&this.opts.isMic)attachProsody(holder,micProsodySnapshot(text,true));
+  if(CFG.prosodyOn)attachProsody(holder,micProsodySnapshot(text,true,holder.seat));
   meta=meta||{};
   dlog('stt','live-boundary',{item:id,segment:x.segmentNo,reason:reason,context:meta.context||this.boundaryContext(raw,lang),chars:text.length,
     idleMs:meta.idleMs==null?null:Math.round(meta.idleMs),silenceMs:meta.silenceMs==null?null:Math.round(meta.silenceMs)});
@@ -11111,6 +11465,39 @@ $('xaiVoiceB').onchange = function(){
   CFG.xaiVoiceB = this.value; persistSetting("xaiVoiceB", CFG.xaiVoiceB); refreshVvUI();
 };
 $('chkXaiTts').onclick = function(){ verifyXaiTtsKey(); };
+$('gttsKey').oninput = function(){
+  KEYS['tts:google'] = this.value.trim(); saveKeys();
+  gttsWarned = false; keyChkShow('chkGttsMsg','',''); refreshVvUI();
+};
+$('gttsFamily').onchange = function(){
+  CFG.gttsFamily = this.value; persistSetting("gttsFamily", CFG.gttsFamily);
+  gttsWarned = false; refreshVvUI();
+};
+$('gttsModel').onchange = function(){
+  CFG.gttsModel = this.value; persistSetting("gttsModel", CFG.gttsModel); refreshVvUI();
+};
+$('gttsPrompt').oninput = function(){
+  CFG.gttsPrompt = this.value; persistSetting("gttsPrompt", CFG.gttsPrompt);
+};
+$('gttsVoice').onchange = function(){
+  CFG.gttsVoice = this.value; persistSetting("gttsVoice", CFG.gttsVoice);
+  /* 一覧から選んだら直接入力は空にする。両方あると直接入力が勝つので混乱する。 */
+  CFG.gttsVoiceId = ''; persistSetting("gttsVoiceId", '');
+  refreshVvUI();
+};
+$('gttsVoiceB').onchange = function(){
+  CFG.gttsVoiceB = this.value; persistSetting("gttsVoiceB", CFG.gttsVoiceB);
+  CFG.gttsVoiceIdB = ''; persistSetting("gttsVoiceIdB", '');
+  refreshVvUI();
+};
+$('gttsVoiceId').oninput = function(){
+  CFG.gttsVoiceId = this.value.trim(); persistSetting("gttsVoiceId", CFG.gttsVoiceId);
+};
+$('gttsVoiceIdB').oninput = function(){
+  CFG.gttsVoiceIdB = this.value.trim(); persistSetting("gttsVoiceIdB", CFG.gttsVoiceIdB);
+};
+$('gttsFetch').onclick = function(){ verifyGttsKey(); };
+$('chkGtts').onclick = function(){ verifyGttsKey(); };
 $('elKey').oninput = function(){
   KEYS['eleven'] = this.value.trim(); saveKeys();
   elWarned = false; keyChkShow('chkElMsg','',''); refreshVvUI();
@@ -11367,7 +11754,7 @@ var DIAG_ROWS = [
   {section:"settings",order:64,label:'Prosody解析',value:function(ctx){ return CFG.prosodyOn ? 'ON（実験）' : 'OFF'; }},
   {section:"settings",order:65,label:'Prosody音声判定',value:function(ctx){ return CFG.prosodyOn ? 'ノイズ床から自動（STT用VADとは分離）' : '(未使用)'; }},
   {section:"settings",order:66,label:'Prosody取得状態',value:function(ctx){ return CFG.prosodyOn
-      ? ('Pitch='+(PROSODY_CAPS.pitch?'可':'未検出')+' / Energy='+(PROSODY_CAPS.energy?'可':'未検出')+' / Timing='+(PROSODY_CAPS.timing?'可':'未検出'))
+      ? ('Pitch='+(PROSODY_CAPS.pitch?'可':'未検出')+' / Energy='+(PROSODY_CAPS.energy?'可':'未検出')+' / Timing='+(PROSODY_CAPS.timing?'可':'未検出')+' / 解析器 '+prosodySourceLabel())
       : '(未使用)'; }},
   {section:"settings",order:67,label:'Prosody TTS反映',value:function(ctx){ return !CFG.prosodyOn?'OFF':ctx.rtNativeAudio?'解析のみ（モデル内蔵音声へは未反映）':ttsProv().prosody.note; }},
   {section:"settings",order:68,label:'エコー除外',value:function(ctx){ return CFG.echoGuard ? 'ON' : 'OFF'; }},
@@ -12378,10 +12765,15 @@ var TurnDecision={
     return segSemanticEnabled()?segSemanticDecision(input):segDecision(input);
   },
 
-  /* 判断層がoffの間はpeekを呼ばない。60ms周期のYIN抽出を無駄に走らせないため。 */
-  prosodyOf:function(lang){
-    if(!this.observes(lang)||!CFG.turnDecisionProsody||!micProsody)return null;
-    var p=micProsody.peek(1500);
+  /* 判断層がoffの間はpeekを呼ばない。60ms周期のYIN抽出を無駄に走らせないため。
+     読む解析器は席で決める（prosodyAnalyzerFor）。共有マイク固定にしていたため、
+     タブ音声やVB-CABLEだけで通訳しているあいだは音響が常に空だった。 */
+  prosodyOf:function(e){
+    var lang=e&&e.srcLang;
+    if(!this.observes(lang)||!CFG.turnDecisionProsody)return null;
+    var an=prosodyAnalyzerFor((e&&e.seat)||null);
+    if(!an)return null;
+    var p=an.peek(1500);
     return (p&&p.available)?p:null;
   },
 
@@ -12436,7 +12828,7 @@ var TurnDecision={
   /* TurnDecisionStateV1。silenceMsはmeter不明をnullで表す。Rules側が使う-1は
      内部規約なので契約へ漏らさない。0と不明を同じ値にしない。 */
   stateOf:function(e,s,input,ruleResult,silence,now){
-    var text=String(input.text||''),full=this.prosodyOf(e.srcLang),meter=(silence!==null&&silence!==undefined);
+    var text=String(input.text||''),full=this.prosodyOf(e),meter=(silence!==null&&silence!==undefined);
     /* 説明のない数値は送らない。instructions で意味を書いたフィールドだけに絞る。 */
     var prosody=null,pi;
     if(full){prosody={};for(pi=0;pi<TURN_PROSODY_SENT.length;pi++)
@@ -13449,7 +13841,7 @@ function segWebResult(owner,ev,seat){
     var e=owner._segments[key];
     if(!text&&!e)continue;
     if(!e){e=addEntry(seat,'',true);owner._segments[key]=e;}
-    if(r.isFinal&&CFG.prosodyOn)attachProsody(e,micProsodySnapshot(text,false));
+    if(r.isFinal&&CFG.prosodyOn)attachProsody(e,micProsodySnapshot(text,false,seat));
     segUpdate(e,r.isFinal?punctuateTranscript(text,langOf(seat)):text,!!r.isFinal);
     if(r.isFinal){owner._segments[key]=e;dlog('stt','result',{provider:'webspeech-segment',seat:seat,chars:text.length});}
   }
