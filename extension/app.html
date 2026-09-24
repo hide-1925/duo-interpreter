@@ -1317,7 +1317,7 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
         </details>
         <details class="adv"><summary>逐次読み上げの詳細設定</summary>
           <label for="segmentMin">最小文字数（0＝モード既定）</label><input id="segmentMin" type="number" min="0" max="100" step="1">
-          <label for="segmentStability">認識の安定待ち ms（0＝既定）</label><input id="segmentStability" type="number" min="0" max="2000" step="50">
+          <label for="segmentStability">認識の安定待ち ms（0＝既定 / 100〜2000）</label><input id="segmentStability" type="number" min="0" max="2000" step="10">
           <label for="segmentSilence">無音区間 ms（0＝既定）</label><input id="segmentSilence" type="number" min="0" max="3000" step="50">
           <label for="segmentDebt">待ち音声の注意目安 秒</label><input id="segmentDebt" type="number" min="2" max="60" step="1">
           <small data-fold="off">待ち音声が増えても、認識文字の表示・発話確定・翻訳は継続します。Aivisの送信待ちでは同じ声・言語の確定部分をまとめ、原文・訳文は省略しません。</small>
