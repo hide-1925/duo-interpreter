@@ -166,10 +166,18 @@
     "v1.49.18": {
       "build": "20260924-v14918-src-font-ratio",
       "extension": "1.4.29",
-      "commit": null,
+      "commit": "11677bd",
       "indexHtmlSha256": "539aba256fd40a1285edc9ab7a0e1b71f3b9debd5d7a36c8cc61ac952e45ac94",
       "extensionAppJsSha256": "da0fcb3456a9b21c8589193d283c386b8ba931fac84eb3cdad0628431241e635",
       "summary": "原文（併記）の大きさを訳文比の％で1か所に集約し、会話バブル50%／タブ内字幕58%／別ウィンドウ字幕65%の直書きを既定60%の1つの設定へ統一した。あわせて Jev 経路の既定 model を alias から固定version（jev-1.13.0）に変え、alias のまま assist／active にしている状態を状態行に出す。行動ログの保持を800→3000件にし、audio-start も上限を守る経路で記録する（読み上げが始まらなかった原因の audio-cancel が窓の外に落ちていた）"
+    },
+    "v1.49.19": {
+      "build": "20260925-v14919-commit-wait",
+      "extension": "1.4.30",
+      "commit": null,
+      "indexHtmlSha256": "f9c6335b6d30ffb6aacff8335624a7baab8e148d31c0073811dc18577c8a5874",
+      "extensionAppJsSha256": "ab588640dcd20c9bc1b490faf0de273c372fb2ddc59d2ed8fa38c5e0b852b6fa",
+      "summary": "assist／activeで、いま投げた同じ文の答えだけを有界に待ってからcommitする（turnDecisionCommitWaitMs、既定300ms・0で無効、上限1000ms）。質問はcommitと同じtickで飛ぶため、録音分割RESTのように確定文が一度に届く経路では答えが必ず一手遅れ、実測で送信51／応答51／適用0になっていた。あわせて segCancelAudio が理由を残すようにし、取り消されたカードに「（認識停止）」のように出す"
     }
   }
 }

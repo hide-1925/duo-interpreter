@@ -518,6 +518,15 @@ function turnDecisionInstall(){
     +'</details>'
     +'<label class="settings-check switch"><input type="checkbox" id="turnDecisionProsody"> 音響特徴を渡す（ピッチ・エネルギー・間）</label>'
     +'<label>送る直近ターン数 <input id="turnDecisionContextTurns" type="number" min="0" max="6" step="1"></label>'
+    +'<label>確定を待つ上限 ms（0＝待たない） <input id="turnDecisionCommitWaitMs" type="number" min="0" max="1000" step="50"></label>'
+    +'<details class="settings-help"><summary>なぜ待つのか</summary>'
+      +'<p>判断層への質問は確定と同じ瞬間に飛び、答えはおよそ0.2秒後に返ります。'
+      +'録音分割RESTのように<b>確定した文が一度に届く経路では、答えが返る頃には'
+      +'Rulesが既に切り終えている</b>ため、assist／activeにしても一度も採用されません'
+      +'（v1.49.18の実測で 送信51／応答51／<b>適用0</b>）。ここで待つのは'
+      +'「いま投げた、この文の答え」だけで、上限を過ぎたらRulesが確定します。'
+      +'読み上げは元から数秒〜数十秒遅れて進むので、0.3秒の待ちは耳では分かりません。</p>'
+    +'</details>'
     +'<label>読み上げ開始の待ち上限 ms <input id="turnFloorMaxWaitMs" type="number" min="500" max="10000" step="100"></label>'
     +'<label>上限に達したら <select id="turnFloorExpiry">'
       +'<option value="speak">読み上げる</option><option value="drop">字幕だけにする</option>'
@@ -562,7 +571,7 @@ function turnDecisionInstall(){
   }
 
   ['turnDecisionMode','turnDecisionLangEn','turnDecisionLangJa','turnDecisionProsody',
-   'turnDecisionContextTurns','turnFloorMaxWaitMs','turnFloorExpiry','turnFloorSafeToSpeak',
+   'turnDecisionContextTurns','turnDecisionCommitWaitMs','turnFloorMaxWaitMs','turnFloorExpiry','turnFloorSafeToSpeak',
    'turnDecisionProvider','turnDecisionModel','turnDecisionBaseUrl',
    'turnTraceMode','turnDecisionRawLog'].forEach(function(prop){
     var spec=CONFIG_BY_PROP[prop];if(!spec||!$(spec.el))return;
@@ -723,8 +732,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.18';
-var APP_BUILD = '20260924-v14918-src-font-ratio';
+var APP_VERSION = 'v1.49.19';
+var APP_BUILD = '20260925-v14919-commit-wait';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -939,6 +948,7 @@ var CONFIG_SCHEMA = [
   { prop:"turnDecisionContextTurns", key:'di.tdCtx', embed:'turnDecisionContextTurns', def:'0', portable:true, el:"turnDecisionContextTurns" },
   { prop:"turnDecisionProsody", key:'di.tdProsody', embed:'turnDecisionProsody', def:'1', type:'bool', portable:true, el:"turnDecisionProsody" },
   { prop:"turnFloorMaxWaitMs", key:'di.tdFloorMax', embed:'turnFloorMaxWaitMs', def:'3000', portable:true, el:"turnFloorMaxWaitMs" },
+  { prop:"turnDecisionCommitWaitMs", key:'di.tdCommitWait', embed:'turnDecisionCommitWaitMs', def:'300', portable:true, el:"turnDecisionCommitWaitMs" },
   /* 床で safe_to_speak を使うか。assist/active のときだけ働き、重なりを許容する
      設定（segmentOverlap=allow）では効かない。追加のAPI費用は発生しない ――
      この答えは commit のときに既に受け取っている。 */
@@ -11581,8 +11591,14 @@ function segEnabled(){return CFG.segmentMode!=='off' && /^(balanced|fast|adaptiv
    をそのまま正本として常時搭載する。
    turnDecisionMode=off のときboundary/floorはRulesProviderの戻り値を素通しする
    だけなので、v1.47.1と同一の挙動になる。判断層のための音響計算も走らせない。
-   INV-08 判断の不在はゼロコスト。remoteの返答を待ってcommitを遅らせない。
-   INV-09 floor待ちは turnFloorMaxWaitMs を超えて保持しない。                  */
+   INV-08 判断の不在はゼロコスト。off／shadow では remote の返答を待って commit を
+          遅らせない。判断層のための計算も通信も走らせない。
+   INV-09 floor待ちは turnFloorMaxWaitMs を超えて保持しない。
+   INV-10 assist／active で待つのは「いま投げている、この state の答え」だけ。
+          turnDecisionCommitWaitMs（既定300ms・0で無効）を超えて待たず、
+          超えたら Rules が確定する。録音分割RESTのように確定文が一度に届く経路では
+          この待ちが無いと答えが必ず commit に間に合わず、active が構造的に空回りする
+          （v1.49.18 の実測で 送信51／応答51／適用0）。                        */
 /* ── Provider adapters（Phase 2）─────────────────────────────────────────
    判断契約を Duo が所有し、ベンダーを adapter で差し替える。既定の
    turnDecisionProvider='rules' では registry を一切引かないので、shadow でも
@@ -12489,6 +12505,28 @@ var TurnDecision={
     }
     return hit;
   },
+  /* INV-10。答えを待つのは、いま投げている同じ state の分だけ。
+     質問は commit と同じ tick で飛ぶので、待たなければ答えは必ず一手遅れる。
+     待つあいだ segCheck は break して次の80msへ回る。翻訳も読み上げも
+     その先にあるので、ここで遅れる分がそのまま出力の遅れになる。 */
+  commitWaitMs:function(){
+    var n=parseInt(CFG.turnDecisionCommitWaitMs,10);
+    if(!isFinite(n)||n<=0)return 0;
+    return Math.min(1000,n);
+  },
+  waitingFor:function(s,state,now){
+    var ms=this.commitWaitMs();
+    if(!ms||!s)return false;
+    if(!this.applies(state.sourceLanguage))return false;
+    var rec=this.inflight[state.speakerKey],k=this.key(state);
+    if(!rec||rec.key!==k)return false;          /* 別の文の答えは待たない */
+    if(s.decisionWaitKey!==k){
+      s.decisionWaitKey=k;s.decisionWaitUntil=now+ms;
+      dlog('segment','turn-decision-wait',{utteranceId:state.utteranceId,revision:state.revision,
+        speakerKey:state.speakerKey,maxWaitMs:ms});
+    }
+    return now<s.decisionWaitUntil;
+  },
 
   /* 非同期に一件だけ投げる。結果はcacheへ置くだけで、ここでは何も待たない。
      provider=rulesの間はregistryを引かないので外部通信は発生しない。 */
@@ -12507,7 +12545,7 @@ var TurnDecision={
     var timeoutMs=Math.max(200,Math.min(2000,Number(CFG.turnDecisionTimeoutMs)||900));
     var timer=setTimeout(function(){if(ctrl&&ctrl.abort)try{ctrl.abort();}catch(e){}},timeoutMs);
     var rec={abort:ctrl&&ctrl.abort?function(){try{ctrl.abort();}catch(e){}}:null,
-      revision:state.revision,at:Date.now()};
+      revision:state.revision,at:Date.now(),key:this.key(state)};
     this.inflight[state.speakerKey]=rec;
     var routeInfo=TurnProviders.ROUTES[id];
     dlog('segment','turn-decision-request',{provider:id,
@@ -12658,7 +12696,11 @@ var TurnDecision={
     this.observe(state);
     if(mode==='shadow')return ruleResult;
     var hit=this.read(state);
-    if(!hit)return ruleResult;
+    if(!hit){
+      if(this.waitingFor(s,state,now))
+        return {length:0,reasons:[],waiting:'provider-pending',source:'provider'};
+      return ruleResult;
+    }
     /* 床で使うために safe_to_speak を部分へ持たせる。新しく聞き直さない ――
        この答えは commit のときに同じ1リクエストで既に払っている。 */
     if(s)s.floorHint={safeToSpeak:hit.safeToSpeak,at:now,decisionId:hit.decisionId};
@@ -13264,7 +13306,9 @@ function segCancelAudio(why){
   var activeGroup=SEG.active?(SEG.active.group||[SEG.active]):[];
   SEG.queue=SEG.queue.filter(function(j){
     if(changing&&activeGroup.indexOf(j)<0)return true;
-    if(j.segment.audio)j.segment.audio.status='cancelled';return false;
+    if(j.segment.audio){j.segment.audio.status='cancelled';
+      j.segment.audio.skipReason=String(why||'audio-cancel').slice(0,24);}
+    return false;
   });SEG.active=null;
   if(oldQueue.length)segRefreshPlayback({group:oldQueue});else segRefreshPlayback(oldActive);
   dlog('segment','audio-cancel',{why:why,translationContinues:true});segWake();
