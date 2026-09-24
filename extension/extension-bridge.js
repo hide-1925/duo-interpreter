@@ -30,6 +30,7 @@
       hold: Number(CFG.ovCapHold),
       font: Number(CFG.ovCapFont) || 26,
       line: Number(CFG.ovCapLine) || 1.35,
+      subRatio: Number(CFG.srcRatio) || 60,
       itemWidth: Number(CFG.ovCapItemWidth) || 100,
       textA: CFG.ovCapTextA,
       textB: CFG.ovCapTextB,

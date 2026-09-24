@@ -603,13 +603,24 @@ test('an answer whose type does not match its question is refused',async()=>{
   assert.equal(await P().get('jev-direct').evaluate(s,{}),null);
 });
 
-test('active refuses a model alias, so a calibrated version must be pinned',async()=>{
+test('the route default is a pinned version, usable as-is in active',async()=>{
+  /* 既定が alias だったせいで、active を選んだ会議で送信13件すべてが手元で拒否され、
+     判断層が一度も動かないまま「Rulesと同じ」結果が出ていた。既定で動くようにする。 */
   reset({turnDecisionProvider:'jev-direct',turnDecisionModel:''});
+  const s0=stateOf();fetchImpl=reply(wire(s0));
+  assert.ok(await P().get('jev-direct').evaluate(s0,{}),'the default model is accepted in active');
+  assert.equal(JSON.parse(calls[0].opt.body).model,'jev-1.13.0');
+});
+test('assist and active both refuse a model alias the user typed in',async()=>{
+  reset({turnDecisionProvider:'jev-direct',turnDecisionModel:'jev-latest'});
   await assert.rejects(()=>P().get('jev-direct').evaluate(stateOf(),{}),/固定version/);
-  reset({turnDecisionProvider:'jev-direct',turnDecisionLangJa:'shadow',turnDecisionModel:''});
+  reset({turnDecisionProvider:'jev-direct',turnDecisionMode:'assist',
+    turnDecisionLangJa:'assist',turnDecisionLangEn:'assist',turnDecisionModel:'jev-preview'});
+  await assert.rejects(()=>P().get('jev-direct').evaluate(stateOf(),{}),/固定version/);
+  /* shadow は動作へ反映しないので、自分で alias を入れたならそのまま送る。 */
+  reset({turnDecisionProvider:'jev-direct',turnDecisionLangJa:'shadow',turnDecisionModel:'jev-latest'});
   const s=stateOf();fetchImpl=reply(wire(s));
-  const n=await P().get('jev-direct').evaluate(s,{});
-  assert.ok(n,'shadow may use the latest alias');
+  assert.ok(await P().get('jev-direct').evaluate(s,{}),'shadow may use an alias');
   assert.equal(JSON.parse(calls[0].opt.body).model,'jev-latest');
 });
 test('a missing key or a non-https base url is refused before any request',async()=>{
