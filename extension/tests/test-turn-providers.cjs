@@ -22,7 +22,7 @@ const ctx={console,Math,Date,JSON,Object,Array,String,Number,isFinite,RegExp,Pro
   setTimeout,clearTimeout,AbortController,
   APP_BUILD:'test',sessionGen:1,CFG:{},S:{entries:[]},DuoSpeakers:{available:false},
   dlog:(a,b,c)=>logs.push([b,c]),segDebt:()=>0,toast:m=>toasts.push(m),
-  persistSetting:()=>{}, micProsody:null,
+  persistSetting:()=>{}, micProsody:null, engines:[],
   hasSpeechContent:t=>/[\p{L}\p{N}]/u.test(String(t||'')),
   fetch:(url,opt)=>{calls.push({url,opt});return fetchImpl(url,opt);}};
 /* 拡張経由の経路を検査するための疑似 window / chrome。
@@ -41,6 +41,7 @@ const fireWindow=(name,detail)=>{
 };
 const c=vm.createContext(ctx);
 for(const b of [segBlock(),block('var TURN_PROSODY_SENT='),
+                block('function prosodyAnalyzerFor(seat){'),
                 block('function segEnabled()'),block('function segDecision(input){'),
                 block('function segSemanticEnabled()'),block('function segSemanticTail(text,lang){'),
                 block('function segSemanticDecision(input){'),
@@ -62,7 +63,7 @@ function reset(over){
     turnDecisionApiKey:'k',turnDecisionBaseUrl:'https://api.typesafe.ai',
     /* active では alias を拒否するので、既定で固定version を入れておく。 */
     turnDecisionModel:'jev-1.13.0'},over||{});
-  D().cache={};D().inflight={};D().circuit={};D()._lastSend={};D()._confirm={};D()._qsh=null;
+  D().cache={};D().inflight={};D().circuit={};D()._lastSend={};D()._confirm={};D()._asks={};D()._qsh=null;
   /* 中継の状態も毎回戻す。ready が残ると「接続されていない」を検査できない。 */
   B().ready=false;B().pending={};B().seq=0;
   delete ctx.chrome;
@@ -797,10 +798,11 @@ test('the question set hash is stable and changes with the instructions',()=>{
 });
 test('reset drops the circuit and the send history too',()=>{
   reset();
-  D().circuitFail('jev-direct','ja','x');D().throttled(stateOf());
+  D().circuitFail('jev-direct','ja','x');D().throttled(stateOf());D().asksExhausted(stateOf());
   D().reset('test');
   assert.equal(Object.keys(D().circuit).length,0);
   assert.equal(Object.keys(D()._lastSend).length,0);
+  assert.equal(Object.keys(D()._asks).length,0,'the per-revision ask budget is session state too');
 });
 
 
