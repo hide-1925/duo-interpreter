@@ -5,7 +5,41 @@ const $ = (id) => document.getElementById(id);
 $('extVersion').textContent=(/Edg\//.test(navigator.userAgent)?'Edge':'Chrome')+' v'+chrome.runtime.getManifest().version;
 DuoTextComposer($('textComposer'),$('openText'));
 function conferenceState(s){$('conferenceMic').classList.toggle('active',!!s?.active);$('conferenceMic').setAttribute('aria-pressed',String(!!s?.active));$('conferenceStatus').textContent=s?.pending?'接続待機中':s?.error||'';}
-$('conferenceMic').addEventListener('click',async()=>{$('conferenceMic').disabled=true;try{conferenceState(await send({type:'DUO_CONFERENCE_TOGGLE'}));}catch(error){$('conferenceStatus').textContent=error.message;}finally{$('conferenceMic').disabled=false;}});
+/* このボタン1つで「このタブに字幕表示 → HTML本体を開く → 翻訳開始 → 会議マイク送出」
+   まで通す。満たされている手順は飛ばす。切るときは従来どおり送出だけを止める。
+
+   権限の要求は利用者の操作から直接でなければ通らないので、ここで先に済ませる。
+   HTML本体は前面に出さない ―― ポップアップは焦点を失うと閉じ、残りの手順が
+   中断されるため。 */
+const STEP_LABELS={'caption-target':'字幕表示','html':'HTML本体','start':'翻訳開始','conference':'会議マイク'};
+$('conferenceMic').addEventListener('click',async()=>{
+  const button=$('conferenceMic');
+  button.disabled=true;
+  try{
+    if(button.classList.contains('active')){
+      conferenceState(await send({type:'DUO_CONFERENCE_TOGGLE'}));
+      $('conferenceStatus').textContent='会議への送出を止めました';
+      await refresh();
+      return;
+    }
+    if(htmlUrlDirty)throw Error('変更したHTMLのURLを先に登録してください');
+    if(!validTarget(activeTab))throw Error('このタブには字幕を重ねられません。会議のタブで押してください');
+    if(activeTab.id===state?.htmlTabId)throw Error('ここはHTML本体です。会議のタブで押してください');
+    const origins=[...new Set([...targetPermissionOrigins,new URL(registeredHtmlUrl).origin+'/*'])];
+    const granted=await chrome.permissions.request({origins});
+    if(!granted)throw Error('字幕と音声を接続するには、対象サイトへのアクセス許可が必要です');
+    $('conferenceStatus').textContent='字幕・本体・認識・送出をまとめて接続しています…';
+    const response=await send({type:'DUO_ONE_TOUCH',tabId:activeTab.id});
+    conferenceState(response.conference);
+    const done=(response.steps||[]).filter(s=>s.ok).map(s=>STEP_LABELS[s.step]||s.step);
+    const failed=(response.steps||[]).find(s=>!s.ok);
+    $('conferenceStatus').textContent=failed
+      ? (STEP_LABELS[failed.step]||failed.step)+'で止まりました：'+failed.detail
+      : '接続しました（'+done.join(' → ')+'）';
+    await refresh();
+  }catch(error){ $('conferenceStatus').textContent=error.message; }
+  finally{ button.disabled=false; }
+});
 chrome.runtime.onMessage.addListener(m=>{if(m.type==='DUO_CONFERENCE_STATE')conferenceState(m.state);});
 let activeTab = null;
 let state = null;
