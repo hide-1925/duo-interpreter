@@ -13,7 +13,7 @@ const probe=(frameId,count,relay=true)=>({frameId,documentId:'doc-'+frameId,resu
  const report=c.conferencePublic();assert(report.diagnostics.some(d=>d.event==='frame-discovery'&&d.frames.length===2));tests.push('Diagnostic output retains per-frame discovery counts');
  await c.conferenceStop('test');assert(sent.slice(-2).some(s=>s[2].documentId==='doc-7'));tests.push('Disconnect restores the selected child document');
  const ambiguous=env([probe(0,1),probe(7,1)]);await assert.rejects(ambiguous.c.conferenceToggle(popup),/複数/);assert.equal(ambiguous.sent.length,0);tests.push('Multiple eligible frames are not silently selected');
- const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json')));assert.equal(manifest.version,'1.4.30');
+ const manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json')));assert.equal(manifest.version,'1.4.32');
  /* popup は service-worker が名乗る版を manifest と突き合わせ、合わなければ全機能を止める。
     これは「新しいZIPを古いフォルダへ上書きした」を検出するための意図的な二重管理なので、
     片方だけ上げると popup が開かなくなる。v1.4.9 で実際にそれをやった。 */

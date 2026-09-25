@@ -29,6 +29,8 @@ const ctx={
   /* peek だけを検査するので、コンストラクタは prototype の置き場として空で足りる。 */
   ProsodyAnalyzer:function(){},
   CFG:{}, S:{entries:[]}, DuoSpeakers:{available:false},
+  /* 解析器の解決は engines を見る。gate では常に空にして共有マイクへ落とす。 */
+  engines:[],
   /* commit-retouch を検査したいので記録する。 */
   dlog:(...a)=>dlogs.push(a),
   segDebt:()=>0,
@@ -43,6 +45,7 @@ for(const b of [segBlock(),
                 block('function segSemanticEnabled()'),
                 block('function segSemanticTail(text,lang){'),
                 block('function segSemanticDecision(input){'),
+                block('function prosodyAnalyzerFor(seat){'),
                 block('function prosodyRound('),
                 block('function prosodyClamp('),
                 block('function prosodyMean('),
@@ -73,9 +76,10 @@ function reset(over){
     segmentOverlap:'auto',vad:12,turnDecisionMode:'off',turnDecisionProvider:'rules',
     turnDecisionLangEn:'shadow',turnDecisionLangJa:'shadow',turnDecisionContextTurns:0,
     turnFloorMaxWaitMs:3000,turnFloorExpiry:'speak',turnFloorSafeToSpeak:true,turnTraceMode:'off',
-    turnDecisionCommitWaitMs:300,turnDecisionProsody:true},over||{});
+    turnDecisionCommitWaitMs:300,turnDecisionHoldMaxWaitMs:2000,
+    turnDecisionMaxAsksPerRevision:3,turnDecisionProsody:true},over||{});
   peeked.count=0; D().cache={}; D().inflight={}; D().sessionSalt=null;
-  D()._confirm={}; D()._lastSend={}; D().circuit={}; T().reset();
+  D()._confirm={}; D()._lastSend={}; D()._asks={}; D().circuit={}; T().reset();
 }
 const card=(over)=>Object.assign({id:'e1',utteranceId:'u1',seat:'A',srcLang:'ja',dstLang:'en',
   segment:{revision:3,final:false},segments:[]},over||{});
@@ -459,6 +463,53 @@ test('peek reports unavailable instead of guessing on a short window',()=>{
   assert.equal(c.ProsodyAnalyzer.prototype.peek.call(an,1500).available,false);
 });
 
+/* ── 音響をどの解析器から読むか ───────────────────────────────────────────
+   共有マイク固定だったため、タブ音声・VB-CABLE・画面共有だけで通訳しているあいだ
+   音響が常に空だった。v1.49.19 の gpt-live-transcribe 記録では Pitch=未検出 のまま
+   provider が6件決めており、判断層は音響なしで答えていた。 */
+const fakeAnalyzer=(over)=>Object.assign({closed:false,reads:0,tag:'',
+  peek(ms){this.reads++;return {available:true,terminalPitchSlope:-0.2,quality:0.7,tag:this.tag};}},over||{});
+
+test('the layer reads the analyzer of the seat that is speaking, not only the microphone',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const mine=fakeAnalyzer({tag:'seatA'}),other=fakeAnalyzer({tag:'seatB'});
+  ctx.engines=[{seat:'B',prosody:other},{seat:'A',prosody:mine}];
+  const got=D().prosodyOf(card({seat:'A'}));
+  ctx.engines=[];
+  assert.equal(got&&got.tag,'seatA',"the other seat's analyzer must not answer for this one");
+  assert.equal(mine.reads,1);
+  assert.equal(other.reads,0);
+  assert.equal(peeked.count,0,'the shared microphone is the fallback, not the first choice');
+});
+test('a seatless engine answers when no seat matches, which is how AUTO runs',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const auto=fakeAnalyzer({tag:'auto'});
+  ctx.engines=[{prosody:auto}];
+  const got=D().prosodyOf(card({seat:'A'}));
+  ctx.engines=[];
+  assert.equal(got&&got.tag,'auto');
+});
+test('a dead engine and a closed analyzer are skipped, never read',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const gone=fakeAnalyzer({tag:'dead'}),shut=fakeAnalyzer({tag:'closed',closed:true});
+  ctx.engines=[{seat:'A',prosody:gone,dead:true},{seat:'A',prosody:shut}];
+  const got=D().prosodyOf(card({seat:'A'}));
+  ctx.engines=[];
+  assert.ok(got&&!got.tag,'it must fall through to the shared microphone');
+  assert.equal(gone.reads,0);assert.equal(shut.reads,0);
+  assert.equal(peeked.count,1);
+});
+test('off reads no analyzer at all, engine or microphone (INV-08)',()=>{
+  reset();
+  const an=fakeAnalyzer({tag:'seatA'});
+  ctx.engines=[{seat:'A',prosody:an}];
+  const i=input(),rule=D().rules(i);
+  D().boundary(card({seat:'A'}),{},i,rule,null,Date.now());
+  ctx.engines=[];
+  assert.equal(an.reads,0);
+  assert.equal(peeked.count,0);
+});
+
 /* 訂正率は判断層の安全性を測る基準の数字。末尾繰越の結合で末尾に空白が1つ付くだけで
    訂正として数えていたため、実測ログ（v1.49.6）では 0% から 13.3% に跳ねていた。
    ここが騒がしいと Rules と Jev の比較そのものが濁る。 */
@@ -731,6 +782,134 @@ test('once the answer lands the wait ends and the provider boundary is taken',()
   const out=D().boundary(e,seg,i,rule,900,now+80);
   assert.equal(out.length,cand.offset,'the answer that arrived is the one that decides');
   assert.equal(out.source,'provider');
+});
+
+/* ── INV-11 「待て」にも上限 ───────────────────────────────────────────────
+   答えは「同じ文の同じ revision」に紐づく。revision は新しいテキストが来たときだけ
+   進むので、認識が止まると止まった瞬間の HOLD が期限なく残り、そのカードは確定も
+   翻訳も読み上げもされない（v1.49.19実測 stabilityMs 112557／83967）。 */
+const holdCard=(over)=>card(Object.assign({segment:{revision:3,final:false}},over||{}));
+function holdSetup(over){
+  const e=holdCard(),seg={start:0},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,900,now);
+  D().cache[D().key(st)]=Object.assign({sessionId:st.sessionId,utteranceId:st.utteranceId,
+    revision:st.revision,boundary:{choice:'HOLD',confidence:0.9,probabilities:{HOLD:0.9}},
+    turnState:{choice:'CONTINUING',confidence:0.9,probabilities:{}},
+    safeToSpeak:0.9,repairLikelihood:0.01,decisionId:'d11'},over||{});
+  return {e,seg,i,rule,now,st};
+}
+
+test('a HOLD is taken, then bounded, and Rules decides at the ceiling (INV-11)',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const {e,seg,i,rule,now}=holdSetup(),from=dlogs.length;
+  const said=name=>dlogs.slice(from).filter(a=>a[1]===name).length;
+  assert.equal(D().boundary(e,seg,i,rule,900,now).waiting,'provider-hold');
+  assert.equal(e.segment.holdSince,now,'the clock starts on the first held tick');
+  assert.equal(D().boundary(e,seg,i,rule,900,now+1999).waiting,'provider-hold');
+  assert.equal(D().boundary(e,seg,i,rule,900,now+2000),rule,'at the cap the rules decide');
+  assert.ok(e.segment.holdOver,'the give-up is remembered for this prefix');
+  assert.equal(D().boundary(e,seg,i,rule,900,now+2080),rule,'and stays given up, without new logs');
+  assert.equal(said('turn-decision-hold'),1,'one line per hold, not per tick');
+  assert.equal(said('turn-decision-hold-expired'),1);
+});
+test('the clock is per committed prefix, so growing text does not restart it',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const {e,seg,i,rule,now}=holdSetup();
+  D().boundary(e,seg,i,rule,900,now);
+  /* 新しいテキストが来ると版が進み、その版の答えはまだ無い。Rules がそのまま通る
+     tick で時計を戻すと、Realtime のように200msごとに版が進む経路では上限が効かない。 */
+  e.segment.revision=4;
+  const longer=input({text:input().text+'あと一言。',stableLength:12});
+  assert.equal(D().boundary(e,seg,longer,rule,900,now+1000),rule,'no answer yet, so Rules pass through');
+  assert.equal(e.segment.holdSince,now,'the INV-11 clock keeps running across revisions');
+  e.segment.revision=3;
+  assert.equal(D().boundary(e,seg,i,rule,900,now+2000),rule,'the ceiling still lands at 2s');
+});
+test('a commit that moves the pending tail gives the next part a fresh clock',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const {e,seg,i,rule,now}=holdSetup();
+  D().boundary(e,seg,i,rule,900,now);
+  assert.equal(e.segment.holdSince,now);
+  const next={start:12};
+  D().boundary(e,next,i,rule,900,now+500);
+  assert.equal(e.segment.holdSince,now+500,'the clock restarts for the new part');
+  assert.equal(e.segment.holdStart,12);
+});
+test('0 refuses the provider wait outright and never holds a commit',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active',turnDecisionHoldMaxWaitMs:0});
+  const {e,seg,i,rule,now}=holdSetup();
+  assert.equal(D().boundary(e,seg,i,rule,900,now),rule);
+  assert.ok(!e.segment.holdSince);
+});
+test('the ceiling is clamped to 10s however large the setting is',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active',turnDecisionHoldMaxWaitMs:99999});
+  const {e,seg,i,rule,now}=holdSetup();
+  D().boundary(e,seg,i,rule,900,now);
+  assert.equal(D().boundary(e,seg,i,rule,900,now+9999).waiting,'provider-hold');
+  assert.equal(D().boundary(e,seg,i,rule,900,now+10000),rule);
+});
+test('off and shadow never start the hold clock (INV-08)',()=>{
+  for(const mode of ['off','shadow']){
+    reset({turnDecisionMode:mode,turnDecisionLangJa:mode==='off'?'active':'shadow'});
+    const {e,seg,i,rule,now}=holdSetup();
+    assert.equal(D().boundary(e,seg,i,rule,900,now),rule,mode);
+    assert.ok(!e.segment.holdSince,mode);
+  }
+});
+test('a position taken by the provider clears the clock instead of expiring it',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const e=holdCard(),seg={start:0},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,900,now),cand=st.candidateBoundaries[0];
+  const probs={HOLD:0.05};probs[cand.id]=0.95;
+  D().cache[D().key(st)]={sessionId:st.sessionId,utteranceId:st.utteranceId,revision:st.revision,
+    boundary:{choice:cand.id,confidence:0.9,probabilities:probs},
+    turnState:{choice:'COMPLETE',confidence:0.9,probabilities:{}},
+    safeToSpeak:0.9,repairLikelihood:0.01,decisionId:'d12'};
+  e.segment.holdSince=now-5000;e.segment.holdOver=true;
+  const out=D().boundary(e,seg,i,rule,900,now);
+  assert.equal(out.length,cand.offset);
+  assert.equal(e.segment.holdSince,0,'committing is progress, so the clock is put away');
+});
+
+/* ── 往復の回数は revision で数える ───────────────────────────────────────
+   bucket は無音を100ms刻みで量子化するので、テキストが凍ったまま無音だけが伸びる
+   状態は「新しいstate」として通り続ける（v1.49.19実測 187秒で433件／406秒で1251件、
+   内容は同一）。revision が進まないなら聞き直しても判断は変わらない。 */
+test('the same revision is asked at most the configured number of times',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,900,now),from=dlogs.length;
+  assert.equal(D().asksExhausted(st),false,'the first ask always goes');
+  assert.equal(D().asksExhausted(st),false);
+  assert.equal(D().asksExhausted(st),false);
+  assert.equal(D().asksExhausted(st),true,'the fourth is refused at a limit of 3');
+  assert.equal(D().asksExhausted(st),true);
+  assert.equal(dlogs.slice(from).filter(a=>a[1]==='turn-decision-ask-capped').length,1,
+    'said once, not every tick');
+});
+test('a new revision gets a fresh budget',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,900,now);
+  for(let n=0;n<4;n++)D().asksExhausted(st);
+  assert.equal(D().asksExhausted(st),true);
+  const e2=card({segment:{revision:4,final:false}});
+  const st2=D().stateOf(e2,seg,i,rule,900,now);
+  assert.equal(D().asksExhausted(st2),false,'new text is new information');
+});
+test('the limit is at least 1 and at most 20',()=>{
+  reset({turnDecisionMode:'active',turnDecisionMaxAsksPerRevision:0});
+  assert.equal(D().maxAsks(),1,'asking zero times would switch the provider off silently');
+  reset({turnDecisionMode:'active',turnDecisionMaxAsksPerRevision:99999});
+  assert.equal(D().maxAsks(),20);
+});
+test('one answer counts as one application, however many ticks read it',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  D().stats.applied=0;D().stats.holdTicks=0;
+  const {e,seg,i,rule,now}=holdSetup();
+  for(let n=0;n<5;n++)D().boundary(e,seg,i,rule,900,now+n*80);
+  assert.equal(D().stats.applied,1,'the counter must be comparable with the number sent');
+  assert.equal(D().stats.holdTicks,5,'the tick count is kept, under its own name');
 });
 
 console.log(JSON.stringify({passed:tests.length,tests},null,2));
