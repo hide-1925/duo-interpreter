@@ -751,8 +751,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.21';
-var APP_BUILD = '20260925-v14921-prosody-google-tts';
+var APP_VERSION = 'v1.49.22';
+var APP_BUILD = '20260925-v14922-gemini38-model-field';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -1089,7 +1089,7 @@ var CONFIG_SCHEMA = [
   { prop:"gttsVoiceB", key:'di.gttsvb', embed:'gttsVoiceB', def:'', portable:true, el:"gttsVoiceB", bind:'custom' },
   { prop:"gttsVoiceId", key:'di.gttsvid', embed:'gttsVoiceId', def:'', portable:true, el:"gttsVoiceId", bind:'custom' },
   { prop:"gttsVoiceIdB", key:'di.gttsvidb', embed:'gttsVoiceIdB', def:'', portable:true, el:"gttsVoiceIdB", bind:'custom' },
-  { prop:"gttsModel", key:'di.gttsm', embed:'gttsModel', def:'gemini-2.5-flash-tts', portable:true, el:"gttsModel", bind:'custom' },
+  { prop:"gttsModel", key:'di.gttsm', embed:'gttsModel', def:'gemini-3.8-flash-lite-tts', portable:true, el:"gttsModel", bind:'custom' },
   { prop:"gttsPrompt", key:'di.gttsp', embed:'gttsPrompt', def:'', portable:true, el:"gttsPrompt", bind:'custom' },
   { prop:"gttsRate", key:'di.gttsrt', embed:'gttsRate', def:'0', portable:true, el:"gttsRate" },
   { prop:"gttsVolume", key:'di.gttsvo', embed:'gttsVolume', def:'0', portable:true, el:"gttsVolume" },
@@ -6753,7 +6753,7 @@ function gttsBody(text,lang,seat,plan,voiceName){
     voice:{languageCode:gttsLangCode(lang),name:voiceName},
     audioConfig:{audioEncoding:'MP3'}};
   if(fam==='gemini'){
-    body.voice.modelName=String(CFG.gttsModel||'gemini-2.5-flash-tts');
+    body.voice.modelName=String(CFG.gttsModel||'gemini-3.8-flash-lite-tts').trim();
     var p=String(CFG.gttsPrompt||'').trim();
     if(p)body.input.prompt=p.slice(0,800);
   }
@@ -6888,7 +6888,7 @@ function gttsRefreshUI(active){
   var f=$('gttsField');if(!f)return;
   var k=$('gttsKey');if(k&&k!==document.activeElement)k.value=KEYS['tts:google']||'';
   var fam=$('gttsFamily');if(fam)fam.value=gttsFamily();
-  var m=$('gttsModel');if(m)m.value=CFG.gttsModel||'gemini-2.5-flash-tts';
+  var m=$('gttsModel');if(m&&m!==document.activeElement)m.value=CFG.gttsModel||'gemini-3.8-flash-lite-tts';
   var pr=$('gttsPrompt');if(pr&&pr!==document.activeElement)pr.value=CFG.gttsPrompt||'';
   var only=$('gttsGeminiOnly');if(only)only.style.display=gttsFamily()==='gemini'?'':'none';
   gttsFillVoiceSelect($('gttsVoice'),CFG.gttsVoice,false);
@@ -7812,7 +7812,7 @@ var TTS_PROVIDERS = {
         if(seatUsed('B'))names.push('相手(B)は <b>'+gttsVoiceName('B',gttsSeatLang('B'))+'</b>');
         t+='<br>'+names.join('／')+' の声です。';
         if(fam==='chirp3')t+='Chirp 3: HD は言語ごとに同じ名前の声があるので、どの言語も同じ声で読みます。';
-        else if(fam==='gemini')t+='Gemini-TTS（'+(CFG.gttsModel||'gemini-2.5-flash-tts')+'）で読みます。'
+        else if(fam==='gemini')t+='Gemini-TTS（'+(CFG.gttsModel||'gemini-3.8-flash-lite-tts')+'）で読みます。'
           +(String(CFG.gttsPrompt||'').trim()?'話し方の指示を添えて送ります。':'話し方の指示は空欄です。');
       }
       return {html:t,warn:warn};
@@ -7821,7 +7821,7 @@ var TTS_PROVIDERS = {
     refreshUI:function(active){ gttsRefreshUI(active); },
     diagModel:function(){
       var fam=gttsFamily();
-      return fam==='gemini'?(CFG.gttsModel||'gemini-2.5-flash-tts')
+      return fam==='gemini'?(CFG.gttsModel||'gemini-3.8-flash-lite-tts')
         :fam==='chirp3'?'Chirp 3: HD':'(名前を直接指定)';
     },
     prosody:{axes:["速度","音量"],suffix:'',
@@ -11473,9 +11473,12 @@ $('gttsFamily').onchange = function(){
   CFG.gttsFamily = this.value; persistSetting("gttsFamily", CFG.gttsFamily);
   gttsWarned = false; refreshVvUI();
 };
-$('gttsModel').onchange = function(){
-  CFG.gttsModel = this.value; persistSetting("gttsModel", CFG.gttsModel); refreshVvUI();
+/* モデル名は入力欄。datalist から選んでも打ち込んでも同じ経路を通す。
+   モデル名を表にすると、Google が新しいモデルを出すたびに版を上げるしかなくなる。 */
+$('gttsModel').oninput = function(){
+  CFG.gttsModel = this.value.trim(); persistSetting("gttsModel", CFG.gttsModel); refreshVvUI();
 };
+$('gttsModel').onchange = $('gttsModel').oninput;
 $('gttsPrompt').oninput = function(){
   CFG.gttsPrompt = this.value; persistSetting("gttsPrompt", CFG.gttsPrompt);
 };

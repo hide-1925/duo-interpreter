@@ -194,6 +194,14 @@
       "indexHtmlSha256": "759fb5598f2383da104553c2d99856b4c6690f7c0b9178430d7c95e24bdc6521",
       "extensionAppJsSha256": "02191aa882705989e312575f6eae8c2e5da5e60afa8b0229b4da47bb0634f688",
       "summary": "判断層が読む音響解析器を席で決めるようにした（prosodyAnalyzerFor）。共有マイクの解析器だけを見ていたため、タブ音声・VB-CABLE・画面共有だけで通訳しているあいだ音響が常に空で、v1.49.19のgpt-live-transcribe記録では採用6件すべてが音響なしだった。あわせてgpt-live-transcribeのエンジンに解析専用の2048点ノードを足した（境界判定の512点ではYINの探索下限が約189Hzになり男性の話声が範囲外に落ちる）。診断に解析器名を出す。TTS経路にGoogle Cloud Text-to-Speechを追加（Chirp 3: HD／Gemini-TTS／名前の直接指定、CORS対応のため中継不要、Chirp3とGeminiにはspeakingRateとpitchを送らずピッチ保持再生で速度を出す、拒まれた声は覚えて送り直さない）"
+    },
+    "v1.49.22": {
+      "build": "20260925-v14922-gemini38-model-field",
+      "extension": "1.4.33",
+      "commit": null,
+      "indexHtmlSha256": "722df4bc0ee943b7090399a4934e5b69f3627219f3e7bc24c16921e52be771cc",
+      "extensionAppJsSha256": "beb3eadcb769cfb53bd875e4344e99737d2cda2e533f54d8cc7968eba8b3336e",
+      "summary": "Gemini-TTS のモデル指定をプルダウンから入力欄へ変えた。v1.4.32 の一覧は Google の公式サンプルに載っていた4つで、その2日後に Gemini 3.8 Flash TTS / Flash-Lite TTS が出ている。表で持つ限り、Googleが新しいモデルを出すたびにこちらの版を上げないと使えない。候補は datalist で出すが、打ち込んだ名前はそのまま voice.modelName へ載せる。既定を gemini-3.8-flash-lite-tts（読み上げ用途向けの高速・低コスト版、gemini-3.1-flash-tts-preview の置き換え）にした。リクエストの形・MP3指定・speakingRateを送らない方針は変更なし"
     }
   }
 }
