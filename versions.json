@@ -182,7 +182,7 @@
     "v1.49.20": {
       "build": "20260925-v14920-hold-cap",
       "extension": "1.4.31",
-      "commit": null,
+      "commit": "0699344",
       "indexHtmlSha256": "c3ed94d602d20ba84c10d74be25faf8956c151532ee2df62b3d1074868fcc5ce",
       "extensionAppJsSha256": "1285cf513f5ff37691a6affca2a17ab8558ccccad894dd3b78e188abdc99eebf",
       "summary": "判断層の「待て」に上限を置いた（INV-11・turnDecisionHoldMaxWaitMs、既定2000ms・0で従わない・上限10000ms）。答えは(文,版)に紐づき、版は新しいテキストが来たときだけ進むため、認識が止まった瞬間のHOLDが期限なく残り、確定も翻訳も読み上げもされないカードが停止まで放置されていた（実測 stabilityMs 112557／83967、いずれも最後にaudio cancelled（speech-stopped））。あわせて同じ版を聞き直す回数を上限3回に（無音を100ms刻みで量子化していたため、テキストが凍ったまま無音だけ伸びる状態が延々と新しい質問になり、内容の同じ往復が187秒で433件・406秒で1251件に達していた）。適用の計数を tick 単位から答え1件単位に直し、保持tickと打切りを別に出す"
@@ -190,10 +190,26 @@
     "v1.49.21": {
       "build": "20260925-v14921-prosody-google-tts",
       "extension": "1.4.32",
-      "commit": null,
+      "commit": "b084a75",
       "indexHtmlSha256": "759fb5598f2383da104553c2d99856b4c6690f7c0b9178430d7c95e24bdc6521",
       "extensionAppJsSha256": "02191aa882705989e312575f6eae8c2e5da5e60afa8b0229b4da47bb0634f688",
       "summary": "判断層が読む音響解析器を席で決めるようにした（prosodyAnalyzerFor）。共有マイクの解析器だけを見ていたため、タブ音声・VB-CABLE・画面共有だけで通訳しているあいだ音響が常に空で、v1.49.19のgpt-live-transcribe記録では採用6件すべてが音響なしだった。あわせてgpt-live-transcribeのエンジンに解析専用の2048点ノードを足した（境界判定の512点ではYINの探索下限が約189Hzになり男性の話声が範囲外に落ちる）。診断に解析器名を出す。TTS経路にGoogle Cloud Text-to-Speechを追加（Chirp 3: HD／Gemini-TTS／名前の直接指定、CORS対応のため中継不要、Chirp3とGeminiにはspeakingRateとpitchを送らずピッチ保持再生で速度を出す、拒まれた声は覚えて送り直さない）"
+    },
+    "v1.49.22": {
+      "build": "20260925-v14922-gemini38-model-field",
+      "extension": "1.4.33",
+      "commit": null,
+      "indexHtmlSha256": "722df4bc0ee943b7090399a4934e5b69f3627219f3e7bc24c16921e52be771cc",
+      "extensionAppJsSha256": "beb3eadcb769cfb53bd875e4344e99737d2cda2e533f54d8cc7968eba8b3336e",
+      "summary": "Gemini-TTS のモデル指定をプルダウンから入力欄へ変えた。v1.4.32 の一覧は Google の公式サンプルに載っていた4つで、その2日後に Gemini 3.8 Flash TTS / Flash-Lite TTS が出ている。表で持つ限り、Googleが新しいモデルを出すたびにこちらの版を上げないと使えない。候補は datalist で出すが、打ち込んだ名前はそのまま voice.modelName へ載せる。既定を gemini-3.8-flash-lite-tts（読み上げ用途向けの高速・低コスト版、gemini-3.1-flash-tts-preview の置き換え）にした。リクエストの形・MP3指定・speakingRateを送らない方針は変更なし"
+    },
+    "v1.49.23": {
+      "build": "20260925-v14923-one-touch-latency",
+      "extension": "1.4.34",
+      "commit": null,
+      "indexHtmlSha256": "9890e4f9df5adfb186b1ed620a7e21d5b1dfdb71e4f88fa59aaedc0069782782",
+      "extensionAppJsSha256": "c256482da606e97d50773a8fdbecf340d00f56f6e8d030fdd2b521fb3e36289d",
+      "summary": "録音を切って送るまでの無音待ちを設定にした（sttSilenceHoldMs、既定900ms・200〜2000）。実測（Teams・gpt-4o-mini-transcribe）の内訳は無音待ち0.9秒→転写0.69〜2.33秒→読み上げ先頭0.27〜0.39秒＝話し終わりから声が出るまで1.95〜3.6秒で、こちら側で縮められるのはこの0.9秒だけだった。gpt-live-transcribe に送信RTPの記録（live-audio-transport）を足した。同ログで部分結果が7〜65秒遅れていたが、音声がこちらから出ていたかを示す記録がこの経路だけ無く、切り分けられなかった。拡張の「Web会議マイク音声」をワンタッチにし（字幕対象→HTML本体→翻訳開始→会議送出、足りない手順だけ実行し、前の手順が失敗したら後ろを実行しない）、本体に duoExtensionStart() を足した"
     }
   }
 }

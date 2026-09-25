@@ -57,7 +57,7 @@ const tests=[],test=(n,f)=>{f();tests.push(n);};
 function reset(over){
   ctx.CFG=Object.assign({ttsMode:'google',ttsSrc:false,ttsWho:'both',langA:'ja',langB:'en',
     gttsFamily:'chirp3',gttsVoice:'Aoede',gttsVoiceB:'',gttsVoiceId:'',gttsVoiceIdB:'',
-    gttsModel:'gemini-2.5-flash-tts',gttsPrompt:'',gttsRate:'0',gttsVolume:'0'},over||{});
+    gttsModel:'gemini-3.8-flash-lite-tts',gttsPrompt:'',gttsRate:'0',gttsVolume:'0'},over||{});
   ctx.KEYS={};ctx.ctxMap=null;
   for(const k of Object.keys(c.GTTS_NO_AUDIO_PARAMS))delete c.GTTS_NO_AUDIO_PARAMS[k];
   logs.length=0;
@@ -89,6 +89,22 @@ test('Gemini-TTS sends the bare name, the model and the prompt',()=>{
   assert.equal(r.body.voice.modelName,'gemini-2.5-pro-tts');
   assert.equal(r.body.input.prompt,'淡々と読んでください');
   assert.equal(r.body.voice.languageCode,'ja-JP');
+});
+test('the model name is taken as written, so a model shipped tomorrow works today',()=>{
+  /* 表にすると Google が新しいモデルを出すたびに版を上げるしかなくなる。
+     gemini-3.8-flash-lite-tts は2026年9月公開で、3.1のプレビューを置き換えた。 */
+  const r=body('A','ja',{gttsFamily:'gemini',gttsVoice:'Kore',gttsModel:'gemini-3.8-flash-lite-tts'});
+  assert.equal(r.body.voice.modelName,'gemini-3.8-flash-lite-tts');
+  const later=body('A','ja',{gttsFamily:'gemini',gttsVoice:'Kore',gttsModel:'gemini-9-whatever-tts'});
+  assert.equal(later.body.voice.modelName,'gemini-9-whatever-tts','an unknown name must still be sent');
+});
+test('a model name is trimmed, since it comes from a text field',()=>{
+  const r=body('A','ja',{gttsFamily:'gemini',gttsVoice:'Kore',gttsModel:'  gemini-3.8-flash-tts  '});
+  assert.equal(r.body.voice.modelName,'gemini-3.8-flash-tts');
+});
+test('an empty model falls back to the shipped default rather than sending nothing',()=>{
+  const r=body('A','ja',{gttsFamily:'gemini',gttsVoice:'Kore',gttsModel:''});
+  assert.equal(r.body.voice.modelName,'gemini-3.8-flash-lite-tts');
 });
 test('an empty prompt is left out rather than sent as an empty instruction',()=>{
   const r=body('A','ja',{gttsFamily:'gemini',gttsVoice:'Kore',gttsPrompt:'   '});
