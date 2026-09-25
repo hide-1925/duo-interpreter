@@ -182,7 +182,7 @@
     "v1.49.20": {
       "build": "20260925-v14920-hold-cap",
       "extension": "1.4.31",
-      "commit": null,
+      "commit": "0699344",
       "indexHtmlSha256": "c3ed94d602d20ba84c10d74be25faf8956c151532ee2df62b3d1074868fcc5ce",
       "extensionAppJsSha256": "1285cf513f5ff37691a6affca2a17ab8558ccccad894dd3b78e188abdc99eebf",
       "summary": "判断層の「待て」に上限を置いた（INV-11・turnDecisionHoldMaxWaitMs、既定2000ms・0で従わない・上限10000ms）。答えは(文,版)に紐づき、版は新しいテキストが来たときだけ進むため、認識が止まった瞬間のHOLDが期限なく残り、確定も翻訳も読み上げもされないカードが停止まで放置されていた（実測 stabilityMs 112557／83967、いずれも最後にaudio cancelled（speech-stopped））。あわせて同じ版を聞き直す回数を上限3回に（無音を100ms刻みで量子化していたため、テキストが凍ったまま無音だけ伸びる状態が延々と新しい質問になり、内容の同じ往復が187秒で433件・406秒で1251件に達していた）。適用の計数を tick 単位から答え1件単位に直し、保持tickと打切りを別に出す"
@@ -190,7 +190,7 @@
     "v1.49.21": {
       "build": "20260925-v14921-prosody-google-tts",
       "extension": "1.4.32",
-      "commit": null,
+      "commit": "b084a75",
       "indexHtmlSha256": "759fb5598f2383da104553c2d99856b4c6690f7c0b9178430d7c95e24bdc6521",
       "extensionAppJsSha256": "02191aa882705989e312575f6eae8c2e5da5e60afa8b0229b4da47bb0634f688",
       "summary": "判断層が読む音響解析器を席で決めるようにした（prosodyAnalyzerFor）。共有マイクの解析器だけを見ていたため、タブ音声・VB-CABLE・画面共有だけで通訳しているあいだ音響が常に空で、v1.49.19のgpt-live-transcribe記録では採用6件すべてが音響なしだった。あわせてgpt-live-transcribeのエンジンに解析専用の2048点ノードを足した（境界判定の512点ではYINの探索下限が約189Hzになり男性の話声が範囲外に落ちる）。診断に解析器名を出す。TTS経路にGoogle Cloud Text-to-Speechを追加（Chirp 3: HD／Gemini-TTS／名前の直接指定、CORS対応のため中継不要、Chirp3とGeminiにはspeakingRateとpitchを送らずピッチ保持再生で速度を出す、拒まれた声は覚えて送り直さない）"
