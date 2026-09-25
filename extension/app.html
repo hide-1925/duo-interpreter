@@ -1130,6 +1130,17 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
         <select id="fourOSeconds"><option value="6">6秒</option><option value="10">10秒</option><option value="14">14秒</option><option value="18">18秒</option><option value="custom">任意の秒数</option></select>
         <div id="fourOCustomField" style="display:none"><label for="fourOCustom">秒数（1〜120秒）</label><input id="fourOCustom" type="number" min="1" max="120" step="1" value="10"></div>
         <label class="settings-check switch"><input id="fourOCarry" type="checkbox" checked> 未確定の末尾を次の録音結果につなぐ</label>
+        <label>話し終わりを待つ無音 ms <input id="sttSilenceHoldMs" type="number" min="200" max="2000" step="50"></label>
+        <details class="settings-help"><summary>遅延を詰めたいとき</summary>
+          <p>録音を切って送るまでに待つ無音の長さです（既定 <b>900ms</b>）。
+          実測（Teams・<code>gpt-4o-mini-transcribe</code>）では、発話の終わりから声が出るまでの内訳が
+          <b>無音待ち0.9秒 → 転写0.69〜2.33秒 → 読み上げ先頭0.27〜0.39秒＝合計1.95〜3.6秒</b>でした。
+          <b>こちら側で短くできるのはこの0.9秒だけ</b>です（転写の往復は相手側の時間です）。</p>
+          <p>短くすると、文の途中の息継ぎでも切れて<b>1回の発話が複数の認識リクエストに割れます</b>。
+          認識の回数と料金が増え、文の切れ目も増えます。自分の声をそのまま届ける用途
+          （同じ言語・翻訳なし）では割れても実害が小さいので、300〜500ms まで下げられます。</p>
+          <p>ストリーミングで文字が伸びていく <code>gpt-live-transcribe</code> では、この値は使いません。</p>
+        </details>
         <small>mini・4o-transcribe・話者分離版に共通。無音で早めに送信し、話し続けても指定秒数で送信します。文字は認識完了後に表示します。時間で切った録音の最後の一文は未確定で表示し、次の結果へつなぎます。保持上限は録音上限＋5秒です。秒数の変更は次の録音から反映されます。</small>
       </div>
       <div class="field" id="sttKeyField">
@@ -1535,12 +1546,15 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
       </div>
       <div id="gttsGeminiOnly" style="display:none">
         <div class="sublabel">Gemini-TTS のモデル</div>
-        <select id="gttsModel">
-          <option value="gemini-2.5-flash-tts">gemini-2.5-flash-tts（正式版・速い・おすすめ）</option>
-          <option value="gemini-3.1-flash-tts-preview">gemini-3.1-flash-tts-preview（最新・プレビュー）</option>
-          <option value="gemini-2.5-pro-tts">gemini-2.5-pro-tts（表現重視・遅い）</option>
-          <option value="gemini-2.5-flash-lite-preview-tts">gemini-2.5-flash-lite-preview-tts（軽量・プレビュー）</option>
-        </select>
+        <input type="text" id="gttsModel" list="gttsModelList" spellcheck="false" placeholder="gemini-3.8-flash-lite-tts" autocomplete="off">
+        <datalist id="gttsModelList">
+          <option value="gemini-3.8-flash-lite-tts">高速・低コスト。読み上げ用途の標準</option>
+          <option value="gemini-3.8-flash-tts">表現重視。声の設計・複製に対応</option>
+          <option value="gemini-2.5-flash-tts">ひとつ前の正式版</option>
+          <option value="gemini-2.5-pro-tts">ひとつ前の表現重視</option>
+          <option value="gemini-3.1-flash-tts-preview">3.8 に置き換えられたプレビュー</option>
+          <option value="gemini-2.5-flash-lite-preview-tts">旧・軽量プレビュー</option>
+        </datalist>
         <div class="sublabel">話し方の指示（空欄可）</div>
         <input type="text" id="gttsPrompt" placeholder="例：落ち着いた通訳者の口調で、淡々と読んでください" autocomplete="off">
       </div>
@@ -1563,7 +1577,13 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
       同じ名前を選んでおけば<b>どの言語でも同じ声で読みます</b>ので、A席とB席で別の名前にすると、どちらの発言か耳で分かります。
       SSML と話速・ピッチの指定には対応していません。<br>
       <b>Gemini-TTS</b> は声の名前をそのまま（例：<code>Kore</code>）使い、モデル名と「話し方の指示」を添えて送ります。
-      表現の幅は広いぶん、<b>1発話ごとの待ちは Chirp 3: HD より伸びます。</b><br>
+      表現の幅は広いぶん、<b>1発話ごとの待ちは Chirp 3: HD より伸びます。</b>
+      モデル名は<b>入力欄</b>です（候補は出ますが、選ばずに打ち込めます）。
+      Google が新しいモデルを出したら、このアプリを更新しなくてもその名前を書けば使えます。
+      既定は <code>gemini-3.8-flash-lite-tts</code>（2026年9月公開。読み上げ用途向けの高速・低コスト版で、
+      <code>gemini-3.1-flash-tts-preview</code> の置き換え）。表現を優先するなら <code>gemini-3.8-flash-tts</code> です。
+      声の設計（文章から作る）や声の複製で作った声を使う場合は、その識別子を
+      「声の名前を直接入力」へ貼ってください。<br>
       「🔄 声を取得」は読み上げ先の言語で一覧を絞り込みます。一覧に出ない声は名前を直接入力してください。
       料金は Google の価格表に従います（声の系統ごとに単価が違います）。</small>
     </div>

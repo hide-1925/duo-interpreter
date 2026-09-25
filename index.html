@@ -1130,6 +1130,17 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
         <select id="fourOSeconds"><option value="6">6秒</option><option value="10">10秒</option><option value="14">14秒</option><option value="18">18秒</option><option value="custom">任意の秒数</option></select>
         <div id="fourOCustomField" style="display:none"><label for="fourOCustom">秒数（1〜120秒）</label><input id="fourOCustom" type="number" min="1" max="120" step="1" value="10"></div>
         <label class="settings-check switch"><input id="fourOCarry" type="checkbox" checked> 未確定の末尾を次の録音結果につなぐ</label>
+        <label>話し終わりを待つ無音 ms <input id="sttSilenceHoldMs" type="number" min="200" max="2000" step="50"></label>
+        <details class="settings-help"><summary>遅延を詰めたいとき</summary>
+          <p>録音を切って送るまでに待つ無音の長さです（既定 <b>900ms</b>）。
+          実測（Teams・<code>gpt-4o-mini-transcribe</code>）では、発話の終わりから声が出るまでの内訳が
+          <b>無音待ち0.9秒 → 転写0.69〜2.33秒 → 読み上げ先頭0.27〜0.39秒＝合計1.95〜3.6秒</b>でした。
+          <b>こちら側で短くできるのはこの0.9秒だけ</b>です（転写の往復は相手側の時間です）。</p>
+          <p>短くすると、文の途中の息継ぎでも切れて<b>1回の発話が複数の認識リクエストに割れます</b>。
+          認識の回数と料金が増え、文の切れ目も増えます。自分の声をそのまま届ける用途
+          （同じ言語・翻訳なし）では割れても実害が小さいので、300〜500ms まで下げられます。</p>
+          <p>ストリーミングで文字が伸びていく <code>gpt-live-transcribe</code> では、この値は使いません。</p>
+        </details>
         <small>mini・4o-transcribe・話者分離版に共通。無音で早めに送信し、話し続けても指定秒数で送信します。文字は認識完了後に表示します。時間で切った録音の最後の一文は未確定で表示し、次の結果へつなぎます。保持上限は録音上限＋5秒です。秒数の変更は次の録音から反映されます。</small>
       </div>
       <div class="field" id="sttKeyField">
@@ -1535,12 +1546,15 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
       </div>
       <div id="gttsGeminiOnly" style="display:none">
         <div class="sublabel">Gemini-TTS のモデル</div>
-        <select id="gttsModel">
-          <option value="gemini-2.5-flash-tts">gemini-2.5-flash-tts（正式版・速い・おすすめ）</option>
-          <option value="gemini-3.1-flash-tts-preview">gemini-3.1-flash-tts-preview（最新・プレビュー）</option>
-          <option value="gemini-2.5-pro-tts">gemini-2.5-pro-tts（表現重視・遅い）</option>
-          <option value="gemini-2.5-flash-lite-preview-tts">gemini-2.5-flash-lite-preview-tts（軽量・プレビュー）</option>
-        </select>
+        <input type="text" id="gttsModel" list="gttsModelList" spellcheck="false" placeholder="gemini-3.8-flash-lite-tts" autocomplete="off">
+        <datalist id="gttsModelList">
+          <option value="gemini-3.8-flash-lite-tts">高速・低コスト。読み上げ用途の標準</option>
+          <option value="gemini-3.8-flash-tts">表現重視。声の設計・複製に対応</option>
+          <option value="gemini-2.5-flash-tts">ひとつ前の正式版</option>
+          <option value="gemini-2.5-pro-tts">ひとつ前の表現重視</option>
+          <option value="gemini-3.1-flash-tts-preview">3.8 に置き換えられたプレビュー</option>
+          <option value="gemini-2.5-flash-lite-preview-tts">旧・軽量プレビュー</option>
+        </datalist>
         <div class="sublabel">話し方の指示（空欄可）</div>
         <input type="text" id="gttsPrompt" placeholder="例：落ち着いた通訳者の口調で、淡々と読んでください" autocomplete="off">
       </div>
@@ -1563,7 +1577,13 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
       同じ名前を選んでおけば<b>どの言語でも同じ声で読みます</b>ので、A席とB席で別の名前にすると、どちらの発言か耳で分かります。
       SSML と話速・ピッチの指定には対応していません。<br>
       <b>Gemini-TTS</b> は声の名前をそのまま（例：<code>Kore</code>）使い、モデル名と「話し方の指示」を添えて送ります。
-      表現の幅は広いぶん、<b>1発話ごとの待ちは Chirp 3: HD より伸びます。</b><br>
+      表現の幅は広いぶん、<b>1発話ごとの待ちは Chirp 3: HD より伸びます。</b>
+      モデル名は<b>入力欄</b>です（候補は出ますが、選ばずに打ち込めます）。
+      Google が新しいモデルを出したら、このアプリを更新しなくてもその名前を書けば使えます。
+      既定は <code>gemini-3.8-flash-lite-tts</code>（2026年9月公開。読み上げ用途向けの高速・低コスト版で、
+      <code>gemini-3.1-flash-tts-preview</code> の置き換え）。表現を優先するなら <code>gemini-3.8-flash-tts</code> です。
+      声の設計（文章から作る）や声の複製で作った声を使う場合は、その識別子を
+      「声の名前を直接入力」へ貼ってください。<br>
       「🔄 声を取得」は読み上げ先の言語で一覧を絞り込みます。一覧に出ない声は名前を直接入力してください。
       料金は Google の価格表に従います（声の系統ごとに単価が違います）。</small>
     </div>
@@ -2109,6 +2129,26 @@ function duoRenderFavorites(){
     [-1,1].forEach(function(delta){var b=document.createElement('button'),index=duoFavoriteIds.indexOf(model.u);b.type='button';b.className='btn ghost';b.textContent=delta<0?'↑':'↓';b.setAttribute('aria-label',(model.n||model.u)+(delta<0?'を上へ':'を下へ'));b.disabled=index<0||index+delta<0||index+delta>=duoFavoriteIds.length;b.onclick=function(){var other=duoFavoriteIds[index+delta];duoFavoriteIds[index+delta]=model.u;duoFavoriteIds[index]=other;duoSaveFavorites();};row.appendChild(b);});list.appendChild(row);
   });
 }
+/* 拡張の「Web会議マイク音声」ボタン1つで、字幕対象・HTML本体・翻訳開始・会議送出まで
+   通すための入口。押した瞬間に開始まで済ませたいので、結果を返せる形にしておく
+   （コマンド経路は投げっぱなしで、開始できたかどうかが分からない）。
+
+   マイクの許可はこのオリジンに保存されているので、利用者の操作が無くても
+   getUserMedia は通る。AudioContext も、マイクを許可したオリジンでは
+   自動再生規制の対象外になる。
+
+   presetには触れない。duoApplyPreset は実行中なら stopAll して会議送出も切るので、
+   ここで当て直すと「開始するために止める」ことになる。利用者が選んだ構成
+   （many_to_many など）もボタン1つで書き換わってしまう。 */
+function duoExtensionStart(){
+  if(S.running)return {ok:true,running:true,already:true};
+  try{ startAll(); }
+  catch(err){ return {ok:false,running:false,error:String(err.message||err)}; }
+  if(!S.running)return {ok:false,running:false,
+    error:'開始条件が足りません。HTML本体のタブを開いて、画面に出ている案内をご確認ください'};
+  return {ok:true,running:true,already:false};
+}
+
 /* Each submission is processed by the same HTML text pipeline. Never overwrite a draft. */
 var duoTextRequestIds=new Map();
 function duoSubmitExternalText(text,mode,requestId){
@@ -2617,8 +2657,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.21';
-var APP_BUILD = '20260925-v14921-prosody-google-tts';
+var APP_VERSION = 'v1.49.23';
+var APP_BUILD = '20260925-v14923-one-touch-latency';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -2807,6 +2847,8 @@ var CONFIG_SCHEMA = [
   { prop:"sttModel", key:'di.sttm', embed:'sttModel', def:'', portable:true, el:"sttModel", bind:'custom' },
   { prop:"fourOSeconds", key:'di.fourOSeconds', embed:'fourOSeconds', def:'10', coerce:function(raw){ return fourOSeconds(raw); }, portable:true, el:"fourOSeconds", bind:'custom' },
   { prop:"fourOCarry", key:'di.fourOCarry', embed:'fourOCarry', def:'1', type:'bool', portable:true, el:"fourOCarry", bind:'custom' },
+  /* 録音を切って送るまでの無音待ち。遅延に直接効く唯一の固定値だった。 */
+  { prop:"sttSilenceHoldMs", key:'di.sttSilenceHold', embed:'sttSilenceHoldMs', def:'900', portable:true, el:"sttSilenceHoldMs" },
   { prop:"segmentMode", key:'di.segmentMode', embed:'segmentMode', def:'balanced', portable:true, el:"segmentMode", bind:'custom' },
   { prop:"segmentBoundary", key:'di.segmentBoundary', embed:'segmentBoundary', def:'semantic', portable:true, el:"segmentBoundary", bind:'custom' },
   { prop:"segmentOverlap", key:'di.segmentOverlap', embed:'segmentOverlap', def:'allow', portable:true, el:"segmentOverlap", bind:'custom' },
@@ -2955,7 +2997,7 @@ var CONFIG_SCHEMA = [
   { prop:"gttsVoiceB", key:'di.gttsvb', embed:'gttsVoiceB', def:'', portable:true, el:"gttsVoiceB", bind:'custom' },
   { prop:"gttsVoiceId", key:'di.gttsvid', embed:'gttsVoiceId', def:'', portable:true, el:"gttsVoiceId", bind:'custom' },
   { prop:"gttsVoiceIdB", key:'di.gttsvidb', embed:'gttsVoiceIdB', def:'', portable:true, el:"gttsVoiceIdB", bind:'custom' },
-  { prop:"gttsModel", key:'di.gttsm', embed:'gttsModel', def:'gemini-2.5-flash-tts', portable:true, el:"gttsModel", bind:'custom' },
+  { prop:"gttsModel", key:'di.gttsm', embed:'gttsModel', def:'gemini-3.8-flash-lite-tts', portable:true, el:"gttsModel", bind:'custom' },
   { prop:"gttsPrompt", key:'di.gttsp', embed:'gttsPrompt', def:'', portable:true, el:"gttsPrompt", bind:'custom' },
   { prop:"gttsRate", key:'di.gttsrt', embed:'gttsRate', def:'0', portable:true, el:"gttsRate" },
   { prop:"gttsVolume", key:'di.gttsvo', embed:'gttsVolume', def:'0', portable:true, el:"gttsVolume" },
@@ -8619,7 +8661,7 @@ function gttsBody(text,lang,seat,plan,voiceName){
     voice:{languageCode:gttsLangCode(lang),name:voiceName},
     audioConfig:{audioEncoding:'MP3'}};
   if(fam==='gemini'){
-    body.voice.modelName=String(CFG.gttsModel||'gemini-2.5-flash-tts');
+    body.voice.modelName=String(CFG.gttsModel||'gemini-3.8-flash-lite-tts').trim();
     var p=String(CFG.gttsPrompt||'').trim();
     if(p)body.input.prompt=p.slice(0,800);
   }
@@ -8754,7 +8796,7 @@ function gttsRefreshUI(active){
   var f=$('gttsField');if(!f)return;
   var k=$('gttsKey');if(k&&k!==document.activeElement)k.value=KEYS['tts:google']||'';
   var fam=$('gttsFamily');if(fam)fam.value=gttsFamily();
-  var m=$('gttsModel');if(m)m.value=CFG.gttsModel||'gemini-2.5-flash-tts';
+  var m=$('gttsModel');if(m&&m!==document.activeElement)m.value=CFG.gttsModel||'gemini-3.8-flash-lite-tts';
   var pr=$('gttsPrompt');if(pr&&pr!==document.activeElement)pr.value=CFG.gttsPrompt||'';
   var only=$('gttsGeminiOnly');if(only)only.style.display=gttsFamily()==='gemini'?'':'none';
   gttsFillVoiceSelect($('gttsVoice'),CFG.gttsVoice,false);
@@ -9678,7 +9720,7 @@ var TTS_PROVIDERS = {
         if(seatUsed('B'))names.push('相手(B)は <b>'+gttsVoiceName('B',gttsSeatLang('B'))+'</b>');
         t+='<br>'+names.join('／')+' の声です。';
         if(fam==='chirp3')t+='Chirp 3: HD は言語ごとに同じ名前の声があるので、どの言語も同じ声で読みます。';
-        else if(fam==='gemini')t+='Gemini-TTS（'+(CFG.gttsModel||'gemini-2.5-flash-tts')+'）で読みます。'
+        else if(fam==='gemini')t+='Gemini-TTS（'+(CFG.gttsModel||'gemini-3.8-flash-lite-tts')+'）で読みます。'
           +(String(CFG.gttsPrompt||'').trim()?'話し方の指示を添えて送ります。':'話し方の指示は空欄です。');
       }
       return {html:t,warn:warn};
@@ -9687,7 +9729,7 @@ var TTS_PROVIDERS = {
     refreshUI:function(active){ gttsRefreshUI(active); },
     diagModel:function(){
       var fam=gttsFamily();
-      return fam==='gemini'?(CFG.gttsModel||'gemini-2.5-flash-tts')
+      return fam==='gemini'?(CFG.gttsModel||'gemini-3.8-flash-lite-tts')
         :fam==='chirp3'?'Chirp 3: HD':'(名前を直接指定)';
     },
     prosody:{axes:["速度","音量"],suffix:'',
@@ -10597,7 +10639,7 @@ StreamEngine.prototype.start = function(){
 
     if (rms > CFG.vad/1000) { self.voice=true; self.last=t; }
     if(self.fourO)self.fourO.poll(t,t-self.last>900);
-    if (self.voice && (t-self.last)>900 && (t-self.segStart)>700) self.cut(true,'silence');
+    if (self.voice && (t-self.last)>sttSilenceHoldMs() && (t-self.segStart)>700) self.cut(true,'silence');
     else if (!self.voice && (t-self.segStart)>8000) self.cut(false,'silence');
     else if ((t-self.segStart)>(self.fourO&&self.rec&&self.rec._fourOMeta?self.rec._fourOMeta.seconds*1000:20000)) self.cut(true,'limit');
   }, 60);
@@ -10631,13 +10673,25 @@ StreamEngine.prototype.newRec = function(){
   };
   try{ this.rec.start(); }catch(e){}
 };
+/* 録音を切って送るまでの無音待ち。実測（v1.49.21・Teams）の内訳は
+   無音待ち 0.9秒 → 転写 0.69〜2.33秒 → 読み上げ先頭 0.27〜0.39秒 で、
+   発話の終わりから声が出るまで 1.95〜3.6秒だった。ここが唯一、こちら側で
+   短くできる固定値である。短くすると1発話が複数リクエストへ割れやすくなり、
+   転写の回数と料金が増える。 */
+function sttSilenceHoldMs(){
+  var n=parseInt(CFG.sttSilenceHoldMs,10);
+  if(!isFinite(n))return 900;
+  return Math.max(200,Math.min(2000,n));
+}
 StreamEngine.prototype.cut = function(send,reason){
   if(this.rec&&this.rec._stopping)return;
   if (!this.rec || this.rec.state==='inactive'){ if(!this.dead && S.running) this.newRec(); return; }
   this.rec._stopping=true;
   this.rec._send = !!send;
   if(this.rec._fourOMeta){this.rec._fourOMeta.endedAt=Date.now();this.rec._fourOMeta.reason=reason||'silence';
-    if(this.fourO)dlog('stt','4o-recording-cut',{reason:this.rec._fourOMeta.reason,seconds:this.rec._fourOMeta.seconds,spanMs:Date.now()-this.segStart,send:!!send});}
+    if(this.fourO)dlog('stt','4o-recording-cut',{reason:this.rec._fourOMeta.reason,seconds:this.rec._fourOMeta.seconds,
+      spanMs:Date.now()-this.segStart,silenceHoldMs:sttSilenceHoldMs(),
+      sinceVoiceMs:this.last?Date.now()-this.last:null,send:!!send});}
   this.rec._peak = this.peak;
   if (send && this.prosody) this.rec._prosody = this.prosody.finalize();
   try{ this.rec.stop(); }catch(e){}
@@ -11007,6 +11061,7 @@ function RealtimeTranscriptionEngine(seat,stream,opts){
      サーバーの completed だけに依存せず、端末側で発話境界を判断する。 */
   this.boundaryTimer=null;this.boundaryAc=null;this.boundaryAn=null;this.boundaryBuf=null;
   this.lastVoiceAt=0;this.lastRms=0;this.fallbackItemId='live-active';
+  this.statsTimer=null;this.statsBusy=false;this.lastBytes=null;
 }
 RealtimeTranscriptionEngine.prototype.config=function(){
   var langs=[];
@@ -11056,8 +11111,35 @@ RealtimeTranscriptionEngine.prototype.request=function(stage,url,opts,timeoutMs,
     if(err&&!err.liveStage)err.liveStage=stage;throw err;
   });
 };
+/* 送信側のRTPを定期的に残す。v1.49.21 の Teams 実測では gpt-live の部分結果が
+   7〜65秒遅れて届いたのに、音声がこちらから出ていたのかどうかを示す記録が
+   どこにも無かった（この経路だけ統計を取っていなかった）。bytesSinceLast が
+   伸びていれば音は出ている＝遅れは相手側、0のままなら出ていない。 */
+RealtimeTranscriptionEngine.prototype.startStats=function(){
+  var self=this;if(this.statsTimer)return;
+  this.lastBytes=null;this.statsBusy=false;
+  this.statsTimer=setInterval(function(){self.logStats();},5000);
+};
+RealtimeTranscriptionEngine.prototype.logStats=function(){
+  var self=this,pc=this.pc;
+  if(this.dead||this.closing||!pc||!pc.getStats||this.statsBusy)return;
+  this.statsBusy=true;
+  Promise.resolve().then(function(){return pc.getStats();}).then(function(stats){
+    if(self.dead||self.closing)return;
+    var bytes=0,packets=0;
+    stats.forEach(function(r){if(r.type==='outbound-rtp'&&(r.kind==='audio'||r.mediaType==='audio')){bytes+=r.bytesSent||0;packets+=r.packetsSent||0;}});
+    var track=self.stream&&self.stream.getAudioTracks?self.stream.getAudioTracks()[0]:null;
+    dlog('stt','live-audio-transport',{seat:self.seat,connection:pc.connectionState,
+      trackState:track?track.readyState:null,trackEnabled:track?!!track.enabled:null,trackMuted:track?!!track.muted:null,
+      rms:self.lastRms==null?null:+Number(self.lastRms).toFixed(5),
+      bytesSent:bytes,packetsSent:packets,
+      bytesSinceLast:self.lastBytes==null?null:bytes-self.lastBytes});
+    self.lastBytes=bytes;
+  }).catch(function(){}).then(function(){self.statsBusy=false;});
+};
 RealtimeTranscriptionEngine.prototype.closeConnection=function(){
   this.closing=true;if(this.openTimer){clearTimeout(this.openTimer);this.openTimer=null;}
+  if(this.statsTimer){clearInterval(this.statsTimer);this.statsTimer=null;}
   this.stopBoundaryMonitor();
   this.aborters.splice(0).forEach(function(ctl){try{ctl.abort();}catch(e){}});
   try{if(this.dc)this.dc.close();}catch(e){}try{if(this.pc)this.pc.close();}catch(e){}
@@ -11094,7 +11176,7 @@ RealtimeTranscriptionEngine.prototype.connect=function(secret,track){
   dc.onmessage=function(ev){self.onEvent(ev);};
   dc.onopen=function(){
     if(self.dead||self.closing)return;opened=true;if(self.openTimer){clearTimeout(self.openTimer);self.openTimer=null;}
-    self.connectStage='open';self.startBoundaryMonitor();
+    self.connectStage='open';self.startBoundaryMonitor();self.startStats();
     dlog('stt','live-open',{model:'gpt-live-transcribe',ms:Date.now()-self.startedAt,transport:'webrtc'});openResolve();
   };
   dc.onerror=function(){
@@ -13339,9 +13421,12 @@ $('gttsFamily').onchange = function(){
   CFG.gttsFamily = this.value; persistSetting("gttsFamily", CFG.gttsFamily);
   gttsWarned = false; refreshVvUI();
 };
-$('gttsModel').onchange = function(){
-  CFG.gttsModel = this.value; persistSetting("gttsModel", CFG.gttsModel); refreshVvUI();
+/* モデル名は入力欄。datalist から選んでも打ち込んでも同じ経路を通す。
+   モデル名を表にすると、Google が新しいモデルを出すたびに版を上げるしかなくなる。 */
+$('gttsModel').oninput = function(){
+  CFG.gttsModel = this.value.trim(); persistSetting("gttsModel", CFG.gttsModel); refreshVvUI();
 };
+$('gttsModel').onchange = $('gttsModel').oninput;
 $('gttsPrompt').oninput = function(){
   CFG.gttsPrompt = this.value; persistSetting("gttsPrompt", CFG.gttsPrompt);
 };
@@ -13532,7 +13617,7 @@ var DIAG_ROWS = [
   {section:"settings",order:1,label:'翻訳モデル',value:function(ctx){ return translationDisabled() ? '(未使用)' : CFG.model; }},
   {section:"settings",order:2,label:'音声認識(STT)',value:function(ctx){ return CFG.sttProvider; }},
   {section:"settings",order:3,label:'STTモデル',value:function(ctx){ return CFG.sttModel; }},
-  {section:"settings",order:4,label:'4o系の録音上限',value:function(ctx){ return fourOFileModel()?fourOSeconds(CFG.fourOSeconds)+'秒／末尾繰越 '+(CFG.fourOCarry!==false?'ON':'OFF')+'／録音ファイルAPI':'(未使用)'; }},
+  {section:"settings",order:4,label:'4o系の録音上限',value:function(ctx){ return fourOFileModel()?fourOSeconds(CFG.fourOSeconds)+'秒／末尾繰越 '+(CFG.fourOCarry!==false?'ON':'OFF')+'／無音待ち '+sttSilenceHoldMs()+'ms／録音ファイルAPI':'(未使用)'; }},
   {section:"settings",order:5,label:'有効なSTT通信方式',value:function(ctx){ return diagSttTransport(); }},
   {section:"settings",order:6,label:'gpt-live発話確定',value:function(ctx){ return isLiveTranscribe() ? (segEnabled()?'逐次部分翻訳＋文脈・無音・文字停止でカード確定／TTS待ちとは独立':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）') : '(未使用)'; }},
   {section:"settings",order:7,label:'共有音声STT経路',value:function(ctx){ return CFG.displaySttRoute+' → '+effectiveDisplaySttRoute(); }},

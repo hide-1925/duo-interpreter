@@ -69,7 +69,9 @@ async function registerHtmlSource(tabId){
   await attachHtmlSource(tabId);
   return {ok:true,state:await getState()};
 }
-async function openHtmlSource(settings=false){
+/* activate=false はワンタッチ用。ポップアップは焦点を失うと閉じるので、
+   タブを前面に出すと残りの手順が中断される。 */
+async function openHtmlSource(settings=false,activate=true){
   const state=await getState();const url=await getHtmlSourceUrl();
   if(!await chrome.permissions.contains({origins:[new URL(url).origin+'/*']}))throw new Error('HTML本体のサイトへのアクセスを許可してください');
   let tab;
@@ -84,14 +86,14 @@ async function openHtmlSource(settings=false){
       await setState({targetTabId:null,targetTitle:'',targetUrl:'',overlayEnabled:false});
     }
     await setState({htmlTabId:tab.id});
-    await chrome.tabs.update(tab.id,{active:true});if(tab.windowId)await chrome.windows.update(tab.windowId,{focused:true});
+    if(activate){await chrome.tabs.update(tab.id,{active:true});if(tab.windowId)await chrome.windows.update(tab.windowId,{focused:true});}
     if(tab.status==='loading')await setState({htmlOpenSettings:settings});
     if(tab.status!=='loading'){
       await attachHtmlSource(tab.id);
       if(settings)await chrome.tabs.sendMessage(tab.id,{type:'DUO_HTML_COMMAND',command:{action:'settings'}});
     }
   }else{
-    tab=await chrome.tabs.create({url});await setState({htmlTabId:tab.id,htmlDocumentId:null,htmlError:'読み込み中',htmlOpenSettings:settings});
+    tab=await chrome.tabs.create({url,active:activate});await setState({htmlTabId:tab.id,htmlDocumentId:null,htmlError:'読み込み中',htmlOpenSettings:settings});
     // The completion event normally attaches. Check status to cover a cached page
     // that completed between tabs.create and saving its id.
     const loaded=await chrome.tabs.get(tab.id);
