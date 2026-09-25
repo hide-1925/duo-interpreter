@@ -1130,6 +1130,17 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
         <select id="fourOSeconds"><option value="6">6秒</option><option value="10">10秒</option><option value="14">14秒</option><option value="18">18秒</option><option value="custom">任意の秒数</option></select>
         <div id="fourOCustomField" style="display:none"><label for="fourOCustom">秒数（1〜120秒）</label><input id="fourOCustom" type="number" min="1" max="120" step="1" value="10"></div>
         <label class="settings-check switch"><input id="fourOCarry" type="checkbox" checked> 未確定の末尾を次の録音結果につなぐ</label>
+        <label>話し終わりを待つ無音 ms <input id="sttSilenceHoldMs" type="number" min="200" max="2000" step="50"></label>
+        <details class="settings-help"><summary>遅延を詰めたいとき</summary>
+          <p>録音を切って送るまでに待つ無音の長さです（既定 <b>900ms</b>）。
+          実測（Teams・<code>gpt-4o-mini-transcribe</code>）では、発話の終わりから声が出るまでの内訳が
+          <b>無音待ち0.9秒 → 転写0.69〜2.33秒 → 読み上げ先頭0.27〜0.39秒＝合計1.95〜3.6秒</b>でした。
+          <b>こちら側で短くできるのはこの0.9秒だけ</b>です（転写の往復は相手側の時間です）。</p>
+          <p>短くすると、文の途中の息継ぎでも切れて<b>1回の発話が複数の認識リクエストに割れます</b>。
+          認識の回数と料金が増え、文の切れ目も増えます。自分の声をそのまま届ける用途
+          （同じ言語・翻訳なし）では割れても実害が小さいので、300〜500ms まで下げられます。</p>
+          <p>ストリーミングで文字が伸びていく <code>gpt-live-transcribe</code> では、この値は使いません。</p>
+        </details>
         <small>mini・4o-transcribe・話者分離版に共通。無音で早めに送信し、話し続けても指定秒数で送信します。文字は認識完了後に表示します。時間で切った録音の最後の一文は未確定で表示し、次の結果へつなぎます。保持上限は録音上限＋5秒です。秒数の変更は次の録音から反映されます。</small>
       </div>
       <div class="field" id="sttKeyField">

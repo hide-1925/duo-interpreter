@@ -110,7 +110,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'DUO_CONFERENCE_SIGNAL':return conferenceQueue(()=>conferenceSignal(message.data,sender));
       case 'DUO_CONFERENCE_LEASE':return conferenceLease(message,sender);
       case 'DUO_GET_STATE':
-        return { ok: true, workerVersion:'1.4.33', conference:conferencePublic(), state: await getState(), htmlUrl:await getHtmlSourceUrl(), overlay:await getOverlayStatus(), turn:await turnPermission() };
+        return { ok: true, workerVersion:'1.4.34', conference:conferencePublic(), state: await getState(), htmlUrl:await getHtmlSourceUrl(), overlay:await getOverlayStatus(), turn:await turnPermission() };
 
       case 'DUO_FULLSCREEN_CHANGED':return syncDuoFullscreen(message,sender);
       case 'DUO_REFRESH_FRAMES': {
@@ -134,32 +134,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return {ok:true,origins:[...new Set(rows.filter(r=>!r.allowed&&r.origin).map(r=>r.origin+'/*'))]};
       }
       case 'DUO_SET_TARGET': {
-        const tab = await chrome.tabs.get(message.tabId);
-        const previous = await getState();
         requirePopup(sender);
-        await conferenceQueue(()=>conferenceStop('target-change'));
-        if(previous.htmlTabId===tab.id)throw new Error('ここはHTML本体です。字幕を表示する動画・資料のタブで設定してください');
-        if (previous.targetTabId && previous.targetTabId !== tab.id) {
-          try { await chrome.tabs.sendMessage(previous.targetTabId, { type: 'DUO_STOP_TARGET_WEB_SPEECH' }); } catch (_) {}
-          try { await chrome.tabs.sendMessage(previous.targetTabId, { type: 'DUO_OVERLAY_VISIBILITY', visible: false }); } catch (_) {}
-        }
-        await injectOverlay(tab.id);
-        const state = await setState({
-          targetTabId: tab.id,
-          targetTitle: tab.title || '',
-          targetUrl: tab.url || '',
-          htmlTabAudio: true,
-          overlayEnabled: true
-        });
-        if(previous.targetTabId!==tab.id&&previous.htmlTabId)await chrome.tabs.sendMessage(previous.htmlTabId,{type:'DUO_HTML_AUDIO_STOP'}).catch(()=>{});
-        await ensureOverlayFrames(tab.id,true);
-        await sendOverlayMessage(tab.id, { type: 'DUO_OVERLAY_VISIBILITY', visible: true });
-        if (state.profile) await sendOverlayMessage(tab.id, { type: 'DUO_PROFILE', profile: state.profile });
-        // Edge and Chrome keep independent extension sessions. Reconnect an existing local HTML tab.
-        if(!state.htmlTabId)await queueHtmlOperation(connectExistingHtmlSource);
-        const connected=await getState();
-        if(connected.htmlTabId){await queueHtmlOperation(()=>setHtmlTabAudio(true));await deliverHtml(connected);}
-        return { ok: true, state:connected };
+        return { ok: true, state: await setCaptionTarget(message.tabId) };
+      }
+
+      /* ワンタッチ。字幕対象 → HTML本体 → 翻訳開始 → 会議マイク送出 を続けて行う。
+         途中で満たされている手順は飛ばし、どこで止まったかを返す。 */
+      case 'DUO_ONE_TOUCH': {
+        requirePopup(sender);
+        return oneTouchStart(message.tabId, sender);
       }
 
       case 'DUO_OPEN_APP':
@@ -293,3 +276,97 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   });
   return true;
 });
+
+
+/* 字幕対象の設定そのもの。DUO_SET_TARGET とワンタッチの両方から呼ぶ。 */
+async function setCaptionTarget(tabId){
+  const tab = await chrome.tabs.get(tabId);
+  const previous = await getState();
+  await conferenceQueue(()=>conferenceStop('target-change'));
+  if(previous.htmlTabId===tab.id)throw new Error('ここはHTML本体です。字幕を表示する動画・資料のタブで設定してください');
+  if (previous.targetTabId && previous.targetTabId !== tab.id) {
+    try { await chrome.tabs.sendMessage(previous.targetTabId, { type: 'DUO_STOP_TARGET_WEB_SPEECH' }); } catch (_) {}
+    try { await chrome.tabs.sendMessage(previous.targetTabId, { type: 'DUO_OVERLAY_VISIBILITY', visible: false }); } catch (_) {}
+  }
+  await injectOverlay(tab.id);
+  const state = await setState({
+    targetTabId: tab.id,
+    targetTitle: tab.title || '',
+    targetUrl: tab.url || '',
+    htmlTabAudio: true,
+    overlayEnabled: true
+  });
+  if(previous.targetTabId!==tab.id&&previous.htmlTabId)await chrome.tabs.sendMessage(previous.htmlTabId,{type:'DUO_HTML_AUDIO_STOP'}).catch(()=>{});
+  await ensureOverlayFrames(tab.id,true);
+  await sendOverlayMessage(tab.id, { type: 'DUO_OVERLAY_VISIBILITY', visible: true });
+  if (state.profile) await sendOverlayMessage(tab.id, { type: 'DUO_PROFILE', profile: state.profile });
+  // Edge and Chrome keep independent extension sessions. Reconnect an existing local HTML tab.
+  if(!state.htmlTabId)await queueHtmlOperation(connectExistingHtmlSource);
+  const connected=await getState();
+  if(connected.htmlTabId){await queueHtmlOperation(()=>setHtmlTabAudio(true));await deliverHtml(connected);}
+  return connected;
+}
+
+/* HTML本体が名乗り出るのを待つ。新しく開いたときは読み込みと content script の
+   接続に数秒かかる。ここで待たずに次へ進むと「HTML本体を接続してください」で
+   毎回失敗する。 */
+async function waitForHtmlSource(deadlineMs=12000){
+  const until=Date.now()+deadlineMs;
+  for(;;){
+    const state=await getState();
+    if(state.htmlTabId&&state.htmlDocumentId&&state.htmlLastReceived)return state;
+    if(Date.now()>=until)return state;
+    await new Promise(r=>setTimeout(r,300));
+  }
+}
+
+/* HTML本体へ「開始」を伝える。結果を返してほしいのでコマンド経路ではなく
+   executeScript を使う（duoTextCommand と同じ形）。プリセットや入力元の構成には
+   触れない。当て直すと、利用者が選んだ構成を毎回書き換えてしまう。 */
+async function startHtmlRecognition(state){
+  const [result]=await chrome.scripting.executeScript({
+    target:{tabId:state.htmlTabId,documentIds:[state.htmlDocumentId]},world:'MAIN',
+    func:()=>{
+      if(typeof window.duoExtensionStart!=='function')
+        return {ok:false,error:'HTML本体をv1.49.23以降に更新してください'};
+      try{return window.duoExtensionStart();}
+      catch(error){return {ok:false,error:String(error.message||error)};}
+    }});
+  return result?.result||{ok:false,error:'HTML本体へ開始を伝えられませんでした'};
+}
+
+async function oneTouchStart(tabId, sender){
+  const steps=[];
+  const note=(step,ok,detail)=>{steps.push({step,ok,detail:detail||''});return ok;};
+  let state=await getState();
+
+  if(state.targetTabId!==tabId){
+    state=await setCaptionTarget(tabId);
+    note('caption-target',true,'このタブに字幕を表示します');
+  }else note('caption-target',true,'設定済み');
+
+  if(!state.htmlTabId||!state.htmlLastReceived){
+    /* 前面に出さない。ポップアップは焦点を失うと閉じるので、開いた瞬間に
+       残りの手順が中断される。 */
+    await openHtmlSource(false,false);
+    state=await waitForHtmlSource();
+    if(!state.htmlTabId||!state.htmlLastReceived)
+      return {ok:false,steps:steps.concat([{step:'html',ok:false,detail:'HTML本体が応答しません。タブを開いて確認してください'}])};
+    note('html',true,'HTML本体を開きました');
+  }else note('html',true,'接続済み');
+
+  if(!state.htmlRunning){
+    const started=await startHtmlRecognition(state);
+    if(!started.ok)return {ok:false,steps:steps.concat([{step:'start',ok:false,detail:started.error||'開始できませんでした'}])};
+    note('start',true,started.already?'すでに認識中':'翻訳を開始しました');
+  }else note('start',true,'すでに認識中');
+
+  const conference=conferencePublic();
+  if(!conference.active){
+    try{ await conferenceQueue(()=>conferenceToggle(sender)); }
+    catch(error){ return {ok:false,steps:steps.concat([{step:'conference',ok:false,detail:String(error.message||error)}]),conference:conferencePublic()}; }
+    note('conference',true,'会議マイクへ送出します');
+  }else note('conference',true,'送出中');
+
+  return {ok:true,steps,state:await getState(),conference:conferencePublic()};
+}

@@ -202,6 +202,14 @@
       "indexHtmlSha256": "722df4bc0ee943b7090399a4934e5b69f3627219f3e7bc24c16921e52be771cc",
       "extensionAppJsSha256": "beb3eadcb769cfb53bd875e4344e99737d2cda2e533f54d8cc7968eba8b3336e",
       "summary": "Gemini-TTS のモデル指定をプルダウンから入力欄へ変えた。v1.4.32 の一覧は Google の公式サンプルに載っていた4つで、その2日後に Gemini 3.8 Flash TTS / Flash-Lite TTS が出ている。表で持つ限り、Googleが新しいモデルを出すたびにこちらの版を上げないと使えない。候補は datalist で出すが、打ち込んだ名前はそのまま voice.modelName へ載せる。既定を gemini-3.8-flash-lite-tts（読み上げ用途向けの高速・低コスト版、gemini-3.1-flash-tts-preview の置き換え）にした。リクエストの形・MP3指定・speakingRateを送らない方針は変更なし"
+    },
+    "v1.49.23": {
+      "build": "20260925-v14923-one-touch-latency",
+      "extension": "1.4.34",
+      "commit": null,
+      "indexHtmlSha256": "9890e4f9df5adfb186b1ed620a7e21d5b1dfdb71e4f88fa59aaedc0069782782",
+      "extensionAppJsSha256": "c256482da606e97d50773a8fdbecf340d00f56f6e8d030fdd2b521fb3e36289d",
+      "summary": "録音を切って送るまでの無音待ちを設定にした（sttSilenceHoldMs、既定900ms・200〜2000）。実測（Teams・gpt-4o-mini-transcribe）の内訳は無音待ち0.9秒→転写0.69〜2.33秒→読み上げ先頭0.27〜0.39秒＝話し終わりから声が出るまで1.95〜3.6秒で、こちら側で縮められるのはこの0.9秒だけだった。gpt-live-transcribe に送信RTPの記録（live-audio-transport）を足した。同ログで部分結果が7〜65秒遅れていたが、音声がこちらから出ていたかを示す記録がこの経路だけ無く、切り分けられなかった。拡張の「Web会議マイク音声」をワンタッチにし（字幕対象→HTML本体→翻訳開始→会議送出、足りない手順だけ実行し、前の手順が失敗したら後ろを実行しない）、本体に duoExtensionStart() を足した"
     }
   }
 }
