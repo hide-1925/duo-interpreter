@@ -912,4 +912,29 @@ test('one answer counts as one application, however many ticks read it',()=>{
   assert.equal(D().stats.holdTicks,5,'the tick count is kept, under its own name');
 });
 
+/* ── 打ち込んだ文は発話ではない ─────────────────────────────────────────
+   v1.49.23 実測：入力1件ごとに Jev へ3往復し、HOLD（0.34〜0.39）で 2.0〜2.1秒
+   止めてから確定していた。話し終わりを判定する相手がいない。 */
+test('typed text never reaches the decision layer, even in active',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const e=card({typed:true}),seg={start:0},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(card(),seg,i,rule,null,now);
+  D().cache[D().key(st)]={sessionId:st.sessionId,utteranceId:st.utteranceId,revision:st.revision,
+    boundary:{choice:'HOLD',confidence:0.9,probabilities:{HOLD:0.9}},decisionId:'typed'};
+  /* 鍵を作るために上で stateOf を呼んだ分は数えない。 */
+  const from=dlogs.length;peeked.count=0;
+  assert.equal(D().boundary(e,seg,i,rule,null,now),rule,'the rules result itself, unchanged');
+  assert.equal(dlogs.slice(from).filter(a=>/^turn-decision/.test(a[1])).length,0,'no request, no wait, no hold');
+  assert.ok(!e.segment.holdSince,'the INV-11 clock is never started');
+  assert.equal(peeked.count,0,'no acoustics are read for it either');
+});
+test('spoken text on the same card shape still goes through the layer',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const e=card(),seg={start:0},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,900,now);
+  D().cache[D().key(st)]={sessionId:st.sessionId,utteranceId:st.utteranceId,revision:st.revision,
+    boundary:{choice:'HOLD',confidence:0.9,probabilities:{HOLD:0.9}},decisionId:'spoken'};
+  assert.equal(D().boundary(e,seg,i,rule,900,now).waiting,'provider-hold','the bypass is for typed text only');
+});
+
 console.log(JSON.stringify({passed:tests.length,tests},null,2));

@@ -2657,8 +2657,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.23';
-var APP_BUILD = '20260925-v14923-one-touch-latency';
+var APP_VERSION = 'v1.49.24';
+var APP_BUILD = '20260926-v14924-typed-tts-skip';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -15135,6 +15135,10 @@ var TurnDecision={
   boundary:function(e,s,input,ruleResult,silence,now){
     var mode=this.modeFor(e.srcLang);
     if(mode==='off')return ruleResult;
+    /* 打ち込んだ文は発話ではない。話し終わりを判定する相手が無いので、判断層に
+       聞かない。v1.49.23 の実測では、入力1件ごとに Jev へ3往復し、HOLD（0.34〜0.39）
+       で 2.0〜2.1秒 止めてから確定していた。 */
+    if(e&&e.typed)return ruleResult;
     var state=this.stateOf(e,s,input,ruleResult,silence,now);
     TurnTrace.decision(state,ruleResult);
     this.observe(state);
@@ -15561,6 +15565,35 @@ function segRefreshTranslations(){
 }
 function segAudioAllowed(e){return duoAutomaticAllowed(e) && ttsProv().enabled && !(CFG.ttsWho==='B2A'&&e.seat!=='B') && !(CFG.ttsWho==='A2B'&&e.seat!=='A') &&
   !(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat));}
+/* 読み上げなかった理由を1つに決める。以前は「対象外」も「本文が空」も
+   not-selected-or-empty の1語で、診断を見ても区別できなかった（v1.49.23 実測：
+   読み上げ対象が「相手(B)の発言のみ」のところへ、入力した日本語が自分(A)扱いで
+   入り、4件とも黙って外れていた）。segAudioAllowed と同じ順で見る。 */
+function segSkipWhy(e,s,j){
+  if(!(CFG.ttsSrc?s.sourceText:s.translationText).trim())return 'empty';
+  if(j&&j.manual)return 'empty';
+  if(!ttsProv().enabled)return 'tts-off';
+  if(!duoAutomaticAllowed(e))return 'conference-original-only';
+  if((CFG.ttsWho==='B2A'&&e.seat!=='B')||(CFG.ttsWho==='A2B'&&e.seat!=='A'))return 'tts-target-'+CFG.ttsWho;
+  if(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat))return 'self-recognition-guard';
+  return 'not-selected';
+}
+/* 逐次読み上げの経路は、対象外で落としても何も言っていなかった。speak() 側には
+   3回連続で案内する仕組みがあるのに、こちらには無かった。打ち込んだ文は利用者が
+   明示的に出したものなので、1回目から言う。 */
+function segSkipNotice(e,why){
+  if(String(why).indexOf('tts-target-')!==0)return;
+  ttsSkipStreak++;
+  dlog('tts','skip',{why:'読み上げ対象='+CFG.ttsWho,seat:e.seat,typed:!!e.typed,streak:ttsSkipStreak});
+  if(ttsSkipHinted)return;
+  if(!e.typed&&ttsSkipStreak<3)return;
+  ttsSkipHinted=true;
+  toast(e.typed
+    ? '入力した文は'+(e.seat==='B'?'相手(B)':'自分(A)')+'の発言として扱ったため、読み上げ対象「'+whoLabel()+'」から外れ、読み上げていません。<br>'
+      +'⚙→音声 の「読み上げ対象」を「両方」にするか、テキスト入力の話者を切り替えてください。'
+    : '読み上げはONですが、対象が「'+whoLabel()+'」のため、いまの発言は読み上げていません。<br>'
+      +'⚙→音声 の「読み上げ対象」で変更できます。');
+}
 function segQueueCompare(a,b){
   if(a.manual||b.manual)return a.manual&&b.manual?a.segment.seq-b.segment.seq:(a.manual?-1:1);
   return a.card.segment.order-b.card.segment.order||a.segment.seq-b.segment.seq;
@@ -15597,8 +15630,10 @@ function segPump(){
     if(segEarlierOpen(j)){segTtsWait(j,'earlier-card-open');return;}
     if(!CFG.ttsSrc&&!s.translationReady){segTtsWait(j,'translation');return;}
     if((!j.manual&&!segAudioAllowed(e))||(!CFG.ttsSrc&&s.translationError)||!(CFG.ttsSrc?s.sourceText:s.translationText).trim()){
-      s.audio.status='cancelled';s.audio.skipReason=s.translationError?'translation-error':'not-selected-or-empty';
-      s.state=s.translationError?'error':'skipped';SEG.queue.shift();segRefreshPlayback(j);continue;
+      var skipWhy=s.translationError?'translation-error':segSkipWhy(e,s,j);
+      s.audio.status='cancelled';s.audio.skipReason=skipWhy;
+      s.state=s.translationError?'error':'skipped';SEG.queue.shift();segRefreshPlayback(j);
+      segSkipNotice(e,skipWhy);continue;
     }
     var silence=segSilence(e,Date.now()),overlap=segOverlapFor(e,segDebt());
     // Without a trustworthy input meter, avoid-overlap waits for STT final.
