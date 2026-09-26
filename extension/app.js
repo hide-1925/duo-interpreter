@@ -796,8 +796,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.29';
-var APP_BUILD = '20260926-v14929-tts-prefetch';
+var APP_VERSION = 'v1.49.30';
+var APP_BUILD = '20260927-v14930-webspeech-stall';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -3328,6 +3328,22 @@ function dlog(cat, msg, data){
   DLOG.push({ t: Date.now() - DLOG_T0, c: cat, m: msg, d: data });
   if(cat==='tts')segAudioEvent(msg,data);
 }
+/* 捕まえていない例外も記録する。音声認識の onresult などイベントの中で投げると、
+   画面にも診断ログにも何も残らず、「認識が止まった」のか「結果を捨てた」のか
+   切り分けられない。多すぎるとログが埋まるので30件まで。 */
+var APP_ERRORS=0;
+try{
+  window.addEventListener('error',function(ev){
+    if(++APP_ERRORS>30)return;
+    dlog('app','ERROR',{msg:String((ev&&ev.message)||'').slice(0,200),
+      at:String((ev&&ev.filename)||'').split('/').pop()+':'+((ev&&ev.lineno)||0)+':'+((ev&&ev.colno)||0)});
+  });
+  window.addEventListener('unhandledrejection',function(ev){
+    var r=ev&&ev.reason;if(r&&r.name==='AbortError')return;
+    if(++APP_ERRORS>30)return;
+    dlog('app','REJECT',{msg:String((r&&r.message)||r||'').slice(0,200)});
+  });
+}catch(_e){}
 /* APIキーらしき文字列は書き出し時に必ず伏せる（そのまま貼れるようにするため） */
 function redact(s){
   return String(s)
@@ -8679,11 +8695,50 @@ function killRec(){ recRun=false; restarting=false; if(rec){ try{ rec.onend=null
    一度も結果が来ないまま開始直後の network が続いたら、同じ音声を WebAudio で
    1ch に通した Track に替えて試す。それでも同じなら、再起動を続けずに止めて理由を出す。 */
 var WEB_TRACK_QUICK_MS=1500,WEB_TRACK_QUICK_MAX=2;
+/* 音は届いているのに Chrome が文字を返さない。v1.49.29 の記録では、画面共有の音声で
+   「日本」の2文字を返した後、入力レベルは話し声を示し続けた（読み上げ中の重なり推定90%）
+   のに、38秒間ひとつも結果が来ず、認識も終わらなかった。終わらないので再起動もされない。
+   最後の結果（または開始）から WEB_TRACK_STALL_MS、半分以上の時間で音が鳴っていたら、
+   止めて同じ Track で始め直す。無音のあいだは何もしない（Chrome が no-speech で自分で終わる）。
+   音楽だけが流れているときも同じ条件になるので、続けて始め直すたびに待ちを倍にする
+   （10→20→40秒、最大60秒）。結果が1件でも来れば10秒に戻す。 */
+var WEB_TRACK_STALL_MS=10000,WEB_TRACK_STALL_SOUND=0.5;
 function WebSpeechTrackEngine(seat,track,opts){
   this.seat=seat;this.track=track;this.opts=opts||{};this.rec=null;this.dead=false;
   this.interim=null;this.restarts=0;this.errs=0;this.startAt=0;
   this.recTrack=track;this.relay=null;this.relayReady=null;this.heard=false;this.quick=0;
+  this.run={at:0,results:0,sound:0,speech:0,soft:''};this.lastResultAt=0;
+  this.stallTimer=null;this.samples=[];this.stalls=0;this.stallHinted=false;
 }
+/* 最後の結果から10秒、音が鳴っているのに何も返ってこなければ始め直す。 */
+WebSpeechTrackEngine.prototype.watch=function(){
+  var self=this;clearInterval(this.stallTimer);
+  this.stallTimer=setInterval(function(){self.checkStall(Date.now());},500);
+};
+WebSpeechTrackEngine.prototype.checkStall=function(now){
+  if(this.dead||!this.rec||!S.running||!this.run.at)return;
+  var v=SEG.voice[this.seat],n=WEB_TRACK_STALL_MS/500;
+  this.samples.push(!!(v&&v.talking&&now-v.at<400));if(this.samples.length>n)this.samples.shift();
+  var since=Math.max(this.run.at,this.lastResultAt),need=WEB_TRACK_STALL_MS*Math.min(6,Math.pow(2,this.stalls));
+  if(now-since<need||this.samples.length<n)return;
+  var ratio=this.samples.filter(Boolean).length/n;
+  if(ratio<WEB_TRACK_STALL_SOUND)return;
+  this.stalls++;this.run.soft='stall';this.samples=[];
+  dlog('stt','track-stall',{seat:this.seat,quietMs:now-since,waitedMs:need,soundRatio:Math.round(ratio*100)/100,
+    stalls:this.stalls,restart:this.restarts,everHeard:this.heard});
+  if(this.stalls>=2&&!this.stallHinted){this.stallHinted=true;
+    toast('共有音声は届いていますが、Chrome の音声認識が文字を返しません（認識を始め直しています）。<br>'
+      +'流れている音声の言語と、'+(this.seat==='B'?'相手(B)':'自分(A)')+'の言語（いま '+L(langOf(this.seat)).name+'）が合っているか確認してください。');}
+  var old=this.rec,runAt=this.run.at,self=this;
+  try{old.abort();}catch(e){}
+  /* abort しても end が来ない（固まっている）ときは、認識オブジェクトごと作り直す。 */
+  setTimeout(function(){
+    if(self.dead||self.rec!==old||self.run.at!==runAt)return;
+    dlog('stt','track-rebuild',{seat:self.seat,restart:self.restarts,why:'no-end-after-abort'});
+    try{old.onend=null;old.onresult=null;old.onerror=null;}catch(e){}
+    segWebEnd(old);self.restarts++;self.build();
+  },1500);
+};
 WebSpeechTrackEngine.prototype.addonTrack=function(){
   return !!(window.__duoTabAudio&&window.__duoTabAudio.isActive&&window.__duoTabAudio.isActive()&&!this.opts.fromOverlay);
 };
@@ -8731,7 +8786,7 @@ WebSpeechTrackEngine.prototype.startSameTrack=function(){
   if(this.dead)return false;
   if(!this.track||this.track.readyState!=='live'){this.fail('共有音声Trackが終了しました');return false;}
   if(this.relay&&this.relay.ctx.state!=='running'){this.quickFail();return false;}
-  this.startAt=Date.now();
+  this.startAt=Date.now();this.run={at:this.startAt,results:0,sound:0,speech:0,soft:''};this.samples=[];
   try{
     this.rec.start(this.recTrack||this.track);
     dlog('stt','track-start',{seat:this.seat,trackId:String(this.track.id||'').slice(0,8),restart:this.restarts,
@@ -8745,6 +8800,7 @@ WebSpeechTrackEngine.prototype.startSameTrack=function(){
 WebSpeechTrackEngine.prototype.fail=function(message,err,hint){
   segDetachMeter(this);segWebEnd(this.rec);
   if(this.dead)return;this.dead=true;
+  clearInterval(this.stallTimer);this.stallTimer=null;
   dlog('stt','track-FAIL',{seat:this.seat,err:String((err&&err.message)||err||message).slice(0,160),fallback:false,
     relay:!!this.relay,addon:this.addonTrack()});
   try{if(this.rec){this.rec.onend=null;this.rec.abort();}}catch(e){}
@@ -8755,8 +8811,12 @@ WebSpeechTrackEngine.prototype.fail=function(message,err,hint){
 WebSpeechTrackEngine.prototype.build=function(){
   var self=this,r=new SR();this.rec=r;segAttachMeter(this,this.track,this.seat);
   r.lang=L(langOf(this.seat)).sr;r.continuous=true;r.interimResults=true;r.maxAlternatives=1;
+  /* 1回の認識で、Chrome が音・発話を検出したか。再起動のログに載せる。 */
+  r.onsoundstart=function(){if(self.rec===r&&!self.run.sound)self.run.sound=Math.max(1,Date.now()-self.run.at);};
+  r.onspeechstart=function(){if(self.rec===r&&!self.run.speech)self.run.speech=Math.max(1,Date.now()-self.run.at);};
   r.onresult=function(ev){
     if(self.dead||!S.running)return;
+    self.run.results++;self.lastResultAt=Date.now();self.stalls=0;
     if(!self.heard){self.heard=true;self.quick=0;
       dlog('stt','track-heard',{seat:self.seat,relay:!!self.relay,afterMs:Date.now()-self.startAt,restart:self.restarts});}
     if(segWebResult(r,ev,self.seat)){self.errs=0;return;}
@@ -8784,7 +8844,7 @@ WebSpeechTrackEngine.prototype.build=function(){
     });
   };
   r.onerror=function(ev){var code=(ev&&ev.error)||'';
-    if(code==='no-speech'||code==='aborted')return;
+    if(code==='no-speech'||code==='aborted'){if(!self.run.soft)self.run.soft=code;return;}
     self.errs++;dlog('stt','track-ERROR',{seat:self.seat,err:code,count:self.errs});
     if(code==='not-allowed'||code==='service-not-allowed'||code==='audio-capture'){self.fail('共有音声Trackを直接認識できませんでした：'+code);return;}
     if(code!=='network'||self.heard||Date.now()-self.startAt>=WEB_TRACK_QUICK_MS){self.quick=0;return;}
@@ -8794,14 +8854,17 @@ WebSpeechTrackEngine.prototype.build=function(){
   };
   r.onend=function(){
     if(self.dead)return;segWebEnd(r);self.restarts++;
-    var wait=Math.min(3000,120+self.errs*350),ready=self.relayReady||Promise.resolve();
-    dlog('stt','track-restart',{seat:self.seat,restart:self.restarts,waitMs:wait,sameTrack:true,relay:!!self.relay});
-    setTimeout(function(){ready.then(function(){if(!self.dead)self.startSameTrack();});},wait);
+    var wait=Math.min(3000,120+self.errs*350),ready=self.relayReady||Promise.resolve(),run=self.run;
+    dlog('stt','track-restart',{seat:self.seat,restart:self.restarts,waitMs:wait,sameTrack:true,relay:!!self.relay,
+      aliveMs:run.at?Date.now()-run.at:null,results:run.results,soundAfterMs:run.sound||null,speechAfterMs:run.speech||null,
+      why:run.soft||''});
+    setTimeout(function(){ready.then(function(){if(!self.dead&&self.rec===r)self.startSameTrack();});},wait);
   };
+  if(!this.stallTimer)this.watch();
   return this.startSameTrack();
 };
 WebSpeechTrackEngine.prototype.stop=function(){
-  segDetachMeter(this);segWebEnd(this.rec);
+  segDetachMeter(this);segWebEnd(this.rec);clearInterval(this.stallTimer);this.stallTimer=null;
   if(this.dead)return;this.dead=true;
   try{if(this.rec){this.rec.onend=null;this.rec.abort();}}catch(e){}
   this.dropRelay();
