@@ -796,8 +796,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.32';
-var APP_BUILD = '20260927-v14932-4o-join';
+var APP_VERSION = 'v1.49.33';
+var APP_BUILD = '20260927-v14933-model-tiers';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -10715,7 +10715,18 @@ function sortByCuratedOrder(arr, prov){
     return (ai !== bi) ? (ai - bi) : a.id.localeCompare(b.id);
   });
 }
-/* OpenAIのモデルを「主要（最新5.6系）」と「その他」の2階層に分ける */
+/* 翻訳モデルの初期表示（主要）に出す OpenAI のモデル。5.6系は luna・terra・sol の3つ、
+   6系は日付の付かないモデルすべて（取得した一覧にあるものをそのまま出すので、名前を
+   ここへ書き足さなくてよい）。日付付きのスナップショット（-2026-09-01・-0613 など）と、
+   5.6系のほかの版は「その他」に回す。 */
+var OPENAI_PRIMARY_56 = ['gpt-5.6-luna','gpt-5.6-terra','gpt-5.6-sol'];
+function modelIdDated(id){ return /-\d{4}-\d{2}-\d{2}$|-\d{4,}(?:-|$)/.test(String(id||'')); }
+function openaiPrimaryModel(id){
+  id = String(id||'').toLowerCase();
+  if (OPENAI_PRIMARY_56.indexOf(id) >= 0) return true;
+  return /^gpt-6(?:[.-]|$)/.test(id) && !modelIdDated(id);
+}
+/* OpenAIのモデルを「主要」と「その他」の2階層に分ける */
 function tierModels(list, prov){
   var arr = normList(list).map(function(m){
     if (!m.note && prov === 'openai'){
@@ -10727,7 +10738,7 @@ function tierModels(list, prov){
   if (prov !== 'openai') return { primary: arr, rest: [] };
   var primary = [], rest = [];
   arr.forEach(function(m){
-    var isPrimary = m.primary || /^gpt-5\.6/i.test(m.id);
+    var isPrimary = m.primary || openaiPrimaryModel(m.id);
     (isPrimary ? primary : rest).push(m);
   });
   if (!primary.length){ primary = arr; rest = []; } // 念のため：おすすめが0件なら全件表示にフォールバック

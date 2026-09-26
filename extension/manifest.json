@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.43",
-  "version_name": "1.4.43 HTML v1.49.32 と対。gpt-4o 系で、息継ぎで切れた文の途中を次の結果と同じカードにつなぐ／声の無い録音は上限で切っても送らない",
+  "version": "1.4.44",
+  "version_name": "1.4.44 HTML v1.49.33 と対。翻訳モデル（OpenAI）の初期表示を、5.6系の luna・terra・sol と6系の日付なしモデルにする",
   "optional_host_permissions": [
     "https://*/*"
   ],
