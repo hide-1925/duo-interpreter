@@ -21,7 +21,7 @@ const ALL=[M('deepseek/deepseek-v4.1-flash','DeepSeek V4.1 Flash',30,{reasoning:
     browser=await chromium.launch({headless:true,args:['--no-sandbox','--autoplay-policy=no-user-gesture-required']});
     const page=await browser.newPage({viewport:{width:1100,height:900}});
     const pageErrors=[];page.on('pageerror',e=>pageErrors.push(String(e).slice(0,300)));
-    const seen=[];
+    const seen=[],sttSeen=[];
     await page.route('https://openrouter.ai/api/v1/**',route=>{
       const u=new URL(route.request().url()),h=route.request().headers();seen.push({path:u.pathname,q:u.search,auth:!!h.authorization});
       const json=(o)=>route.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify(o)});
@@ -31,6 +31,14 @@ const ALL=[M('deepseek/deepseek-v4.1-flash','DeepSeek V4.1 Flash',30,{reasoning:
         const n=7200,b=Buffer.alloc(n*2);for(let i=0;i<n;i++)b.writeInt16LE(Math.round(Math.sin(i/8)*8000),i*2);
         return route.fulfill({status:200,contentType:'audio/pcm',headers:{'access-control-allow-origin':'*'},body:b});
       }
+      if(u.pathname.endsWith('/audio/transcriptions')){
+        const b=JSON.parse(route.request().postData()||'{}');sttSeen.push({model:b.model,format:b.input_audio&&b.input_audio.format,language:b.language});
+        if(b.input_audio&&b.input_audio.format==='webm')return route.fulfill({status:400,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify({error:{message:'Unsupported audio format: webm'}})});
+        return json({text:'こんにちは'});
+      }
+      if(u.pathname.endsWith('/models')&&u.searchParams.get('output_modalities')==='transcription')
+        return json({data:[M('openai/gpt-4o-mini-transcribe','GPT-4o mini Transcribe',50,{architecture:{input_modalities:['audio'],output_modalities:['transcription']}}),
+          M('google/chirp-3','Chirp 3',45,{architecture:{input_modalities:['audio'],output_modalities:['transcription']}})]});
       if(u.pathname.endsWith('/models')&&u.searchParams.get('output_modalities')==='speech')
         return json({data:[M('google/gemini-3.8-flash-tts','Gemini 3.8 Flash TTS',40,{architecture:{input_modalities:['text'],output_modalities:['speech']},supported_voices:['Kore','Puck','Zephyr']})]});
       if(u.pathname.endsWith('/models')){
@@ -105,6 +113,31 @@ const ALL=[M('deepseek/deepseek-v4.1-flash','DeepSeek V4.1 Flash',30,{reasoning:
       model:document.getElementById('groqTtsModel').value,list:[...document.querySelectorAll('#groqVoiceList option')].map(o=>o.value),
       a:document.getElementById('groqVoiceA').value,plan:document.getElementById('ttsPlan').textContent}));
 
+    /* ④ 音声認識：OpenRouter を選ぶと一覧が読まれ、よく使われているモデルが入る。
+       webm を断られたら、ブラウザの中で 16kHz の WAV に変えて送り直す。 */
+    await page.evaluate(()=>{const sel=document.getElementById('sttProvider');sel.value='openrouter';sel.dispatchEvent(new Event('change'));
+      const k=document.getElementById('sttKey');k.value='sk-or-test';k.dispatchEvent(new Event('input'));});
+    await page.waitForFunction(()=>CFG.sttModel==='openai/gpt-4o-mini-transcribe');
+    const sttPanel=await page.evaluate(()=>({pick:getComputedStyle(document.getElementById('sttModelPick')).display,
+      opts:[...document.getElementById('sttModel').options].map(o=>o.value).filter(v=>v.indexOf('/')>0),four:fourOFileModel()}));
+    await page.evaluate(()=>document.getElementById('sttModelPick').click());
+    const sttKind=await page.evaluate(()=>MPICK.opts.kind);
+    await page.click('#mpick [data-tab="all"]');
+    await page.waitForSelector('#mpickAllList .mpick-author');
+    const sttAuthors=await page.evaluate(()=>[...document.querySelectorAll('#mpickAllList .mpick-author .mpick-name')].map(e=>e.textContent));
+    await page.keyboard.press('Escape');
+    const sttRun=await page.evaluate(async()=>{
+      /* 本物の OfflineAudioContext で 48kHz の WAV を 16kHz に変える */
+      const ctx=new OfflineAudioContext(1,24000,48000),osc=ctx.createOscillator();osc.connect(ctx.destination);osc.start();
+      const wav=audioBufferToWav(await ctx.startRendering(),0),small=await blobToWav16k(wav),dv=new DataView(await small.arrayBuffer());
+      const fake=new Blob([new Uint8Array([0x1a,0x45,0xdf,0xa3])],{type:'audio/webm'});
+      /* 変換の前に、webm として一度断られる流れ（中身は変換できる WAV にしておく） */
+      /* AUTO で2つの言語をマイク1本で聞くときは言語を送らない（v1.49.31 の決まり）。ここでは席の言語を送らせる */
+      S.autoMode=false;
+      const text=await openrouterSTT(wav.slice(0,wav.size,'audio/webm'),'ja',{});
+      return {rate:dv.getUint32(24,true),ch:dv.getUint16(22,true),bytes:small.size,text:text,wavNext:!!OR_STT_WAV[CFG.sttModel]};
+    });
+
     test('choosing OpenRouter shows the picker button and the OpenRouter options, speed routing by default',()=>{
       assert.notEqual(setup.pick,'none');assert.notEqual(setup.opts,'none');
       assert.equal(setup.route,'latency');assert.equal(setup.zdr,false);
@@ -150,6 +183,19 @@ const ALL=[M('deepseek/deepseek-v4.1-flash','DeepSeek V4.1 Flash',30,{reasoning:
       assert.notEqual(groqPanel.panel,'none');assert.equal(groqPanel.model,'canopylabs/orpheus-v1-english');
       assert.deepEqual(groqPanel.list,['autumn','diana','hannah','austin','Daniel','troy']);assert.equal(groqPanel.a,'autumn');
       assert.match(groqPanel.plan,/英語だけです/);
+    });
+    test('STT offers OpenRouter; its list loads without a key question and the most used model is set',()=>{
+      assert.notEqual(sttPanel.pick,'none');
+      assert.deepEqual(sttPanel.opts.sort(),['google/chirp-3','openai/gpt-4o-mini-transcribe']);
+      assert.equal(sttPanel.four,true,'the OpenAI 4o model uses the ordered file buffer');
+      assert.equal(sttKind,'stt');
+      assert.deepEqual(sttAuthors,['google','openai'],'the STT picker lists only transcription models');
+    });
+    test('a webm refusal is converted to 16 kHz mono WAV in the browser and sent again',()=>{
+      assert.equal(sttRun.rate,16000);assert.equal(sttRun.ch,1);assert.equal(sttRun.bytes,44+8000*2);
+      assert.equal(sttRun.text,'こんにちは');assert.equal(sttRun.wavNext,true);
+      assert.deepEqual(sttSeen.map(x=>x.format),['webm','wav']);
+      assert.ok(sttSeen.every(x=>x.model==='openai/gpt-4o-mini-transcribe'&&x.language==='ja'));
     });
     test('no script error',()=>{ assert.equal(pageErrors.length,0,pageErrors.join(' | ')); });
     console.log(JSON.stringify({passed:tests.length,tests},null,2));

@@ -1150,11 +1150,13 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
         <option value="openai">OpenAI（gpt-4o-transcribe / whisper-1）</option>
         <option value="xai">xAI Grok（多言語・キーは翻訳側と共通）</option>
         <option value="groq">Groq Whisper（高速・安価）</option>
+        <option value="openrouter">OpenRouter（各社の文字起こしモデル）</option>
         <option value="gemini">Google Gemini（音声理解）</option>
       </select>
       <div class="sublabel" id="sttModelLabel">モデル</div>
       <div class="row">
         <select id="sttModel" style="flex:1"></select>
+        <button class="btn ghost" id="sttModelPick" type="button" style="display:none" title="おすすめか、作った会社から選ぶ">🔎 選ぶ</button>
         <button class="btn ghost" id="fetchSttModels" title="このアカウントで使える音声認識モデル一覧を取得">🔄 更新</button>
       </div>
       <input type="text" id="sttModelCustom" placeholder="モデル名を直接入力" style="display:none">

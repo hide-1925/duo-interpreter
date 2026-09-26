@@ -44,6 +44,7 @@ var STT_ADAPTER_CAPABILITIES={
   openai:{microphone:true,systemAudio:true,arbitraryTrack:true},
   xai:{microphone:true,systemAudio:true,arbitraryTrack:true},
   groq:{microphone:true,systemAudio:true,arbitraryTrack:true},
+  openrouter:{microphone:true,systemAudio:true,arbitraryTrack:true},
   gemini:{microphone:true,systemAudio:true,arbitraryTrack:true},
   realtime:{microphone:true,systemAudio:true,arbitraryTrack:true}
 };
@@ -796,8 +797,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.35';
-var APP_BUILD = '20260927-v14935-openrouter-tts';
+var APP_VERSION = 'v1.49.36';
+var APP_BUILD = '20260927-v14936-openrouter-stt';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -902,7 +903,7 @@ var TTS_MODELS = [
   {id:'tts-1',           note:'低遅延'},
   {id:'tts-1-hd',        note:'高音質'}
 ];
-var STT_BASE = { openai:'https://api.openai.com/v1', groq:'https://api.groq.com/openai/v1',
+var STT_BASE = { openai:'https://api.openai.com/v1', groq:'https://api.groq.com/openai/v1', openrouter:'https://openrouter.ai/api/v1',
                  xai:'https://api.x.ai/v1' };
 /* xAI の音声認識が対応している言語（このアプリの言語コードで表す）。
    中国語は一覧に無いので、指定を送らず向こうの自動判定にまかせる。 */
@@ -3230,6 +3231,11 @@ function verifySttKey(){
     }
     if (prov === 'gemini')
       return probeLLM('gemini', PROVIDERS.gemini.base, key, 'Gemini');
+    if (prov === 'openrouter'){
+      var ork = hubKeyFor('openrouter', 'stt');
+      if (!ork) return Promise.reject(new Error('OpenRouter のAPIキーが未入力です（音声認識欄か翻訳欄の OpenRouter のキー）'));
+      return orProbeKey(ork);
+    }
     return probeLLM('oai', (STT_BASE[prov] || PROVIDERS.openai.base), key, prov);
   });
 }
@@ -9298,7 +9304,8 @@ function pickMime(){
 
 /* Bounded recorded-audio recognition. Transport chunks and readable cards have
    independent boundaries. No live/Reatime model substitution is performed. */
-function fourOFileModel(model){return CFG.sttProvider==='openai'&&/^gpt-4o(?:-mini)?-transcribe(?:$|-)/.test(String(model==null?CFG.sttModel:model).trim());}
+function fourOFileModel(model){var m=String(model==null?CFG.sttModel:model).trim();
+  return (CFG.sttProvider==='openai'&&/^gpt-4o(?:-mini)?-transcribe(?:$|-)/.test(m))||(CFG.sttProvider==='openrouter'&&/^openai\/gpt-4o(?:-mini)?-transcribe(?:$|-)/.test(m));}
 function fourOSeconds(value){var n=Number(value);return isFinite(n)&&n>=1&&n<=120?Math.round(n):10;}
 function fourOSettingsUI(){
   var field=$('fourOField');if(!field)return;field.style.display=fourOFileModel()?'':'none';
@@ -9575,6 +9582,7 @@ function sttCall(blob, lang,requestOptions){
   var p = CFG.sttProvider;
   if (p === 'gemini') return geminiSTT(blob, lang,requestOptions);
   if (p === 'xai')    return xaiSTT(blob, lang,requestOptions);
+  if (p === 'openrouter') return openrouterSTT(blob, lang, requestOptions);
   var key = sttKey();
   if (!key) return Promise.reject(new Error('音声認識用のAPIキーが未設定です'));
   // モデル名が空だと OpenAI が 400「you must provide a model parameter」を返すため必ず補う
@@ -9615,6 +9623,97 @@ function sttCall(blob, lang,requestOptions){
     }
     return (j&&j.text)||'';
   });
+}
+
+/* OpenRouter の文字起こし。POST /audio/transcriptions に JSON（input_audio は base64）で送る。
+   multipart でも送れるが、提供元への追加指定（provider.options）は JSON にしか載らない。
+   - OpenRouter の STT には prompt が無い。OpenAI の文字起こしモデルに限り、用語集などを
+     provider.options.openai.prompt に入れて渡してみる（効くかは実機で確かめる）。
+   - 録音の形式（webm など）を受け付けない提供元がある。形式で断られたら、16kHz・モノラルの
+     WAV に変えて1回だけ送り直し、以後そのモデルは WAV で送る。 */
+var OR_STT_WAV = {};
+function sttAudioFormat(blob){
+  var t = String((blob && blob.type) || '');
+  return t.indexOf('mp4') >= 0 ? 'm4a' : t.indexOf('ogg') >= 0 ? 'ogg' : t.indexOf('wav') >= 0 ? 'wav' : t.indexOf('mpeg') >= 0 ? 'mp3' : 'webm';
+}
+function blobToWav16k(blob){
+  var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!OAC) return Promise.reject(new Error('このブラウザは音声の変換に対応していません'));
+  return blob.arrayBuffer().then(function(ab){
+    return new OAC(1, 1, 16000).decodeAudioData(ab);
+  }).then(function(buf){
+    var oc = new OAC(1, Math.max(1, Math.ceil(buf.duration * 16000)), 16000), src = oc.createBufferSource();
+    src.buffer = buf; src.connect(oc.destination); src.start();
+    return oc.startRendering();
+  }).then(function(out){ return audioBufferToWav(out, 0); });
+}
+function openrouterSTT(blob, lang, requestOptions){
+  requestOptions = requestOptions || {};
+  /* sttKey() は翻訳欄のキーまで借りる。翻訳が別のプロバイダだと、そのキーを OpenRouter へ
+     送ってしまうので、OpenRouter のキーだけを使う。 */
+  var key = hubKeyFor('openrouter', 'stt');
+  if (!key) return Promise.reject(new Error('OpenRouter のAPIキーが未設定です'));
+  var mdl = String(requestOptions.model || CFG.sttModel || '').trim();
+  if (!mdl) return Promise.reject(new Error('OpenRouter の文字起こしモデルを選んでください（⚙→音声認識の「🔎 選ぶ」）'));
+  var autoDetect = sttAutoDetect(requestOptions), body = { model:mdl, temperature:0 };
+  if (!autoDetect) body.language = L(lang).g.split('-')[0];
+  if (/^openai\//.test(mdl)){
+    var terms = CFG.glossary.slice(0,60).map(function(r){ return r.s; }).filter(Boolean).join(', ');
+    var hints = ['Transcribe verbatim with natural punctuation. Do not add, omit, paraphrase, or translate words.'];
+    if (terms) hints.push('Terminology: ' + terms);
+    if (autoDetect) hints.push('The speech is in ' + L(CFG.langA).en + ' or ' + L(CFG.langB).en + '.');
+    body.provider = { options:{ openai:{ prompt:hints.join('\n') } } };
+  }
+  function send(asWav){
+    return (asWav ? blobToWav16k(blob) : Promise.resolve(blob)).then(function(b){ return blobToB64(b); }).then(function(b64){
+      body.input_audio = { data:b64, format:asWav ? 'wav' : sttAudioFormat(blob) };
+      return fetch(OR_BASE + '/audio/transcriptions', { method:'POST', headers:orHeaders(key, true), body:JSON.stringify(body), signal:requestOptions.signal });
+    }).then(function(r){
+      if (r.ok) return r.json();
+      return r.text().then(function(t){ var e = new Error('HTTP ' + r.status + ' ' + String(t || '').slice(0, 160)); e.status = r.status; e.body = String(t || ''); throw e; });
+    });
+  }
+  var wav = !!OR_STT_WAV[mdl];
+  return send(wav).catch(function(err){
+    var formatIssue = !wav && err && (err.status === 400 || err.status === 415 || err.status === 422) &&
+      /format|codec|unsupported|decode|webm|ogg|m4a|audio file|mime/i.test(err.body || err.message || '');
+    if (!formatIssue) throw err;
+    OR_STT_WAV[mdl] = true;
+    dlog('stt', 'openrouter-wav-retry', { model:mdl, status:err.status, why:String(err.body || '').slice(0, 120) });
+    return send(true);
+  }).then(function(j){
+    if (!openrouterSTT.logged || openrouterSTT.logged !== mdl){ openrouterSTT.logged = mdl;
+      dlog('stt', 'openrouter-stt', { model:mdl, format:body.input_audio.format, language:body.language || 'auto', prompt:!!body.provider }); }
+    return (j && j.text) || '';
+  });
+}
+/* 選択画面の「試しに使う」：0.6秒の無音を送り、通るか・何秒かかるかを見る */
+function hubTryStt(prov, id){
+  if (prov === 'groq'){
+    var gk = hubKeyFor('groq', 'stt'); if (!gk) return Promise.reject(new Error('Groq のAPIキーが未入力です'));
+    var fd = new FormData(), bin = atob(orSilentWavB64(600)), u8 = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    fd.append('file', new Blob([u8], { type:'audio/wav' }), 'try.wav'); fd.append('model', id);
+    return fetch(STT_BASE.groq + '/audio/transcriptions', { method:'POST', headers:{ 'Authorization':'Bearer ' + gk }, body:fd })
+      .then(chk).then(function(){ return '通信OK（無音を送ったので文字は返りません）'; });
+  }
+  var key = hubKeyFor('openrouter', 'stt'); if (!key) return Promise.reject(new Error('OpenRouter のAPIキーが未入力です'));
+  return fetch(OR_BASE + '/audio/transcriptions', { method:'POST', headers:orHeaders(key, true),
+    body:JSON.stringify({ model:id, input_audio:{ data:orSilentWavB64(600), format:'wav' }, language:(CFG.langB || 'ja').split('-')[0] }) })
+    .then(chk).then(function(){ return '通信OK（無音を送ったので文字は返りません）'; });
+}
+/* OpenRouter を選んだとき、一覧（キー無しで取れる）を読み、モデルが空ならよく使われているものを入れる */
+function orSttEnsure(){
+  return hubList('openrouter', 'stt', false).then(function(models){
+    if (CFG.sttProvider !== 'openrouter') return;
+    if (CFG.sttModel && models.some(function(m){ return m.id === CFG.sttModel; })){ refreshProviderUI(); return; }
+    var pop = HUB_PRESETS.filter(function(p){ return p.id === 'popular'; })[0];
+    return hubReco('openrouter', 'stt', pop, false).catch(function(){ return []; }).then(function(reco){
+      var pick = (reco[0] || models[0] || {}).id || '';
+      if (pick && CFG.sttProvider === 'openrouter' && !CFG.sttModel){ CFG.sttModel = pick; persistSetting('sttModel', pick); }
+      refreshProviderUI();
+    });
+  }).catch(function(e){ $('sttModelNote').textContent = 'OpenRouter の文字起こしモデル一覧を取得できませんでした：' + String(e.message || e).slice(0, 80); });
 }
 
 function geminiSTT(blob, lang,requestOptions){
@@ -11309,7 +11408,8 @@ function mpickEnsure(){
     '</div>';
   document.body.appendChild(d);
   d.addEventListener('click', function(ev){ if (ev.target === d) mpickClose(); });
-  d.addEventListener('keydown', function(ev){ if (ev.key === 'Escape'){ ev.preventDefault(); mpickClose(); } });
+  /* 開いた直後はまだ画面の外（開いたボタン）に焦点がある。ページ全体で Esc を受ける。 */
+  document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape' && !d.hidden){ ev.preventDefault(); mpickClose(); } });
   $('mpickClose').onclick = mpickClose;
   Array.prototype.forEach.call(d.querySelectorAll('[data-tab]'), function(b){ b.onclick = function(){ mpickTab(b.getAttribute('data-tab')); }; });
   $('mpickSearch').oninput = function(){ mpickRenderAll(); };
@@ -11654,6 +11754,16 @@ function fetchSttModels(silent){
   if (!silent) $('sttModelNote').textContent = 'モデル一覧を取得しています...';
 
   var job;
+  if (prov === 'openrouter'){
+    return hubList('openrouter', 'stt', true).then(function(models){
+      refreshProviderUI();
+      $('sttModelNote').textContent = '✅ ' + models.length + ' 件の文字起こしモデルを取得しました（OpenRouter）';
+      if (!silent) toast(models.length + ' 件の音声認識モデルを取得しました', true);
+    }, function(e){
+      $('sttModelNote').textContent = '一覧を取得できませんでした';
+      if (!silent) toast('モデル一覧の取得に失敗: ' + String(e.message||e));
+    });
+  }
   if (prov === 'gemini'){
     job = fetch(PROVIDERS.gemini.base + '/models?key=' + encodeURIComponent(key) + '&pageSize=200')
       .then(chk).then(function(j){
@@ -11689,6 +11799,7 @@ function chatModelsFor(prov){
 }
 function sttModelsFor(prov){
   if (prov === 'webspeech') return STT_MODELS.webspeech;
+  if (prov === 'openrouter'){ var hit = hubCached('openrouter', 'stt'); return hit ? hit.models.map(function(m){ return { id:m.id }; }) : []; }
   var c = MODEL_CACHE[prov];
   if (c && c.stt && c.stt.length) return c.stt;
   return STT_MODELS[prov] || [];
@@ -11730,6 +11841,7 @@ function refreshProviderUI(){
   var sttFetchable = (CFG.sttProvider !== 'webspeech' && CFG.sttProvider !== 'realtime'
                       && CFG.sttProvider !== 'xai');
   $('fetchSttModels').style.display = sttFetchable ? '' : 'none';
+  $('sttModelPick').style.display = hubProviderOk(CFG.sttProvider) ? '' : 'none';
 
   renderCombo('ttsModel','ttsModelCustom', ttsModelsFor(), CFG.ttsModel, function(v){
     CFG.ttsModel = v; persistSetting("ttsModel", v);
@@ -12297,6 +12409,7 @@ function autoFetchSttModels(){
   var prov = CFG.sttProvider;
   if (prov === 'webspeech' || prov === 'realtime') return;
   if (prov === 'xai') return;                           // モデルを選ばないので一覧は不要
+  if (prov === 'openrouter'){ orSttEnsure(); return; }   // 一覧はキー無しで取れる
 
   if ((sttKey()||'').length < 15) return;               // キーが入りきっていない
   if (MODEL_CACHE[prov] && MODEL_CACHE[prov].stt && MODEL_CACHE[prov].stt.length) return; // 取得済み
@@ -12308,6 +12421,13 @@ $('sttKey').oninput = function(){
   clearTimeout(sttKeyTimer); sttKeyTimer = setTimeout(autoFetchSttModels, 1200);
 };
 $('baseUrl').oninput = function(){ CFG.baseUrl = this.value.trim(); persistSetting("baseUrl", CFG.baseUrl); };
+$('sttModelPick').onclick = function(){
+  var prov = CFG.sttProvider;
+  if (prov === 'groq' && !hubKeyFor('groq', 'stt')){ toast('先に Groq のAPIキーを入力してください'); return; }
+  openModelPicker({ prov:prov, kind:'stt', current:CFG.sttModel, title:'音声認識モデルを選ぶ（' + (prov === 'groq' ? 'Groq' : 'OpenRouter') + '）',
+    onPick:function(id){ fourOSetModel(id); refreshProviderUI(); toast('音声認識モデルを ' + realtimeEscape(id) + ' にしました', true); },
+    tryFn:function(id){ return hubTryStt(prov, id); } });
+};
 $('sttProvider').onchange = function(){
   var wasRunning=S.running;if(wasRunning)stopAll();
   CFG.sttProvider = this.value; persistSetting("sttProvider", CFG.sttProvider);
@@ -12774,7 +12894,8 @@ var DIAG_ROWS = [
     var k = hubKeyFor('openrouter', 'text');
     return 'キー ' + (k ? k.length + '文字' : '未設定') + '／提供元 ' + CFG.orRoute + '／データを残さない先だけ ' + (CFG.orZdr ? 'ON' : 'OFF') +
       '／最後に翻訳した提供元 ' + (OR_LAST_PROVIDER || '(まだ無し)') + '／接続テスト ' + orTestSummary(); }},
-  {section:"settings",order:2,label:'音声認識(STT)',value:function(ctx){ return CFG.sttProvider; }},
+  {section:"settings",order:2,label:'音声認識(STT)',value:function(ctx){ return CFG.sttProvider +
+    (CFG.sttProvider === 'openrouter' ? '（JSON・input_audio' + (OR_STT_WAV[CFG.sttModel] ? '・WAVに変換して送信' : '') + '）' : ''); }},
   {section:"settings",order:3,label:'STTモデル',value:function(ctx){ return CFG.sttModel; }},
   {section:"settings",order:4,label:'4o系の録音上限',value:function(ctx){ return fourOFileModel()?fourOSeconds(CFG.fourOSeconds)+'秒／末尾繰越 '+(CFG.fourOCarry!==false?'ON':'OFF')+'／無音待ち '+sttSilenceHoldMs()+'ms／録音ファイルAPI':'(未使用)'; }},
   {section:"settings",order:5,label:'有効なSTT通信方式',value:function(ctx){ return diagSttTransport(); }},
