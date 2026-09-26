@@ -307,7 +307,7 @@ function duoLiveAssignSeat(engine,entry,text){
 /* Web会議・動画の入力元（B）と、実際に話されている言語は別の属性。
    カードの話者はBのまま保ち、認識本文から言語だけを更新する。 */
 function duoShouldAutoDetectInput(seat){
-  if(!S.autoMode||!duoSession||!['web','many_to_many'].includes(duoSession.presetId))return false;
+  if(!S.autoMode||CFG.langA===CFG.langB||!duoSession||!['web','many_to_many'].includes(duoSession.presetId))return false;
   var endpoint=AudioEndpointManager.forView(seat);
   return !!(endpoint&&endpoint.enabled&&endpoint.type==='system-audio');
 }
@@ -796,8 +796,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.29';
-var APP_BUILD = '20260926-v14929-tts-prefetch';
+var APP_VERSION = 'v1.49.32';
+var APP_BUILD = '20260927-v14932-4o-join';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -3328,6 +3328,22 @@ function dlog(cat, msg, data){
   DLOG.push({ t: Date.now() - DLOG_T0, c: cat, m: msg, d: data });
   if(cat==='tts')segAudioEvent(msg,data);
 }
+/* 捕まえていない例外も記録する。音声認識の onresult などイベントの中で投げると、
+   画面にも診断ログにも何も残らず、「認識が止まった」のか「結果を捨てた」のか
+   切り分けられない。多すぎるとログが埋まるので30件まで。 */
+var APP_ERRORS=0;
+try{
+  window.addEventListener('error',function(ev){
+    if(++APP_ERRORS>30)return;
+    dlog('app','ERROR',{msg:String((ev&&ev.message)||'').slice(0,200),
+      at:String((ev&&ev.filename)||'').split('/').pop()+':'+((ev&&ev.lineno)||0)+':'+((ev&&ev.colno)||0)});
+  });
+  window.addEventListener('unhandledrejection',function(ev){
+    var r=ev&&ev.reason;if(r&&r.name==='AbortError')return;
+    if(++APP_ERRORS>30)return;
+    dlog('app','REJECT',{msg:String((r&&r.message)||r||'').slice(0,200)});
+  });
+}catch(_e){}
 /* APIキーらしき文字列は書き出し時に必ず伏せる（そのまま貼れるようにするため） */
 function redact(s){
   return String(s)
@@ -5782,7 +5798,12 @@ function aivisBody(text, seat, fmt, prosody){
   Object.keys(AIVIS_DEFAULTS).forEach(function(k){ if (isNaN(vals[k])) vals[k]=AIVIS_DEFAULTS[k]; });
   var pmap=prosodyMapForTts(prosody,'ja','aivis');
   if (pmap){
-    vals.speaking_rate=prosodyRound(prosodyClamp(vals.speaking_rate*pmap.rate,0.5,2),3);
+    /* 読み上げが話し手に遅れて adaptive が速めているときは、Prosody で遅くしない。
+       v1.49.29 の記録では、遅れが30秒近い最中に 0.82倍・0.9倍が何度もかかり、
+       話速 1.8 が実質 1.48〜1.62 になっていた。速める方向と抑揚・音量はそのまま。 */
+    var prate=SEG.dispatchRate>1&&pmap.rate<1?1:pmap.rate;
+    vals.speaking_rate=prosodyRound(prosodyClamp(vals.speaking_rate*prate,0.5,2),3);
+    if(prate!==pmap.rate)try{ Object.defineProperty(body,'_prosodyRateHeld',{value:pmap.rate,enumerable:false}); }catch(e){}
     vals.tempo_dynamics=prosodyRound(prosodyClamp(vals.tempo_dynamics*pmap.dynamics,0,2),3);
     vals.volume=prosodyRound(prosodyClamp(vals.volume*pmap.volume,0,2),3);
     try{ Object.defineProperty(body,'_prosodyMap',{value:pmap,enumerable:false}); }catch(e){}
@@ -5833,7 +5854,8 @@ function aivisSpeakBlob(text, lang, seat, prosody){
   var t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150),seat);
   var body = aivisBody(text, seat, 'mp3',prosody), uuid = body.model_uuid;
   logProsodyMap(body._prosodyMap,{effectiveRate:body.speaking_rate==null?1:body.speaking_rate,
-    effectiveDynamics:body.tempo_dynamics==null?1:body.tempo_dynamics,effectiveVolume:body.volume==null?1:body.volume});
+    effectiveDynamics:body.tempo_dynamics==null?1:body.tempo_dynamics,effectiveVolume:body.volume==null?1:body.volume,
+    slowHeld:body._prosodyRateHeld||null});
   var st = aivisStyleFor(seat), rate = parseFloat(CFG.aivisRate);
   aivisLimitedFetch(AIVIS_URL, {
     method:'POST',
@@ -5916,7 +5938,8 @@ function aivisSpeakStream(text, lang, seat, prosody){
   var stLog = (body.style_id == null) ? '既定' : String(body.style_id);
   var twLog = aivisBodyTweaks(body);
   logProsodyMap(body._prosodyMap,{effectiveRate:body.speaking_rate==null?1:body.speaking_rate,
-    effectiveDynamics:body.tempo_dynamics==null?1:body.tempo_dynamics,effectiveVolume:body.volume==null?1:body.volume,stream:true});
+    effectiveDynamics:body.tempo_dynamics==null?1:body.tempo_dynamics,effectiveVolume:body.volume==null?1:body.volume,stream:true,
+    slowHeld:body._prosodyRateHeld||null});
   var guardMs = Math.min(120000, 12000 + text.length * 200);
   var finish = ttsGuard(text, guardMs,seat);
   var myGen = finish.gen;
@@ -8679,11 +8702,50 @@ function killRec(){ recRun=false; restarting=false; if(rec){ try{ rec.onend=null
    一度も結果が来ないまま開始直後の network が続いたら、同じ音声を WebAudio で
    1ch に通した Track に替えて試す。それでも同じなら、再起動を続けずに止めて理由を出す。 */
 var WEB_TRACK_QUICK_MS=1500,WEB_TRACK_QUICK_MAX=2;
+/* 音は届いているのに Chrome が文字を返さない。v1.49.29 の記録では、画面共有の音声で
+   「日本」の2文字を返した後、入力レベルは話し声を示し続けた（読み上げ中の重なり推定90%）
+   のに、38秒間ひとつも結果が来ず、認識も終わらなかった。終わらないので再起動もされない。
+   最後の結果（または開始）から WEB_TRACK_STALL_MS、半分以上の時間で音が鳴っていたら、
+   止めて同じ Track で始め直す。無音のあいだは何もしない（Chrome が no-speech で自分で終わる）。
+   音楽だけが流れているときも同じ条件になるので、続けて始め直すたびに待ちを倍にする
+   （10→20→40秒、最大60秒）。結果が1件でも来れば10秒に戻す。 */
+var WEB_TRACK_STALL_MS=10000,WEB_TRACK_STALL_SOUND=0.5;
 function WebSpeechTrackEngine(seat,track,opts){
   this.seat=seat;this.track=track;this.opts=opts||{};this.rec=null;this.dead=false;
   this.interim=null;this.restarts=0;this.errs=0;this.startAt=0;
   this.recTrack=track;this.relay=null;this.relayReady=null;this.heard=false;this.quick=0;
+  this.run={at:0,results:0,sound:0,speech:0,soft:''};this.lastResultAt=0;
+  this.stallTimer=null;this.samples=[];this.stalls=0;this.stallHinted=false;
 }
+/* 最後の結果から10秒、音が鳴っているのに何も返ってこなければ始め直す。 */
+WebSpeechTrackEngine.prototype.watch=function(){
+  var self=this;clearInterval(this.stallTimer);
+  this.stallTimer=setInterval(function(){self.checkStall(Date.now());},500);
+};
+WebSpeechTrackEngine.prototype.checkStall=function(now){
+  if(this.dead||!this.rec||!S.running||!this.run.at)return;
+  var v=SEG.voice[this.seat],n=WEB_TRACK_STALL_MS/500;
+  this.samples.push(!!(v&&v.talking&&now-v.at<400));if(this.samples.length>n)this.samples.shift();
+  var since=Math.max(this.run.at,this.lastResultAt),need=WEB_TRACK_STALL_MS*Math.min(6,Math.pow(2,this.stalls));
+  if(now-since<need||this.samples.length<n)return;
+  var ratio=this.samples.filter(Boolean).length/n;
+  if(ratio<WEB_TRACK_STALL_SOUND)return;
+  this.stalls++;this.run.soft='stall';this.samples=[];
+  dlog('stt','track-stall',{seat:this.seat,quietMs:now-since,waitedMs:need,soundRatio:Math.round(ratio*100)/100,
+    stalls:this.stalls,restart:this.restarts,everHeard:this.heard});
+  if(this.stalls>=2&&!this.stallHinted){this.stallHinted=true;
+    toast('共有音声は届いていますが、Chrome の音声認識が文字を返しません（認識を始め直しています）。<br>'
+      +'流れている音声の言語と、'+(this.seat==='B'?'相手(B)':'自分(A)')+'の言語（いま '+L(langOf(this.seat)).name+'）が合っているか確認してください。');}
+  var old=this.rec,runAt=this.run.at,self=this;
+  try{old.abort();}catch(e){}
+  /* abort しても end が来ない（固まっている）ときは、認識オブジェクトごと作り直す。 */
+  setTimeout(function(){
+    if(self.dead||self.rec!==old||self.run.at!==runAt)return;
+    dlog('stt','track-rebuild',{seat:self.seat,restart:self.restarts,why:'no-end-after-abort'});
+    try{old.onend=null;old.onresult=null;old.onerror=null;}catch(e){}
+    segWebEnd(old);self.restarts++;self.build();
+  },1500);
+};
 WebSpeechTrackEngine.prototype.addonTrack=function(){
   return !!(window.__duoTabAudio&&window.__duoTabAudio.isActive&&window.__duoTabAudio.isActive()&&!this.opts.fromOverlay);
 };
@@ -8731,7 +8793,7 @@ WebSpeechTrackEngine.prototype.startSameTrack=function(){
   if(this.dead)return false;
   if(!this.track||this.track.readyState!=='live'){this.fail('共有音声Trackが終了しました');return false;}
   if(this.relay&&this.relay.ctx.state!=='running'){this.quickFail();return false;}
-  this.startAt=Date.now();
+  this.startAt=Date.now();this.run={at:this.startAt,results:0,sound:0,speech:0,soft:''};this.samples=[];
   try{
     this.rec.start(this.recTrack||this.track);
     dlog('stt','track-start',{seat:this.seat,trackId:String(this.track.id||'').slice(0,8),restart:this.restarts,
@@ -8745,6 +8807,7 @@ WebSpeechTrackEngine.prototype.startSameTrack=function(){
 WebSpeechTrackEngine.prototype.fail=function(message,err,hint){
   segDetachMeter(this);segWebEnd(this.rec);
   if(this.dead)return;this.dead=true;
+  clearInterval(this.stallTimer);this.stallTimer=null;
   dlog('stt','track-FAIL',{seat:this.seat,err:String((err&&err.message)||err||message).slice(0,160),fallback:false,
     relay:!!this.relay,addon:this.addonTrack()});
   try{if(this.rec){this.rec.onend=null;this.rec.abort();}}catch(e){}
@@ -8755,8 +8818,12 @@ WebSpeechTrackEngine.prototype.fail=function(message,err,hint){
 WebSpeechTrackEngine.prototype.build=function(){
   var self=this,r=new SR();this.rec=r;segAttachMeter(this,this.track,this.seat);
   r.lang=L(langOf(this.seat)).sr;r.continuous=true;r.interimResults=true;r.maxAlternatives=1;
+  /* 1回の認識で、Chrome が音・発話を検出したか。再起動のログに載せる。 */
+  r.onsoundstart=function(){if(self.rec===r&&!self.run.sound)self.run.sound=Math.max(1,Date.now()-self.run.at);};
+  r.onspeechstart=function(){if(self.rec===r&&!self.run.speech)self.run.speech=Math.max(1,Date.now()-self.run.at);};
   r.onresult=function(ev){
     if(self.dead||!S.running)return;
+    self.run.results++;self.lastResultAt=Date.now();self.stalls=0;
     if(!self.heard){self.heard=true;self.quick=0;
       dlog('stt','track-heard',{seat:self.seat,relay:!!self.relay,afterMs:Date.now()-self.startAt,restart:self.restarts});}
     if(segWebResult(r,ev,self.seat)){self.errs=0;return;}
@@ -8784,7 +8851,7 @@ WebSpeechTrackEngine.prototype.build=function(){
     });
   };
   r.onerror=function(ev){var code=(ev&&ev.error)||'';
-    if(code==='no-speech'||code==='aborted')return;
+    if(code==='no-speech'||code==='aborted'){if(!self.run.soft)self.run.soft=code;return;}
     self.errs++;dlog('stt','track-ERROR',{seat:self.seat,err:code,count:self.errs});
     if(code==='not-allowed'||code==='service-not-allowed'||code==='audio-capture'){self.fail('共有音声Trackを直接認識できませんでした：'+code);return;}
     if(code!=='network'||self.heard||Date.now()-self.startAt>=WEB_TRACK_QUICK_MS){self.quick=0;return;}
@@ -8794,14 +8861,17 @@ WebSpeechTrackEngine.prototype.build=function(){
   };
   r.onend=function(){
     if(self.dead)return;segWebEnd(r);self.restarts++;
-    var wait=Math.min(3000,120+self.errs*350),ready=self.relayReady||Promise.resolve();
-    dlog('stt','track-restart',{seat:self.seat,restart:self.restarts,waitMs:wait,sameTrack:true,relay:!!self.relay});
-    setTimeout(function(){ready.then(function(){if(!self.dead)self.startSameTrack();});},wait);
+    var wait=Math.min(3000,120+self.errs*350),ready=self.relayReady||Promise.resolve(),run=self.run;
+    dlog('stt','track-restart',{seat:self.seat,restart:self.restarts,waitMs:wait,sameTrack:true,relay:!!self.relay,
+      aliveMs:run.at?Date.now()-run.at:null,results:run.results,soundAfterMs:run.sound||null,speechAfterMs:run.speech||null,
+      why:run.soft||''});
+    setTimeout(function(){ready.then(function(){if(!self.dead&&self.rec===r)self.startSameTrack();});},wait);
   };
+  if(!this.stallTimer)this.watch();
   return this.startSameTrack();
 };
 WebSpeechTrackEngine.prototype.stop=function(){
-  segDetachMeter(this);segWebEnd(this.rec);
+  segDetachMeter(this);segWebEnd(this.rec);clearInterval(this.stallTimer);this.stallTimer=null;
   if(this.dead)return;this.dead=true;
   try{if(this.rec){this.rec.onend=null;this.rec.abort();}}catch(e){}
   this.dropRelay();
@@ -8886,7 +8956,9 @@ StreamEngine.prototype.start = function(){
     if(self.fourO)self.fourO.poll(t,t-self.last>900);
     if (self.voice && (t-self.last)>sttSilenceHoldMs() && (t-self.segStart)>700) self.cut(true,'silence');
     else if (!self.voice && (t-self.segStart)>8000) self.cut(false,'silence');
-    else if ((t-self.segStart)>(self.fourO&&self.rec&&self.rec._fourOMeta?self.rec._fourOMeta.seconds*1000:20000)) self.cut(true,'limit');
+    /* 上限で切るとき、声が一度も無かった録音は送らない。4o 系の上限（既定6秒）は
+       無音で捨てる8秒より短いので、音の来ないマイクでも6秒ごとに送っていた。 */
+    else if ((t-self.segStart)>(self.fourO&&self.rec&&self.rec._fourOMeta?self.rec._fourOMeta.seconds*1000:20000)) self.cut(self.voice,'limit');
   }, 60);
 };
 StreamEngine.prototype.newRec = function(){
@@ -8987,11 +9059,12 @@ function fourOSentenceEnds(text){
     ends.push(m.index+m[0].length);
   }return ends;
 }
-function fourOSplit(text,reserve){
+function fourOSplit(text,reserve,trustEnd){
   if(!reserve)return {ready:text,tail:''};
   var ends=fourOSentenceEnds(text),cut=ends.length?ends[ends.length-1]:0;
   // On a timed cut, even a final period may have been inferred from truncated audio.
-  if(cut===text.length)cut=ends.length>1?ends[ends.length-2]:0;
+  // After a silence cut the speaker really paused, so a final period is kept.
+  if(cut===text.length&&!trustEnd)cut=ends.length>1?ends[ends.length-2]:0;
   return {ready:text.slice(0,cut),tail:text.slice(cut)};
 }
 function fourOJoin(a,b){
@@ -9042,7 +9115,8 @@ FourOFileBuffer.prototype.submit=function(blob,seat,prosody,meta){
       if(S.autoMode&&micSeats().length>1&&q.text){q.seat=guessSeatFromText(q.text);q.srcLang=langOf(q.seat);q.dstLang=langOf(q.seat==='A'?'B':'A');}
       e.seat=q.seat;e.srcLang=q.srcLang;e.dstLang=q.dstLang;if(q.autoLanguage){duoAssignRecognizedLanguage(e,q.text);q.srcLang=e.srcLang;q.dstLang=e.dstLang;}
       if(S.entries.indexOf(e)>=0)fourOCardText(e,q.text,false,'ordered-result-wait');
-      dlog('stt','4o-file-result',{request:q.id,model:self.model,cardId:e.id,chars:q.text.length,ms:Date.now()-q.created,cut:meta.reason,seconds:meta.seconds});
+      dlog('stt','4o-file-result',{request:q.id,model:self.model,cardId:e.id,chars:q.text.length,ms:Date.now()-q.created,cut:meta.reason,seconds:meta.seconds,
+        language:sttAutoDetect({autoLanguage:q.autoLanguage})?'auto':q.lang});
     }
     self.drain();
   }
@@ -9065,7 +9139,12 @@ FourOFileBuffer.prototype.drain=function(){
     var text=q.text;
     if(held){held.entry.audioEndedAt=e.audioEndedAt;text=fourOJoin(held.entry.srcText,text);removeEntry(e);e=held.entry;e.prosody=null;this.held=null;}
     else if(CFG.prosodyOn&&q.prosody){e.srcText=text;attachProsody(e,q.prosody);}
-    var parts=fourOSplit(text,q.meta.reason==='limit'&&q.meta.carry),tail;
+    /* 無音で切った録音も、文の終わりが無ければ次の結果につなぐ。息継ぎ（0.5秒前後）で
+       切れるたびにカードが分かれ、v1.49.29 の記録（無音待ち 450ms）では相手の74枚のうち
+       28枚が「。」「？」「！」で終わらず、「情報を」「一方で、」「まずその」のような
+       8文字以下が10枚あった。つないだ末尾は、次の録音に声が無いまま0.9秒たつと確定する。 */
+    var silenceCut=q.meta.reason==='silence';
+    var parts=fourOSplit(text,q.meta.carry&&(q.meta.reason==='limit'||silenceCut),silenceCut),tail;
     if(parts.ready){
       fourOCardText(e,parts.ready,true,'sentence-prefix');fourOFinalize(e,'sentence-prefix',false);
       if(parts.tail){
@@ -9077,7 +9156,7 @@ FourOFileBuffer.prototype.drain=function(){
     if(tail){
       // Never reset an already-waiting tail's deadline merely because new text arrived.
       this.held={entry:tail,until:held&&!parts.ready?held.until:Date.now()+(q.meta.seconds+5)*1000};
-      dlog('stt','4o-tail-held',{cardId:tail.id,chars:tail.srcText.length,until:this.held.until,request:q.id});
+      dlog('stt','4o-tail-held',{cardId:tail.id,chars:tail.srcText.length,until:this.held.until,request:q.id,cut:q.meta.reason,joined:!!held});
     }
   }
 };
@@ -9203,8 +9282,8 @@ function xaiSTT(blob, lang,requestOptions){
   if (!key) return Promise.reject(new Error('xAI のAPIキーが未設定です'));
   var ext = blob.type.indexOf('mp4')>=0 ? 'mp4' : (blob.type.indexOf('ogg')>=0 ? 'ogg' : 'webm');
   var fd = new FormData();
-  /* AUTO かつマイクを2人で共有している場合は言語を固定しない */
-  var autoDetect = !!requestOptions.autoLanguage || (S.autoMode && micSeats().length > 1);
+  /* AUTO で2人の言語が違う場合は言語を固定しない */
+  var autoDetect = sttAutoDetect(requestOptions);
   var lc = autoDetect ? '' : (XAI_STT_LANGS[lang] || '');
   if (lc) fd.append('language', lc);
   fd.append('format', 'true');
@@ -9219,6 +9298,14 @@ function xaiSTT(blob, lang,requestOptions){
   }).then(chk).then(function(j){ return (j && j.text) || ''; });
 }
 
+/* 音声認識へ言語を伝えずに送るか。AUTO で、しかも2人の言語が違うときだけ。
+   同じ言語なら当てる必要が無い。v1.49.29 の記録（言語A・B とも日本語、AUTO）では
+   言語を伝えずに送っていて、日本語のニュース音声がウクライナ語・トルコ語・韓国語で
+   返ったカードが4枚あった。 */
+function sttAutoDetect(requestOptions){
+  if(CFG.langA===CFG.langB)return false;
+  return !!(requestOptions&&requestOptions.autoLanguage)||(S.autoMode&&micSeats().length>1);
+}
 function sttCall(blob, lang,requestOptions){
   requestOptions=requestOptions||{};
   var p = CFG.sttProvider;
@@ -9241,11 +9328,13 @@ function sttCall(blob, lang,requestOptions){
   var diarize = p === 'openai' && /^gpt-4o-transcribe-diarize(?:$|-)/.test(mdl);
   /* 話者ラベルを受け取るにはdiarized_jsonが必須。promptはこのモデルでは非対応。 */
   if (diarize) fd.append('response_format','diarized_json');
-  // AUTO かつマイクを2人で共有している場合は language を送らず、AI側に言語を自動判定させる
-  var autoDetect = !!requestOptions.autoLanguage || (S.autoMode && micSeats().length > 1);
+  // AUTO で2人の言語が違う場合は language を送らず、AI側に言語を自動判定させる。
+  // その代わり、どちらかの言語であることは prompt で伝える（それ以外の言語で返させない）。
+  var autoDetect = sttAutoDetect(requestOptions);
   if (!autoDetect) fd.append('language', L(lang).g.split('-')[0]);
   var terms = CFG.glossary.slice(0,60).map(function(r){ return r.s; }).filter(Boolean).join(', '), hints=[];
   hints.push('Transcribe verbatim with natural punctuation. Do not add, omit, paraphrase, or translate words.');
+  if (autoDetect) hints.push('The speech is in '+L(CFG.langA).en+' or '+L(CFG.langB).en+'.');
   if (terms) hints.push('Terminology: '+terms);
   if (hints.length && !diarize) fd.append('prompt', hints.join('\n'));
   return fetch((STT_BASE[p]||STT_BASE.openai) + '/audio/transcriptions', {
@@ -11880,7 +11969,7 @@ var DIAG_ROWS = [
   {section:"settings",order:19,label:'声 A / B',value:function(ctx){ return ctx.rtNativeAudio ? '(外部TTS設定は未使用)' : ttsSeatVoices(); }},
   {section:"settings",order:20,label:'認識文字表示',value:function(ctx){ return 'STT受信ごとにカードへ反映／確定・翻訳・TTSは独立したタイマーで進行'; }},
   {section:"settings",order:21,label:'逐次エコー除外',value:function(ctx){ return '部分単位の自動音声のみ抑制（認識文字表示は維持）'; }},
-  {section:"settings",order:22,label:'Aivis送信制御',value:function(ctx){ return '全合成経路で直近60秒10回（境界余裕0.1秒）・固定間隔なし／429はサーバー指定待機・再試行2回／同声・同言語・同一音声設定を最大500文字でまとめる'; }},
+  {section:"settings",order:22,label:'Aivis送信制御',value:function(ctx){ return '全合成経路で直近60秒10回（境界余裕0.1秒）・固定間隔なし／429はサーバー指定待機・再試行2回／同声・同言語・同一音声設定を最大500文字でまとめる（読み上げの遅れ'+SEG_AIVIS_LOOSE_DEBT+'秒以上はカードごとのProsodyの違いを無視）'; }},
   {section:"settings",order:23,label:'翻訳の区切り',value:function(ctx){ return segSemanticEnabled()?'文末優先（言語別ルール・文字数上限・最大3秒の文字停止待ち）':'速度優先（従来）'; }},
   {section:"settings",order:24,label:'翻訳の文脈',value:function(ctx){ return '対象より前の原文のみ／現在カードの全文と未来の発話は含めない'; }},
   {section:"settings",order:25,label:'自動適応',value:function(ctx){ return CFG.segmentMode==='adaptive'?segAdaptiveLabel():'OFF（固定モード）'; }},
@@ -14091,8 +14180,15 @@ function segEarlierOpen(j){
     !e.segment.audioMuted&&segAudioAllowed(e);});
 }
 // Compare only settings sent to Aivis; timestamps/confidence do not change the voice.
-// Deliberately keep differing rates, dynamics and volumes in separate requests.
-function segAivisVoiceKey(e){return JSON.stringify(aivisBody('',e.seat,'mp3',e.prosody));}
+// Differing rates, dynamics and volumes stay in separate requests while playback keeps up.
+/* 読み上げの遅れ（見積もり）が SEG_AIVIS_LOOSE_DEBT 秒以上なら、カードごとの Prosody の違いは
+   見ずに、声・言語・基本の話し方が同じならまとめて送る。まとめた組は先頭カードの
+   Prosody で読む。v1.49.29 の記録（gpt-4o-mini、ニュース音声）では、読み上げ待ちの
+   カードが9〜16枚ある場面でも Prosody が1枚ずつ違うため64回中60回が1枚ずつの要求になり、
+   直近60秒の要求が最大25回（上限10回）に達してクレジットを使い、先読みも52回見送った。
+   遅れていないときは、次のカードがまだ来ていないことが多く、まとめる相手がほぼ無い。 */
+var SEG_AIVIS_LOOSE_DEBT=4;
+function segAivisVoiceKey(e,loose){return JSON.stringify(aivisBody('',e.seat,'mp3',loose?null:e.prosody));}
 /* Aivis へ文の途中で渡さないための待ちに上限を置く。待ちは「カードが1.5秒以内に
    伸びた」あいだ続くので、句点の来ない話し方では、文字が止まるか500字に届くまで
    読み上げが止まる（実測 平均3.4秒・最長15秒）。Aivis は最初の音まで0.2〜0.5秒なので、
@@ -14114,14 +14210,14 @@ function segSentenceWaitLeft(j,now,dry){
    実際に送る組の決め方が食い違わない。queue は segQueueCompare で並べてある前提。 */
 function segAivisGroup(j,useSource,now,dry){
   var e=j.card,s=j.segment,group=[j],source=s.sourceText,target=s.translationText||'';
-  var voiceKey=segAivisVoiceKey(e),start=SEG.queue.indexOf(j);
+  var loose=segDebt()>=SEG_AIVIS_LOOSE_DEBT,voiceKey=segAivisVoiceKey(e,loose),start=SEG.queue.indexOf(j);
   // Collect adjacent ready parts with identical effective synthesis settings.
   for(var n=start+1;n>0&&n<SEG.queue.length;n++){
     var next=SEG.queue[n],ns=next.segment,ne=next.card;
     if(segEarlierOpen(next))break;
     if(next.partOnly||j.partOnly||!segManualJobValid(next)||next.cancelled||next.epoch!==j.epoch||ne.segment.cancelled||!!next.manual!==!!j.manual||
       ne.seat!==e.seat||ne.srcLang!==e.srcLang||ne.dstLang!==e.dstLang||JSON.stringify(ne.origin)!==JSON.stringify(e.origin)||((ne.speaker&&ne.speaker.id)!==(e.speaker&&e.speaker.id))||
-      segAivisVoiceKey(ne)!==voiceKey||
+      segAivisVoiceKey(ne,loose)!==voiceKey||
       (!useSource&&(!ns.translationReady||ns.translationError))||(!next.manual&&!segAudioAllowed(ne)))break;
     var more=useSource?ns.sourceText:ns.translationText||'';
     if(!(more.trim())||(useSource?source:target).length+more.length+(useSource?0:1)>500)break;
@@ -14133,7 +14229,7 @@ function segAivisGroup(j,useSource,now,dry){
   if(cut&&cut<group.length)group=group.slice(0,cut);
   else if(!cut&&(useSource?source:target).length<500&&now-(group[group.length-1].card.segment.lastUpdate||0)<1500&&
     segSentenceWaitLeft(j,now,dry)>0)return {wait:true,group:group};
-  return {wait:false,group:group,
+  return {wait:false,group:group,loose:loose,
     source:group.map(function(q){return q.segment.sourceText;}).join(''),
     target:group.map(function(q){return q.segment.translationText||'';}).filter(Boolean).join(' ')};
 }
@@ -14194,7 +14290,7 @@ function aivisPrefetchPlanned(j,useSource){
     return !q.cancelled&&q.epoch===SEG.epoch&&!q.card.segment.cancelled&&SEG.queue.indexOf(q)>=0&&!q.segment.dispatched&&
       t===p.parts[i]&&(useSource||(q.segment.translationReady&&!q.segment.translationError))&&segAudioAllowed(q.card);});
   if(!ok){aivisPrefetchDrop('text-changed');return null;}
-  return {wait:false,group:p.jobs.slice(),rate:p.rate,
+  return {wait:false,group:p.jobs.slice(),rate:p.rate,loose:!!p.loose,
     source:p.jobs.map(function(q){return q.segment.sourceText;}).join(''),
     target:p.jobs.map(function(q){return q.segment.translationText||'';}).filter(Boolean).join(' ')};
 }
@@ -14219,7 +14315,7 @@ function segPrefetchPlan(now){
   if(!CFG.aivisStream||!window.ReadableStream||!aivisKey()||!aivisModelFor(e.seat))return null;
   var ctx=ttsAudioCtx();if(!ctx||!ttsCtxCanRoute(ctx,e.seat))return null;
   var g=segAivisGroup(j,useSource,now,true);if(g.wait)return null;
-  return {jobs:g.group,text:useSource?g.source:g.target,useSource:useSource,seat:e.seat,prosody:e.prosody,
+  return {jobs:g.group,text:useSource?g.source:g.target,useSource:useSource,seat:e.seat,prosody:e.prosody,loose:!!g.loose,
     rate:e.segment.mode==='adaptive'?segAdaptiveState(e,debt).rate:1,
     parts:g.group.map(function(q){return useSource?q.segment.sourceText:q.segment.translationText||'';})};
 }
@@ -14228,7 +14324,7 @@ function aivisPrefetchStart(plan,now){
   try{body=aivisBody(plan.text,plan.seat,'wav',plan.prosody);}finally{SEG.dispatchRate=prev;}
   var key=JSON.stringify(body),ctrl=null;try{ctrl=new AbortController();}catch(e){}
   var p={key:key,gen:ttsGen,epoch:SEG.epoch,at:now,ctrl:ctrl,jobs:plan.jobs,parts:plan.parts,
-    useSource:plan.useSource,rate:plan.rate,chars:plan.text.length,headersAt:0};
+    useSource:plan.useSource,rate:plan.rate,loose:!!plan.loose,chars:plan.text.length,headersAt:0};
   p.promise=aivisLimitedFetch(AIVIS_URL,{method:'POST',signal:ctrl&&ctrl.signal,
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+aivisKey()},body:key},
     {guardMs:Math.min(120000,12000+plan.text.length*200)});
@@ -14302,7 +14398,7 @@ function segPump(){
         continue;
       }
     }
-    var group=[j],source=s.sourceText,target=s.translationText||'',planned=null;
+    var group=[j],source=s.sourceText,target=s.translationText||'',planned=null,looseVoice=false;
     if(ttsProv().segmentJapaneseBatch&&lang==='ja'&&!j.forceBrowserTts){
       /* ここで逃がすのは、こちら側の数え（＝予測）では無く aivisOverLimit が
          「回す」と言っている場合か、Aivis が429で実際に止めている場合だけ。
@@ -14325,7 +14421,7 @@ function segPump(){
       else planned=aivisPrefetchPlanned(j,useSource);
       var g=planned||segAivisGroup(j,useSource,Date.now(),false);
       if(g.wait){segTtsWait(j,'sentence-boundary');return;}
-      group=g.group;source=g.source;target=g.target;
+      group=g.group;source=g.source;target=g.target;looseVoice=!!g.loose&&group.length>1;
     }
     var rate=planned?planned.rate:e.segment.mode==='adaptive'&&ttsProv().segmentJapaneseBatch&&lang==='ja'?segAdaptiveState(e,segDebt()).rate:1;
     segTtsResume(j);
@@ -14338,7 +14434,8 @@ function segPump(){
     SEG.active=j;j.started=false;j.finished=false;segRefreshPlayback(j);
     var proxy={id:e.id,utteranceId:e.utteranceId,origin:e.origin,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,srcText:source,dstText:target,prosody:e.prosody,speaker:e.speaker,startedAt:e.startedAt,ts:e.ts,forceBrowserTts:!!j.forceBrowserTts};
     dlog('segment','dispatch',{cardId:e.id,seq:s.seq,manualReplay:!!j.manual,order:j.dispatchOrder,members:group.map(function(q){return q.segment.id;}),
-      text:j.speechText,parts:group.length,chars:j.speechText.length,debtEstimateSeconds:segDebt(),overlap:overlap,schedulerRate:rate});
+      text:j.speechText,parts:group.length,chars:j.speechText.length,debtEstimateSeconds:segDebt(),overlap:overlap,schedulerRate:rate,
+      prosodyMerged:looseVoice});
     SEG.dispatchRate=rate;
     try{
       if(j.manual){
