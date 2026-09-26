@@ -13,14 +13,14 @@ const {execFileSync}=require('node:child_process'),path=require('node:path');
 const GATE=['test-turn-decision.cjs','test-file-sync.cjs','test-release-manifest.cjs','test-turn-trace-replay.cjs',
   'test-input-validation.cjs','test-app-html-sync.cjs','test-settings-style.cjs',
   'test-segment-policy.cjs','test-turn-providers.cjs','test-turn-proxy.cjs','test-tts-limits.cjs',
-  'test-google-tts.cjs','test-one-touch.cjs','test-tts-skip.cjs','test-webspeech-punct.cjs','test-webspeech-track.cjs','test-aivis-prefetch.cjs','test-4o-tuning.cjs','test-model-tiers.cjs',
+  'test-google-tts.cjs','test-one-touch.cjs','test-tts-skip.cjs','test-webspeech-punct.cjs','test-webspeech-track.cjs','test-aivis-prefetch.cjs','test-4o-tuning.cjs','test-model-tiers.cjs','test-model-hub.cjs',
   'test-backchannel.cjs',
   'test-teams.cjs','test-next.cjs','test-controller.cjs','test-frame-routing.cjs',
   'test-bridge-target.cjs','test-mic-discovery.cjs'];
 /* tools/ の3スイートは実物の service-worker.js などを読み込む。gate の外に置いた
    ままにしていたため、v1.4.9 の版ずれを出荷前に捕まえられなかった。 */
 const TOOLS=['test-html-bridge.js','test-html-caption-command.js','test-html-tab-audio.js'];
-const E2E=['test-browser.cjs','test-settings-ui.cjs'];
+const E2E=['test-browser.cjs','test-settings-ui.cjs','test-model-picker-ui.cjs'];
 
 const withE2e=process.argv.includes('--with-e2e');
 let failed=0,total=0;
