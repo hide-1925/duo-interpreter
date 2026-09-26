@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.36",
-  "version_name": "1.4.36 HTML v1.49.25 と対。Web Speech 日本語の空白を句読点に／伸びている途中は判断層に聞かない",
+  "version": "1.4.37",
+  "version_name": "1.4.37 HTML v1.49.26 と対。直接開いたHTML本体も接続／Web Speech の途中結果を1枚に／息継ぎを判断層の候補に",
   "optional_host_permissions": [
     "https://*/*"
   ],

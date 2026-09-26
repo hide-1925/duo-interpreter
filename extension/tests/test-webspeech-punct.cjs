@@ -105,10 +105,9 @@ test('with the sentence end restored the segmenter cuts at the sentence, not at 
 /* 三つの Web Speech 経路（逐次・マイク・共有音声Track）すべてが通っているか。 */
 test('every Web Speech path runs the space punctuation',()=>{
   const seg=block('function segWebResult(owner,ev,seat){');
-  assert.match(seg,/webSpeechPunct\(text,langOf\(seat\)\)/);
-  assert.match(seg,/punctuateTranscript\(shown/,'the final is terminated after the spaces are handled');
-  assert.match(seg,/segUpdate\(e,r\.isFinal\?punctuateTranscript\(shown,langOf\(seat\)\):shown/,
-    'interim text is punctuated too, or the segmenter never sees a sentence end');
+  assert.match(seg,/var shown=segWebMarks\(e,webSpeechPunct\(raw,lang\)\);/);
+  assert.match(seg,/segWebClose\(owner,e,punctuateTranscript\(shown,lang\)/,'the final is terminated after the spaces are handled');
+  assert.match(seg,/segUpdate\(e,shown,false\)/,'interim text is punctuated too, or the segmenter never sees a sentence end');
   assert.match(src,/t=punctuateTranscript\(webSpeechPunct\(t,langOf\(seat\)\),langOf\(seat\)\);/);
   assert.match(src,/text=punctuateTranscript\(webSpeechPunct\(text,langOf\(self\.seat\)\),langOf\(self\.seat\)\);/);
   assert.match(src,/var itmShown = webSpeechPunct\(itm\.trim\(\), langOf\(seat\)\);/);
@@ -117,7 +116,139 @@ test('every Web Speech path runs the space punctuation',()=>{
 test('the API transcription paths are left alone',()=>{
   /* 外部STTは句読点付きで返す。そこへ空白規則をかけると、英語混じりの本文を崩しうる。 */
   const n=(src.match(/webSpeechPunct\(/g)||[]).length;
-  assert.equal(n,6,'one definition plus five Web Speech call sites');
+  assert.equal(n,7,'one definition, two in the segmented path, four in the mic and track paths');
+});
+
+/* ── 途中結果を1枚につなぐ ───────────────────────────────────────────────
+   Chrome は途中結果を「安定した前半」と「揺れる末尾」の2つの result で返す。
+   v1.49.25 の実測では、末尾が別カード（e2）になり、前半の文末「…ことだよね」が
+   見えてから確定まで約4.7秒かかった。約60秒で打ち切られた前半は語の途中で
+   確定し、「…協力を得られ。」と別カード「れば、作り上げられるという発想だな」に
+   割れていた。 */
+const W={};
+const wctx={console,String,Object,JSON,Math,CFG:{prosodyOn:false},
+  segEnabled:()=>true,langOf:()=>W.lang||'ja-JP',
+  addEntry:(seat,text,interim)=>{const e={id:'e'+(W.cards.length+1),seat,segments:[],segment:{final:false},texts:[]};W.cards.push(e);return e;},
+  segUpdate:(e,text,final)=>{e.texts.push(text);e.srcText=text;e.segment.final=!!final;},
+  attachProsody(){},micProsodySnapshot:()=>null,dlog:(...a)=>W.logs.push(a)};
+const wc=vm.createContext(wctx);
+for(const name of ['JA_SPOKEN_QUESTION','JA_SPOKEN_END']) vm.runInContext(constLine(name),wc);
+for(const b of [block('function hasSpeechContent(s){'),block('function punctuateTranscript(text, lang){'),
+  block('function jaSpacePunct(text){'),block('function webSpeechPunct(text, lang){'),
+  block('function segApplyMark(e,pos,mark){'),block('function segWebMarks(e,text){'),block('function segWebJoin(parts){'),block('function segWebClose(owner,e,text,seat,raw){'),
+  block('function segWebResult(owner,ev,seat){'),block('function segWebEnd(owner){')])
+  vm.runInContext(b,wc);
+function wreset(lang){W.cards=[];W.logs=[];W.lang=lang||'ja-JP';return {};}
+/* SpeechRecognitionResultList の形。isFinal を持つ配列の配列。 */
+const R=(...rows)=>({resultIndex:0,results:rows.map(([t,fin])=>Object.assign([{transcript:t}],{isFinal:!!fin}))});
+const last=(e)=>e.texts[e.texts.length-1];
+
+test('head and tail interim results are one card, not two',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R(['弱点ってやっぱり第5世代を作った経験がないことだよね',false],[' その通り',false]),'B');
+  assert.equal(W.cards.length,1,'the unstable tail is the same utterance');
+  assert.equal(last(W.cards[0]),'弱点ってやっぱり第5世代を作った経験がないことだよね。その通り',
+    'the sentence end is visible as soon as the next word exists anywhere');
+});
+test('a head cut off mid-word stays joined to its tail and gets no invented full stop',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R(['世界の協力を得られ',true],['れば作り上げられるという発想だな',false]),'B');
+  assert.equal(W.cards.length,1);
+  assert.equal(last(W.cards[0]),'世界の協力を得られれば作り上げられるという発想だな');
+  assert.equal(W.cards[0].segment.final,false,'the utterance is still going');
+});
+test('when every result is final the card closes, and the next speech starts a new card',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R(['そうですね',false]),'B');
+  wc.segWebResult(o,R(['そうですね',true]),'B');
+  assert.equal(W.cards[0].segment.final,true);
+  assert.equal(last(W.cards[0]),'そうですね。');
+  wc.segWebResult(o,R(['そうですね',true],['次の話です',false]),'B');
+  assert.equal(W.cards.length,2);
+  assert.equal(last(W.cards[1]),'次の話です','the closed result is not read again');
+  assert.equal(W.cards[0].texts.length,2,'the closed card is not touched');
+});
+test('a card is closed at an inner final only where everything up to it is committed at a sentence end',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R(['経験がないことだよね',false],[' その通り',false]),'B');
+  const e=W.cards[0],text=last(e);
+  /* rules が「…だよね。」まで commit した状態。 */
+  e.segments=[{committedAt:1,start:0,end:text.indexOf('。')+1}];
+  wc.segWebResult(o,R(['経験がないことだよね',true],[' その通りだから',false]),'B');
+  assert.equal(e.segment.final,true);
+  assert.equal(last(e),'経験がないことだよね。','closed at exactly the committed text, nothing clipped');
+  assert.equal(W.cards.length,2);
+  assert.equal(last(W.cards[1]),'その通りだから');
+});
+test('no early close while committed text stops short of the boundary',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R(['経験がないことだよね',false],[' その通り',false]),'B');
+  const e=W.cards[0];
+  e.segments=[{committedAt:1,start:0,end:4}];
+  wc.segWebResult(o,R(['経験がないことだよね',true],[' その通りだから',false]),'B');
+  assert.equal(e.segment.final,false,'closing here would force-commit the rest of the head');
+  assert.equal(W.cards.length,1);
+  assert.equal(last(e),'経験がないことだよね。その通りだから');
+});
+test('a list that shrinks never rebuilds an utterance that was already closed',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R(['一つ目です',true],['二つ目',false]),'B');
+  wc.segWebResult(o,R(['一つ目です',true],['二つ目です',true]),'B');
+  const n=W.cards.length;
+  wc.segWebResult(o,R(['一つ目です',true]),'B');
+  assert.equal(W.cards.length,n);
+});
+test('the end of recognition closes the open card and forgets the position',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R(['途中まで',false]),'B');
+  wc.segWebEnd(o);
+  assert.equal(W.cards[0].segment.final,true);
+  assert.equal(o._webStart,0,'a restarted recognizer numbers its results from 0 again');
+  wc.segWebResult(o,R(['新しい発話',false]),'B');
+  assert.equal(W.cards.length,2);
+});
+test('English parts are joined with a space when Chrome leaves none',()=>{
+  const o=wreset('en-US');
+  wc.segWebResult(o,R(['hello there',true],['how are you',false]),'A');
+  assert.equal(last(W.cards[0]),'hello there how are you');
+  const p=wreset('en-US');
+  wc.segWebResult(p,R(['hello there',true],[' how are you',false]),'A');
+  assert.equal(last(W.cards[0]),'hello there how are you','an existing space is not doubled');
+});
+/* 判断層が息継ぎを「？」と選んだ後も、次の途中結果で「、」に戻らないこと。
+   戻ると確定した本文が訂正扱いになり、翻訳と読み上げが作り直される。 */
+test('a mark chosen by the decision layer survives the next recogniser update',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R(['大丈夫なの ここが大事なところでな',false]),'B');
+  const e=W.cards[0],text=last(e),pos=text.indexOf('、');
+  e.segment.text=text;
+  assert.equal(wc.segApplyMark(e,pos,'？'),true);
+  assert.equal(e.segment.text.slice(0,pos+1),'大丈夫なの？');
+  wc.segWebResult(o,R(['大丈夫なの ここが大事なところでな 断ったのは',false]),'B');
+  assert.equal(last(e).slice(0,pos+1),'大丈夫なの？','the recogniser does not undo it');
+  wc.segWebResult(o,R(['大丈夫なの ここが大事なところでな 断ったのは',true]),'B');
+  assert.equal(last(e).slice(0,pos+1),'大丈夫なの？','nor does the final');
+});
+test('a mark is only placed on a breath comma',()=>{
+  const e={segment:{text:'はい。そうです'}};
+  assert.equal(wc.segApplyMark(e,2,'？'),false,'a full stop the rules found is left alone');
+  assert.equal(e.segment.text,'はい。そうです');
+});
+test('the card is rotated at a boundary the decision layer marked',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R(['強気すぎない',false],[' 大丈夫なの',false]),'B');
+  const e=W.cards[0],text=last(e),pos=text.indexOf('、');
+  e.segment.text=text;wc.segApplyMark(e,pos,'？');
+  e.segments=[{committedAt:1,start:0,end:pos+1}];
+  wc.segWebResult(o,R(['強気すぎない',true],[' 大丈夫なの',false]),'B');
+  assert.equal(last(e),'強気すぎない？');
+  assert.equal(e.segment.final,true);
+  assert.equal(last(W.cards[1]),'大丈夫なの');
+});
+test('empty results make no card',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R(['  ',false]),'B');
+  assert.equal(W.cards.length,0);
 });
 
 console.log(JSON.stringify({passed:tests.length,tests},null,2));

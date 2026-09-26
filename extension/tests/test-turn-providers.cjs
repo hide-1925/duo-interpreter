@@ -63,7 +63,7 @@ function reset(over){
     turnDecisionApiKey:'k',turnDecisionBaseUrl:'https://api.typesafe.ai',
     /* active では alias を拒否するので、既定で固定version を入れておく。 */
     turnDecisionModel:'jev-1.13.0'},over||{});
-  D().cache={};D().inflight={};D().circuit={};D()._lastSend={};D()._confirm={};D()._asks={};D()._qsh=null;
+  D().cache={};D().inflight={};D().circuit={};D()._lastSend={};D()._confirm={};D()._asks={};D()._recent={};D()._qsh=null;
   /* 中継の状態も毎回戻す。ready が残ると「接続されていない」を検査できない。 */
   B().ready=false;B().pending={};B().seq=0;
   delete ctx.chrome;
@@ -779,6 +779,51 @@ test('the same bucket is not resent inside 300ms, but a longer silence is a new 
   assert.equal(D().throttled(s1),true,'same bucket inside 300ms');
   const s2=D().stateOf(card(),{},i,D().rules(i),1200,Date.now());
   assert.equal(D().throttled(s2),false,'a 100ms-quantised silence step is a new state');
+});
+/* 息継ぎの候補（v1.49.26）。「、」は認識器の句読点ではなく息継ぎの印だと、
+   モデルが読む criteria に書いてあるか。平叙と疑問が別の選択肢になっているか。 */
+test('breath candidates carry their own meaning to the model, statement and question apart',()=>{
+  reset();
+  const t='作れちゃうんじゃないの、そこがまた面白いところでな、日本は';
+  const i=input({text:t,stableLength:t.length,breaths:true});
+  const s=D().stateOf(card(),{},i,D().rules(i),800,Date.now());
+  const q=P().questions(s).boundary_choice.criteria,off=t.indexOf('、')+1;
+  assert.match(q['C_PAUSE_Q_'+off].what,/question mark/);
+  assert.match(q['C_PAUSE_S_'+off].what,/full stop/);
+  assert.match(q['C_PAUSE_Q_'+off].what,/only marks the breath/);
+  assert.equal(q['C_PAUSE_Q_'+off].before.slice(-4),'ないの、');
+  assert.ok(q.HOLD,'HOLD is still offered');
+});
+test('an answer that arrives is kept for carrying, with the part start it was measured from',async()=>{
+  reset({turnDecisionProvider:'jev-direct'});
+  const i=input(),s=D().stateOf(card(),{start:7},i,D().rules(i),800,Date.now());
+  fetchImpl=reply(wire(s));
+  D().observe(s);
+  await new Promise(r=>setTimeout(r,20));
+  const r=D()._recent[s.speakerKey];
+  assert.ok(r,'the answer is remembered per speaker');
+  assert.equal(r.segmentStart,7);
+  assert.equal(r.hit.boundary.choice,firstId(s));
+  assert.equal(P().project(s).segmentStart,undefined,'the part start is internal and is not sent to the model');
+});
+test('the breath criteria are part of the question set hash',()=>{
+  reset();D()._qsh=null;
+  const before=D().questionSetHash(),saved=P().PAUSE_CRITERIA.C_PAUSE_Q.what;
+  P().PAUSE_CRITERIA.C_PAUSE_Q.what=saved+' ';D()._qsh=null;
+  assert.notEqual(D().questionSetHash(),before,'changing what the model reads must invalidate calibration');
+  P().PAUSE_CRITERIA.C_PAUSE_Q.what=saved;D()._qsh=null;
+});
+test('an answer choosing a breath candidate is accepted by the normalizer',()=>{
+  reset();
+  const t='作れちゃうんじゃないの、そこがまた面白いところでな、日本は';
+  const i=input({text:t,stableLength:t.length,breaths:true});
+  const s=D().stateOf(card(),{},i,D().rules(i),800,Date.now()),id='C_PAUSE_Q_'+(t.indexOf('、')+1);
+  const probs={HOLD:0.05};probs[id]=0.95;
+  const n=P().normalize({decisionId:'d',boundary:{choice:id,confidence:0.9,probabilities:probs},
+    turnState:{choice:'CONTINUING',confidence:0.8},safeToSpeak:0.3,repairLikelihood:0.05},s,
+    {provider:'jev-direct',model:'jev-1.13.0',semantics:'native_calibrated',latencyMs:200,questionSetHash:'qs'});
+  assert.ok(n,'the id is one of the offered candidates');
+  assert.equal(n.boundary.choice,id);
 });
 /* INV-12。途中結果が伸びている最中は聞かない。答えは質問した revision にしか
    使えないので、Web Speech の途中結果（約100msごとに版が進む）では往復のあいだに
