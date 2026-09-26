@@ -782,8 +782,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.26';
-var APP_BUILD = '20260926-v14926-webspeech-breaths';
+var APP_VERSION = 'v1.49.27';
+var APP_BUILD = '20260926-v14927-webspeech-60s-join';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -13713,6 +13713,18 @@ function segUpdate(e,text,final){
    segWebResult が同じ記号をかけ直す。かけ直さないと、確定した本文が次の結果で
    「、」へ戻り、確定後の訂正として扱われてしまう。位置は前半の安定した部分なので、
    後から動かない。 */
+/* Aivis へは文の終わりで区切って渡す。その「文の終わり」の判定。記号で終わって
+   いなくても、Rules が語尾で文末と判定して確定した部分（semantic-ending）と、
+   後ろの本文が文末記号で始まっている部分は文の終わりとして扱う。Web Speech では
+   「…2件だけです」を確定した後の結果で空白が「。」になり、その「。」は次の部分の
+   先頭に入る。記号だけを見ていたので、次の文が確定するまで読み上げが止まっていた
+   （v1.49.26実測で 8.2秒・3.3秒・8.4秒）。 */
+function segPartEndsSentence(q,useSource){
+  var s=q.segment,b=q.card.segment,text=useSource?s.sourceText:s.translationText||'';
+  if(/[。！？!?][\s」』）]*$/.test(text)||/\.[\s"')]*$/.test(text)||b.final)return true;
+  if((s.commitReason||[]).indexOf('semantic-ending')>=0)return true;
+  return typeof b.text==='string'&&s.end>0&&/^[。！？!?]/.test(b.text.slice(s.end));
+}
 function segApplyMark(e,pos,mark){
   var b=e&&e.segment;if(!b||b.text.charAt(pos)!=='、')return false;
   b.text=b.text.slice(0,pos)+mark+b.text.slice(pos+1);
@@ -13965,9 +13977,7 @@ function segPump(){
       }
       // Prefer full sentences for Aivis, even if Fast translation commits at commas.
       var cut=0;
-      group.forEach(function(q,i){var text=useSource?q.segment.sourceText:q.segment.translationText||'';
-        if(/[。！？!?][\s」』）]*$/.test(text)||/\.[\s"')]*$/.test(text)||q.card.segment.final)cut=i+1;
-      });
+      group.forEach(function(q,i){if(segPartEndsSentence(q,useSource))cut=i+1;});
       if(cut&&cut<group.length)group=group.slice(0,cut);
       else if(!cut&&(useSource?source:target).length<500&&Date.now()-(group[group.length-1].card.segment.lastUpdate||0)<1500){segTtsWait(j,'sentence-boundary');return;}
       source=group.map(function(q){return q.segment.sourceText;}).join('');
@@ -14107,6 +14117,22 @@ function segWebJoin(parts){
     out+=t;});
   return out;
 }
+/* Chrome は話し続けていても約60秒で結果を確定させる（v1.49.26実測：3枚のカードが
+   59.3／60.0／60.1秒）。その位置は文の途中でもかまわないので、確定のたびにカードを
+   閉じると「…全ての操作を。」と次のカード「確認するモード、で始まると…」のように、
+   文の途中でカードが割れ、閉じたほうには存在しない「。」まで付く。確定した本文が
+   文末で終わっていなければ、すぐには閉じずに少し待ち、次の結果が来たら同じカードへ
+   つなぐ。来なければそのまま閉じる。 */
+var SEG_WEB_JOIN_MS=1500;
+function segWebHoldable(e,shown,lang){
+  var tail=segSemanticTail(shown,lang),age=Date.now()-(Number(e&&e.startedAt)||Date.now());
+  return tail==='continuing'||(/^ja/.test(String(lang||''))&&tail==='neutral')||age>=50000;
+}
+function segWebRelease(owner){
+  var h=owner&&owner._webHold;if(!h)return;
+  owner._webHold=null;clearTimeout(h.timer);
+  if(owner._webCard===h.e){segWebClose(owner,h.e,h.text,h.seat,h.raw);owner._webStart=h.n;}
+}
 function segWebClose(owner,e,text,seat,raw){
   if(CFG.prosodyOn)attachProsody(e,micProsodySnapshot(raw,false,seat));
   segUpdate(e,text,true);
@@ -14120,6 +14146,7 @@ function segWebResult(owner,ev,seat){
   /* 閉じた result は二度と読まない。一覧が縮んでも先頭へ戻すと、古い発話を作り直してしまう。 */
   if(!(owner._webStart>=0))owner._webStart=0;
   if(owner._webStart>n)owner._webStart=n;
+  if(owner._webHold){clearTimeout(owner._webHold.timer);owner._webHold.cleared=true;}
   for(var pass=0;pass<2;pass++){
     var start=owner._webStart,e=owner._webCard||null,parts=[],finals=0,i;
     for(i=start;i<n;i++){parts.push(String((list[i][0]||{}).transcript||''));if(list[i].isFinal&&finals===i-start)finals++;}
@@ -14128,7 +14155,22 @@ function segWebResult(owner,ev,seat){
     if(!e){e=addEntry(seat,'',true);e.webSpeech=true;owner._webCard=e;}
     owner._webParts=parts.length;
     var shown=segWebMarks(e,webSpeechPunct(raw,lang));
-    if(allFinal){segWebClose(owner,e,punctuateTranscript(shown,lang),seat,raw);owner._webStart=n;return true;}
+    if(allFinal){
+      if(segWebHoldable(e,shown,lang)){
+        var was=owner._webHold;
+        owner._webHold={e:e,text:punctuateTranscript(shown,lang),raw:raw,n:n,seat:seat,
+          timer:setTimeout(function(){segWebRelease(owner);},SEG_WEB_JOIN_MS)};
+        if(!was||was.e!==e||was.n!==n)dlog('stt','webspeech-final-held',{cardId:e.id,chars:raw.length,
+          tail:segSemanticTail(shown,lang),ageMs:Date.now()-(Number(e.startedAt)||Date.now()),waitMs:SEG_WEB_JOIN_MS});
+        segUpdate(e,shown,false);return true;
+      }
+      owner._webHold=null;
+      segWebClose(owner,e,punctuateTranscript(shown,lang),seat,raw);owner._webStart=n;return true;
+    }
+    if(owner._webHold&&owner._webHold.cleared){
+      dlog('stt','webspeech-final-joined',{cardId:e.id,results:parts.length,chars:raw.length});
+      owner._webHold=null;
+    }
     if(finals>0){
       var head=segWebMarks(e,webSpeechPunct(segWebJoin(parts.slice(0,finals)).trim(),lang));
       var done=e.segments.filter(function(x){return x.committedAt;}),end=done.length?done[done.length-1].end:0;
@@ -14143,6 +14185,7 @@ function segWebResult(owner,ev,seat){
 }
 function segWebEnd(owner){
   if(!owner)return;
+  segWebRelease(owner);
   var e=owner._webCard;
   if(e&&e.segment&&!e.segment.final&&!e.segment.cancelled)segUpdate(e,e.srcText,true);
   owner._webCard=null;owner._webStart=0;
