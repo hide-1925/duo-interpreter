@@ -2203,7 +2203,7 @@ function duoLiveAssignSeat(engine,entry,text){
 /* Web会議・動画の入力元（B）と、実際に話されている言語は別の属性。
    カードの話者はBのまま保ち、認識本文から言語だけを更新する。 */
 function duoShouldAutoDetectInput(seat){
-  if(!S.autoMode||!duoSession||!['web','many_to_many'].includes(duoSession.presetId))return false;
+  if(!S.autoMode||CFG.langA===CFG.langB||!duoSession||!['web','many_to_many'].includes(duoSession.presetId))return false;
   var endpoint=AudioEndpointManager.forView(seat);
   return !!(endpoint&&endpoint.enabled&&endpoint.type==='system-audio');
 }
@@ -2692,8 +2692,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.30';
-var APP_BUILD = '20260927-v14930-webspeech-stall';
+var APP_VERSION = 'v1.49.31';
+var APP_BUILD = '20260927-v14931-4o-tuning';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -7694,7 +7694,12 @@ function aivisBody(text, seat, fmt, prosody){
   Object.keys(AIVIS_DEFAULTS).forEach(function(k){ if (isNaN(vals[k])) vals[k]=AIVIS_DEFAULTS[k]; });
   var pmap=prosodyMapForTts(prosody,'ja','aivis');
   if (pmap){
-    vals.speaking_rate=prosodyRound(prosodyClamp(vals.speaking_rate*pmap.rate,0.5,2),3);
+    /* 読み上げが話し手に遅れて adaptive が速めているときは、Prosody で遅くしない。
+       v1.49.29 の記録では、遅れが30秒近い最中に 0.82倍・0.9倍が何度もかかり、
+       話速 1.8 が実質 1.48〜1.62 になっていた。速める方向と抑揚・音量はそのまま。 */
+    var prate=SEG.dispatchRate>1&&pmap.rate<1?1:pmap.rate;
+    vals.speaking_rate=prosodyRound(prosodyClamp(vals.speaking_rate*prate,0.5,2),3);
+    if(prate!==pmap.rate)try{ Object.defineProperty(body,'_prosodyRateHeld',{value:pmap.rate,enumerable:false}); }catch(e){}
     vals.tempo_dynamics=prosodyRound(prosodyClamp(vals.tempo_dynamics*pmap.dynamics,0,2),3);
     vals.volume=prosodyRound(prosodyClamp(vals.volume*pmap.volume,0,2),3);
     try{ Object.defineProperty(body,'_prosodyMap',{value:pmap,enumerable:false}); }catch(e){}
@@ -7745,7 +7750,8 @@ function aivisSpeakBlob(text, lang, seat, prosody){
   var t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150),seat);
   var body = aivisBody(text, seat, 'mp3',prosody), uuid = body.model_uuid;
   logProsodyMap(body._prosodyMap,{effectiveRate:body.speaking_rate==null?1:body.speaking_rate,
-    effectiveDynamics:body.tempo_dynamics==null?1:body.tempo_dynamics,effectiveVolume:body.volume==null?1:body.volume});
+    effectiveDynamics:body.tempo_dynamics==null?1:body.tempo_dynamics,effectiveVolume:body.volume==null?1:body.volume,
+    slowHeld:body._prosodyRateHeld||null});
   var st = aivisStyleFor(seat), rate = parseFloat(CFG.aivisRate);
   aivisLimitedFetch(AIVIS_URL, {
     method:'POST',
@@ -7828,7 +7834,8 @@ function aivisSpeakStream(text, lang, seat, prosody){
   var stLog = (body.style_id == null) ? '既定' : String(body.style_id);
   var twLog = aivisBodyTweaks(body);
   logProsodyMap(body._prosodyMap,{effectiveRate:body.speaking_rate==null?1:body.speaking_rate,
-    effectiveDynamics:body.tempo_dynamics==null?1:body.tempo_dynamics,effectiveVolume:body.volume==null?1:body.volume,stream:true});
+    effectiveDynamics:body.tempo_dynamics==null?1:body.tempo_dynamics,effectiveVolume:body.volume==null?1:body.volume,stream:true,
+    slowHeld:body._prosodyRateHeld||null});
   var guardMs = Math.min(120000, 12000 + text.length * 200);
   var finish = ttsGuard(text, guardMs,seat);
   var myGen = finish.gen;
@@ -11001,7 +11008,8 @@ FourOFileBuffer.prototype.submit=function(blob,seat,prosody,meta){
       if(S.autoMode&&micSeats().length>1&&q.text){q.seat=guessSeatFromText(q.text);q.srcLang=langOf(q.seat);q.dstLang=langOf(q.seat==='A'?'B':'A');}
       e.seat=q.seat;e.srcLang=q.srcLang;e.dstLang=q.dstLang;if(q.autoLanguage){duoAssignRecognizedLanguage(e,q.text);q.srcLang=e.srcLang;q.dstLang=e.dstLang;}
       if(S.entries.indexOf(e)>=0)fourOCardText(e,q.text,false,'ordered-result-wait');
-      dlog('stt','4o-file-result',{request:q.id,model:self.model,cardId:e.id,chars:q.text.length,ms:Date.now()-q.created,cut:meta.reason,seconds:meta.seconds});
+      dlog('stt','4o-file-result',{request:q.id,model:self.model,cardId:e.id,chars:q.text.length,ms:Date.now()-q.created,cut:meta.reason,seconds:meta.seconds,
+        language:sttAutoDetect({autoLanguage:q.autoLanguage})?'auto':q.lang});
     }
     self.drain();
   }
@@ -11162,8 +11170,8 @@ function xaiSTT(blob, lang,requestOptions){
   if (!key) return Promise.reject(new Error('xAI のAPIキーが未設定です'));
   var ext = blob.type.indexOf('mp4')>=0 ? 'mp4' : (blob.type.indexOf('ogg')>=0 ? 'ogg' : 'webm');
   var fd = new FormData();
-  /* AUTO かつマイクを2人で共有している場合は言語を固定しない */
-  var autoDetect = !!requestOptions.autoLanguage || (S.autoMode && micSeats().length > 1);
+  /* AUTO で2人の言語が違う場合は言語を固定しない */
+  var autoDetect = sttAutoDetect(requestOptions);
   var lc = autoDetect ? '' : (XAI_STT_LANGS[lang] || '');
   if (lc) fd.append('language', lc);
   fd.append('format', 'true');
@@ -11178,6 +11186,14 @@ function xaiSTT(blob, lang,requestOptions){
   }).then(chk).then(function(j){ return (j && j.text) || ''; });
 }
 
+/* 音声認識へ言語を伝えずに送るか。AUTO で、しかも2人の言語が違うときだけ。
+   同じ言語なら当てる必要が無い。v1.49.29 の記録（言語A・B とも日本語、AUTO）では
+   言語を伝えずに送っていて、日本語のニュース音声がウクライナ語・トルコ語・韓国語で
+   返ったカードが4枚あった。 */
+function sttAutoDetect(requestOptions){
+  if(CFG.langA===CFG.langB)return false;
+  return !!(requestOptions&&requestOptions.autoLanguage)||(S.autoMode&&micSeats().length>1);
+}
 function sttCall(blob, lang,requestOptions){
   requestOptions=requestOptions||{};
   var p = CFG.sttProvider;
@@ -11200,11 +11216,13 @@ function sttCall(blob, lang,requestOptions){
   var diarize = p === 'openai' && /^gpt-4o-transcribe-diarize(?:$|-)/.test(mdl);
   /* 話者ラベルを受け取るにはdiarized_jsonが必須。promptはこのモデルでは非対応。 */
   if (diarize) fd.append('response_format','diarized_json');
-  // AUTO かつマイクを2人で共有している場合は language を送らず、AI側に言語を自動判定させる
-  var autoDetect = !!requestOptions.autoLanguage || (S.autoMode && micSeats().length > 1);
+  // AUTO で2人の言語が違う場合は language を送らず、AI側に言語を自動判定させる。
+  // その代わり、どちらかの言語であることは prompt で伝える（それ以外の言語で返させない）。
+  var autoDetect = sttAutoDetect(requestOptions);
   if (!autoDetect) fd.append('language', L(lang).g.split('-')[0]);
   var terms = CFG.glossary.slice(0,60).map(function(r){ return r.s; }).filter(Boolean).join(', '), hints=[];
   hints.push('Transcribe verbatim with natural punctuation. Do not add, omit, paraphrase, or translate words.');
+  if (autoDetect) hints.push('The speech is in '+L(CFG.langA).en+' or '+L(CFG.langB).en+'.');
   if (terms) hints.push('Terminology: '+terms);
   if (hints.length && !diarize) fd.append('prompt', hints.join('\n'));
   return fetch((STT_BASE[p]||STT_BASE.openai) + '/audio/transcriptions', {
@@ -13839,7 +13857,7 @@ var DIAG_ROWS = [
   {section:"settings",order:19,label:'声 A / B',value:function(ctx){ return ctx.rtNativeAudio ? '(外部TTS設定は未使用)' : ttsSeatVoices(); }},
   {section:"settings",order:20,label:'認識文字表示',value:function(ctx){ return 'STT受信ごとにカードへ反映／確定・翻訳・TTSは独立したタイマーで進行'; }},
   {section:"settings",order:21,label:'逐次エコー除外',value:function(ctx){ return '部分単位の自動音声のみ抑制（認識文字表示は維持）'; }},
-  {section:"settings",order:22,label:'Aivis送信制御',value:function(ctx){ return '全合成経路で直近60秒10回（境界余裕0.1秒）・固定間隔なし／429はサーバー指定待機・再試行2回／同声・同言語・同一音声設定を最大500文字でまとめる'; }},
+  {section:"settings",order:22,label:'Aivis送信制御',value:function(ctx){ return '全合成経路で直近60秒10回（境界余裕0.1秒）・固定間隔なし／429はサーバー指定待機・再試行2回／同声・同言語・同一音声設定を最大500文字でまとめる（読み上げの遅れ'+SEG_AIVIS_LOOSE_DEBT+'秒以上はカードごとのProsodyの違いを無視）'; }},
   {section:"settings",order:23,label:'翻訳の区切り',value:function(ctx){ return segSemanticEnabled()?'文末優先（言語別ルール・文字数上限・最大3秒の文字停止待ち）':'速度優先（従来）'; }},
   {section:"settings",order:24,label:'翻訳の文脈',value:function(ctx){ return '対象より前の原文のみ／現在カードの全文と未来の発話は含めない'; }},
   {section:"settings",order:25,label:'自動適応',value:function(ctx){ return CFG.segmentMode==='adaptive'?segAdaptiveLabel():'OFF（固定モード）'; }},
@@ -16050,8 +16068,15 @@ function segEarlierOpen(j){
     !e.segment.audioMuted&&segAudioAllowed(e);});
 }
 // Compare only settings sent to Aivis; timestamps/confidence do not change the voice.
-// Deliberately keep differing rates, dynamics and volumes in separate requests.
-function segAivisVoiceKey(e){return JSON.stringify(aivisBody('',e.seat,'mp3',e.prosody));}
+// Differing rates, dynamics and volumes stay in separate requests while playback keeps up.
+/* 読み上げの遅れ（見積もり）が SEG_AIVIS_LOOSE_DEBT 秒以上なら、カードごとの Prosody の違いは
+   見ずに、声・言語・基本の話し方が同じならまとめて送る。まとめた組は先頭カードの
+   Prosody で読む。v1.49.29 の記録（gpt-4o-mini、ニュース音声）では、読み上げ待ちの
+   カードが9〜16枚ある場面でも Prosody が1枚ずつ違うため64回中60回が1枚ずつの要求になり、
+   直近60秒の要求が最大25回（上限10回）に達してクレジットを使い、先読みも52回見送った。
+   遅れていないときは、次のカードがまだ来ていないことが多く、まとめる相手がほぼ無い。 */
+var SEG_AIVIS_LOOSE_DEBT=4;
+function segAivisVoiceKey(e,loose){return JSON.stringify(aivisBody('',e.seat,'mp3',loose?null:e.prosody));}
 /* Aivis へ文の途中で渡さないための待ちに上限を置く。待ちは「カードが1.5秒以内に
    伸びた」あいだ続くので、句点の来ない話し方では、文字が止まるか500字に届くまで
    読み上げが止まる（実測 平均3.4秒・最長15秒）。Aivis は最初の音まで0.2〜0.5秒なので、
@@ -16073,14 +16098,14 @@ function segSentenceWaitLeft(j,now,dry){
    実際に送る組の決め方が食い違わない。queue は segQueueCompare で並べてある前提。 */
 function segAivisGroup(j,useSource,now,dry){
   var e=j.card,s=j.segment,group=[j],source=s.sourceText,target=s.translationText||'';
-  var voiceKey=segAivisVoiceKey(e),start=SEG.queue.indexOf(j);
+  var loose=segDebt()>=SEG_AIVIS_LOOSE_DEBT,voiceKey=segAivisVoiceKey(e,loose),start=SEG.queue.indexOf(j);
   // Collect adjacent ready parts with identical effective synthesis settings.
   for(var n=start+1;n>0&&n<SEG.queue.length;n++){
     var next=SEG.queue[n],ns=next.segment,ne=next.card;
     if(segEarlierOpen(next))break;
     if(next.partOnly||j.partOnly||!segManualJobValid(next)||next.cancelled||next.epoch!==j.epoch||ne.segment.cancelled||!!next.manual!==!!j.manual||
       ne.seat!==e.seat||ne.srcLang!==e.srcLang||ne.dstLang!==e.dstLang||JSON.stringify(ne.origin)!==JSON.stringify(e.origin)||((ne.speaker&&ne.speaker.id)!==(e.speaker&&e.speaker.id))||
-      segAivisVoiceKey(ne)!==voiceKey||
+      segAivisVoiceKey(ne,loose)!==voiceKey||
       (!useSource&&(!ns.translationReady||ns.translationError))||(!next.manual&&!segAudioAllowed(ne)))break;
     var more=useSource?ns.sourceText:ns.translationText||'';
     if(!(more.trim())||(useSource?source:target).length+more.length+(useSource?0:1)>500)break;
@@ -16092,7 +16117,7 @@ function segAivisGroup(j,useSource,now,dry){
   if(cut&&cut<group.length)group=group.slice(0,cut);
   else if(!cut&&(useSource?source:target).length<500&&now-(group[group.length-1].card.segment.lastUpdate||0)<1500&&
     segSentenceWaitLeft(j,now,dry)>0)return {wait:true,group:group};
-  return {wait:false,group:group,
+  return {wait:false,group:group,loose:loose,
     source:group.map(function(q){return q.segment.sourceText;}).join(''),
     target:group.map(function(q){return q.segment.translationText||'';}).filter(Boolean).join(' ')};
 }
@@ -16153,7 +16178,7 @@ function aivisPrefetchPlanned(j,useSource){
     return !q.cancelled&&q.epoch===SEG.epoch&&!q.card.segment.cancelled&&SEG.queue.indexOf(q)>=0&&!q.segment.dispatched&&
       t===p.parts[i]&&(useSource||(q.segment.translationReady&&!q.segment.translationError))&&segAudioAllowed(q.card);});
   if(!ok){aivisPrefetchDrop('text-changed');return null;}
-  return {wait:false,group:p.jobs.slice(),rate:p.rate,
+  return {wait:false,group:p.jobs.slice(),rate:p.rate,loose:!!p.loose,
     source:p.jobs.map(function(q){return q.segment.sourceText;}).join(''),
     target:p.jobs.map(function(q){return q.segment.translationText||'';}).filter(Boolean).join(' ')};
 }
@@ -16178,7 +16203,7 @@ function segPrefetchPlan(now){
   if(!CFG.aivisStream||!window.ReadableStream||!aivisKey()||!aivisModelFor(e.seat))return null;
   var ctx=ttsAudioCtx();if(!ctx||!ttsCtxCanRoute(ctx,e.seat))return null;
   var g=segAivisGroup(j,useSource,now,true);if(g.wait)return null;
-  return {jobs:g.group,text:useSource?g.source:g.target,useSource:useSource,seat:e.seat,prosody:e.prosody,
+  return {jobs:g.group,text:useSource?g.source:g.target,useSource:useSource,seat:e.seat,prosody:e.prosody,loose:!!g.loose,
     rate:e.segment.mode==='adaptive'?segAdaptiveState(e,debt).rate:1,
     parts:g.group.map(function(q){return useSource?q.segment.sourceText:q.segment.translationText||'';})};
 }
@@ -16187,7 +16212,7 @@ function aivisPrefetchStart(plan,now){
   try{body=aivisBody(plan.text,plan.seat,'wav',plan.prosody);}finally{SEG.dispatchRate=prev;}
   var key=JSON.stringify(body),ctrl=null;try{ctrl=new AbortController();}catch(e){}
   var p={key:key,gen:ttsGen,epoch:SEG.epoch,at:now,ctrl:ctrl,jobs:plan.jobs,parts:plan.parts,
-    useSource:plan.useSource,rate:plan.rate,chars:plan.text.length,headersAt:0};
+    useSource:plan.useSource,rate:plan.rate,loose:!!plan.loose,chars:plan.text.length,headersAt:0};
   p.promise=aivisLimitedFetch(AIVIS_URL,{method:'POST',signal:ctrl&&ctrl.signal,
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+aivisKey()},body:key},
     {guardMs:Math.min(120000,12000+plan.text.length*200)});
@@ -16261,7 +16286,7 @@ function segPump(){
         continue;
       }
     }
-    var group=[j],source=s.sourceText,target=s.translationText||'',planned=null;
+    var group=[j],source=s.sourceText,target=s.translationText||'',planned=null,looseVoice=false;
     if(ttsProv().segmentJapaneseBatch&&lang==='ja'&&!j.forceBrowserTts){
       /* ここで逃がすのは、こちら側の数え（＝予測）では無く aivisOverLimit が
          「回す」と言っている場合か、Aivis が429で実際に止めている場合だけ。
@@ -16284,7 +16309,7 @@ function segPump(){
       else planned=aivisPrefetchPlanned(j,useSource);
       var g=planned||segAivisGroup(j,useSource,Date.now(),false);
       if(g.wait){segTtsWait(j,'sentence-boundary');return;}
-      group=g.group;source=g.source;target=g.target;
+      group=g.group;source=g.source;target=g.target;looseVoice=!!g.loose&&group.length>1;
     }
     var rate=planned?planned.rate:e.segment.mode==='adaptive'&&ttsProv().segmentJapaneseBatch&&lang==='ja'?segAdaptiveState(e,segDebt()).rate:1;
     segTtsResume(j);
@@ -16297,7 +16322,8 @@ function segPump(){
     SEG.active=j;j.started=false;j.finished=false;segRefreshPlayback(j);
     var proxy={id:e.id,utteranceId:e.utteranceId,origin:e.origin,seat:e.seat,srcLang:e.srcLang,dstLang:e.dstLang,srcText:source,dstText:target,prosody:e.prosody,speaker:e.speaker,startedAt:e.startedAt,ts:e.ts,forceBrowserTts:!!j.forceBrowserTts};
     dlog('segment','dispatch',{cardId:e.id,seq:s.seq,manualReplay:!!j.manual,order:j.dispatchOrder,members:group.map(function(q){return q.segment.id;}),
-      text:j.speechText,parts:group.length,chars:j.speechText.length,debtEstimateSeconds:segDebt(),overlap:overlap,schedulerRate:rate});
+      text:j.speechText,parts:group.length,chars:j.speechText.length,debtEstimateSeconds:segDebt(),overlap:overlap,schedulerRate:rate,
+      prosodyMerged:looseVoice});
     SEG.dispatchRate=rate;
     try{
       if(j.manual){
