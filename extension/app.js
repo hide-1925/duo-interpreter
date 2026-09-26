@@ -572,6 +572,20 @@ function turnDecisionInstall(){
       +'採用0件）。テキストがこの時間止まってから聞けば、区切りの候補になる息継ぎで'
       +'だけ質問が飛びます。確定した文（STT final）は待たずにすぐ聞きます。</p>'
     +'</details>'
+    +'<label>gpt-live のカードを閉じる判断 <select id="turnDecisionLiveClose">'
+      +'<option value="shadow">記録だけ（既定）</option><option value="on">判断層に従って早く閉じる</option>'
+      +'<option value="off">使わない</option>'
+    +'</select></label>'
+    +'<details class="settings-help"><summary>何が変わるか</summary>'
+      +'<p>gpt-live はカードを固定の待ちで閉じます（文末らしいとき0.65秒、どちらとも言えない'
+      +'とき0.95秒、続きそうなとき1.5秒）。「。」で終わる部分はその前に確定しますが、'
+      +'<b>記号で終わらない最後の部分は、カードが閉じるまで確定も読み上げもされません。</b>'
+      +'判断層が「話し終わった」とはっきり答えていれば、この待ちを短くできます（最短0.3秒）。</p>'
+      +'<p>新しい問い合わせはしません。区切りのために受け取った答えを読むだけです。'
+      +'「記録だけ」では閉じる時刻を変えず、診断の「gpt-live の区切り（判断層）」に'
+      +'従っていれば何ms早かったかと、そう答えた後に話が続いた回数を残します。'
+      +'「早く閉じる」は、その言語の判断モードが active のときだけ効きます。</p>'
+    +'</details>'
     +'<label>読み上げ開始の待ち上限 ms <input id="turnFloorMaxWaitMs" type="number" min="500" max="10000" step="100"></label>'
     +'<label>上限に達したら <select id="turnFloorExpiry">'
       +'<option value="speak">読み上げる</option><option value="drop">字幕だけにする</option>'
@@ -620,7 +634,7 @@ function turnDecisionInstall(){
 
   ['turnDecisionMode','turnDecisionLangEn','turnDecisionLangJa','turnDecisionProsody',
    'turnDecisionContextTurns','turnDecisionCommitWaitMs','turnDecisionHoldMaxWaitMs',
-   'turnDecisionMaxAsksPerRevision','turnDecisionSettleMs','turnFloorMaxWaitMs','turnFloorExpiry','turnFloorSafeToSpeak',
+   'turnDecisionMaxAsksPerRevision','turnDecisionSettleMs','turnDecisionLiveClose','turnFloorMaxWaitMs','turnFloorExpiry','turnFloorSafeToSpeak',
    'turnDecisionProvider','turnDecisionModel','turnDecisionBaseUrl',
    'turnTraceMode','turnDecisionRawLog'].forEach(function(prop){
     var spec=CONFIG_BY_PROP[prop];if(!spec||!$(spec.el))return;
@@ -782,8 +796,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.27';
-var APP_BUILD = '20260926-v14927-webspeech-60s-join';
+var APP_VERSION = 'v1.49.28';
+var APP_BUILD = '20260926-v14928-live-turn-close';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -1005,6 +1019,8 @@ var CONFIG_SCHEMA = [
   { prop:"turnDecisionHoldMaxWaitMs", key:'di.tdHoldMax', embed:'turnDecisionHoldMaxWaitMs', def:'2000', portable:true, el:"turnDecisionHoldMaxWaitMs" },
   /* テキストが止まってから聞くまでの ms。途中結果で版が進み続ける間は聞かない。 */
   { prop:"turnDecisionSettleMs", key:'di.tdSettle', embed:'turnDecisionSettleMs', def:'200', portable:true, el:"turnDecisionSettleMs" },
+  /* INV-13。gpt-live のカードを turn_state で早く閉じるか。既定は記録だけ。 */
+  { prop:"turnDecisionLiveClose", key:'di.tdLiveClose', embed:'turnDecisionLiveClose', def:'shadow', coerce:function(raw){ return /^(on|off)$/.test(raw) ? raw : 'shadow'; }, portable:true, el:"turnDecisionLiveClose" },
   /* 同じ revision を聞き直す上限回数。無音が伸びるだけの往復を止める。 */
   { prop:"turnDecisionMaxAsksPerRevision", key:'di.tdAsks', embed:'turnDecisionMaxAsksPerRevision', def:'3', portable:true, el:"turnDecisionMaxAsksPerRevision" },
   /* 床で safe_to_speak を使うか。assist/active のときだけ働き、重なりを許容する
@@ -11839,6 +11855,16 @@ var DIAG_ROWS = [
       +' / 到達不能 '+(s.unreachable||0)+' / 適用 '+(s.applied||0)
       +'　保持tick '+(s.holdTicks||0)+' / 打切り '+(s.holdExpired||0);
   }},
+  /* INV-13 の効果。shadow では「従っていれば」、on では実際に早めた分。 */
+  {section:"settings",order:29.45,label:'gpt-live の区切り（判断層）',value:function(ctx){
+    if(!isLiveTranscribe())return '(未使用)';
+    var s=TurnDecision.stats||{},m=String(CFG.turnDecisionLiveClose||'shadow'),on=m==='on';
+    if(m==='off')return '使わない';
+    var n=on?(s.liveCloseEarly||0):(s.liveCloseWould||0),k=s.liveCloseSavedN||0;
+    return (on?'早く閉じた ':'従えば早く閉じた ')+n+'回 / 平均 '+(k?Math.round((s.liveCloseSavedMs||0)/k)+'ms 早い':'—')
+      +' / その後に話が続いた '+(s.liveCloseResumed||0)+'回'
+      +(on&&TurnDecision.modeFor('en')!=='active'&&TurnDecision.modeFor('ja')!=='active'?'（判断モードが active ではないので記録だけ）':'');
+  }},
   {section:"settings",order:30,label:'逐次TTS待ち音声',value:function(ctx){ return segDebt().toFixed(1)+'秒（文字数による推定）'; }},
   {section:"settings",order:31,label:'逐次計測の定義',value:function(ctx){ return 'L1=最初の認識文字から、L2=commitからの代理値。音響的な意味単位終了時刻は未計測。'; }},
   {section:"settings",order:32,label:'TTSストリーミング',value:function(ctx){ return ctx.rtNativeAudio ? '(外部TTS設定は未使用)' : ttsStreamCapability(CFG.ttsMode).text; }},
@@ -12126,7 +12152,11 @@ function segEnabled(){return CFG.segmentMode!=='off' && /^(balanced|fast|adaptiv
    INV-12 判断層へ聞くのは、テキストが turnDecisionSettleMs（既定200ms・0で無効）
           止まってから。答えは質問した revision にしか適用できないので、途中結果が
           伸び続ける間の質問は必ず捨てられる（v1.49.23 の実測で Web Speech＋active、
-          約130秒に送信525／採用0）。STT final は待たない。   */
+          約130秒に送信525／採用0）。STT final は待たない。
+   INV-13 gpt-live のカードを判断層の turn_state で早く閉じるのは、
+          turnDecisionLiveClose=on かつその言語が active のときだけ。区切りのために
+          既に受け取った答えを読むだけで、新しく聞かない。既定の shadow は閉じる時刻を
+          変えず、早まった時間と、その後に話が続いた回数だけを数える。   */
 /* ── Provider adapters（Phase 2）─────────────────────────────────────────
    判断契約を Duo が所有し、ベンダーを adapter で差し替える。既定の
    turnDecisionProvider='rules' では registry を一切引かないので、shadow でも
@@ -13095,10 +13125,87 @@ var TurnDecision={
     if(!ms||state.sttFinal||state.lastDeltaMs==null)return false;
     return state.lastDeltaMs<ms;
   },
+  /* ── gpt-live のカードを閉じる判断（INV-13）────────────────────────────
+     gpt-live はカードを固定の待ちで閉じる（文末らしい0.65秒・どちらとも言えない
+     0.95秒・続きそう1.5秒）。「。」で終わる部分は Rules がその前に確定するが、
+     記号で終わらない最後の部分は、カードが閉じるまで確定も読み上げもされない。
+     turn_state が「話し終わった」とはっきり答えていれば、この待ちを短くできる。
+     新しく聞くことはしない。区切りのために既に払った答えを読むだけなので、通信は
+     増えない。既定は shadow で、閉じる時刻は変えずに「従っていれば何ms早かったか」と
+     「そう答えた後に話が続いた回数」だけを数える。早く閉じるのは
+     turnDecisionLiveClose=on かつ、その言語の判断モードが active のときだけ。 */
+  LIVE_CLOSE_MIN_IDLE:300,
+  liveCloseMode:function(lang){
+    var m=String(CFG.turnDecisionLiveClose||'shadow');
+    if(m==='off')return 'off';
+    var mode=this.modeFor(lang);
+    if(mode==='off')return 'off';
+    return m==='on'&&mode==='active'?'active':'shadow';
+  },
+  noteTurn:function(state,norm){
+    var t=this._turn||(this._turn={}),keys;
+    t[state.utteranceId]={revision:state.revision,lang:state.sourceLanguage,ts:norm.turnState||{},
+      repair:norm.repairLikelihood,semantics:norm.probabilitySemantics,at:Date.now()};
+    keys=Object.keys(t);if(keys.length>64)delete t[keys[0]];
+  },
+  /* 区切りの commit より厳しくする。閉じたあとの続きは別のカードになり、文の途中で
+     割れるのは利用者が一番嫌う壊れ方なので。確率は COMPLETE そのもので見る。 */
+  liveComplete:function(r,silence,idle){
+    var num=function(v){return typeof v==='number'&&isFinite(v)?v:null;};
+    var ts=r.ts||{},p=ts.probabilities||{},th=this.thresholds(r.lang,r.semantics);
+    if(ts.choice!=='COMPLETE')return false;
+    var min=/^ja/.test(String(r.lang||''))?0.9:0.85;
+    if(r.semantics&&r.semantics!=='native_calibrated')min=Math.min(0.95,min+0.05);
+    var pc=num(p.COMPLETE);if(pc===null||pc<min)return false;
+    var pCont=num(p.CONTINUING);if(pCont!==null&&pCont>th.continuingMax)return false;
+    var rep=num(r.repair);if(rep!==null&&rep>th.repairMax)return false;
+    if(!(idle>=this.LIVE_CLOSE_MIN_IDLE))return false;
+    /* 無音が測れていなければ閉じない。文字が止まっただけでは、話し終わりと言えない。 */
+    if(silence===null||silence===undefined||silence<th.silenceMin)return false;
+    return true;
+  },
+  liveClose:function(e,idle,silence,now){
+    var mode=this.liveCloseMode(e&&e.srcLang);if(mode==='off')return false;
+    var b=e.segment,r=this._turn&&this._turn[e.utteranceId||e.id];
+    if(!b||!r||r.revision!==b.revision||!this.liveComplete(r,silence,idle))return false;
+    if(!b.liveCloseAt||b.liveCloseRevision!==b.revision){
+      b.liveCloseAt=now;b.liveCloseIdle=idle;b.liveCloseRevision=b.revision;
+      if(mode==='shadow'){this.bump('liveCloseWould');
+        dlog('segment','turn-live-close-would',{cardId:e.id,idleMs:idle,silenceMs:Math.round(silence)});}
+    }
+    return mode==='active';
+  },
+  /* 「話し終わった」の後に続きが来たか。句読点だけの delta は続きに数えない。 */
+  liveResumed:function(e,x,now,delta){
+    if(!hasSpeechContent(delta))return;
+    if(x&&x.earlyClosedAt){var gap=now-x.earlyClosedAt;x.earlyClosedAt=0;
+      if(gap<1500){this.bump('liveCloseResumed');
+        dlog('segment','turn-live-close-resumed',{gapMs:gap,mode:'active'});}}
+    var b=e&&e.segment;
+    if(b&&b.liveCloseAt){this.bump('liveCloseResumed');
+      dlog('segment','turn-live-close-resumed',{cardId:e.id,afterMs:now-b.liveCloseAt,mode:'shadow'});b.liveCloseAt=0;}
+  },
+  liveClosed:function(e,x,reason,p,idle,now){
+    var b=e&&e.segment,saved;if(!b)return;
+    if(reason==='turn-complete'){
+      saved=Math.max(0,((p&&p.idle)||0)-idle);
+      this.bump('liveCloseEarly');this.bump('liveCloseSavedN');
+      this.stats.liveCloseSavedMs=(this.stats.liveCloseSavedMs||0)+saved;
+      if(x)x.earlyClosedAt=now;
+      dlog('segment','turn-live-close',{cardId:e.id,idleMs:idle,policyIdleMs:p&&p.idle,savedMs:saved});
+      return;
+    }
+    if(b.liveCloseAt&&b.liveCloseRevision===b.revision){
+      saved=now-b.liveCloseAt;
+      this.bump('liveCloseSavedN');this.stats.liveCloseSavedMs=(this.stats.liveCloseSavedMs||0)+saved;
+      dlog('segment','turn-live-close-shadow',{cardId:e.id,savedMs:saved,jevIdleMs:b.liveCloseIdle,policyReason:reason});
+    }
+  },
   /* 「Jevを呼べたか」ではなく「使える答えが返って適用できたか」を数える。
      送信数だけ見ても、解析で落ちているのか古くて捨てたのか判別できない。 */
   stats:{requested:0,answered:0,parseFailed:0,stale:0,applied:0,unreachable:0,floorHeld:0,
-    holdTicks:0,holdExpired:0},
+    holdTicks:0,holdExpired:0,liveCloseWould:0,liveCloseEarly:0,liveCloseResumed:0,
+    liveCloseSavedN:0,liveCloseSavedMs:0},
   bump:function(k){this.stats[k]=(this.stats[k]||0)+1;},
   /* 答え1件を1回だけ数える。cache は同じ答えを80ms周期で読み直すので、tick で
      数えると送信数と比較できない数になる（v1.49.19実測 送信433／適用2450、
@@ -13245,6 +13352,7 @@ var TurnDecision={
         if(norm.sessionId!=='s'+sessionGen){self.bump('stale');
           dlog('segment','turn-decision-stale',{requestRevision:norm.revision,currentRevision:state.revision,reason:'session'});return;}
         self.bump('answered');self.cache[self.key(state)]=norm;
+        self.noteTurn(state,norm);
         (self._recent||(self._recent={}))[state.speakerKey]={hit:norm,sessionId:state.sessionId,
           utteranceId:state.utteranceId,segmentStart:state.segmentStart,cands:state.candidateBoundaries||[]};
         dlog('segment','turn-decision-result',{latency:norm.latencyMs,choice:norm.boundary.choice,
@@ -13407,6 +13515,11 @@ var TurnDecision={
       if(s)s.floorHint={safeToSpeak:hit.safeToSpeak,at:now,decisionId:hit.decisionId};
       out=this.pick(state,hit,ruleResult,mode==='assist');
       if(!out)return ruleResult;
+      /* 確定した本文（STT final）は、待っても新しい文字が来ない。ここで待てに従うと、
+         HOLD の上限（2秒）まで読み上げを遅らせるだけになる（v1.49.26実測で最後の部分が
+         provider-repair で約0.7秒、gpt-live で早く閉じたカードでも同じ待ちが残った）。
+         位置の答えは採るが、確定した本文を待たせはしない。 */
+      if(input.final&&!out.length)return this.holdClear(e,ruleResult);
     }
     if(out.length)return this.holdClear(e,out);
     return this.holdBounded(e,s,state,out,ruleResult,now);
@@ -13465,7 +13578,7 @@ var TurnDecision={
     Object.keys(this.inflight).forEach(function(k){
       var c=self.inflight[k];if(c&&c.abort){try{c.abort();}catch(err){}}
     });
-    this.cache={};this.inflight={};this.sessionSalt=null;this.circuit={};this._lastSend={};this._confirm={};this._asks={};this._recent={};
+    this.cache={};this.inflight={};this.sessionSalt=null;this.circuit={};this._lastSend={};this._confirm={};this._asks={};this._recent={};this._turn={};
     /* offのときは診断ログも出さない。判断層を切った状態の出力をv1.47.1と揃える。 */
     if(String(CFG.turnDecisionMode||'off')!=='off')
       dlog('segment','turn-decision-reset',{why:why,mode:CFG.turnDecisionMode});
@@ -14207,7 +14320,9 @@ function segLiveBoundaries(engine){
     if(idle>=p.hard)reason='delta-timeout';
     else if(idle>=p.idle&&silence!==null&&silence>=p.silence)reason='audio-pause';
     else if(now-e.startedAt>=30000&&idle>=650)reason='max-duration';
-    if(reason)segLiveClose(engine,id,x,reason,{context:kind,idleMs:idle,silenceMs:silence});
+    if(!reason&&TurnDecision.liveClose(e,idle,silence,now))reason='turn-complete';
+    if(reason){TurnDecision.liveClosed(e,x,reason,p,idle,now);
+      segLiveClose(engine,id,x,reason,{context:kind,idleMs:idle,silenceMs:silence});}
   });
 }
 function segLiveReconcile(engine,x,text){
@@ -14267,6 +14382,7 @@ function segLiveEvent(engine,event,id){
   }
   x.text+=String(event.delta||'');x.lastDeltaAt=now;
   var entry=engine.ensureEntry(x),local=x.text.slice(x.cardOffset||0);
+  TurnDecision.liveResumed(entry,x,now,String(event.delta||''));
   if(!x.segmentLogAt||now-x.segmentLogAt>=1000){
     dlog('stt','live-segment-delta',{item:id,cardId:entry.id,chars:local.length,deltaChars:String(event.delta||'').length,arrivalGapMs:previousDeltaAt?now-previousDeltaAt:null});x.segmentLogAt=now;
   }

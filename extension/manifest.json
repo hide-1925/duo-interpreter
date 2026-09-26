@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.38",
-  "version_name": "1.4.38 HTML v1.49.27 と対。Chrome の60秒確定でカードを割らない／語尾で確定した文の読み上げを待たせない",
+  "version": "1.4.39",
+  "version_name": "1.4.39 HTML v1.49.28 と対。gpt-live のカードを判断層で早く閉じる（既定は記録だけ）／確定した本文を HOLD で待たせない",
   "optional_host_permissions": [
     "https://*/*"
   ],
