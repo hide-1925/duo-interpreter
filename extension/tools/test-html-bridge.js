@@ -24,7 +24,9 @@ function source(){
  return {win,doc,out,c,change:()=>observers.at(-1)(),command:d=>win.dispatchEvent({type:'duo-html-source-command',detail:JSON.stringify(d)})};
 }
 function host(){
- let state={},local={},listener,updated;const calls=[];
+ let state={},local={},listener;const calls=[],updatedAll=[];
+ /* 本物の Chrome と同じく、登録された onUpdated の全部へ配る。 */
+ const updated=(...a)=>updatedAll.forEach(f=>f(...a));
  const tabs=new Map([[1,{id:1,url:'https://example.test/duo.html',title:'Duo',status:'complete',windowId:1}],[2,{id:2,url:'https://video.test/',title:'Video',status:'complete'}]]);
  let failTarget=false,permission=true;
  const chrome={permissions:{contains:async()=>permission},storage:{session:{get:async()=>({duoChromeSession:JSON.parse(JSON.stringify(state))}),set:async d=>{state=d.duoChromeSession;}},local:{get:async()=>local,set:async d=>Object.assign(local,d)}},
@@ -32,7 +34,7 @@ function host(){
  tabs:{query:async()=>[...tabs.values()],get:async id=>{if(!tabs.has(id))throw Error('missing');return tabs.get(id);},
  create:async opts=>{calls.push(['create',opts]);const tab={id:3,url:opts.url,status:'complete'};tabs.set(3,tab);return tab;},
  update:async(id,opts)=>{calls.push(['focus',id,opts]);return tabs.get(id);},
- onRemoved:{addListener(){}},onActivated:{addListener(){}},onUpdated:{addListener:f=>updated=f},
+ onRemoved:{addListener(){}},onActivated:{addListener(){}},onUpdated:{addListener:f=>updatedAll.push(f)},
  sendMessage:async(id,m)=>{calls.push(['message',id,m]);if(failTarget&&id===2)throw Error('target unavailable');return {ok:true,htmlBridgeVersion:'1.4.8'};}},
  windows:{update:async()=>{}},scripting:{insertCSS:async()=>{},executeScript:async args=>{calls.push(['inject',args]);return [{documentId:'doc-1',result:args.func?.name==='configureHtmlTabAudio'?{ok:true,enabled:true}:args.func?.name==='commandHtmlCaptionWindow'?{ok:true,route:'html-main',phase:args.args[1]==='guide'?'awaiting-click':'open',open:args.args[1]!=='guide'}:args.func?(args.func.toString().includes('build:')?{ok:true,build:'html-test'}:true):undefined}];}}};
  const c=vm.createContext({chrome,URL});c.importScripts=(...names)=>names.forEach(n=>vm.runInContext(read(n),c));vm.runInContext(read('service-worker.js'),c);
@@ -75,6 +77,49 @@ const row=(id,text='原文',interim=false)=>({id,srcText:text,dstText:'訳文',s
   const h=host();h.tabs.delete(1);assert((await h.send({type:'DUO_SET_TARGET',tabId:2})).ok);
   assert(!h.state.htmlTabId);assert(!h.state.htmlLastReceived);assert.equal(h.state.overlayEnabled,true);assert.equal(h.state.htmlTabAudio,true);
   assert((await h.send({type:'DUO_OPEN_APP'})).ok);assert(h.calls.some(c=>c[0]==='inject'&&c[1].func?.name==='configureHtmlTabAudio'));
+ });
+ /* v1.49.25実測：HTML本体をブックマークから開くと接続されず、判断層の中継（Jev）が
+    3件とも到達不能になった。字幕対象を設定しなくても、登録したURLなら接続する。 */
+ const wait=()=>new Promise(r=>setTimeout(r,20));
+ await test('Registered HTML opened directly attaches without a caption target, so the Jev relay works',async()=>{
+  const h=host();h.tabs.get(1).url='https://hide-1925.github.io/duo-interpreter/';
+  h.updated(1,{status:'complete'},h.tabs.get(1));await wait();
+  assert.equal(h.state.htmlTabId,1,'the directly opened tab is the registered HTML');
+  assert(h.calls.some(c=>c[0]==='inject'&&c[1].files?.includes('html-source-content.js')),'the relay content script is injected');
+  assert(!h.state.targetTabId);assert(!h.calls.some(c=>c[0]==='create'),'nothing is opened');
+ });
+ await test('Auto attach without a target does not try to route tab audio',async()=>{
+  const h=host();h.tabs.get(1).url='https://hide-1925.github.io/duo-interpreter/';
+  await h.send({type:'DUO_SET_TARGET',tabId:2});
+  h.tabs.delete(2);await h.send({type:'DUO_OPEN_APP'});
+  const before=h.calls.length;
+  /* 字幕対象のタブが閉じられた後。htmlTabAudio は立ったまま残る。 */
+  h.state.targetTabId=null;h.state.htmlTabId=null;
+  h.updated(1,{status:'complete'},h.tabs.get(1));await wait();
+  assert.equal(h.state.htmlTabId,1);
+  assert(!h.calls.slice(before).some(c=>c[0]==='inject'&&c[1].func?.name==='configureHtmlTabAudio'),
+    'no target means no tab audio to route');
+  assert(!h.state.htmlError,'the missing target is not reported as a connection error');
+ });
+ await test('A second Duo tab does not take over a live registered one',async()=>{
+  const h=host();h.tabs.get(1).url='https://hide-1925.github.io/duo-interpreter/';
+  h.updated(1,{status:'complete'},h.tabs.get(1));await wait();
+  h.tabs.set(4,{id:4,url:'https://hide-1925.github.io/duo-interpreter/',status:'complete',title:'Duo 2'});
+  h.updated(4,{status:'complete'},h.tabs.get(4));await wait();
+  assert.equal(h.state.htmlTabId,1);
+  h.tabs.delete(1);
+  h.updated(4,{status:'complete'},h.tabs.get(4));await wait();
+  assert.equal(h.state.htmlTabId,4,'once the registered tab is gone the next one attaches');
+ });
+ await test('Other pages and the caption target are never attached as the HTML',async()=>{
+  const h=host();
+  h.updated(2,{status:'complete'},h.tabs.get(2));await wait();
+  assert(!h.state.htmlTabId);
+  h.tabs.set(5,{id:5,url:'https://hide-1925.github.io/other/',status:'complete'});
+  h.updated(5,{status:'complete'},h.tabs.get(5));await wait();
+  assert(!h.state.htmlTabId,'same site, different page');
+  h.updated(1,{status:'loading'},h.tabs.get(1));await wait();
+  assert(!h.state.htmlTabId,'only a completed load attaches');
  });
  await test('Native translation-only cards cross source bridge even with cascade translation off',async()=>{
   const h=source();h.win.S.entries=[{...row('native',''),srcText:'',dstText:'日本語訳',rtWindow:{startMs:0}}];await settle();

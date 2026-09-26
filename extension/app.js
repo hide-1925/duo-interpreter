@@ -606,12 +606,15 @@ function turnDecisionInstall(){
     +'<small id="turnDecisionStatus" aria-live="off" data-fold="off"></small>';
   host.appendChild(box);
 
-  /* 経路の選択肢は registry から作る。経路を足したらここを直さなくても出る。 */
-  var sel=$('turnDecisionProvider'),routes=TurnProviders.list(),ri;
+  /* 経路の選択肢は registry から作る。経路を足したらここを直さなくても出る。
+     公開HTML（拡張の外）から api.typesafe.ai は CORS で読めない（2026-09-26 の実測で
+     preflight が 400 Disallowed CORS origin）。選べるままにして、届かないことを名前で言う。 */
+  var sel=$('turnDecisionProvider'),routes=TurnProviders.list(),ri,inPage=TurnBridge.mode()!=='runtime';
   for(ri=0;ri<routes.length;ri++){
     var op=document.createElement('option');
     op.value=routes[ri].id;
-    op.textContent=routes[ri].label+(routes[ri].verified?'':'（未検証）');
+    op.textContent=routes[ri].label+(routes[ri].verified?'':'（未検証）')
+      +(inPage&&routes[ri].pageBlocked?'（このページからは不可：CORS）':'');
     sel.appendChild(op);
   }
 
@@ -779,8 +782,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.25';
-var APP_BUILD = '20260926-v14925-webspeech-punct';
+var APP_VERSION = 'v1.49.26';
+var APP_BUILD = '20260926-v14926-webspeech-breaths';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -12406,15 +12409,24 @@ var TurnProviders={
     return out;
   },
 
+  /* 息継ぎの候補（C_PAUSE_*）の意味。認識器は句読点を付けないので、`before` の
+     末尾の「、」は息継ぎの印でしかないことを明記する。平叙と疑問を分けるのは、
+     読み上げの抑揚が文末の記号で決まるため（「〜大丈夫なの、」は平板に読まれる）。 */
+  PAUSE_CRITERIA:{
+    C_PAUSE_S:{what:'The speaker took a breath here and `before` is a complete statement. Cut here and end `before` with a full stop. The recogniser gives no punctuation, so the 、 at the end of `before` only marks the breath.',
+      not_for:'Not when `before` asks something, and not when `after` carries on the same sentence as `before`.'},
+    C_PAUSE_Q:{what:'The speaker took a breath here and `before` is a complete question. Cut here and end `before` with a question mark. The recogniser gives no punctuation, so the 、 at the end of `before` only marks the breath.',
+      not_for:'Not when `before` states something, and not when `after` carries on the same sentence as `before`.'}
+  },
   questions:function(state){
-    var list=state.candidateBoundaries||[],crit={HOLD:this.HOLD_CRITERION},i,c;
+    var list=state.candidateBoundaries||[],crit={HOLD:this.HOLD_CRITERION},i,c,base;
     for(i=0;i<list.length;i++){
-      c=list[i];
+      c=list[i];base=this.PAUSE_CRITERIA[c.kind]||null;
       /* 候補IDは code のためのもの。モデルには前後の文脈で意味を渡す。HOLD と
          見分けがつくよう、同じ項目立てで書く。 */
       crit[c.id]={
-        what:'Cut between `before` and `after`. Everything up to the cut is translated and spoken now; the rest waits.',
-        not_for:'Not when `before` stops mid-clause, and not when `after` carries on the same clause as `before`.',
+        what:base?base.what:'Cut between `before` and `after`. Everything up to the cut is translated and spoken now; the rest waits.',
+        not_for:base?base.not_for:'Not when `before` stops mid-clause, and not when `after` carries on the same clause as `before`.',
         before:String(c.left||''),
         after:String(c.right||'')
       };
@@ -12522,6 +12534,7 @@ var TurnProviders={
   ROUTES:{
     'jev-direct':{
       label:'Jev — TypeSafe に直接',
+      pageBlocked:true,
       vendor:'typesafe',
       verified:true,
       semantics:'native_calibrated',
@@ -12922,7 +12935,30 @@ var TurnDecision={
     /* 病的に文末が多いときだけ切り落とす。切る判断に効くのは末尾側なので後ろを残す。 */
     room=TURN_MAX_CANDIDATES-out.length;
     if(sent.length>room)sent=sent.slice(room>0?-room:sent.length);
-    return out.concat(room>0?sent:[]);
+    out=out.concat(room>0?sent:[]);
+    /* Web Speech の息継ぎ（空白を「、」にした位置）も切り所の候補にする。語尾の規則は
+       「〜んじゃないの」「〜だぜ」「〜っけ」のような話し言葉の文末を拾えず、120字の
+       長さ打切りまで切れなかった（v1.49.25実測で112字が2回、うち1回は「、」で終わった
+       ため読み上げがさらに4.7秒待った）。文末かどうかと、平叙か疑問かを同じ1問で
+       選ばせるため、1か所に「。で終わる」「？で終わる」の2つを出す。構造上の候補と
+       同じ位置には出さない。同じ切り方に確率が割れて、どちらも閾値に届かなくなる。
+       早く切れる側を残すので、先頭から詰める。 */
+    if(input.breaths){
+      var pause=[],prx=/、/g,po;
+      while((m=prx.exec(text))){
+        po=m.index+1;
+        if(po>stable||seen[po]||!hasSpeechContent(text.slice(po)))continue;
+        seen[po]=1;
+        pause.push({id:'C_PAUSE_S_'+po,kind:'C_PAUSE_S',offset:po,
+          left:text.slice(Math.max(0,po-24),po),right:text.slice(po,po+24)});
+        pause.push({id:'C_PAUSE_Q_'+po,kind:'C_PAUSE_Q',offset:po,
+          left:text.slice(Math.max(0,po-24),po),right:text.slice(po,po+24)});
+      }
+      room=TURN_MAX_CANDIDATES-out.length;
+      if(pause.length>room)pause=pause.slice(0,Math.max(0,room-room%2));
+      out=out.concat(pause);
+    }
+    return out;
   },
 
   contextOf:function(e){
@@ -12946,6 +12982,8 @@ var TurnDecision={
       sessionId:'s'+sessionGen,
       utteranceId:e.utteranceId||e.id,
       revision:e.segment?e.segment.revision:0,
+      /* 候補の offset はこの位置からの距離。commit で動いたら古い答えの offset は使えない。 */
+      segmentStart:(s&&s.start)||0,
       speakerKey:this.speakerKeyOf(e),
       sourceLanguage:e.srcLang||'',
       currentText:text.slice(-800),
@@ -12969,7 +13007,8 @@ var TurnDecision={
   questionSetHash:function(){
     if(this._qsh)return this._qsh;
     /* 発話ごとに変わる候補の criteria は除き、質問の雛形だけを対象にする。 */
-    var s=JSON.stringify(TurnProviders.template)+JSON.stringify(TurnProviders.HOLD_CRITERION),h=0,i;
+    var s=JSON.stringify(TurnProviders.template)+JSON.stringify(TurnProviders.HOLD_CRITERION)
+      +JSON.stringify(TurnProviders.PAUSE_CRITERIA),h=0,i;
     for(i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;
     return (this._qsh='qs_'+(h>>>0).toString(36));
   },
@@ -13082,6 +13121,28 @@ var TurnDecision={
     }
     return hit;
   },
+  /* 文中の切り所についての答えは、版が進んでも使い続けてよい。答えは revision に
+     紐づけて捨ててきたが、途中結果が0.2秒ごとに伸びる相手では、往復のあいだに必ず
+     版が変わり、答えが一度も使えない（v1.49.23実測 送信525／採用0）。選ばれた切り所の
+     後ろに続きの発話が既に見えていて、その前後の文字が今も同じなら、判断の材料は
+     変わっていない。持ち越すのはこの場合だけで、HOLD と末尾の切り所は持ち越さない
+     （どちらも「まだ続くか」の判断で、続きが来れば変わる）。commit で部分の起点が
+     動いたら offset の意味が変わるので捨てる。 */
+  carried:function(state){
+    var r=this._recent&&this._recent[state.speakerKey];
+    if(!r||r.sessionId!==state.sessionId||r.utteranceId!==state.utteranceId
+      ||r.segmentStart!==state.segmentStart)return null;
+    var ch=r.hit&&r.hit.boundary&&r.hit.boundary.choice,old=null,cur=null,i,list;
+    if(!ch||ch==='HOLD')return null;
+    for(list=r.cands,i=0;i<list.length;i++)if(list[i].id===ch)old=list[i];
+    for(list=state.candidateBoundaries||[],i=0;i<list.length;i++)if(list[i].id===ch)cur=list[i];
+    if(!old||!cur||old.kind==='C_STABLE'||!hasSpeechContent(old.right))return null;
+    if(cur.left!==old.left||String(cur.right).indexOf(String(old.right))!==0)return null;
+    if(!r.hit.carriedLogged){r.hit.carriedLogged=true;
+      dlog('segment','turn-decision-carried',{utteranceId:state.utteranceId,
+        fromRevision:r.hit.revision,toRevision:state.revision,choice:ch});}
+    return r.hit;
+  },
   /* INV-10。答えを待つのは、いま投げている同じ state の分だけ。
      質問は commit と同じ tick で飛ぶので、待たなければ答えは必ず一手遅れる。
      待つあいだ segCheck は break して次の80msへ回る。翻訳も読み上げも
@@ -13184,6 +13245,8 @@ var TurnDecision={
         if(norm.sessionId!=='s'+sessionGen){self.bump('stale');
           dlog('segment','turn-decision-stale',{requestRevision:norm.revision,currentRevision:state.revision,reason:'session'});return;}
         self.bump('answered');self.cache[self.key(state)]=norm;
+        (self._recent||(self._recent={}))[state.speakerKey]={hit:norm,sessionId:state.sessionId,
+          utteranceId:state.utteranceId,segmentStart:state.segmentStart,cands:state.candidateBoundaries||[]};
         dlog('segment','turn-decision-result',{latency:norm.latencyMs,choice:norm.boundary.choice,
           probabilities:norm.boundary.probabilities,confidence:norm.boundary.confidence,
           safeToSpeak:norm.safeToSpeak,modelVersion:norm.model,
@@ -13273,23 +13336,37 @@ var TurnDecision={
     var pChosen=num(probs[b.choice]);
     if(pChosen!==null&&pChosen<th.chosenMin)return null;
 
-    /* turn_state は選択肢4つ固定なので confidence が比較可能。 */
+    /* 後ろに続きの発話がもう見えている切り所では「話し終わったか」を問わない。
+       turn_state は発話の末尾について答えるので、話し続けていれば CONTINUING になる。
+       それで文中の切り所まで止めると、途切れなく話す相手では Rules の commit まで
+       HOLD の上限（2秒）ずつ遅らせることになる。続きが見えている以上、早すぎる
+       切断の心配は無く、見るべきは `before` がまとまっているかだけ。
+       言い直し（SELF_REPAIR・repair_likelihood）は文中でも止める。
+       安定端（C_STABLE）は句読点の位置ではなく、認識が揺れなくなった所にすぎないので
+       対象にしない。 */
+    var inner=cand.kind!=='C_STABLE'&&hasSpeechContent(cand.right);
     var ts=hit.turnState||{},tsConf=num(ts.confidence);
-    if(ts.choice==='CONTINUING'||ts.choice==='SELF_REPAIR')
+    if(ts.choice==='SELF_REPAIR'||(!inner&&ts.choice==='CONTINUING'))
       return {length:0,reasons:[],waiting:'provider-'+String(ts.choice).toLowerCase(),source:'provider'};
-    if(ts.choice==='UNKNOWN')return null;
-    if(tsConf!==null&&tsConf<th.turnConfMin)return null;
-    var pCont=num((ts.probabilities||{}).CONTINUING);
-    if(pCont!==null&&pCont>th.continuingMax)return null;
+    if(!inner){
+      if(ts.choice==='UNKNOWN')return null;
+      if(tsConf!==null&&tsConf<th.turnConfMin)return null;
+      var pCont=num((ts.probabilities||{}).CONTINUING);
+      if(pCont!==null&&pCont>th.continuingMax)return null;
+    }
 
     /* 言い直しが来そうなら待つ。誤った訳音声は後から戻せない。 */
     var repair=num(hit.repairLikelihood);
     if(repair!==null&&repair>th.repairMax)
       return {length:0,reasons:[],waiting:'provider-repair',source:'provider'};
 
-    /* 最低音響guard。meter 不明のまま意味だけで早期commitしない。 */
-    if(state.silenceMs===null){ if(!state.sttFinal)return null; }
-    else if(state.silenceMs<th.silenceMin&&!state.sttFinal)return null;
+    /* 最低音響guard。meter 不明のまま意味だけで早期commitしない。文中の切り所は
+       続きが既に届いているので、いまの無音はその切り所の証拠にならない
+       （Web Speech の文字は音声より1〜3秒遅れて届く）。 */
+    if(!inner){
+      if(state.silenceMs===null){ if(!state.sttFinal)return null; }
+      else if(state.silenceMs<th.silenceMin&&!state.sttFinal)return null;
+    }
 
     /* assist は位置を採らないので、ここから先は要らない。位置を確定させるための
        ヒステリシス（provider-confirming）で待つと、採らない位置のために遅らせる
@@ -13302,7 +13379,9 @@ var TurnDecision={
       return {length:0,reasons:[],waiting:'provider-confirming',source:'provider'};
 
     this.countApplied(hit);
-    return {length:cand.offset,reasons:['provider-'+cand.kind,'stable'],source:'provider'};
+    var res={length:cand.offset,reasons:['provider-'+cand.kind,'stable'],source:'provider'};
+    if(cand.kind==='C_PAUSE_S')res.mark='。';else if(cand.kind==='C_PAUSE_Q')res.mark='？';
+    return res;
   },
 
   /* Boundary Gate。offとshadowはRulesProviderの結果をそのまま返す。assist以上でも
@@ -13318,7 +13397,7 @@ var TurnDecision={
     TurnTrace.decision(state,ruleResult);
     this.observe(state);
     if(mode==='shadow')return ruleResult;
-    var hit=this.read(state),out=null;
+    var hit=this.read(state)||this.carried(state),out=null;
     if(!hit){
       if(!this.waitingFor(s,state,now))return ruleResult;
       out={length:0,reasons:[],waiting:'provider-pending',source:'provider'};
@@ -13386,7 +13465,7 @@ var TurnDecision={
     Object.keys(this.inflight).forEach(function(k){
       var c=self.inflight[k];if(c&&c.abort){try{c.abort();}catch(err){}}
     });
-    this.cache={};this.inflight={};this.sessionSalt=null;this.circuit={};this._lastSend={};this._confirm={};this._asks={};
+    this.cache={};this.inflight={};this.sessionSalt=null;this.circuit={};this._lastSend={};this._confirm={};this._asks={};this._recent={};
     /* offのときは診断ログも出さない。判断層を切った状態の出力をv1.47.1と揃える。 */
     if(String(CFG.turnDecisionMode||'off')!=='off')
       dlog('segment','turn-decision-reset',{why:why,mode:CFG.turnDecisionMode});
@@ -13629,6 +13708,23 @@ function segUpdate(e,text,final){
   if(final)e.endedAt=now;
   segDraft(e);segReceiveDisplay(e);segWake();
 }
+/* 判断層が息継ぎの「、」を文末と選んだとき、その記号を「。」か「？」に替える。
+   Web Speech のカードは次の途中結果で本文が作り直されるので、位置を覚えておき
+   segWebResult が同じ記号をかけ直す。かけ直さないと、確定した本文が次の結果で
+   「、」へ戻り、確定後の訂正として扱われてしまう。位置は前半の安定した部分なので、
+   後から動かない。 */
+function segApplyMark(e,pos,mark){
+  var b=e&&e.segment;if(!b||b.text.charAt(pos)!=='、')return false;
+  b.text=b.text.slice(0,pos)+mark+b.text.slice(pos+1);
+  (e.webMarks||(e.webMarks={}))[pos]=mark;
+  return true;
+}
+function segWebMarks(e,text){
+  var m=e&&e.webMarks;if(!m)return text;
+  Object.keys(m).forEach(function(k){var p=Number(k);
+    if(text.charAt(p)==='、')text=text.slice(0,p)+m[k]+text.slice(p+1);});
+  return text;
+}
 function segDraft(e){
   var committed=e.segments.filter(function(s){return s.committedAt;}),at=committed.length?committed[committed.length-1].end:0;
   e.segments=committed;
@@ -13668,11 +13764,12 @@ function segCheck(e){
     var stable=0;while(s.start+stable<b.stableSince.length&&now-b.stableSince[s.start+stable]>=p.stability)stable++;
     var silence=segSilence(e,now);
     var decisionInput={text:s.sourceText,stableLength:b.final?s.sourceText.length:stable,policy:p,lang:e.srcLang,idleMs:now-b.lastUpdate,
-      mode:p.mode,debt:debt,silenceMs:silence===null?-1:silence,final:b.final};
+      mode:p.mode,debt:debt,silenceMs:silence===null?-1:silence,final:b.final,breaths:!!e.webSpeech};
     var ruleResult=TurnDecision.rules(decisionInput);
     var d=TurnDecision.boundary(e,s,decisionInput,ruleResult,silence,now);
     if(d.waiting)b.boundaryWaiting=d.waiting;else b.boundaryWaiting='';
     if(!d.length)break;
+    if(d.mark)segApplyMark(e,s.start+d.length-1,d.mark);
     s.end=s.start+d.length;s.sourceText=b.text.slice(s.start,s.end);s.id=e.id+'-s'+s.seq;
     s.committedSourceText=s.sourceText;s.committedAt=now;s.stabilityMs=now-(b.stableSince[s.end-1]||now);
     s.commitReason=d.reasons;s.state='committed';s.translationRevision=0;s.translationReady=false;
@@ -13688,7 +13785,8 @@ function segCheck(e){
     SEG.committedBySource[s.decisionSource]=(SEG.committedBySource[s.decisionSource]||0)+1;
     SEG.lastReason=d.reasons.join(' + ');
     dlog('segment','commit',{cardId:e.id,seq:s.seq,text:s.sourceText,chars:s.sourceText.length,reason:d.reasons,
-      decisionSource:s.decisionSource,stabilityMs:s.stabilityMs,debtEstimateSeconds:debt});segDraft(e);
+      decisionSource:s.decisionSource,stabilityMs:s.stabilityMs,debtEstimateSeconds:debt,mark:d.mark||null});segDraft(e);
+    if(d.mark)segJoin(e);
   }
 }
 function segTranslate(e,s,manual){
@@ -13994,25 +14092,61 @@ function segRemove(e){if(!e||!e.segment)return;e.segment.cancelled=true;
   SEG.queue.forEach(function(j){if(j.card===e)j.cancelled=true;});
   if(SEG.active&&(SEG.active.group||[SEG.active]).some(function(j){return j.card===e;}))stopSpeaking('会話カード削除');
 }
+/* Chrome は途中結果を「安定した前半」と「揺れる末尾」の2つの result に分けて返し、
+   前半が確定すると末尾が次の result として残る。result ごとにカードを作っていたため、
+   最新の数語が別カードに入って前半の文末が見えず（v1.49.25実測：「…ことだよね」が
+   見えてから確定まで約4.7秒）、約60秒で打ち切られた前半は語の途中で確定していた
+   （「…協力を得られ。」と、別カード「れば、作り上げられるという発想だな」）。
+   まだ閉じていない result を先頭から全部つないで1枚のカードにし、全部が確定したら
+   閉じる。途中の確定境界で閉じるのは、境界が文末で、そこまでが過不足なく commit
+   済みのときだけ（commit 済みの部分を削らないため）。 */
+function segWebJoin(parts){
+  var out='';
+  parts.forEach(function(t){t=String(t||'');
+    if(/[A-Za-z0-9]$/.test(out)&&/^[A-Za-z0-9]/.test(t))out+=' ';
+    out+=t;});
+  return out;
+}
+function segWebClose(owner,e,text,seat,raw){
+  if(CFG.prosodyOn)attachProsody(e,micProsodySnapshot(raw,false,seat));
+  segUpdate(e,text,true);
+  dlog('stt','result',{provider:'webspeech-segment',seat:seat,chars:raw.length,results:owner._webParts||1,
+    spacesPunctuated:Math.max(0,(raw.match(/[ \u3000]+/g)||[]).length-(text.match(/[ \u3000]+/g)||[]).length)});
+  owner._webCard=null;
+}
 function segWebResult(owner,ev,seat){
   if(!segEnabled())return false;
-  for(var i=ev.resultIndex;i<ev.results.length;i++){
-    var r=ev.results[i],text=String((r[0]||{}).transcript||'').trim(),key=String(i);
-    owner._segments=owner._segments||{};
-    var e=owner._segments[key];
-    if(!text&&!e)continue;
-    if(!e){e=addEntry(seat,'',true);owner._segments[key]=e;}
-    if(r.isFinal&&CFG.prosodyOn)attachProsody(e,micProsodySnapshot(text,false,seat));
-    var shown=webSpeechPunct(text,langOf(seat));
-    segUpdate(e,r.isFinal?punctuateTranscript(shown,langOf(seat)):shown,!!r.isFinal);
-    if(r.isFinal){owner._segments[key]=e;dlog('stt','result',{provider:'webspeech-segment',seat:seat,chars:text.length,
-      spacesPunctuated:shown===text?0:(text.match(/[ \u3000]+/g)||[]).length-(shown.match(/[ \u3000]+/g)||[]).length});}
+  var list=ev.results,n=list.length,lang=langOf(seat);
+  /* 閉じた result は二度と読まない。一覧が縮んでも先頭へ戻すと、古い発話を作り直してしまう。 */
+  if(!(owner._webStart>=0))owner._webStart=0;
+  if(owner._webStart>n)owner._webStart=n;
+  for(var pass=0;pass<2;pass++){
+    var start=owner._webStart,e=owner._webCard||null,parts=[],finals=0,i;
+    for(i=start;i<n;i++){parts.push(String((list[i][0]||{}).transcript||''));if(list[i].isFinal&&finals===i-start)finals++;}
+    var raw=segWebJoin(parts).trim(),allFinal=parts.length>0&&finals===parts.length;
+    if(!raw&&!e){if(allFinal)owner._webStart=n;return true;}
+    if(!e){e=addEntry(seat,'',true);e.webSpeech=true;owner._webCard=e;}
+    owner._webParts=parts.length;
+    var shown=segWebMarks(e,webSpeechPunct(raw,lang));
+    if(allFinal){segWebClose(owner,e,punctuateTranscript(shown,lang),seat,raw);owner._webStart=n;return true;}
+    if(finals>0){
+      var head=segWebMarks(e,webSpeechPunct(segWebJoin(parts.slice(0,finals)).trim(),lang));
+      var done=e.segments.filter(function(x){return x.committedAt;}),end=done.length?done[done.length-1].end:0;
+      if(head&&shown.indexOf(head)===0&&end===head.length+1&&/[。？！?!]/.test(shown.charAt(head.length))){
+        segWebClose(owner,e,shown.slice(0,end),seat,segWebJoin(parts.slice(0,finals)).trim());
+        owner._webStart=start+finals;continue;
+      }
+    }
+    segUpdate(e,shown,false);return true;
   }
   return true;
 }
-function segWebEnd(owner){Object.keys((owner&&owner._segments)||{}).forEach(function(k){var e=owner._segments[k];
-  if(e.segment&&!e.segment.final&&!e.segment.cancelled)segUpdate(e,e.srcText,true);
-});if(owner)owner._segments={};}
+function segWebEnd(owner){
+  if(!owner)return;
+  var e=owner._webCard;
+  if(e&&e.segment&&!e.segment.final&&!e.segment.cancelled)segUpdate(e,e.srcText,true);
+  owner._webCard=null;owner._webStart=0;
+}
 /* Local card completion is independent from server item completion and audio playback. */
 function segLiveClose(engine,id,x,reason,meta){
   var e=x.entry;if(!e||!e.srcText.trim()||e.segment.cancelled)return;
