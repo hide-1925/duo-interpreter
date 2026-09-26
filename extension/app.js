@@ -564,6 +564,14 @@ function turnDecisionInstall(){
       +'187秒で433件、Realtimeでは406秒で1251件）。テキストの版が進まないなら'
       +'聞き直しても判断は変わらないので、版ごとの回数で頭打ちにします。</p>'
     +'</details>'
+    +'<label>話が止まってから聞くまで ms（0＝止まるのを待たない） <input id="turnDecisionSettleMs" type="number" min="0" max="1000" step="50"></label>'
+    +'<details class="settings-help"><summary>Web Speech で費用が膨らむ理由</summary>'
+      +'<p>答えは「質問したときの版の文」にしか使えません。Web Speech の途中結果は'
+      +'<b>約0.1秒ごとに版が進む</b>ので、話している最中に聞くと、答えが返る頃には'
+      +'必ず別の版になっていて捨てられます（v1.49.23の実測で、約130秒に送信525件・'
+      +'採用0件）。テキストがこの時間止まってから聞けば、区切りの候補になる息継ぎで'
+      +'だけ質問が飛びます。確定した文（STT final）は待たずにすぐ聞きます。</p>'
+    +'</details>'
     +'<label>読み上げ開始の待ち上限 ms <input id="turnFloorMaxWaitMs" type="number" min="500" max="10000" step="100"></label>'
     +'<label>上限に達したら <select id="turnFloorExpiry">'
       +'<option value="speak">読み上げる</option><option value="drop">字幕だけにする</option>'
@@ -609,7 +617,7 @@ function turnDecisionInstall(){
 
   ['turnDecisionMode','turnDecisionLangEn','turnDecisionLangJa','turnDecisionProsody',
    'turnDecisionContextTurns','turnDecisionCommitWaitMs','turnDecisionHoldMaxWaitMs',
-   'turnDecisionMaxAsksPerRevision','turnFloorMaxWaitMs','turnFloorExpiry','turnFloorSafeToSpeak',
+   'turnDecisionMaxAsksPerRevision','turnDecisionSettleMs','turnFloorMaxWaitMs','turnFloorExpiry','turnFloorSafeToSpeak',
    'turnDecisionProvider','turnDecisionModel','turnDecisionBaseUrl',
    'turnTraceMode','turnDecisionRawLog'].forEach(function(prop){
     var spec=CONFIG_BY_PROP[prop];if(!spec||!$(spec.el))return;
@@ -771,8 +779,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.23';
-var APP_BUILD = '20260925-v14923-one-touch-latency';
+var APP_VERSION = 'v1.49.25';
+var APP_BUILD = '20260926-v14925-webspeech-punct';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -992,6 +1000,8 @@ var CONFIG_SCHEMA = [
   { prop:"turnDecisionCommitWaitMs", key:'di.tdCommitWait', embed:'turnDecisionCommitWaitMs', def:'300', portable:true, el:"turnDecisionCommitWaitMs" },
   /* INV-11。判断層が commit を止めていられる上限。0 で「待ちを採らない」。 */
   { prop:"turnDecisionHoldMaxWaitMs", key:'di.tdHoldMax', embed:'turnDecisionHoldMaxWaitMs', def:'2000', portable:true, el:"turnDecisionHoldMaxWaitMs" },
+  /* テキストが止まってから聞くまでの ms。途中結果で版が進み続ける間は聞かない。 */
+  { prop:"turnDecisionSettleMs", key:'di.tdSettle', embed:'turnDecisionSettleMs', def:'200', portable:true, el:"turnDecisionSettleMs" },
   /* 同じ revision を聞き直す上限回数。無音が伸びるだけの往復を止める。 */
   { prop:"turnDecisionMaxAsksPerRevision", key:'di.tdAsks', embed:'turnDecisionMaxAsksPerRevision', def:'3', portable:true, el:"turnDecisionMaxAsksPerRevision" },
   /* 床で safe_to_speak を使うか。assist/active のときだけ働き、重なりを許容する
@@ -4029,6 +4039,33 @@ function punctuateTranscript(text, lang){
   else if (/^(?:who|what|when|where|why|how|which|whose|whom|is|are|am|was|were|do|does|did|can|could|will|would|shall|should|have|has|had|may|might)\b/i.test(text)) question=true;
   var mark=(lc==='ja'||lc==='zh')?(question?'？':'。'):(question?'?':'.');
   return text+mark+closing;
+}
+/* Chrome の Web Speech（日本語）は句読点を返さず、息継ぎの位置に半角スペースを
+   入れて返す。そのまま流すと文末が一つも無いまま120字の長さ打切りまで切れず、
+   字幕も翻訳も「〜違うんですよね 安全保障論というのは〜」の塊になる
+   （v1.49.23実測）。その空白を、直前の語尾だけを見て「。」「？」「、」に置き換える。
+   後ろの文字は見ないので、確定済みの前半が後から変わることはない。語尾で文末と
+   言い切れないもの（「〜みる」「〜違う」などの言い切り形を含む）は読点にとどめる。
+   英数字に接する空白（「Google の」）は単語の区切りなので、文末でなければ残す。 */
+var JA_SPOKEN_QUESTION=/(?:ですか|ますか|でしたか|ましたか|ませんか|でしょうか|ましょうか|だろうか)$/;
+var JA_SPOKEN_END=/(?:です|ます|でした|ました|ません|でしょう|ましょう|ください|である|だった|ですね|ますね|ですよ|ますよ|でしたね|ましたね|よね|だよ|だね|のだ|ことだ|ものだ|わけだ|はずだ|ようだ|そうだ)$/;
+function jaSpacePunct(text){
+  text=String(text||'');
+  if(!/[ \u3000]/.test(text))return text;
+  var parts=text.split(/([ \u3000]+)/),out='';
+  for(var i=0;i<parts.length;i++){
+    if(i%2===0){out+=parts[i];continue;}
+    var after=parts[i+1]||'';
+    if(!out||!after){out+=parts[i];continue;}
+    if(/[、。，．！？!?,.;:・…「」『』（）()]$/.test(out)||/^[、。，．！？!?,.;:・…」』）)]/.test(after))continue;
+    var mark=JA_SPOKEN_QUESTION.test(out)?'？':JA_SPOKEN_END.test(out)?'。':'、';
+    if(mark==='、'&&(/[A-Za-z0-9]$/.test(out)||/^[A-Za-z0-9]/.test(after))){out+=' ';continue;}
+    out+=mark;
+  }
+  return out;
+}
+function webSpeechPunct(text, lang){
+  return /^ja/.test(String(lang||''))?jaSpacePunct(text):String(text||'');
 }
 function rememberSpoken(t){
   spokenRecent.push({ t: normTxt(t), at: Date.now() });
@@ -8461,8 +8498,9 @@ function buildRec(){
     var realFinIndex=0;
     if (CFG.prosodyOn && fin.length && !realFin.length){ var wbAn=prosodyAnalyzerFor(seat); if(wbAn)wbAn.beginSegment(); }
     if (CFG.interimOn && itm.trim()){
-      if (!itmEntry) itmEntry = addEntry(seat, itm.trim(), true);
-      else { itmEntry.srcText = itm.trim(); render(itmEntry); }
+      var itmShown = webSpeechPunct(itm.trim(), langOf(seat));
+      if (!itmEntry) itmEntry = addEntry(seat, itmShown, true);
+      else { itmEntry.srcText = itmShown; render(itmEntry); }
     }
     fin.forEach(function(t){
       t = t.trim(); if (!t) return;
@@ -8478,8 +8516,8 @@ function buildRec(){
         return;
       }
       var batchIndex=realFinIndex++, rawText=t;
-      t=punctuateTranscript(t,langOf(seat));
-      if (t!==rawText) dlog('stt','punctuated',{provider:'webspeech',seat:seat,mode:'terminal',from:rawText.slice(-20),to:t.slice(-20)});
+      t=punctuateTranscript(webSpeechPunct(t,langOf(seat)),langOf(seat));
+      if (t!==rawText) dlog('stt','punctuated',{provider:'webspeech',seat:seat,mode:/[ \u3000]/.test(rawText)?'spaces+terminal':'terminal',from:rawText.slice(-20),to:t.slice(-20)});
       if (itmEntry){ e = itmEntry; itmEntry = null; e.interim = false; e.srcText = t; }
       else e = addEntry(seat, t, false);
       sawSpeech = true;
@@ -8641,14 +8679,15 @@ WebSpeechTrackEngine.prototype.build=function(){
       if(rr.isFinal)fin.push(txt);else itm+=txt;
     }
     if(CFG.interimOn&&itm.trim()){
-      if(!self.interim)self.interim=addEntry(self.seat,itm.trim(),true);
-      else{self.interim.srcText=itm.trim();render(self.interim);}
+      var itmShown=webSpeechPunct(itm.trim(),langOf(self.seat));
+      if(!self.interim)self.interim=addEntry(self.seat,itmShown,true);
+      else{self.interim.srcText=itmShown;render(self.interim);}
     }
     fin.forEach(function(raw){
       var text=String(raw||'').trim();if(!text)return;
       if(!hasSpeechContent(text)){dlog('stt','noise-drop',{source:'display-track',seat:self.seat,text:text.slice(0,30)});return;}
       if(isEcho(text)){dlog('stt','echo-drop',{source:'display-track',seat:self.seat,text:text.slice(0,60)});if(self.interim){removeEntry(self.interim);self.interim=null;}return;}
-      text=punctuateTranscript(text,langOf(self.seat));
+      text=punctuateTranscript(webSpeechPunct(text,langOf(self.seat)),langOf(self.seat));
       var e;
       if(self.interim){e=self.interim;self.interim=null;e.interim=false;e.srcText=text;}
       else e=addEntry(self.seat,text,false);
@@ -12080,7 +12119,11 @@ function segEnabled(){return CFG.segmentMode!=='off' && /^(balanced|fast|adaptiv
           時計で頭打ちにし、超えたら Rules が確定する。答えは「同じ文の同じ revision」
           に紐づくので、認識が止まって revision が進まなくなると、止まった瞬間の
           HOLD が期限なく残り続ける（v1.49.19 の実測で、停止まで112秒／83秒
-          放置され、最後に audio cancelled（speech-stopped）で消えたカード）。   */
+          放置され、最後に audio cancelled（speech-stopped）で消えたカード）。
+   INV-12 判断層へ聞くのは、テキストが turnDecisionSettleMs（既定200ms・0で無効）
+          止まってから。答えは質問した revision にしか適用できないので、途中結果が
+          伸び続ける間の質問は必ず捨てられる（v1.49.23 の実測で Web Speech＋active、
+          約130秒に送信525／採用0）。STT final は待たない。   */
 /* ── Provider adapters（Phase 2）─────────────────────────────────────────
    判断契約を Duo が所有し、ベンダーを adapter で差し替える。既定の
    turnDecisionProvider='rules' では registry を一切引かないので、shadow でも
@@ -12996,6 +13039,23 @@ var TurnDecision={
     }
     e.n++;return false;
   },
+  /* 認識が伸びている最中には聞かない。答えは同じ revision にしか使えないので、
+     Web Speech の途中結果のように約100msごとに版が進む経路では、往復のあいだに
+     必ず版が変わり、返った答えは一度も使われない（v1.49.23実測 Web Speech＋active
+     で約130秒に送信525／採用0、revision は427まで進んだ）。版ごとの上限回数は
+     版が進み続けると効かない。テキストが turnDecisionSettleMs 止まってから聞けば、
+     前の往復が回線を塞いでいない分、区切りの答えもかえって早く返る。
+     STT final はそれ以上伸びないので待たない。 */
+  settleMs:function(){
+    var n=parseInt(CFG.turnDecisionSettleMs,10);
+    if(!isFinite(n)||n<0)return 200;
+    return Math.min(1000,n);
+  },
+  unsettled:function(state){
+    var ms=this.settleMs();
+    if(!ms||state.sttFinal||state.lastDeltaMs==null)return false;
+    return state.lastDeltaMs<ms;
+  },
   /* 「Jevを呼べたか」ではなく「使える答えが返って適用できたか」を数える。
      送信数だけ見ても、解析で落ちているのか古くて捨てたのか判別できない。 */
   stats:{requested:0,answered:0,parseFailed:0,stale:0,applied:0,unreachable:0,floorHeld:0,
@@ -13097,6 +13157,7 @@ var TurnDecision={
     var lang=state.sourceLanguage,self=this;
     if(this.inflight[state.speakerKey])return;            /* speakerKeyごとに同時1件 */
     if(this.circuitOpen(id,lang))return;
+    if(this.unsettled(state))return;
     if(this.throttled(state))return;
     if(this.asksExhausted(state))return;
     var ctrl=null;try{ctrl=new AbortController();}catch(err){}
@@ -13249,6 +13310,10 @@ var TurnDecision={
   boundary:function(e,s,input,ruleResult,silence,now){
     var mode=this.modeFor(e.srcLang);
     if(mode==='off')return ruleResult;
+    /* 打ち込んだ文は発話ではない。話し終わりを判定する相手が無いので、判断層に
+       聞かない。v1.49.23 の実測では、入力1件ごとに Jev へ3往復し、HOLD（0.34〜0.39）
+       で 2.0〜2.1秒 止めてから確定していた。 */
+    if(e&&e.typed)return ruleResult;
     var state=this.stateOf(e,s,input,ruleResult,silence,now);
     TurnTrace.decision(state,ruleResult);
     this.observe(state);
@@ -13675,6 +13740,35 @@ function segRefreshTranslations(){
 }
 function segAudioAllowed(e){return duoAutomaticAllowed(e) && ttsProv().enabled && !(CFG.ttsWho==='B2A'&&e.seat!=='B') && !(CFG.ttsWho==='A2B'&&e.seat!=='A') &&
   !(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat));}
+/* 読み上げなかった理由を1つに決める。以前は「対象外」も「本文が空」も
+   not-selected-or-empty の1語で、診断を見ても区別できなかった（v1.49.23 実測：
+   読み上げ対象が「相手(B)の発言のみ」のところへ、入力した日本語が自分(A)扱いで
+   入り、4件とも黙って外れていた）。segAudioAllowed と同じ順で見る。 */
+function segSkipWhy(e,s,j){
+  if(!(CFG.ttsSrc?s.sourceText:s.translationText).trim())return 'empty';
+  if(j&&j.manual)return 'empty';
+  if(!ttsProv().enabled)return 'tts-off';
+  if(!duoAutomaticAllowed(e))return 'conference-original-only';
+  if((CFG.ttsWho==='B2A'&&e.seat!=='B')||(CFG.ttsWho==='A2B'&&e.seat!=='A'))return 'tts-target-'+CFG.ttsWho;
+  if(S.running&&CFG.preventSelfRecognition&&ttsLoopRisk(e.seat))return 'self-recognition-guard';
+  return 'not-selected';
+}
+/* 逐次読み上げの経路は、対象外で落としても何も言っていなかった。speak() 側には
+   3回連続で案内する仕組みがあるのに、こちらには無かった。打ち込んだ文は利用者が
+   明示的に出したものなので、1回目から言う。 */
+function segSkipNotice(e,why){
+  if(String(why).indexOf('tts-target-')!==0)return;
+  ttsSkipStreak++;
+  dlog('tts','skip',{why:'読み上げ対象='+CFG.ttsWho,seat:e.seat,typed:!!e.typed,streak:ttsSkipStreak});
+  if(ttsSkipHinted)return;
+  if(!e.typed&&ttsSkipStreak<3)return;
+  ttsSkipHinted=true;
+  toast(e.typed
+    ? '入力した文は'+(e.seat==='B'?'相手(B)':'自分(A)')+'の発言として扱ったため、読み上げ対象「'+whoLabel()+'」から外れ、読み上げていません。<br>'
+      +'⚙→音声 の「読み上げ対象」を「両方」にするか、テキスト入力の話者を切り替えてください。'
+    : '読み上げはONですが、対象が「'+whoLabel()+'」のため、いまの発言は読み上げていません。<br>'
+      +'⚙→音声 の「読み上げ対象」で変更できます。');
+}
 function segQueueCompare(a,b){
   if(a.manual||b.manual)return a.manual&&b.manual?a.segment.seq-b.segment.seq:(a.manual?-1:1);
   return a.card.segment.order-b.card.segment.order||a.segment.seq-b.segment.seq;
@@ -13711,8 +13805,10 @@ function segPump(){
     if(segEarlierOpen(j)){segTtsWait(j,'earlier-card-open');return;}
     if(!CFG.ttsSrc&&!s.translationReady){segTtsWait(j,'translation');return;}
     if((!j.manual&&!segAudioAllowed(e))||(!CFG.ttsSrc&&s.translationError)||!(CFG.ttsSrc?s.sourceText:s.translationText).trim()){
-      s.audio.status='cancelled';s.audio.skipReason=s.translationError?'translation-error':'not-selected-or-empty';
-      s.state=s.translationError?'error':'skipped';SEG.queue.shift();segRefreshPlayback(j);continue;
+      var skipWhy=s.translationError?'translation-error':segSkipWhy(e,s,j);
+      s.audio.status='cancelled';s.audio.skipReason=skipWhy;
+      s.state=s.translationError?'error':'skipped';SEG.queue.shift();segRefreshPlayback(j);
+      segSkipNotice(e,skipWhy);continue;
     }
     var silence=segSilence(e,Date.now()),overlap=segOverlapFor(e,segDebt());
     // Without a trustworthy input meter, avoid-overlap waits for STT final.
@@ -13907,8 +14003,10 @@ function segWebResult(owner,ev,seat){
     if(!text&&!e)continue;
     if(!e){e=addEntry(seat,'',true);owner._segments[key]=e;}
     if(r.isFinal&&CFG.prosodyOn)attachProsody(e,micProsodySnapshot(text,false,seat));
-    segUpdate(e,r.isFinal?punctuateTranscript(text,langOf(seat)):text,!!r.isFinal);
-    if(r.isFinal){owner._segments[key]=e;dlog('stt','result',{provider:'webspeech-segment',seat:seat,chars:text.length});}
+    var shown=webSpeechPunct(text,langOf(seat));
+    segUpdate(e,r.isFinal?punctuateTranscript(shown,langOf(seat)):shown,!!r.isFinal);
+    if(r.isFinal){owner._segments[key]=e;dlog('stt','result',{provider:'webspeech-segment',seat:seat,chars:text.length,
+      spacesPunctuated:shown===text?0:(text.match(/[ \u3000]+/g)||[]).length-(shown.match(/[ \u3000]+/g)||[]).length});}
   }
   return true;
 }

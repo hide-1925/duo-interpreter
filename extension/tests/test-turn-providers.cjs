@@ -780,6 +780,41 @@ test('the same bucket is not resent inside 300ms, but a longer silence is a new 
   const s2=D().stateOf(card(),{},i,D().rules(i),1200,Date.now());
   assert.equal(D().throttled(s2),false,'a 100ms-quantised silence step is a new state');
 });
+/* INV-12。途中結果が伸びている最中は聞かない。答えは質問した revision にしか
+   使えないので、Web Speech の途中結果（約100msごとに版が進む）では往復のあいだに
+   必ず版が変わる（v1.49.23実測 約130秒で送信525／採用0）。 */
+test('text still growing is not asked about; the same text once it settles is',()=>{
+  reset({turnDecisionProvider:'jev-direct',turnDecisionSettleMs:200});
+  fetchImpl=()=>new Promise(()=>{});
+  const i=input({idleMs:90}),growing=D().stateOf(card(),{},i,D().rules(i),800,Date.now());
+  D().observe(growing);
+  assert.equal(calls.length,0,'an answer to a revision 90ms old would arrive for a different revision');
+  const j=input({idleMs:260}),settled=D().stateOf(card(),{},j,D().rules(j),800,Date.now());
+  D().observe(settled);
+  assert.equal(calls.length,1,'once the text has paused, the question goes out');
+});
+test('an STT final is asked at once, since it will not grow',()=>{
+  reset({turnDecisionProvider:'jev-direct',turnDecisionSettleMs:200});
+  fetchImpl=()=>new Promise(()=>{});
+  const i=input({idleMs:0,final:true}),s=D().stateOf(card(),{},i,D().rules(i),800,Date.now());
+  D().observe(s);
+  assert.equal(calls.length,1,'the recording-cut REST path delivers its text final and must not be delayed');
+});
+test('settle 0 restores asking on every new revision, and the value is clamped',()=>{
+  reset({turnDecisionProvider:'jev-direct',turnDecisionSettleMs:0});
+  fetchImpl=()=>new Promise(()=>{});
+  const i=input({idleMs:10}),s=D().stateOf(card(),{},i,D().rules(i),800,Date.now());
+  D().observe(s);
+  assert.equal(calls.length,1);
+  reset({turnDecisionSettleMs:'x'});assert.equal(D().settleMs(),200,'unknown falls back to the default');
+  reset({turnDecisionSettleMs:-5});assert.equal(D().settleMs(),200);
+  reset({turnDecisionSettleMs:99999});assert.equal(D().settleMs(),1000,'never wait more than a second');
+});
+test('a state without a delta age is not held back',()=>{
+  reset({turnDecisionSettleMs:200});
+  assert.equal(D().unsettled({sttFinal:false,lastDeltaMs:null}),false,
+    'an unknown age must not silence the layer');
+});
 test('active refuses both aliases, because an alias moves without a change on our side',async()=>{
   for(const m of ['jev-latest','jev-preview','JEV-Latest']){
     reset({turnDecisionProvider:'jev-direct',turnDecisionModel:m});
