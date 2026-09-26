@@ -14,7 +14,7 @@ function block(startsWith){
   throw new Error('unterminated: '+startsWith);
 }
 const line=(p)=>{const l=lines.find(l=>l.startsWith(p));assert.ok(l,'line not found: '+p);return l;};
-const CODE=[line('var SEG_SENTENCE_WAIT_MAX_MS'),block('function segSentenceWaitLeft('),block('function segAivisGroup('),
+const CODE=[line('var SEG_SENTENCE_WAIT_MAX_MS'),line('var SEG_AIVIS_LOOSE_DEBT'),block('function segSentenceWaitLeft('),block('function segAivisGroup('),
   block('function segPartEndsSentence('),block('function segQueueCompare('),
   line('var AIVIS_PREFETCH_LEAD_MS'),line('var AIVIS_PREFETCH=null'),line('var AIVIS_PREFETCH_STATS'),line('function aivisPrefetchMode('),
   block('function aivisPrefetchDrop('),block('function aivisPrefetchTake('),block('function aivisPrefetchPlanned('),
