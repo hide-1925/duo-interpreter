@@ -80,15 +80,15 @@ await test('recommendations: top 3 by server-side sort; translation narrowed to 
   assert.match(w.calls[2].url,/sort=intelligence-high-to-low/);
 });
 await test('Groq: the list needs the key and is split by name; recommendations only list models the account has',async()=>{
-  const w=world({keys:{groq:'gsk-1'},reply:()=>({json:{data:[{id:'whisper-large-v3-turbo',owned_by:'OpenAI'},{id:'llama-3.1-8b-instant',owned_by:'Meta'},
+  const w=world({keys:{groq:'gsk-1'},reply:()=>({json:{data:[{id:'whisper-large-v3-turbo',owned_by:'OpenAI'},{id:'openai/gpt-oss-20b',owned_by:'OpenAI'},
     {id:'canopylabs/orpheus-v1-english',owned_by:'Canopy Labs'},{id:'meta-llama/llama-guard-4-12b',owned_by:'Meta'},{id:'openai/gpt-oss-120b',owned_by:'OpenAI'}]}})}),c=w.ctx;
   const text=await c.hubList('groq','text',true);
-  assert.deepEqual(Array.from(text,m=>m.id),['llama-3.1-8b-instant','openai/gpt-oss-120b'],'no whisper, no tts, no guard');
+  assert.deepEqual(Array.from(text,m=>m.id),['openai/gpt-oss-20b','openai/gpt-oss-120b'],'no whisper, no tts, no guard');
   assert.equal(w.calls[0].opt.headers.Authorization,'Bearer gsk-1');
   assert.deepEqual(Array.from(await c.hubList('groq','stt',true),m=>m.id),['whisper-large-v3-turbo']);
   assert.deepEqual(Array.from(await c.hubList('groq','tts',true),m=>m.id),['canopylabs/orpheus-v1-english']);
   const reco=await c.hubReco('groq','text',c.HUB_PRESETS[1],true);
-  assert.deepEqual(Array.from(reco,m=>m.id),['openai/gpt-oss-120b'],'curated ids missing from the account are left out');
+  assert.deepEqual(Array.from(reco,m=>m.id),['openai/gpt-oss-120b'],'curated ids missing from the account (qwen3.8) are left out');
   await assert.rejects(world().ctx.hubList('groq','text',true),/APIキー/);
 });
 await test('OpenRouter translation: reasoning off, lowest when it cannot be off; temperature only where accepted; route and data policy',async()=>{

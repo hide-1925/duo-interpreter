@@ -310,10 +310,18 @@
     "v1.49.36": {
       "build": "20260927-v14936-openrouter-stt",
       "extension": "1.4.47",
-      "commit": null,
+      "commit": "638ef16",
       "indexHtmlSha256": "b7d4584d89d632f69fbf92fa62aaf4cb578a54f0a2dafc42372f453a68d6df1d",
       "extensionAppJsSha256": "ca858fdf00a565ac1da4769512feb3a777d7b57a923c973a6adbe18a49b5f8ba",
       "summary": "開発仕様書の④。音声認識に OpenRouter を足した。一覧はキー無しで取り、モデルが空なら人気1位を入れる。「🔎 選ぶ」で文字起こしモデルだけから選べる（Groq も whisper 系だけ）。POST /audio/transcriptions に JSON（input_audio は base64、language は v1.49.31 の決まり）で送る。キーは OpenRouter のものだけを使い、翻訳欄のほかのプロバイダのキーは送らない。STT に prompt が無いので、OpenAI の文字起こしモデルだけ provider.options.openai.prompt に用語集を入れる。録音の形式で断られたら、ブラウザの中で16kHz・モノラルの WAV に変えて1回だけ送り直し、以後そのモデルは WAV。openai/gpt-4o*-transcribe は録音上限・末尾繰越・順番待ちを使う。選択画面の Esc をページ全体で受ける（開いた直後に閉じられないことがあった）"
+    },
+    "v1.49.37": {
+      "build": "20260927-v14937-groq-models",
+      "extension": "1.4.48",
+      "commit": null,
+      "indexHtmlSha256": "589a37e41cb7c8b87e9eb48f06f432bcb365cffbe4af38c0729f9b93ce08fee8",
+      "extensionAppJsSha256": "57fcdc345a97e26c075b580eb787fe1d00d1ea9589c826a2b953b6e51e132010",
+      "summary": "Groq の翻訳モデルを今の顔ぶれにした。Groq は 2026年8月16日で Llama 3.1 8B Instant／3.3 70B Versatile の提供を終え（LiteLLM のモデル一覧でも翻訳に使えるのは gpt-oss-20b・gpt-oss-120b・qwen3.8-27b だけ）、内蔵の一覧の先頭（既定）が llama-3.3-70b-versatile のままだったため、一覧を取り直す前の翻訳が失敗していた。内蔵の一覧を gpt-oss-20b（最速）・gpt-oss-120b・qwen3.8-27b に、おすすめも同じ顔ぶれにした。保存していた Groq の Llama は開いたときに gpt-oss-20b へ置き換えて保存し、1回案内して診断に残す"
     }
   }
 }

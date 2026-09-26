@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.47",
-  "version_name": "1.4.47 HTML v1.49.36 と対。音声認識に OpenRouter を足し、Groq・OpenRouter の音声認識モデルも「🔎 選ぶ」から選べるようにする",
+  "version": "1.4.48",
+  "version_name": "1.4.48 HTML v1.49.37 と対。Groq の翻訳モデルを今の顔ぶれ（最速は gpt-oss-20b）にし、提供の終わった Llama を保存していたら置き換える",
   "optional_host_permissions": [
     "https://*/*"
   ],

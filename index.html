@@ -2772,8 +2772,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.36';
-var APP_BUILD = '20260927-v14936-openrouter-stt';
+var APP_VERSION = 'v1.49.37';
+var APP_BUILD = '20260927-v14937-groq-models';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -2840,8 +2840,10 @@ var PROVIDERS = {
                models:['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.5-pro','gemini-2.0-flash'],
                note:'無料枠が比較的大きく、音声認識も同じキーで使えます。' },
   groq:      { label:'Groq', kind:'oai', base:'https://api.groq.com/openai/v1', key:true,
-               models:['llama-3.3-70b-versatile','llama-3.1-8b-instant','openai/gpt-oss-120b','qwen/qwen3-32b','moonshotai/kimi-k2-instruct'],
-               note:'非常に高速で無料枠あり。同時通訳の遅延を最小化したい場合に有利です。' },
+               /* Llama 3.1 8B／3.3 70B は 2026年8月16日で提供終了（今の一覧に無い）。 */
+               models:[{id:'openai/gpt-oss-20b', note:'最速（約1,000トークン/秒）・安い'},{id:'openai/gpt-oss-120b', note:'高精度（約400〜500トークン/秒）'},
+                       {id:'qwen/qwen3.8-27b', note:'推論を切って使う'}],
+               note:'非常に高速で無料枠あり。同時通訳の遅延を最小化したい場合に有利です。いちばん速いのは gpt-oss-20b です。' },
   deepseek:  { label:'DeepSeek', kind:'oai', base:'https://api.deepseek.com/v1', key:true,
                models:['deepseek-chat','deepseek-reasoner'], note:'低価格。中国語まわりに強い。' },
   openrouter:{ label:'OpenRouter', kind:'oai', base:'https://openrouter.ai/api/v1', key:true,
@@ -3237,8 +3239,19 @@ function loadCfg(){
   if (EMBED.keys) for (var k in EMBED.keys) if (!KEYS[k]) KEYS[k] = EMBED.keys[k];
   if(legacyRaw!==null){ saveKeys(); store.del('di.keys'); store.del('di.remember'); }
   if (!CFG.model)    CFG.model    = defaultModel(CFG.provider);
+  groqRetiredModelFix();
   if (!CFG.sttModel) CFG.sttModel = defaultSttModel(CFG.sttProvider);
   if (!CFG.ttsModel) CFG.ttsModel = TTS_MODELS[0].id;
+}
+/* Groq は 2026年8月16日で Llama 3.1 8B Instant／3.3 70B Versatile の提供を終えた。
+   保存したままだと翻訳が毎回失敗するので、いちばん速い gpt-oss-20b に置き換える。 */
+var GROQ_RETIRED = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'];
+var GROQ_MODEL_FIXED = null;
+function groqRetiredModelFix(){
+  if (CFG.provider !== 'groq' || GROQ_RETIRED.indexOf(String(CFG.model || '').trim()) < 0) return false;
+  GROQ_MODEL_FIXED = { from:CFG.model, to:defaultModel('groq') };
+  CFG.model = GROQ_MODEL_FIXED.to; persistSetting('model', CFG.model);
+  return true;
 }
 function firstId(list){ var a = normList(list); return a.length ? a[0].id : ''; }
 function defaultModel(p){ var P = PROVIDERS[p]; return P ? firstId(P.models) : ''; }
@@ -13195,8 +13208,8 @@ var HUB_PRESETS = [
   { id:'popular', label:'人気', sort:'top-weekly', note:'直近1週間によく使われた順' }
 ];
 var GROQ_RECO = {
-  text:{ speed:['llama-3.1-8b-instant','openai/gpt-oss-20b'], quality:['openai/gpt-oss-120b','moonshotai/kimi-k2-instruct','llama-3.3-70b-versatile'],
-         price:['llama-3.1-8b-instant','openai/gpt-oss-20b'], popular:['llama-3.3-70b-versatile','openai/gpt-oss-120b'] },
+  text:{ speed:['openai/gpt-oss-20b','qwen/qwen3.8-27b'], quality:['openai/gpt-oss-120b','qwen/qwen3.8-27b'],
+         price:['openai/gpt-oss-20b','openai/gpt-oss-120b'], popular:['openai/gpt-oss-120b','openai/gpt-oss-20b'] },
   stt:{ speed:['whisper-large-v3-turbo'], quality:['whisper-large-v3'], price:['whisper-large-v3-turbo'], popular:['whisper-large-v3-turbo','whisper-large-v3'] },
   tts:{ speed:['canopylabs/orpheus-v1-english'], quality:['canopylabs/orpheus-v1-english'], price:['canopylabs/orpheus-v1-english'],
         popular:['canopylabs/orpheus-v1-english','canopylabs/orpheus-arabic-saudi'] }
@@ -18071,6 +18084,10 @@ setMode(store.get('di.automode','1') === '1');
 setFocus(CFG.focus || 'split');
 updateStatus();
 dlog('app','build',{id:APP_BUILD,voicevoxApi:'v3'});
+if (GROQ_MODEL_FIXED){
+  dlog('models','groq-model-retired',GROQ_MODEL_FIXED);
+  setTimeout(function(){ toast('Groq の ' + GROQ_MODEL_FIXED.from + ' は提供が終わったため、翻訳モデルを ' + GROQ_MODEL_FIXED.to + ' に替えました。', true); }, 800);
+}
 
 /* =========================================================================
    iOS（iPhone / iPad）向けの環境チェックと自動調整
