@@ -214,10 +214,18 @@
     "v1.49.24": {
       "build": "20260926-v14924-typed-tts-skip",
       "extension": "1.4.35",
-      "commit": null,
+      "commit": "1be5074",
       "indexHtmlSha256": "dd57dd13e498e0cd2258a862c79c8bc1ff0c3dd044c193989eded54908fbe134",
       "extensionAppJsSha256": "4a564dab3ebd5ecb09f9b12f826c1195a2a75c5a049d4682b2443d7a435be434",
       "summary": "キーボード入力の文が読み上げられなかった件。読み上げ対象が「相手(B)の発言のみ」のところへ、打ち込んだ日本語が自分(A)扱いで入っていた（翻訳の停止・実行は無関係で、4件とも同じ理由）。逐次読み上げの経路は対象外で落としても理由を not-selected-or-empty の1語でしか残さず、画面にも何も出していなかったので、理由を tts-target-B2A／A2B・empty・tts-off・conference-original-only・self-recognition-guard に分け、入力文が対象外で外れたときは1回目から案内するようにした。あわせて入力文を判断層に聞かないようにした（入力1件ごとにJevへ3往復し、HOLDで2.0〜2.1秒止めてから確定していた）"
+    },
+    "v1.49.25": {
+      "build": "20260926-v14925-webspeech-punct",
+      "extension": "1.4.36",
+      "commit": null,
+      "indexHtmlSha256": "3386dbe09516d8bcf5a92f86f6cc231df903b25416d4bd33e7f15a40779eecd5",
+      "extensionAppJsSha256": "b5f896ac5915f72a0866b9dbd735c915c9f5272b5c6838bd460b690bd16c6ad8",
+      "summary": "Web Speech（日本語）の空白を句読点に直した。Chrome は日本語に句読点を付けず息継ぎに半角スペースを入れて返すので、文末が一つも無いまま120字の長さ打切り（semantic-length-fallback）まで切れず、カードが1枚110〜120字になっていた。空白を直前の語尾だけで「。」（です・ます・ですよね等）「？」（ですか・ませんか等）「、」（それ以外）に置き換え、途中結果にもかける。後ろを見ないので確定済みの前半は変わらない。英数字に接する空白は文末でなければ残す。あわせて判断層を、テキストが turnDecisionSettleMs（既定200ms）止まってから聞くようにした（INV-12）。Web Speech の途中結果は約0.1秒ごとに版が進むため、話している最中の質問は必ず別の版になって捨てられていた（約130秒で送信525／採用0）。STT final は待たない"
     }
   }
 }
