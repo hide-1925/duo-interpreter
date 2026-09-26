@@ -806,6 +806,18 @@ test('an answer that arrives is kept for carrying, with the part start it was me
   assert.equal(r.hit.boundary.choice,firstId(s));
   assert.equal(P().project(s).segmentStart,undefined,'the part start is internal and is not sent to the model');
 });
+test('the turn state of an arriving answer is kept for closing gpt-live cards',async()=>{
+  reset({turnDecisionProvider:'jev-direct'});D()._turn={};
+  const i=input(),s=D().stateOf(card(),{start:0},i,D().rules(i),800,Date.now());
+  fetchImpl=reply(wire(s));
+  D().observe(s);
+  await new Promise(r=>setTimeout(r,20));
+  const t=D()._turn[s.utteranceId];
+  assert.ok(t,'remembered per utterance');
+  assert.equal(t.revision,s.revision);
+  assert.equal(t.ts.choice,'COMPLETE');
+  assert.ok(t.ts.probabilities.COMPLETE>0.8,'the probabilities survive normalization');
+});
 test('the breath criteria are part of the question set hash',()=>{
   reset();D()._qsh=null;
   const before=D().questionSetHash(),saved=P().PAUSE_CRITERIA.C_PAUSE_Q.what;
