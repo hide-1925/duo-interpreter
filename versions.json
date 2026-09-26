@@ -286,10 +286,18 @@
     "v1.49.33": {
       "build": "20260927-v14933-model-tiers",
       "extension": "1.4.44",
-      "commit": null,
+      "commit": "6f7246e",
       "indexHtmlSha256": "e34921652b60407c2c31e2de73e6c28ddd95b4a9a96b85e0ef610a4d4fdbf70d",
       "extensionAppJsSha256": "eefcaac86be6c89fcdba2fcd320823f7692fdd8f1bdd5ed2a36a6f6ee9108136",
       "summary": "翻訳モデル（OpenAI）の初期表示を、5.6系の gpt-5.6-luna・gpt-5.6-terra・gpt-5.6-sol と、6系の日付の付かないモデルすべてにした。これまでは gpt-5.6 で始まるものをすべて出していたため、日付付きの版も並び、6系は「その他」に入っていた。6系は APIキーで取得した一覧にあるものを名前の規則で拾うので、名前をコードへ書き足さなくてよい。日付付きの版（-2026-09-10・-0910 など）と、5.6系のほかの版は「その他」に回す。内蔵の一覧（キーを入れる前）は今までどおり 5.6系の3つ"
+    },
+    "v1.49.34": {
+      "build": "20260927-v14934-openrouter-picker",
+      "extension": "1.4.45",
+      "commit": null,
+      "indexHtmlSha256": "fc53b901a975081c554b88683351e09138a6ac8fa2290d1326d83c530e53eed4",
+      "extensionAppJsSha256": "8db98662323bf4183c2f91b014446695de67ac68bca29f3bc4fe84de79fdc2f1",
+      "summary": "開発仕様書の①②。翻訳プロバイダが OpenRouter・Groq のとき、翻訳モデルを「🔎 選ぶ」から選べるようにした。おすすめは速さ・精度・安さ・人気の4型で上位3件（OpenRouter は sort と用途 translation をサーバーに任せ、Groq は内蔵の候補のうちアカウントにあるもの）。全部から選ぶときは作った会社→モデル（新しい順）、検索、無料だけ・データを残さない先だけ。試しに見本の1文を訳せる。一覧は機能ごとに output_modalities で取り24時間置く。OpenRouter の翻訳は、キー確認を GET /key に（一覧はキー無しでも返るので間違ったキーでも通っていた）、推論を切る（切れないモデルはいちばん弱く）、temperature は受け付けるモデルにだけ、提供元の選び方（速さ優先が既定）とデータを残さない先だけの指定を足し、内蔵の一覧を deepseek/deepseek-v4.1-flash・google/gemini-3.8-flash から始めた。カメラ翻訳は openai/ を付け、議事録にも同じ指定。Groq は gpt-oss の推論を弱く、Qwen3 は切り、考えた過程を本文に混ぜない。どのプロバイダでも <think> を取り除く。OpenRouter の接続テスト（キー・翻訳・読み上げ・音声認識を1つずつ小さく送り、ブラウザから呼べるかを見る）を足した"
     }
   }
 }

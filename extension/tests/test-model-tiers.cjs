@@ -18,7 +18,7 @@ const provEnd=lines.findIndex((l,i)=>i>provStart&&l==='};');
 const ctx={console,String,Object,JSON,Math,Array};
 vm.createContext(ctx);
 vm.runInContext([lines.slice(provStart,provEnd+1).join('\n'),block('function normList('),block('function knownNoteFor('),
-  block('function sortByCuratedOrder('),line('var OPENAI_PRIMARY_56'),line('function modelIdDated('),block('function openaiPrimaryModel('),
+  block('function sortByCuratedOrder('),line('function hubProviderOk('),line('var OPENAI_PRIMARY_56'),line('function modelIdDated('),block('function openaiPrimaryModel('),
   block('function tierModels(')].join('\n'),ctx);
 const ids=(arr)=>Array.from(arr,m=>m.id);
 const tests=[];const test=(n,f)=>{f();tests.push(n);};
