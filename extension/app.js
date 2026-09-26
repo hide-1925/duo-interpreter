@@ -796,8 +796,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.34';
-var APP_BUILD = '20260927-v14934-openrouter-picker';
+var APP_VERSION = 'v1.49.35';
+var APP_BUILD = '20260927-v14935-openrouter-tts';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -1148,6 +1148,13 @@ var CONFIG_SCHEMA = [
   { prop:"gttsVoiceId", key:'di.gttsvid', embed:'gttsVoiceId', def:'', portable:true, el:"gttsVoiceId", bind:'custom' },
   { prop:"gttsVoiceIdB", key:'di.gttsvidb', embed:'gttsVoiceIdB', def:'', portable:true, el:"gttsVoiceIdB", bind:'custom' },
   { prop:"gttsModel", key:'di.gttsm', embed:'gttsModel', def:'gemini-3.8-flash-lite-tts', portable:true, el:"gttsModel", bind:'custom' },
+  /* OpenRouter・Groq の読み上げ。声はモデルごとに違うので、選択肢は一覧から作る。 */
+  { prop:"orTtsModel", key:'di.orTtsModel', embed:'orTtsModel', def:'google/gemini-3.8-flash-tts', portable:true, el:"orTtsModel", bind:'custom' },
+  { prop:"orVoiceA", key:'di.orVoiceA', embed:'orVoiceA', def:'', portable:true, el:"orVoiceA", bind:'custom' },
+  { prop:"orVoiceB", key:'di.orVoiceB', embed:'orVoiceB', def:'', portable:true, el:"orVoiceB", bind:'custom' },
+  { prop:"groqTtsModel", key:'di.groqTtsModel', embed:'groqTtsModel', def:'canopylabs/orpheus-v1-english', portable:true, el:"groqTtsModel", bind:'custom' },
+  { prop:"groqVoiceA", key:'di.groqVoiceA', embed:'groqVoiceA', def:'', portable:true, el:"groqVoiceA", bind:'custom' },
+  { prop:"groqVoiceB", key:'di.groqVoiceB', embed:'groqVoiceB', def:'', portable:true, el:"groqVoiceB", bind:'custom' },
   { prop:"gttsPrompt", key:'di.gttsp', embed:'gttsPrompt', def:'', portable:true, el:"gttsPrompt", bind:'custom' },
   { prop:"gttsRate", key:'di.gttsrt', embed:'gttsRate', def:'0', portable:true, el:"gttsRate" },
   { prop:"gttsVolume", key:'di.gttsvo', embed:'gttsVolume', def:'0', portable:true, el:"gttsVolume" },
@@ -4529,6 +4536,173 @@ function apiSpeakBlob(text, lang, seat, prosody, plan, key){
   });
 }
 
+/* ---------------- OpenRouter・Groq の読み上げ ----------------
+   OpenRouter：POST /audio/speech。response_format は mp3 か pcm（既定 pcm）。
+   Gemini の TTS は PCM しか返さないと外部の実装に記録がある。そこで pcm で頼み、
+   返った中身の頭（RIFF・ID3 など）と content-type で形を見分けて鳴らす。
+   生の PCM は 16bit モノラルとみなし、rate= があればその、無ければ 24kHz の WAV に包む。
+   届いた先頭から鳴らす逐次再生は、実機で形とサンプルレートを確かめてから足す。
+   Groq：POST /openai/v1/audio/speech（Orpheus）。英語とアラビア語だけなので、
+   ほかの言語はブラウザ内蔵の声で読む。 */
+var OR_TTS_BUILTIN = [{id:'google/gemini-3.8-flash-tts', note:'声30種'}, {id:'google/gemini-3.8-flash-lite-tts', note:'軽量'}];
+var GROQ_TTS_BUILTIN = [{id:'canopylabs/orpheus-v1-english', note:'英語'}, {id:'canopylabs/orpheus-arabic-saudi', note:'アラビア語（サウジ）'}];
+var GROQ_VOICES = { en:['autumn','diana','hannah','austin','Daniel','troy'], ar:['fahad','sultan','lulwa','noura'] };
+var OR_TTS_BLOCK_UNTIL = 0, GROQ_TTS_BLOCK_UNTIL = 0;
+function orTtsKey(){ return hubKeyFor('openrouter', 'tts'); }
+function groqTtsKey(){ return hubKeyFor('groq', 'tts'); }
+function orTtsVoices(){ var m = hubFind('openrouter', 'tts', CFG.orTtsModel); return (m && m.voices) || []; }
+function orTtsVoice(seat){
+  var v = String((seat === 'B' ? CFG.orVoiceB : CFG.orVoiceA) || '').trim(), vs = orTtsVoices();
+  if (vs.length && vs.indexOf(v) < 0) v = vs[seat === 'B' && vs.length > 1 ? 1 : 0];
+  return v;
+}
+function groqTtsLang(model){ return /arabic/i.test(String(model || '')) ? 'ar' : 'en'; }
+function groqTtsVoice(seat){
+  var model = CFG.groqTtsModel || GROQ_TTS_BUILTIN[0].id, vs = GROQ_VOICES[groqTtsLang(model)];
+  var v = String((seat === 'B' ? CFG.groqVoiceB : CFG.groqVoiceA) || '').trim();
+  return v || vs[seat === 'B' ? 2 % vs.length : 0];
+}
+function hubTtsPlan(lang, prosody, provider){
+  var pmap = prosodyMapForTts(prosody, lang || '', provider);
+  return { map:pmap, rate:prosodyClamp(pmap ? pmap.rate : 1, 0.7, 1.8), gain:prosodyClamp(pmap ? pmap.volume : 1, 0.5, 1.5) };
+}
+function pcm16MonoWav(u8, rate){
+  var n = u8.byteLength - (u8.byteLength % 2), buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+  function put(o, s){ for (var i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); }
+  put(0, 'RIFF'); v.setUint32(4, 36 + n, true); put(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  put(36, 'data'); v.setUint32(40, n, true);
+  new Uint8Array(buf, 44).set(u8.subarray(0, n));
+  return new Blob([buf], { type:'audio/wav' });
+}
+function hubAudioBlob(buf, contentType){
+  var u8 = new Uint8Array(buf), ct = String(contentType || '').toLowerCase();
+  var tag = String.fromCharCode(u8[0] || 0, u8[1] || 0, u8[2] || 0, u8[3] || 0);
+  if (tag === 'RIFF') return { blob:new Blob([buf], { type:'audio/wav' }), kind:'wav' };
+  if (tag.slice(0, 3) === 'ID3' || (u8[0] === 0xFF && (u8[1] & 0xE0) === 0xE0) || /mpeg|mp3/.test(ct)) return { blob:new Blob([buf], { type:'audio/mpeg' }), kind:'mp3' };
+  if (tag === 'OggS') return { blob:new Blob([buf], { type:'audio/ogg' }), kind:'ogg' };
+  if (tag === 'fLaC') return { blob:new Blob([buf], { type:'audio/flac' }), kind:'flac' };
+  var m = /rate=(\d+)/.exec(ct), rate = m ? parseInt(m[1], 10) : 24000;
+  return { blob:pcm16MonoWav(u8, rate), kind:'pcm', rate:rate };
+}
+function hubHttpError(r, where){
+  return r.text().then(function(x){ var e = new Error('HTTP ' + r.status + ' ' + String(x || '').slice(0, 160)); e.status = r.status; e.where = where; throw e; });
+}
+/* 読み上げ1回ぶんの合成。鳴らすのは呼んだ側。 */
+function orSpeechFetch(text, seat, plan, model){
+  var body = { model:model || CFG.orTtsModel, input:text, response_format:'pcm' }, voice = model ? '' : orTtsVoice(seat);
+  if (model){ var m = hubFind('openrouter', 'tts', model); if (m && m.voices && m.voices.length) voice = m.voices[0]; }
+  if (voice) body.voice = voice;
+  var apiSpeed = /^openai\//.test(body.model);
+  if (apiSpeed && plan && plan.rate !== 1) body.speed = prosodyRound(plan.rate, 3);
+  return fetch(OR_BASE + '/audio/speech', { method:'POST', headers:orHeaders(orTtsKey(), true), body:JSON.stringify(body) }).then(function(r){
+    if (!r.ok) return hubHttpError(r, 'openrouter-speech');
+    var ct = ''; try{ ct = String(r.headers.get('content-type') || ''); }catch(e){}
+    return r.arrayBuffer().then(function(b){
+      if (!b.byteLength) throw new Error('音声データが空でした');
+      var a = hubAudioBlob(b, ct); a.bytes = b.byteLength; a.contentType = ct; a.body = body; a.apiSpeed = apiSpeed; return a;
+    });
+  });
+}
+function groqSpeechFetch(text, seat, model){
+  var body = { model:model || CFG.groqTtsModel || GROQ_TTS_BUILTIN[0].id, input:text, voice:model ? GROQ_VOICES[groqTtsLang(model)][0] : groqTtsVoice(seat), response_format:'wav' };
+  return fetch(STT_BASE.groq + '/audio/speech', { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + groqTtsKey() }, body:JSON.stringify(body) }).then(function(r){
+    if (!r.ok) return hubHttpError(r, 'groq-speech');
+    var ct = ''; try{ ct = String(r.headers.get('content-type') || ''); }catch(e){}
+    return r.arrayBuffer().then(function(b){
+      if (!b.byteLength) throw new Error('音声データが空でした');
+      var a = hubAudioBlob(b, ct); a.bytes = b.byteLength; a.contentType = ct; a.body = body; return a;
+    });
+  });
+}
+function hubSpeakFail(tag, err, text, lang, prosody, finish, label){
+  var m = String((err && err.message) || err), cors = err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(m);
+  dlog('tts', tag + '-FAIL', { err:m.slice(0, 160), status:(err && err.status) || 0, cors:cors });
+  if (err && err.status === 429){ if (tag === 'openrouter') OR_TTS_BLOCK_UNTIL = Date.now() + 30000; else GROQ_TTS_BLOCK_UNTIL = Date.now() + 30000; }
+  var flag = tag + 'TtsFailWarned';
+  if (!window[flag]){ window[flag] = true; setTimeout(function(){ window[flag] = false; }, 30000);
+    toast(label + ' の読み上げに失敗しました（' + realtimeEscape(cors ? 'ブラウザから呼べませんでした' : m.slice(0, 90)) + '）。<br>今回はブラウザ内蔵の音声で読み上げます。'); }
+  finish.holdPhase('browser-fallback');
+  browserSpeak(text, L(lang).tts, prosody, function(){ finish(); });
+}
+function orSpeak(text, lang, seat, prosody){
+  seat = seat || 'A';
+  if (!orTtsKey()) return ttsFallback(text, lang, '未設定', 'OpenRouter のAPIキーが未設定です。⚙→音声 でご確認ください。', 'orTtsWarned', prosody);
+  if (!CFG.orTtsModel) return ttsFallback(text, lang, 'モデル未選択', 'OpenRouter の読み上げモデルが未選択です。', 'orTtsWarned', prosody);
+  var plan = hubTtsPlan(lang, prosody, 'openrouter'), t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150), seat);
+  logProsodyMap(plan.map, { effectiveRate:plan.rate, effectiveVolume:plan.gain, stream:false });
+  orSpeechFetch(text, seat, plan).then(function(a){
+    dlog('tts', 'openrouter-ok', { ms:Date.now() - t0, bytes:a.bytes, contentType:a.contentType || '(不明)', kind:a.kind, rate:a.rate || null,
+      model:a.body.model, voice:a.body.voice || '(既定)', seat:seat, chars:text.length, speed:a.body.speed || 1 });
+    playBlob(a.blob, finish, 'openrouter', { gain:plan.gain, playbackRate:a.apiSpeed ? 1 : plan.rate });
+  }).catch(function(err){ hubSpeakFail('openrouter', err, text, lang, prosody, finish, 'OpenRouter'); });
+}
+function groqSpeak(text, lang, seat, prosody){
+  seat = seat || 'A';
+  var model = CFG.groqTtsModel || GROQ_TTS_BUILTIN[0].id, want = groqTtsLang(model);
+  if (String(lang || '').split('-')[0] !== want)
+    return ttsFallback(text, lang, 'Groqの声が無い言語', 'Groq の読み上げ（' + model + '）は' + (want === 'ar' ? 'アラビア語' : '英語') + 'だけです。', 'groqTtsLangWarned', prosody);
+  if (!groqTtsKey()) return ttsFallback(text, lang, '未設定', 'Groq のAPIキーが未設定です。⚙→音声 でご確認ください。', 'groqTtsWarned', prosody);
+  var plan = hubTtsPlan(lang, prosody, 'groq'), t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150), seat);
+  groqSpeechFetch(text, seat).then(function(a){
+    dlog('tts', 'groq-ok', { ms:Date.now() - t0, bytes:a.bytes, contentType:a.contentType || '(不明)', kind:a.kind, model:a.body.model, voice:a.body.voice, seat:seat, chars:text.length });
+    playBlob(a.blob, finish, 'groq', { gain:plan.gain, playbackRate:plan.rate });
+  }).catch(function(err){ hubSpeakFail('groq', err, text, lang, prosody, finish, 'Groq'); });
+}
+/* 選択画面の「試しに使う」。ふだんの順番待ちを通さず、その場で1回だけ鳴らす。 */
+function hubTryTts(prov, id){
+  var ja = CFG.langA === 'ja' || CFG.langB === 'ja', job;
+  if (prov === 'groq') job = groqSpeechFetch(groqTtsLang(id) === 'ar' ? 'مرحبا، نبدأ الاجتماع الآن.' : "Hello, let's start today's meeting.", 'A', id);
+  else {
+    if (!orTtsKey()) return Promise.reject(new Error('OpenRouter のAPIキーが未入力です'));
+    job = orSpeechFetch(ja ? 'こんにちは。今日の会議を始めます。' : "Hello, let's start today's meeting.", 'A', null, id);
+  }
+  return job.then(function(a){
+    try{ var au = new Audio(URL.createObjectURL(a.blob)); au.play().catch(function(){}); }catch(e){}
+    return a.kind + (a.rate ? '・' + a.rate + 'Hz' : '') + '・' + a.bytes + ' バイト';
+  });
+}
+function hubTtsModelList(prov){
+  var hit = hubCached(prov, 'tts');
+  if (hit && hit.models.length) return hit.models.map(function(m){ return { id:m.id, note:m.voices && m.voices.length ? '声' + m.voices.length + '種' : '' }; });
+  return prov === 'groq' ? GROQ_TTS_BUILTIN : OR_TTS_BUILTIN;
+}
+function hubFillVoiceSelect(id, voices, current, fallback){
+  var sel = $(id); if (!sel) return;
+  sel.innerHTML = '';
+  if (!voices.length){ var o = document.createElement('option'); o.value = ''; o.textContent = '(モデルの既定の声)'; sel.appendChild(o); sel.value = ''; return; }
+  voices.forEach(function(v){ var o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+  sel.value = voices.indexOf(current) >= 0 ? current : fallback;
+}
+function orTtsRefreshUI(active){
+  if (!$('orTtsOnly')) return;
+  var k = $('orTtsKey'); if (k && k !== document.activeElement) k.value = KEYS['tts:openrouter'] || '';
+  if (!active) return;
+  renderCombo('orTtsModel', 'orTtsModelCustom', hubTtsModelList('openrouter'), CFG.orTtsModel, function(v){
+    CFG.orTtsModel = v; persistSetting('orTtsModel', v); refreshVvUI();
+  });
+  var vs = orTtsVoices();
+  hubFillVoiceSelect('orVoiceA', vs, CFG.orVoiceA, orTtsVoice('A'));
+  hubFillVoiceSelect('orVoiceB', vs, CFG.orVoiceB, orTtsVoice('B'));
+  $('orTtsNote').textContent = hubCached('openrouter', 'tts') ? '' : '一覧を読み込んでいます…';
+  if (!hubCached('openrouter', 'tts') && !orTtsRefreshUI.loading){
+    orTtsRefreshUI.loading = true;
+    hubList('openrouter', 'tts', false).then(function(){ orTtsRefreshUI.loading = false; refreshVvUI(); },
+      function(e){ orTtsRefreshUI.loading = false; $('orTtsNote').textContent = '一覧を取得できませんでした（内蔵の候補から選べます）：' + String(e.message || e).slice(0, 80); });
+  }
+}
+function groqTtsRefreshUI(active){
+  if (!$('groqTtsOnly')) return;
+  var k = $('groqTtsKey'); if (k && k !== document.activeElement) k.value = KEYS['tts:groq'] || '';
+  if (!active) return;
+  renderCombo('groqTtsModel', 'groqTtsModelCustom', hubTtsModelList('groq'), CFG.groqTtsModel, function(v){
+    CFG.groqTtsModel = v; persistSetting('groqTtsModel', v); refreshVvUI();
+  });
+  var list = $('groqVoiceList');
+  if (list){ list.innerHTML = ''; GROQ_VOICES[groqTtsLang(CFG.groqTtsModel)].forEach(function(v){ var o = document.createElement('option'); o.value = v; list.appendChild(o); }); }
+  ['A', 'B'].forEach(function(seat){ var el = $('groqVoice' + seat); if (el && el !== document.activeElement) el.value = groqTtsVoice(seat); });
+}
+
 /* Windows用 OpenAI PCM連続再生 -----------------------------------------
    raw PCMを発話ごとに1本のAudioWorkletへ流し、24kHzから端末のAudioContext
    レートへ連続的に線形補間する。従来のように120msごとのAudioBufferSourceを
@@ -7885,6 +8059,67 @@ var TTS_PROVIDERS = {
     {section:"settings",order:39,label:'xAIの声 A / B',value:function(){ return ttsSeatVoices(); },inactive:'(未使用)'},
     {section:"settings",order:40,label:'xAI 話し方の調整',value:function(){ return xaiManualTweaks(); },inactive:'(未使用)'},
     {section:"settings",order:41,label:'xAI API speed',value:function(){ return String(XAI_RATE_FACTORS[xaiRateLevel(CFG.xaiRate)+2]); },inactive:'(未使用)'}
+  ]
+  },
+  openrouter: {
+    label:"OpenRouter音声",
+    optionLabel:"OpenRouter（Gemini・OpenAI などの読み上げモデル）",
+    rateWait:function(){ return Math.max(0,OR_TTS_BLOCK_UNTIL-Date.now()); },
+    uiField:"orTtsOnly",
+    enabled:true,
+    jaOnly:false,
+    canRouteOutput:true,
+    needsKey:'tts:openrouter',
+    speak:function(text,lang,seat,prosody){ return orSpeak(text,lang,seat,prosody); },
+    seatVoice:function(seat){ return orTtsVoice(seat)||'(既定の声)'; },
+    setupMissing:function(){
+      if(!orTtsKey())return 'OpenRouter のAPIキーが未設定です。';
+      if(!CFG.orTtsModel)return 'OpenRouter の読み上げモデルが未選択です。';
+      return '';
+    },
+    planNote:function(rows){
+      var t='',warn=false,miss=ttsSetupMissing();
+      if(miss){t+='<br><b>⚠ '+miss+'</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';warn=true;}
+      else t+='<br>OpenRouter の <b>'+realtimeEscape(CFG.orTtsModel)+'</b> で読みます（自分(A) '+realtimeEscape(orTtsVoice('A')||'既定の声')+
+        '／相手(B) '+realtimeEscape(orTtsVoice('B')||'既定の声')+'）。';
+      return {html:t,warn:warn};
+    },
+    stream:function(){ return {kind:'off',checked:false,text:'いまは一括再生だけです（届いた先頭から鳴らす方式は、実機で音声の形を確かめてから足します）。'}; },
+    refreshUI:function(active){ orTtsRefreshUI(active); },
+    diagModel:function(){ return CFG.orTtsModel||'(未選択)'; },
+    prosody:{axes:["速度","音量"],suffix:'',note:'OpenRouter：速度（OpenAI 系は API の speed、ほかはピッチ保持再生）＋音量（Web Audio）'},
+    diagRows:[
+    {section:"settings",order:38.7,label:'OpenRouter 読み上げ',value:function(){
+      return (CFG.orTtsModel||'(未選択)')+' ／ 声 A '+(orTtsVoice('A')||'既定')+'・B '+(orTtsVoice('B')||'既定')+' ／ pcm で依頼し、返った形で再生'; },inactive:'(未使用)'}
+  ]
+  },
+  groq: {
+    label:"Groq音声",
+    optionLabel:"Groq（Orpheus・英語／アラビア語だけ）",
+    rateWait:function(){ return Math.max(0,GROQ_TTS_BLOCK_UNTIL-Date.now()); },
+    uiField:"groqTtsOnly",
+    enabled:true,
+    jaOnly:false,
+    canRouteOutput:true,
+    needsKey:'tts:groq',
+    speak:function(text,lang,seat,prosody){ return groqSpeak(text,lang,seat,prosody); },
+    seatVoice:function(seat){ return groqTtsVoice(seat); },
+    setupMissing:function(){ if(!groqTtsKey())return 'Groq のAPIキーが未設定です。'; return ''; },
+    planNote:function(rows){
+      var t='',warn=false,miss=ttsSetupMissing(),want=groqTtsLang(CFG.groqTtsModel);
+      if(miss){t+='<br><b>⚠ '+miss+'</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';warn=true;}
+      var other=(rows||[]).filter(function(r){return String(r.lang||'').split('-')[0]!==want;});
+      if(other.length){t+='<br><b>⚠ Groq の読み上げは'+(want==='ar'?'アラビア語':'英語')+'だけです。</b>'+
+        other.map(function(r){return r.who+'の発言（'+L(r.lang).name+'）';}).join('・')+'はブラウザ内蔵の声で読みます。';warn=true;}
+      return {html:t,warn:warn};
+    },
+    stream:function(){ return {kind:'off',checked:false,text:'常時OFF（WAV を一括で受け取って鳴らします）。'}; },
+    refreshUI:function(active){ groqTtsRefreshUI(active); },
+    diagModel:function(){ return CFG.groqTtsModel||GROQ_TTS_BUILTIN[0].id; },
+    prosody:{axes:["速度","音量"],suffix:'',note:'Groq：速度（ピッチ保持再生）＋音量（Web Audio）'},
+    diagRows:[
+    {section:"settings",order:38.8,label:'Groq 読み上げ',value:function(){
+      return (CFG.groqTtsModel||GROQ_TTS_BUILTIN[0].id)+' ／ 声 A '+groqTtsVoice('A')+'・B '+groqTtsVoice('B'); },inactive:'(未使用)'}
   ]
   },
   voicevox: {
@@ -12173,6 +12408,28 @@ $('rtCardSeconds').onchange=function(){
 };
 
 $('oaiTtsKey').oninput=function(){KEYS['tts:openai']=this.value.trim();saveKeys();openaiTtsWarned=false;refreshVvUI();};
+$('orTtsKey').oninput=function(){KEYS['tts:openrouter']=this.value.trim();saveKeys();window.orTtsWarned=false;refreshVvUI();};
+$('groqTtsKey').oninput=function(){KEYS['tts:groq']=this.value.trim();saveKeys();window.groqTtsWarned=false;refreshVvUI();};
+['A','B'].forEach(function(seat){
+  $('orVoice'+seat).onchange=function(){CFG['orVoice'+seat]=this.value;persistSetting('orVoice'+seat,this.value);refreshVvUI();};
+  $('groqVoice'+seat).onchange=function(){CFG['groqVoice'+seat]=this.value.trim();persistSetting('groqVoice'+seat,CFG['groqVoice'+seat]);refreshVvUI();};
+});
+$('orTtsFetch').onclick=function(){
+  var btn=this;btn.disabled=true;$('orTtsNote').textContent='一覧を取り直しています…';
+  hubList('openrouter','tts',true).then(function(ms){refreshVvUI();$('orTtsNote').textContent='✅ '+ms.length+' 件の読み上げモデルを取得しました';},
+    function(e){$('orTtsNote').textContent='一覧を取得できませんでした：'+String(e.message||e).slice(0,80);}).then(function(){btn.disabled=false;});
+};
+$('orTtsPick').onclick=function(){
+  openModelPicker({prov:'openrouter',kind:'tts',current:CFG.orTtsModel,title:'読み上げモデルを選ぶ（OpenRouter）',
+    onPick:function(id){CFG.orTtsModel=id;persistSetting('orTtsModel',id);refreshVvUI();toast('読み上げモデルを '+realtimeEscape(id)+' にしました',true);},
+    tryFn:function(id){return hubTryTts('openrouter',id);}});
+};
+$('groqTtsPick').onclick=function(){
+  if(!groqTtsKey()){toast('先に Groq のAPIキーを入力してください');return;}
+  openModelPicker({prov:'groq',kind:'tts',current:CFG.groqTtsModel,title:'読み上げモデルを選ぶ（Groq）',
+    onPick:function(id){CFG.groqTtsModel=id;persistSetting('groqTtsModel',id);refreshVvUI();toast('読み上げモデルを '+realtimeEscape(id)+' にしました',true);},
+    tryFn:function(id){return hubTryTts('groq',id);}});
+};
 
 $('vvSpeakerFetch').onclick=function(){ vvLoadSpeakers(true); };
 

@@ -26,6 +26,13 @@ const ALL=[M('deepseek/deepseek-v4.1-flash','DeepSeek V4.1 Flash',30,{reasoning:
       const u=new URL(route.request().url()),h=route.request().headers();seen.push({path:u.pathname,q:u.search,auth:!!h.authorization});
       const json=(o)=>route.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify(o)});
       if(/\/endpoints$/.test(u.pathname))return json({data:{endpoints:[{latency_last_30m:{p50:420}}]}});
+      if(u.pathname.endsWith('/audio/speech')){
+        /* 0.3秒ぶんの生の PCM（24kHz・16bit・モノラル） */
+        const n=7200,b=Buffer.alloc(n*2);for(let i=0;i<n;i++)b.writeInt16LE(Math.round(Math.sin(i/8)*8000),i*2);
+        return route.fulfill({status:200,contentType:'audio/pcm',headers:{'access-control-allow-origin':'*'},body:b});
+      }
+      if(u.pathname.endsWith('/models')&&u.searchParams.get('output_modalities')==='speech')
+        return json({data:[M('google/gemini-3.8-flash-tts','Gemini 3.8 Flash TTS',40,{architecture:{input_modalities:['text'],output_modalities:['speech']},supported_voices:['Kore','Puck','Zephyr']})]});
       if(u.pathname.endsWith('/models')){
         const sort=u.searchParams.get('sort');
         if(sort==='latency-low-to-high')return json({data:[ALL[0],ALL[2],ALL[4]]});
@@ -81,6 +88,23 @@ const ALL=[M('deepseek/deepseek-v4.1-flash','DeepSeek V4.1 Flash',30,{reasoning:
     await page.keyboard.press('Escape');
     const closed=await page.evaluate(()=>({hidden:document.getElementById('mpick').hidden,focus:document.activeElement&&document.activeElement.id}));
 
+    /* ③ 読み上げ：OpenRouter を選ぶと、声の一覧がモデルから作られ、生の PCM が鳴る */
+    await page.setViewportSize({width:1100,height:900});
+    await page.evaluate(()=>{const sel=document.getElementById('ttsMode');sel.value='openrouter';sel.dispatchEvent(new Event('change'));});
+    await page.waitForFunction(()=>document.getElementById('orVoiceA').options.length===3);
+    const ttsPanel=await page.evaluate(()=>({panel:getComputedStyle(document.getElementById('orTtsOnly')).display,
+      model:document.getElementById('orTtsModel').value,
+      a:document.getElementById('orVoiceA').value,b:document.getElementById('orVoiceB').value,
+      opts:[...document.getElementById('orVoiceA').options].map(o=>o.value),
+      option:[...document.getElementById('ttsMode').options].map(o=>o.value)}));
+    await page.evaluate(()=>{window.__t0=DLOG.length;TTS_PROVIDERS.openrouter.speak('テストです','ja','A',null);});
+    await page.waitForFunction(()=>DLOG.slice(window.__t0).some(e=>(e.m==='play-start'||e.m==='wa-play')&&e.d&&e.d.src==='openrouter'),null,{timeout:15000});
+    const ttsPlay=await page.evaluate(()=>{const L=DLOG.slice(window.__t0),ok=L.find(e=>e.m==='openrouter-ok'),wa=L.find(e=>e.m==='wa-play');return Object.assign({},ok&&ok.d,{durMs:wa&&wa.d.dur});});
+    await page.evaluate(()=>{const sel=document.getElementById('ttsMode');sel.value='groq';sel.dispatchEvent(new Event('change'));});
+    const groqPanel=await page.evaluate(()=>({panel:getComputedStyle(document.getElementById('groqTtsOnly')).display,
+      model:document.getElementById('groqTtsModel').value,list:[...document.querySelectorAll('#groqVoiceList option')].map(o=>o.value),
+      a:document.getElementById('groqVoiceA').value,plan:document.getElementById('ttsPlan').textContent}));
+
     test('choosing OpenRouter shows the picker button and the OpenRouter options, speed routing by default',()=>{
       assert.notEqual(setup.pick,'none');assert.notEqual(setup.opts,'none');
       assert.equal(setup.route,'latency');assert.equal(setup.zdr,false);
@@ -112,6 +136,20 @@ const ALL=[M('deepseek/deepseek-v4.1-flash','DeepSeek V4.1 Flash',30,{reasoning:
     test('on a phone the picker fills the screen without sideways scroll, and Esc returns to the button',()=>{
       assert.equal(mobile.w,mobile.vw);assert.equal(mobile.overflow,false);
       assert.equal(closed.hidden,true);assert.equal(closed.focus,'modelPick');
+    });
+    test('TTS offers OpenRouter and Groq; the OpenRouter voices come from the model list, one per seat',()=>{
+      assert.ok(ttsPanel.option.includes('openrouter')&&ttsPanel.option.includes('groq'));
+      assert.notEqual(ttsPanel.panel,'none');assert.equal(ttsPanel.model,'google/gemini-3.8-flash-tts');
+      assert.deepEqual(ttsPanel.opts,['Kore','Puck','Zephyr']);assert.equal(ttsPanel.a,'Kore');assert.equal(ttsPanel.b,'Puck');
+    });
+    test('raw PCM from OpenRouter is wrapped as 24 kHz WAV and played through the normal queue',()=>{
+      assert.equal(ttsPlay.kind,'pcm');assert.equal(ttsPlay.rate,24000);assert.equal(ttsPlay.voice,'Kore');assert.equal(ttsPlay.bytes,14400);
+      assert.equal(ttsPlay.durMs,300,'0.3 s at 24 kHz plays for 0.3 s');
+    });
+    test('Groq TTS lists its English voices and says Japanese goes to the browser voice',()=>{
+      assert.notEqual(groqPanel.panel,'none');assert.equal(groqPanel.model,'canopylabs/orpheus-v1-english');
+      assert.deepEqual(groqPanel.list,['autumn','diana','hannah','austin','Daniel','troy']);assert.equal(groqPanel.a,'autumn');
+      assert.match(groqPanel.plan,/英語だけです/);
     });
     test('no script error',()=>{ assert.equal(pageErrors.length,0,pageErrors.join(' | ')); });
     console.log(JSON.stringify({passed:tests.length,tests},null,2));

@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.45",
-  "version_name": "1.4.45 HTML v1.49.34 と対。OpenRouter・Groq の翻訳モデルを、おすすめ（速さ・精度・安さ・人気）か作った会社から選べるようにし、OpenRouter の接続テストを足す",
+  "version": "1.4.46",
+  "version_name": "1.4.46 HTML v1.49.35 と対。読み上げに OpenRouter（Gemini TTS など）と Groq（Orpheus・英語／アラビア語）を足す",
   "optional_host_permissions": [
     "https://*/*"
   ],

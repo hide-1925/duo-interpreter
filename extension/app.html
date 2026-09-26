@@ -1407,6 +1407,49 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
           <small id="oaiStyleNote" data-fold="off"><code>gpt-4o-mini-tts</code>では、話速をAPIの数値<code>speed</code>、音量をWeb Audioで反映し、感情・抑揚・緩急・間は発話ごとの強い指示文で反映します。旧<code>tts-1</code>系では話し方指示は適用されません。</small>
         </details>
       </div>
+      <div id="orTtsOnly" style="display:none">
+        <div class="sublabel">モデル</div>
+        <div class="row">
+          <select id="orTtsModel" style="flex:1"></select>
+          <button class="btn ghost" id="orTtsPick" type="button" title="おすすめか、作った会社から選ぶ">🔎 選ぶ</button>
+          <button class="btn ghost" id="orTtsFetch" type="button" title="OpenRouter の読み上げモデル一覧を取り直す">🔄 更新</button>
+        </div>
+        <input type="text" id="orTtsModelCustom" placeholder="モデル名を直接入力" style="display:none">
+        <div class="sublabel">APIキー</div>
+        <div class="keyline">
+          <input type="password" id="orTtsKey" placeholder="OpenRouter APIキー（空欄なら翻訳欄のキーを使用）" autocomplete="off">
+        </div>
+        <div class="tts-remember-anchor"></div>
+        <div class="tts-target-anchor"></div>
+        <div class="row" id="orVoices">
+          <label class="seatpick seatA"><span>自分(A)の発言</span><select id="orVoiceA"></select></label>
+          <label class="seatpick seatB"><span>相手(B)の発言</span><select id="orVoiceB"></select></label>
+        </div>
+        <div class="tts-stream-anchor"></div>
+        <small id="orTtsNote" aria-live="polite"></small>
+        <small>声の一覧はモデルごとに OpenRouter から取ります。読み上げる文字は OpenRouter と、選んだモデルの提供元に渡ります。</small>
+      </div>
+      <div id="groqTtsOnly" style="display:none">
+        <div class="sublabel">モデル</div>
+        <div class="row">
+          <select id="groqTtsModel" style="flex:1"></select>
+          <button class="btn ghost" id="groqTtsPick" type="button" title="このアカウントで使える読み上げモデルから選ぶ">🔎 選ぶ</button>
+        </div>
+        <input type="text" id="groqTtsModelCustom" placeholder="モデル名を直接入力" style="display:none">
+        <div class="sublabel">APIキー</div>
+        <div class="keyline">
+          <input type="password" id="groqTtsKey" placeholder="Groq APIキー（空欄なら翻訳・音声認識欄のキーを使用）" autocomplete="off">
+        </div>
+        <div class="tts-remember-anchor"></div>
+        <div class="tts-target-anchor"></div>
+        <div class="row" id="groqVoices">
+          <label class="seatpick seatA"><span>自分(A)の発言</span><input id="groqVoiceA" list="groqVoiceList" autocomplete="off" spellcheck="false"></label>
+          <label class="seatpick seatB"><span>相手(B)の発言</span><input id="groqVoiceB" list="groqVoiceList" autocomplete="off" spellcheck="false"></label>
+          <datalist id="groqVoiceList"></datalist>
+        </div>
+        <div class="tts-stream-anchor"></div>
+        <small>Groq の Orpheus は英語とアラビア語だけです。日本語などほかの言語は、ブラウザ内蔵の声で読みます。</small>
+      </div>
       <div id="browserOnly" style="display:none">
         <div class="tts-target-anchor"></div>
         <div class="tts-stream-anchor"></div>
