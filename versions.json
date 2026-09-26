@@ -318,10 +318,18 @@
     "v1.49.37": {
       "build": "20260927-v14937-groq-models",
       "extension": "1.4.48",
-      "commit": null,
+      "commit": "e462d54",
       "indexHtmlSha256": "589a37e41cb7c8b87e9eb48f06f432bcb365cffbe4af38c0729f9b93ce08fee8",
       "extensionAppJsSha256": "57fcdc345a97e26c075b580eb787fe1d00d1ea9589c826a2b953b6e51e132010",
       "summary": "Groq の翻訳モデルを今の顔ぶれにした。Groq は 2026年8月16日で Llama 3.1 8B Instant／3.3 70B Versatile の提供を終え（LiteLLM のモデル一覧でも翻訳に使えるのは gpt-oss-20b・gpt-oss-120b・qwen3.8-27b だけ）、内蔵の一覧の先頭（既定）が llama-3.3-70b-versatile のままだったため、一覧を取り直す前の翻訳が失敗していた。内蔵の一覧を gpt-oss-20b（最速）・gpt-oss-120b・qwen3.8-27b に、おすすめも同じ顔ぶれにした。保存していた Groq の Llama は開いたときに gpt-oss-20b へ置き換えて保存し、1回案内して診断に残す"
+    },
+    "v1.49.38": {
+      "build": "20260927-v14938-4o-cards",
+      "extension": "1.4.49",
+      "commit": null,
+      "indexHtmlSha256": "495fb25202224c26dd768b87af7eacc22f8cada5d7287c2d8a6a4766e20795b5",
+      "extensionAppJsSha256": "43ddd88547c5d9dd251fc476f6222e38032efab7b44e967520d645d95a80ffe6",
+      "summary": "英語の小数点・略語で文を切らないようにした（v1.49.37 の記録で \"1.5 trillion\" が「1.」で、\"U.S.\"・\"D.C.\" もそこで切れ、数字が変わる訳や同じ文の二重読みが出ていた）。数字・頭字語・敬称の後ろの「.」は、次の文字が来るか1.2秒止まるまで待つ。gpt-4o 系では、逐次読み上げが ON のとき、一人が話し続けるあいだカードを1枚にまとめ、訳と読み上げはカードの中の文ごとに進める（始まる時刻は前と同じ）。カードは2秒の間・話し手か言語の交代・別のカード・30秒か480字の後の文の切れ目で閉じる"
     }
   }
 }

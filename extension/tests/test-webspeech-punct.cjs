@@ -21,10 +21,10 @@ function constLine(name){
 }
 const ctx={console,String,Object,JSON,Math};
 const c=vm.createContext(ctx);
-for(const name of ['JA_SPOKEN_QUESTION','JA_SPOKEN_END']) vm.runInContext(constLine(name),c);
+for(const name of ['JA_SPOKEN_QUESTION','JA_SPOKEN_END','SEG_PERIOD_WAIT_MS']) vm.runInContext(constLine(name),c);
 for(const b of [block('function hasSpeechContent(s){'),block('function punctuateTranscript(text, lang){'),
   block('function jaSpacePunct(text){'),block('function webSpeechPunct(text, lang){'),
-  block('function segSemanticTail(text,lang){'),block('function segSemanticDecision(input){'),
+  block('function segPeriodHold('),block('function segSemanticTail(text,lang){'),block('function segSemanticDecision(input){'),
   block('function segPartEndsSentence(q,useSource){')])
   vm.runInContext(b,c);
 
