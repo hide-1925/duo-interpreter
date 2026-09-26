@@ -286,10 +286,42 @@
     "v1.49.33": {
       "build": "20260927-v14933-model-tiers",
       "extension": "1.4.44",
-      "commit": null,
+      "commit": "6f7246e",
       "indexHtmlSha256": "e34921652b60407c2c31e2de73e6c28ddd95b4a9a96b85e0ef610a4d4fdbf70d",
       "extensionAppJsSha256": "eefcaac86be6c89fcdba2fcd320823f7692fdd8f1bdd5ed2a36a6f6ee9108136",
       "summary": "翻訳モデル（OpenAI）の初期表示を、5.6系の gpt-5.6-luna・gpt-5.6-terra・gpt-5.6-sol と、6系の日付の付かないモデルすべてにした。これまでは gpt-5.6 で始まるものをすべて出していたため、日付付きの版も並び、6系は「その他」に入っていた。6系は APIキーで取得した一覧にあるものを名前の規則で拾うので、名前をコードへ書き足さなくてよい。日付付きの版（-2026-09-10・-0910 など）と、5.6系のほかの版は「その他」に回す。内蔵の一覧（キーを入れる前）は今までどおり 5.6系の3つ"
+    },
+    "v1.49.34": {
+      "build": "20260927-v14934-openrouter-picker",
+      "extension": "1.4.45",
+      "commit": "61b5531",
+      "indexHtmlSha256": "fc53b901a975081c554b88683351e09138a6ac8fa2290d1326d83c530e53eed4",
+      "extensionAppJsSha256": "8db98662323bf4183c2f91b014446695de67ac68bca29f3bc4fe84de79fdc2f1",
+      "summary": "開発仕様書の①②。翻訳プロバイダが OpenRouter・Groq のとき、翻訳モデルを「🔎 選ぶ」から選べるようにした。おすすめは速さ・精度・安さ・人気の4型で上位3件（OpenRouter は sort と用途 translation をサーバーに任せ、Groq は内蔵の候補のうちアカウントにあるもの）。全部から選ぶときは作った会社→モデル（新しい順）、検索、無料だけ・データを残さない先だけ。試しに見本の1文を訳せる。一覧は機能ごとに output_modalities で取り24時間置く。OpenRouter の翻訳は、キー確認を GET /key に（一覧はキー無しでも返るので間違ったキーでも通っていた）、推論を切る（切れないモデルはいちばん弱く）、temperature は受け付けるモデルにだけ、提供元の選び方（速さ優先が既定）とデータを残さない先だけの指定を足し、内蔵の一覧を deepseek/deepseek-v4.1-flash・google/gemini-3.8-flash から始めた。カメラ翻訳は openai/ を付け、議事録にも同じ指定。Groq は gpt-oss の推論を弱く、Qwen3 は切り、考えた過程を本文に混ぜない。どのプロバイダでも <think> を取り除く。OpenRouter の接続テスト（キー・翻訳・読み上げ・音声認識を1つずつ小さく送り、ブラウザから呼べるかを見る）を足した"
+    },
+    "v1.49.35": {
+      "build": "20260927-v14935-openrouter-tts",
+      "extension": "1.4.46",
+      "commit": "b5fc699",
+      "indexHtmlSha256": "5159e2b7b0f2a2df8aabcc7fa34881bf89a72682f88e2cfcac51186d0c368ff5",
+      "extensionAppJsSha256": "fccf1a0ee3d6da2580fd74c6fb7aaed0ff487a9f7b0ad28ca6aa42a866d155ad",
+      "summary": "開発仕様書の③。読み上げに OpenRouter（既定 google/gemini-3.8-flash-tts、「🔎 選ぶ」で読み上げに使えるモデルだけから選べ、声はモデルの supported_voices から席ごとに選ぶ）と Groq（Orpheus、英語・アラビア語だけ、ほかの言語はブラウザ内蔵の声）を足した。OpenRouter へは pcm で頼み、返った中身の頭と content-type で WAV・MP3・Ogg・FLAC・生の PCM を見分け、生の PCM は rate= か 24kHz の WAV に包んで鳴らす。話速は OpenAI 系は API の speed、ほかはピッチ保持再生。失敗・429・キー無しはブラウザの声へ。逐次再生は実機で形を確かめてから"
+    },
+    "v1.49.36": {
+      "build": "20260927-v14936-openrouter-stt",
+      "extension": "1.4.47",
+      "commit": "638ef16",
+      "indexHtmlSha256": "b7d4584d89d632f69fbf92fa62aaf4cb578a54f0a2dafc42372f453a68d6df1d",
+      "extensionAppJsSha256": "ca858fdf00a565ac1da4769512feb3a777d7b57a923c973a6adbe18a49b5f8ba",
+      "summary": "開発仕様書の④。音声認識に OpenRouter を足した。一覧はキー無しで取り、モデルが空なら人気1位を入れる。「🔎 選ぶ」で文字起こしモデルだけから選べる（Groq も whisper 系だけ）。POST /audio/transcriptions に JSON（input_audio は base64、language は v1.49.31 の決まり）で送る。キーは OpenRouter のものだけを使い、翻訳欄のほかのプロバイダのキーは送らない。STT に prompt が無いので、OpenAI の文字起こしモデルだけ provider.options.openai.prompt に用語集を入れる。録音の形式で断られたら、ブラウザの中で16kHz・モノラルの WAV に変えて1回だけ送り直し、以後そのモデルは WAV。openai/gpt-4o*-transcribe は録音上限・末尾繰越・順番待ちを使う。選択画面の Esc をページ全体で受ける（開いた直後に閉じられないことがあった）"
+    },
+    "v1.49.37": {
+      "build": "20260927-v14937-groq-models",
+      "extension": "1.4.48",
+      "commit": null,
+      "indexHtmlSha256": "589a37e41cb7c8b87e9eb48f06f432bcb365cffbe4af38c0729f9b93ce08fee8",
+      "extensionAppJsSha256": "57fcdc345a97e26c075b580eb787fe1d00d1ea9589c826a2b953b6e51e132010",
+      "summary": "Groq の翻訳モデルを今の顔ぶれにした。Groq は 2026年8月16日で Llama 3.1 8B Instant／3.3 70B Versatile の提供を終え（LiteLLM のモデル一覧でも翻訳に使えるのは gpt-oss-20b・gpt-oss-120b・qwen3.8-27b だけ）、内蔵の一覧の先頭（既定）が llama-3.3-70b-versatile のままだったため、一覧を取り直す前の翻訳が失敗していた。内蔵の一覧を gpt-oss-20b（最速）・gpt-oss-120b・qwen3.8-27b に、おすすめも同じ顔ぶれにした。保存していた Groq の Llama は開いたときに gpt-oss-20b へ置き換えて保存し、1回案内して診断に残す"
     }
   }
 }

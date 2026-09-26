@@ -44,6 +44,7 @@ var STT_ADAPTER_CAPABILITIES={
   openai:{microphone:true,systemAudio:true,arbitraryTrack:true},
   xai:{microphone:true,systemAudio:true,arbitraryTrack:true},
   groq:{microphone:true,systemAudio:true,arbitraryTrack:true},
+  openrouter:{microphone:true,systemAudio:true,arbitraryTrack:true},
   gemini:{microphone:true,systemAudio:true,arbitraryTrack:true},
   realtime:{microphone:true,systemAudio:true,arbitraryTrack:true}
 };
@@ -796,8 +797,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.33';
-var APP_BUILD = '20260927-v14933-model-tiers';
+var APP_VERSION = 'v1.49.37';
+var APP_BUILD = '20260927-v14937-groq-models';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -864,13 +865,18 @@ var PROVIDERS = {
                models:['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.5-pro','gemini-2.0-flash'],
                note:'無料枠が比較的大きく、音声認識も同じキーで使えます。' },
   groq:      { label:'Groq', kind:'oai', base:'https://api.groq.com/openai/v1', key:true,
-               models:['llama-3.3-70b-versatile','llama-3.1-8b-instant','openai/gpt-oss-120b','qwen/qwen3-32b','moonshotai/kimi-k2-instruct'],
-               note:'非常に高速で無料枠あり。同時通訳の遅延を最小化したい場合に有利です。' },
+               /* Llama 3.1 8B／3.3 70B は 2026年8月16日で提供終了（今の一覧に無い）。 */
+               models:[{id:'openai/gpt-oss-20b', note:'最速（約1,000トークン/秒）・安い'},{id:'openai/gpt-oss-120b', note:'高精度（約400〜500トークン/秒）'},
+                       {id:'qwen/qwen3.8-27b', note:'推論を切って使う'}],
+               note:'非常に高速で無料枠あり。同時通訳の遅延を最小化したい場合に有利です。いちばん速いのは gpt-oss-20b です。' },
   deepseek:  { label:'DeepSeek', kind:'oai', base:'https://api.deepseek.com/v1', key:true,
                models:['deepseek-chat','deepseek-reasoner'], note:'低価格。中国語まわりに強い。' },
   openrouter:{ label:'OpenRouter', kind:'oai', base:'https://openrouter.ai/api/v1', key:true,
-               models:['openai/gpt-4o-mini','anthropic/claude-3.5-haiku','google/gemini-2.5-flash','meta-llama/llama-3.3-70b-instruct','qwen/qwen-2.5-72b-instruct','mistralai/mistral-small-3.2-24b-instruct:free','google/gemma-3-27b-it:free'],
-               note:'1つのキーで各社モデルを横断利用。「:free」が付くモデルは無料枠で使えます。' },
+               /* 一覧を取得できないときだけ使う。取得した一覧（「🔎 選ぶ」）が優先。 */
+               models:[{id:'deepseek/deepseek-v4.1-flash', note:'速い・安い'},{id:'google/gemini-3.8-flash'},
+                       'openai/gpt-4o-mini','anthropic/claude-3.5-haiku','meta-llama/llama-3.3-70b-instruct',
+                       'mistralai/mistral-small-3.2-24b-instruct:free','google/gemma-3-27b-it:free'],
+               note:'1つのキーで各社モデルを横断利用。「🔎 選ぶ」で、速さ・精度・安さ・人気のおすすめから選べます。「:free」が付くモデルは無料枠です。' },
   mistral:   { label:'Mistral', kind:'oai', base:'https://api.mistral.ai/v1', key:true,
                models:['mistral-small-latest','mistral-large-latest','open-mistral-nemo'], note:'欧州言語に強い。' },
   together:  { label:'Together', kind:'oai', base:'https://api.together.xyz/v1', key:true,
@@ -899,7 +905,7 @@ var TTS_MODELS = [
   {id:'tts-1',           note:'低遅延'},
   {id:'tts-1-hd',        note:'高音質'}
 ];
-var STT_BASE = { openai:'https://api.openai.com/v1', groq:'https://api.groq.com/openai/v1',
+var STT_BASE = { openai:'https://api.openai.com/v1', groq:'https://api.groq.com/openai/v1', openrouter:'https://openrouter.ai/api/v1',
                  xai:'https://api.x.ai/v1' };
 /* xAI の音声認識が対応している言語（このアプリの言語コードで表す）。
    中国語は一覧に無いので、指定を送らず向こうの自動判定にまかせる。 */
@@ -980,6 +986,9 @@ var CONFIG_SCHEMA = [
   { prop:"provider", key:'di.prov', embed:'provider', def:'free', portable:true, el:"provider", bind:'custom' },
   { prop:"baseUrl", key:'di.base', embed:'baseUrl', def:'', portable:true, el:"baseUrl", bind:'custom' },
   { prop:"model", key:'di.model', embed:'model', def:'', portable:true, el:"model", bind:'custom' },
+  /* OpenRouter の提供元の選び方（provider.sort）。同時通訳では速さを優先する。 */
+  { prop:"orRoute", key:'di.orRoute', embed:'orRoute', def:'latency', coerce:function(raw){ return /^(latency|price|auto)$/.test(raw) ? raw : 'latency'; }, portable:true, el:"orRoute" },
+  { prop:"orZdr", key:'di.orZdr', embed:'orZdr', def:'0', type:'bool', portable:true, el:"orZdr" },
   { prop:"tone", key:'di.tone', embed:'tone', def:'business', portable:true, el:"tone" },
   { prop:"ctx", key:'di.ctx', embed:'ctx', def:'', portable:true, el:"ctx" },
   { prop:"sttProvider", key:'di.sttp', embed:'sttProvider', def:'webspeech', portable:true, el:"sttProvider", bind:'custom' },
@@ -1142,6 +1151,13 @@ var CONFIG_SCHEMA = [
   { prop:"gttsVoiceId", key:'di.gttsvid', embed:'gttsVoiceId', def:'', portable:true, el:"gttsVoiceId", bind:'custom' },
   { prop:"gttsVoiceIdB", key:'di.gttsvidb', embed:'gttsVoiceIdB', def:'', portable:true, el:"gttsVoiceIdB", bind:'custom' },
   { prop:"gttsModel", key:'di.gttsm', embed:'gttsModel', def:'gemini-3.8-flash-lite-tts', portable:true, el:"gttsModel", bind:'custom' },
+  /* OpenRouter・Groq の読み上げ。声はモデルごとに違うので、選択肢は一覧から作る。 */
+  { prop:"orTtsModel", key:'di.orTtsModel', embed:'orTtsModel', def:'google/gemini-3.8-flash-tts', portable:true, el:"orTtsModel", bind:'custom' },
+  { prop:"orVoiceA", key:'di.orVoiceA', embed:'orVoiceA', def:'', portable:true, el:"orVoiceA", bind:'custom' },
+  { prop:"orVoiceB", key:'di.orVoiceB', embed:'orVoiceB', def:'', portable:true, el:"orVoiceB", bind:'custom' },
+  { prop:"groqTtsModel", key:'di.groqTtsModel', embed:'groqTtsModel', def:'canopylabs/orpheus-v1-english', portable:true, el:"groqTtsModel", bind:'custom' },
+  { prop:"groqVoiceA", key:'di.groqVoiceA', embed:'groqVoiceA', def:'', portable:true, el:"groqVoiceA", bind:'custom' },
+  { prop:"groqVoiceB", key:'di.groqVoiceB', embed:'groqVoiceB', def:'', portable:true, el:"groqVoiceB", bind:'custom' },
   { prop:"gttsPrompt", key:'di.gttsp', embed:'gttsPrompt', def:'', portable:true, el:"gttsPrompt", bind:'custom' },
   { prop:"gttsRate", key:'di.gttsrt', embed:'gttsRate', def:'0', portable:true, el:"gttsRate" },
   { prop:"gttsVolume", key:'di.gttsvo', embed:'gttsVolume', def:'0', portable:true, el:"gttsVolume" },
@@ -1248,8 +1264,19 @@ function loadCfg(){
   if (EMBED.keys) for (var k in EMBED.keys) if (!KEYS[k]) KEYS[k] = EMBED.keys[k];
   if(legacyRaw!==null){ saveKeys(); store.del('di.keys'); store.del('di.remember'); }
   if (!CFG.model)    CFG.model    = defaultModel(CFG.provider);
+  groqRetiredModelFix();
   if (!CFG.sttModel) CFG.sttModel = defaultSttModel(CFG.sttProvider);
   if (!CFG.ttsModel) CFG.ttsModel = TTS_MODELS[0].id;
+}
+/* Groq は 2026年8月16日で Llama 3.1 8B Instant／3.3 70B Versatile の提供を終えた。
+   保存したままだと翻訳が毎回失敗するので、いちばん速い gpt-oss-20b に置き換える。 */
+var GROQ_RETIRED = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'];
+var GROQ_MODEL_FIXED = null;
+function groqRetiredModelFix(){
+  if (CFG.provider !== 'groq' || GROQ_RETIRED.indexOf(String(CFG.model || '').trim()) < 0) return false;
+  GROQ_MODEL_FIXED = { from:CFG.model, to:defaultModel('groq') };
+  CFG.model = GROQ_MODEL_FIXED.to; persistSetting('model', CFG.model);
+  return true;
 }
 function firstId(list){ var a = normList(list); return a.length ? a[0].id : ''; }
 function defaultModel(p){ var P = PROVIDERS[p]; return P ? firstId(P.models) : ''; }
@@ -1657,8 +1684,11 @@ function camTranslate(dataUrl, to){
   var base = (CFG.provider === 'openai' || !transKey()) ? PROVIDERS.openai.base : baseUrlOf();
   var h = { 'Content-Type':'application/json' };
   if (k) h['Authorization'] = 'Bearer ' + k;
+  if (CFG.provider === 'openrouter' && transKey()) h = orHeaders(k, true);
+  var camModel = CFG.camModel || 'gpt-4o-mini';
+  if (CFG.provider === 'openrouter' && transKey() && camModel.indexOf('/') < 0) camModel = 'openai/' + camModel;
   var body = {
-    model: CFG.camModel || 'gpt-4o-mini',
+    model: camModel,
     messages:[{ role:'user', content:[
       { type:'text', text: camPrompt(toName) },
       { type:'image_url', image_url:{ url: dataUrl, detail:'low' } }
@@ -2985,9 +3015,17 @@ function oaiTranslate(text, from, to, segmentContext){
   } else {
     body.temperature = 0.2;
   }
+  if (CFG.provider === 'openrouter') orChatTune(body, CFG.model);
+  else if (CFG.provider === 'groq') groqChatTune(body, CFG.model);
   return fetch(url, { method:'POST', headers:h, body: JSON.stringify(body)
-  }).then(chk).then(function(j){ return j.choices[0].message.content; });
+  }).then(chk).then(function(j){
+    if (CFG.provider === 'openrouter' && j.provider && j.provider !== OR_LAST_PROVIDER){
+      OR_LAST_PROVIDER = j.provider; dlog('models', 'openrouter-served', { model:CFG.model, provider:j.provider });
+    }
+    return stripThink(j.choices[0].message.content);
+  });
 }
+var OR_LAST_PROVIDER = '';
 
 function anthropicTranslate(text, from, to, segmentContext){
   var key = transKey();
@@ -3151,6 +3189,17 @@ function probeLLM(kind, base, key, label){
              : 'このキーで接続できました。';
   });
 }
+/* OpenRouter のモデル一覧はキーが無くても返る。一覧が通っても、キーが正しいとは限らない。 */
+function orProbeKey(key){
+  return fetch(OR_BASE + '/key', { headers:orHeaders(key, false) }).then(function(r){
+    if (r.ok) return r.json();
+    return r.text().then(function(t){ throw new Error('HTTP ' + r.status + ' ' + String(t || '').slice(0, 160)); });
+  }).then(function(j){
+    var d = j.data || j || {};
+    return 'このキーで接続できました（OpenRouter・' + (d.is_free_tier ? '無料枠' : '有料') +
+      (d.limit_remaining != null ? '・残り $' + d.limit_remaining : '') + '）。';
+  });
+}
 function verifyTransKey(){
   return keyChkRun('chkTrans', 'chkTransMsg', '翻訳API', function(){
     var p = PROVIDERS[CFG.provider];
@@ -3162,6 +3211,7 @@ function verifyTransKey(){
     var key = transKey();
     if (p.key && !key) return Promise.reject(new Error('APIキーが未入力です'));
     if (p.baseEditable && !CFG.baseUrl) return Promise.reject(new Error('Base URL が未入力です'));
+    if (CFG.provider === 'openrouter') return orProbeKey(key);
     return probeLLM(p.kind, (p.baseEditable ? baseUrlOf() : p.base), key, p.label);
   });
 }
@@ -3194,6 +3244,11 @@ function verifySttKey(){
     }
     if (prov === 'gemini')
       return probeLLM('gemini', PROVIDERS.gemini.base, key, 'Gemini');
+    if (prov === 'openrouter'){
+      var ork = hubKeyFor('openrouter', 'stt');
+      if (!ork) return Promise.reject(new Error('OpenRouter のAPIキーが未入力です（音声認識欄か翻訳欄の OpenRouter のキー）'));
+      return orProbeKey(ork);
+    }
     return probeLLM('oai', (STT_BASE[prov] || PROVIDERS.openai.base), key, prov);
   });
 }
@@ -4498,6 +4553,173 @@ function apiSpeakBlob(text, lang, seat, prosody, plan, key){
     finish();
     if (!openaiTtsWarned){ openaiTtsWarned=true; toast('OpenAI音声の生成に失敗しました。<br><small>'+m.slice(0,100)+'</small>'); }
   });
+}
+
+/* ---------------- OpenRouter・Groq の読み上げ ----------------
+   OpenRouter：POST /audio/speech。response_format は mp3 か pcm（既定 pcm）。
+   Gemini の TTS は PCM しか返さないと外部の実装に記録がある。そこで pcm で頼み、
+   返った中身の頭（RIFF・ID3 など）と content-type で形を見分けて鳴らす。
+   生の PCM は 16bit モノラルとみなし、rate= があればその、無ければ 24kHz の WAV に包む。
+   届いた先頭から鳴らす逐次再生は、実機で形とサンプルレートを確かめてから足す。
+   Groq：POST /openai/v1/audio/speech（Orpheus）。英語とアラビア語だけなので、
+   ほかの言語はブラウザ内蔵の声で読む。 */
+var OR_TTS_BUILTIN = [{id:'google/gemini-3.8-flash-tts', note:'声30種'}, {id:'google/gemini-3.8-flash-lite-tts', note:'軽量'}];
+var GROQ_TTS_BUILTIN = [{id:'canopylabs/orpheus-v1-english', note:'英語'}, {id:'canopylabs/orpheus-arabic-saudi', note:'アラビア語（サウジ）'}];
+var GROQ_VOICES = { en:['autumn','diana','hannah','austin','Daniel','troy'], ar:['fahad','sultan','lulwa','noura'] };
+var OR_TTS_BLOCK_UNTIL = 0, GROQ_TTS_BLOCK_UNTIL = 0;
+function orTtsKey(){ return hubKeyFor('openrouter', 'tts'); }
+function groqTtsKey(){ return hubKeyFor('groq', 'tts'); }
+function orTtsVoices(){ var m = hubFind('openrouter', 'tts', CFG.orTtsModel); return (m && m.voices) || []; }
+function orTtsVoice(seat){
+  var v = String((seat === 'B' ? CFG.orVoiceB : CFG.orVoiceA) || '').trim(), vs = orTtsVoices();
+  if (vs.length && vs.indexOf(v) < 0) v = vs[seat === 'B' && vs.length > 1 ? 1 : 0];
+  return v;
+}
+function groqTtsLang(model){ return /arabic/i.test(String(model || '')) ? 'ar' : 'en'; }
+function groqTtsVoice(seat){
+  var model = CFG.groqTtsModel || GROQ_TTS_BUILTIN[0].id, vs = GROQ_VOICES[groqTtsLang(model)];
+  var v = String((seat === 'B' ? CFG.groqVoiceB : CFG.groqVoiceA) || '').trim();
+  return v || vs[seat === 'B' ? 2 % vs.length : 0];
+}
+function hubTtsPlan(lang, prosody, provider){
+  var pmap = prosodyMapForTts(prosody, lang || '', provider);
+  return { map:pmap, rate:prosodyClamp(pmap ? pmap.rate : 1, 0.7, 1.8), gain:prosodyClamp(pmap ? pmap.volume : 1, 0.5, 1.5) };
+}
+function pcm16MonoWav(u8, rate){
+  var n = u8.byteLength - (u8.byteLength % 2), buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+  function put(o, s){ for (var i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); }
+  put(0, 'RIFF'); v.setUint32(4, 36 + n, true); put(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  put(36, 'data'); v.setUint32(40, n, true);
+  new Uint8Array(buf, 44).set(u8.subarray(0, n));
+  return new Blob([buf], { type:'audio/wav' });
+}
+function hubAudioBlob(buf, contentType){
+  var u8 = new Uint8Array(buf), ct = String(contentType || '').toLowerCase();
+  var tag = String.fromCharCode(u8[0] || 0, u8[1] || 0, u8[2] || 0, u8[3] || 0);
+  if (tag === 'RIFF') return { blob:new Blob([buf], { type:'audio/wav' }), kind:'wav' };
+  if (tag.slice(0, 3) === 'ID3' || (u8[0] === 0xFF && (u8[1] & 0xE0) === 0xE0) || /mpeg|mp3/.test(ct)) return { blob:new Blob([buf], { type:'audio/mpeg' }), kind:'mp3' };
+  if (tag === 'OggS') return { blob:new Blob([buf], { type:'audio/ogg' }), kind:'ogg' };
+  if (tag === 'fLaC') return { blob:new Blob([buf], { type:'audio/flac' }), kind:'flac' };
+  var m = /rate=(\d+)/.exec(ct), rate = m ? parseInt(m[1], 10) : 24000;
+  return { blob:pcm16MonoWav(u8, rate), kind:'pcm', rate:rate };
+}
+function hubHttpError(r, where){
+  return r.text().then(function(x){ var e = new Error('HTTP ' + r.status + ' ' + String(x || '').slice(0, 160)); e.status = r.status; e.where = where; throw e; });
+}
+/* 読み上げ1回ぶんの合成。鳴らすのは呼んだ側。 */
+function orSpeechFetch(text, seat, plan, model){
+  var body = { model:model || CFG.orTtsModel, input:text, response_format:'pcm' }, voice = model ? '' : orTtsVoice(seat);
+  if (model){ var m = hubFind('openrouter', 'tts', model); if (m && m.voices && m.voices.length) voice = m.voices[0]; }
+  if (voice) body.voice = voice;
+  var apiSpeed = /^openai\//.test(body.model);
+  if (apiSpeed && plan && plan.rate !== 1) body.speed = prosodyRound(plan.rate, 3);
+  return fetch(OR_BASE + '/audio/speech', { method:'POST', headers:orHeaders(orTtsKey(), true), body:JSON.stringify(body) }).then(function(r){
+    if (!r.ok) return hubHttpError(r, 'openrouter-speech');
+    var ct = ''; try{ ct = String(r.headers.get('content-type') || ''); }catch(e){}
+    return r.arrayBuffer().then(function(b){
+      if (!b.byteLength) throw new Error('音声データが空でした');
+      var a = hubAudioBlob(b, ct); a.bytes = b.byteLength; a.contentType = ct; a.body = body; a.apiSpeed = apiSpeed; return a;
+    });
+  });
+}
+function groqSpeechFetch(text, seat, model){
+  var body = { model:model || CFG.groqTtsModel || GROQ_TTS_BUILTIN[0].id, input:text, voice:model ? GROQ_VOICES[groqTtsLang(model)][0] : groqTtsVoice(seat), response_format:'wav' };
+  return fetch(STT_BASE.groq + '/audio/speech', { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + groqTtsKey() }, body:JSON.stringify(body) }).then(function(r){
+    if (!r.ok) return hubHttpError(r, 'groq-speech');
+    var ct = ''; try{ ct = String(r.headers.get('content-type') || ''); }catch(e){}
+    return r.arrayBuffer().then(function(b){
+      if (!b.byteLength) throw new Error('音声データが空でした');
+      var a = hubAudioBlob(b, ct); a.bytes = b.byteLength; a.contentType = ct; a.body = body; return a;
+    });
+  });
+}
+function hubSpeakFail(tag, err, text, lang, prosody, finish, label){
+  var m = String((err && err.message) || err), cors = err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(m);
+  dlog('tts', tag + '-FAIL', { err:m.slice(0, 160), status:(err && err.status) || 0, cors:cors });
+  if (err && err.status === 429){ if (tag === 'openrouter') OR_TTS_BLOCK_UNTIL = Date.now() + 30000; else GROQ_TTS_BLOCK_UNTIL = Date.now() + 30000; }
+  var flag = tag + 'TtsFailWarned';
+  if (!window[flag]){ window[flag] = true; setTimeout(function(){ window[flag] = false; }, 30000);
+    toast(label + ' の読み上げに失敗しました（' + realtimeEscape(cors ? 'ブラウザから呼べませんでした' : m.slice(0, 90)) + '）。<br>今回はブラウザ内蔵の音声で読み上げます。'); }
+  finish.holdPhase('browser-fallback');
+  browserSpeak(text, L(lang).tts, prosody, function(){ finish(); });
+}
+function orSpeak(text, lang, seat, prosody){
+  seat = seat || 'A';
+  if (!orTtsKey()) return ttsFallback(text, lang, '未設定', 'OpenRouter のAPIキーが未設定です。⚙→音声 でご確認ください。', 'orTtsWarned', prosody);
+  if (!CFG.orTtsModel) return ttsFallback(text, lang, 'モデル未選択', 'OpenRouter の読み上げモデルが未選択です。', 'orTtsWarned', prosody);
+  var plan = hubTtsPlan(lang, prosody, 'openrouter'), t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150), seat);
+  logProsodyMap(plan.map, { effectiveRate:plan.rate, effectiveVolume:plan.gain, stream:false });
+  orSpeechFetch(text, seat, plan).then(function(a){
+    dlog('tts', 'openrouter-ok', { ms:Date.now() - t0, bytes:a.bytes, contentType:a.contentType || '(不明)', kind:a.kind, rate:a.rate || null,
+      model:a.body.model, voice:a.body.voice || '(既定)', seat:seat, chars:text.length, speed:a.body.speed || 1 });
+    playBlob(a.blob, finish, 'openrouter', { gain:plan.gain, playbackRate:a.apiSpeed ? 1 : plan.rate });
+  }).catch(function(err){ hubSpeakFail('openrouter', err, text, lang, prosody, finish, 'OpenRouter'); });
+}
+function groqSpeak(text, lang, seat, prosody){
+  seat = seat || 'A';
+  var model = CFG.groqTtsModel || GROQ_TTS_BUILTIN[0].id, want = groqTtsLang(model);
+  if (String(lang || '').split('-')[0] !== want)
+    return ttsFallback(text, lang, 'Groqの声が無い言語', 'Groq の読み上げ（' + model + '）は' + (want === 'ar' ? 'アラビア語' : '英語') + 'だけです。', 'groqTtsLangWarned', prosody);
+  if (!groqTtsKey()) return ttsFallback(text, lang, '未設定', 'Groq のAPIキーが未設定です。⚙→音声 でご確認ください。', 'groqTtsWarned', prosody);
+  var plan = hubTtsPlan(lang, prosody, 'groq'), t0 = Date.now(), finish = ttsGuard(text, Math.min(90000, 8000 + text.length * 150), seat);
+  groqSpeechFetch(text, seat).then(function(a){
+    dlog('tts', 'groq-ok', { ms:Date.now() - t0, bytes:a.bytes, contentType:a.contentType || '(不明)', kind:a.kind, model:a.body.model, voice:a.body.voice, seat:seat, chars:text.length });
+    playBlob(a.blob, finish, 'groq', { gain:plan.gain, playbackRate:plan.rate });
+  }).catch(function(err){ hubSpeakFail('groq', err, text, lang, prosody, finish, 'Groq'); });
+}
+/* 選択画面の「試しに使う」。ふだんの順番待ちを通さず、その場で1回だけ鳴らす。 */
+function hubTryTts(prov, id){
+  var ja = CFG.langA === 'ja' || CFG.langB === 'ja', job;
+  if (prov === 'groq') job = groqSpeechFetch(groqTtsLang(id) === 'ar' ? 'مرحبا، نبدأ الاجتماع الآن.' : "Hello, let's start today's meeting.", 'A', id);
+  else {
+    if (!orTtsKey()) return Promise.reject(new Error('OpenRouter のAPIキーが未入力です'));
+    job = orSpeechFetch(ja ? 'こんにちは。今日の会議を始めます。' : "Hello, let's start today's meeting.", 'A', null, id);
+  }
+  return job.then(function(a){
+    try{ var au = new Audio(URL.createObjectURL(a.blob)); au.play().catch(function(){}); }catch(e){}
+    return a.kind + (a.rate ? '・' + a.rate + 'Hz' : '') + '・' + a.bytes + ' バイト';
+  });
+}
+function hubTtsModelList(prov){
+  var hit = hubCached(prov, 'tts');
+  if (hit && hit.models.length) return hit.models.map(function(m){ return { id:m.id, note:m.voices && m.voices.length ? '声' + m.voices.length + '種' : '' }; });
+  return prov === 'groq' ? GROQ_TTS_BUILTIN : OR_TTS_BUILTIN;
+}
+function hubFillVoiceSelect(id, voices, current, fallback){
+  var sel = $(id); if (!sel) return;
+  sel.innerHTML = '';
+  if (!voices.length){ var o = document.createElement('option'); o.value = ''; o.textContent = '(モデルの既定の声)'; sel.appendChild(o); sel.value = ''; return; }
+  voices.forEach(function(v){ var o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+  sel.value = voices.indexOf(current) >= 0 ? current : fallback;
+}
+function orTtsRefreshUI(active){
+  if (!$('orTtsOnly')) return;
+  var k = $('orTtsKey'); if (k && k !== document.activeElement) k.value = KEYS['tts:openrouter'] || '';
+  if (!active) return;
+  renderCombo('orTtsModel', 'orTtsModelCustom', hubTtsModelList('openrouter'), CFG.orTtsModel, function(v){
+    CFG.orTtsModel = v; persistSetting('orTtsModel', v); refreshVvUI();
+  });
+  var vs = orTtsVoices();
+  hubFillVoiceSelect('orVoiceA', vs, CFG.orVoiceA, orTtsVoice('A'));
+  hubFillVoiceSelect('orVoiceB', vs, CFG.orVoiceB, orTtsVoice('B'));
+  $('orTtsNote').textContent = hubCached('openrouter', 'tts') ? '' : '一覧を読み込んでいます…';
+  if (!hubCached('openrouter', 'tts') && !orTtsRefreshUI.loading){
+    orTtsRefreshUI.loading = true;
+    hubList('openrouter', 'tts', false).then(function(){ orTtsRefreshUI.loading = false; refreshVvUI(); },
+      function(e){ orTtsRefreshUI.loading = false; $('orTtsNote').textContent = '一覧を取得できませんでした（内蔵の候補から選べます）：' + String(e.message || e).slice(0, 80); });
+  }
+}
+function groqTtsRefreshUI(active){
+  if (!$('groqTtsOnly')) return;
+  var k = $('groqTtsKey'); if (k && k !== document.activeElement) k.value = KEYS['tts:groq'] || '';
+  if (!active) return;
+  renderCombo('groqTtsModel', 'groqTtsModelCustom', hubTtsModelList('groq'), CFG.groqTtsModel, function(v){
+    CFG.groqTtsModel = v; persistSetting('groqTtsModel', v); refreshVvUI();
+  });
+  var list = $('groqVoiceList');
+  if (list){ list.innerHTML = ''; GROQ_VOICES[groqTtsLang(CFG.groqTtsModel)].forEach(function(v){ var o = document.createElement('option'); o.value = v; list.appendChild(o); }); }
+  ['A', 'B'].forEach(function(seat){ var el = $('groqVoice' + seat); if (el && el !== document.activeElement) el.value = groqTtsVoice(seat); });
 }
 
 /* Windows用 OpenAI PCM連続再生 -----------------------------------------
@@ -7858,6 +8080,67 @@ var TTS_PROVIDERS = {
     {section:"settings",order:41,label:'xAI API speed',value:function(){ return String(XAI_RATE_FACTORS[xaiRateLevel(CFG.xaiRate)+2]); },inactive:'(未使用)'}
   ]
   },
+  openrouter: {
+    label:"OpenRouter音声",
+    optionLabel:"OpenRouter（Gemini・OpenAI などの読み上げモデル）",
+    rateWait:function(){ return Math.max(0,OR_TTS_BLOCK_UNTIL-Date.now()); },
+    uiField:"orTtsOnly",
+    enabled:true,
+    jaOnly:false,
+    canRouteOutput:true,
+    needsKey:'tts:openrouter',
+    speak:function(text,lang,seat,prosody){ return orSpeak(text,lang,seat,prosody); },
+    seatVoice:function(seat){ return orTtsVoice(seat)||'(既定の声)'; },
+    setupMissing:function(){
+      if(!orTtsKey())return 'OpenRouter のAPIキーが未設定です。';
+      if(!CFG.orTtsModel)return 'OpenRouter の読み上げモデルが未選択です。';
+      return '';
+    },
+    planNote:function(rows){
+      var t='',warn=false,miss=ttsSetupMissing();
+      if(miss){t+='<br><b>⚠ '+miss+'</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';warn=true;}
+      else t+='<br>OpenRouter の <b>'+realtimeEscape(CFG.orTtsModel)+'</b> で読みます（自分(A) '+realtimeEscape(orTtsVoice('A')||'既定の声')+
+        '／相手(B) '+realtimeEscape(orTtsVoice('B')||'既定の声')+'）。';
+      return {html:t,warn:warn};
+    },
+    stream:function(){ return {kind:'off',checked:false,text:'いまは一括再生だけです（届いた先頭から鳴らす方式は、実機で音声の形を確かめてから足します）。'}; },
+    refreshUI:function(active){ orTtsRefreshUI(active); },
+    diagModel:function(){ return CFG.orTtsModel||'(未選択)'; },
+    prosody:{axes:["速度","音量"],suffix:'',note:'OpenRouter：速度（OpenAI 系は API の speed、ほかはピッチ保持再生）＋音量（Web Audio）'},
+    diagRows:[
+    {section:"settings",order:38.7,label:'OpenRouter 読み上げ',value:function(){
+      return (CFG.orTtsModel||'(未選択)')+' ／ 声 A '+(orTtsVoice('A')||'既定')+'・B '+(orTtsVoice('B')||'既定')+' ／ pcm で依頼し、返った形で再生'; },inactive:'(未使用)'}
+  ]
+  },
+  groq: {
+    label:"Groq音声",
+    optionLabel:"Groq（Orpheus・英語／アラビア語だけ）",
+    rateWait:function(){ return Math.max(0,GROQ_TTS_BLOCK_UNTIL-Date.now()); },
+    uiField:"groqTtsOnly",
+    enabled:true,
+    jaOnly:false,
+    canRouteOutput:true,
+    needsKey:'tts:groq',
+    speak:function(text,lang,seat,prosody){ return groqSpeak(text,lang,seat,prosody); },
+    seatVoice:function(seat){ return groqTtsVoice(seat); },
+    setupMissing:function(){ if(!groqTtsKey())return 'Groq のAPIキーが未設定です。'; return ''; },
+    planNote:function(rows){
+      var t='',warn=false,miss=ttsSetupMissing(),want=groqTtsLang(CFG.groqTtsModel);
+      if(miss){t+='<br><b>⚠ '+miss+'</b>このままでは<b>すべてブラウザ内蔵音声</b>で読み上げます。';warn=true;}
+      var other=(rows||[]).filter(function(r){return String(r.lang||'').split('-')[0]!==want;});
+      if(other.length){t+='<br><b>⚠ Groq の読み上げは'+(want==='ar'?'アラビア語':'英語')+'だけです。</b>'+
+        other.map(function(r){return r.who+'の発言（'+L(r.lang).name+'）';}).join('・')+'はブラウザ内蔵の声で読みます。';warn=true;}
+      return {html:t,warn:warn};
+    },
+    stream:function(){ return {kind:'off',checked:false,text:'常時OFF（WAV を一括で受け取って鳴らします）。'}; },
+    refreshUI:function(active){ groqTtsRefreshUI(active); },
+    diagModel:function(){ return CFG.groqTtsModel||GROQ_TTS_BUILTIN[0].id; },
+    prosody:{axes:["速度","音量"],suffix:'',note:'Groq：速度（ピッチ保持再生）＋音量（Web Audio）'},
+    diagRows:[
+    {section:"settings",order:38.8,label:'Groq 読み上げ',value:function(){
+      return (CFG.groqTtsModel||GROQ_TTS_BUILTIN[0].id)+' ／ 声 A '+groqTtsVoice('A')+'・B '+groqTtsVoice('B'); },inactive:'(未使用)'}
+  ]
+  },
   voicevox: {
     label:"VOICEVOX WEB版",
     optionLabel:"🫛 VOICEVOX WEB版（ずんだもん等・日本語のみ／お遊び）",
@@ -9034,7 +9317,8 @@ function pickMime(){
 
 /* Bounded recorded-audio recognition. Transport chunks and readable cards have
    independent boundaries. No live/Reatime model substitution is performed. */
-function fourOFileModel(model){return CFG.sttProvider==='openai'&&/^gpt-4o(?:-mini)?-transcribe(?:$|-)/.test(String(model==null?CFG.sttModel:model).trim());}
+function fourOFileModel(model){var m=String(model==null?CFG.sttModel:model).trim();
+  return (CFG.sttProvider==='openai'&&/^gpt-4o(?:-mini)?-transcribe(?:$|-)/.test(m))||(CFG.sttProvider==='openrouter'&&/^openai\/gpt-4o(?:-mini)?-transcribe(?:$|-)/.test(m));}
 function fourOSeconds(value){var n=Number(value);return isFinite(n)&&n>=1&&n<=120?Math.round(n):10;}
 function fourOSettingsUI(){
   var field=$('fourOField');if(!field)return;field.style.display=fourOFileModel()?'':'none';
@@ -9311,6 +9595,7 @@ function sttCall(blob, lang,requestOptions){
   var p = CFG.sttProvider;
   if (p === 'gemini') return geminiSTT(blob, lang,requestOptions);
   if (p === 'xai')    return xaiSTT(blob, lang,requestOptions);
+  if (p === 'openrouter') return openrouterSTT(blob, lang, requestOptions);
   var key = sttKey();
   if (!key) return Promise.reject(new Error('音声認識用のAPIキーが未設定です'));
   // モデル名が空だと OpenAI が 400「you must provide a model parameter」を返すため必ず補う
@@ -9351,6 +9636,97 @@ function sttCall(blob, lang,requestOptions){
     }
     return (j&&j.text)||'';
   });
+}
+
+/* OpenRouter の文字起こし。POST /audio/transcriptions に JSON（input_audio は base64）で送る。
+   multipart でも送れるが、提供元への追加指定（provider.options）は JSON にしか載らない。
+   - OpenRouter の STT には prompt が無い。OpenAI の文字起こしモデルに限り、用語集などを
+     provider.options.openai.prompt に入れて渡してみる（効くかは実機で確かめる）。
+   - 録音の形式（webm など）を受け付けない提供元がある。形式で断られたら、16kHz・モノラルの
+     WAV に変えて1回だけ送り直し、以後そのモデルは WAV で送る。 */
+var OR_STT_WAV = {};
+function sttAudioFormat(blob){
+  var t = String((blob && blob.type) || '');
+  return t.indexOf('mp4') >= 0 ? 'm4a' : t.indexOf('ogg') >= 0 ? 'ogg' : t.indexOf('wav') >= 0 ? 'wav' : t.indexOf('mpeg') >= 0 ? 'mp3' : 'webm';
+}
+function blobToWav16k(blob){
+  var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!OAC) return Promise.reject(new Error('このブラウザは音声の変換に対応していません'));
+  return blob.arrayBuffer().then(function(ab){
+    return new OAC(1, 1, 16000).decodeAudioData(ab);
+  }).then(function(buf){
+    var oc = new OAC(1, Math.max(1, Math.ceil(buf.duration * 16000)), 16000), src = oc.createBufferSource();
+    src.buffer = buf; src.connect(oc.destination); src.start();
+    return oc.startRendering();
+  }).then(function(out){ return audioBufferToWav(out, 0); });
+}
+function openrouterSTT(blob, lang, requestOptions){
+  requestOptions = requestOptions || {};
+  /* sttKey() は翻訳欄のキーまで借りる。翻訳が別のプロバイダだと、そのキーを OpenRouter へ
+     送ってしまうので、OpenRouter のキーだけを使う。 */
+  var key = hubKeyFor('openrouter', 'stt');
+  if (!key) return Promise.reject(new Error('OpenRouter のAPIキーが未設定です'));
+  var mdl = String(requestOptions.model || CFG.sttModel || '').trim();
+  if (!mdl) return Promise.reject(new Error('OpenRouter の文字起こしモデルを選んでください（⚙→音声認識の「🔎 選ぶ」）'));
+  var autoDetect = sttAutoDetect(requestOptions), body = { model:mdl, temperature:0 };
+  if (!autoDetect) body.language = L(lang).g.split('-')[0];
+  if (/^openai\//.test(mdl)){
+    var terms = CFG.glossary.slice(0,60).map(function(r){ return r.s; }).filter(Boolean).join(', ');
+    var hints = ['Transcribe verbatim with natural punctuation. Do not add, omit, paraphrase, or translate words.'];
+    if (terms) hints.push('Terminology: ' + terms);
+    if (autoDetect) hints.push('The speech is in ' + L(CFG.langA).en + ' or ' + L(CFG.langB).en + '.');
+    body.provider = { options:{ openai:{ prompt:hints.join('\n') } } };
+  }
+  function send(asWav){
+    return (asWav ? blobToWav16k(blob) : Promise.resolve(blob)).then(function(b){ return blobToB64(b); }).then(function(b64){
+      body.input_audio = { data:b64, format:asWav ? 'wav' : sttAudioFormat(blob) };
+      return fetch(OR_BASE + '/audio/transcriptions', { method:'POST', headers:orHeaders(key, true), body:JSON.stringify(body), signal:requestOptions.signal });
+    }).then(function(r){
+      if (r.ok) return r.json();
+      return r.text().then(function(t){ var e = new Error('HTTP ' + r.status + ' ' + String(t || '').slice(0, 160)); e.status = r.status; e.body = String(t || ''); throw e; });
+    });
+  }
+  var wav = !!OR_STT_WAV[mdl];
+  return send(wav).catch(function(err){
+    var formatIssue = !wav && err && (err.status === 400 || err.status === 415 || err.status === 422) &&
+      /format|codec|unsupported|decode|webm|ogg|m4a|audio file|mime/i.test(err.body || err.message || '');
+    if (!formatIssue) throw err;
+    OR_STT_WAV[mdl] = true;
+    dlog('stt', 'openrouter-wav-retry', { model:mdl, status:err.status, why:String(err.body || '').slice(0, 120) });
+    return send(true);
+  }).then(function(j){
+    if (!openrouterSTT.logged || openrouterSTT.logged !== mdl){ openrouterSTT.logged = mdl;
+      dlog('stt', 'openrouter-stt', { model:mdl, format:body.input_audio.format, language:body.language || 'auto', prompt:!!body.provider }); }
+    return (j && j.text) || '';
+  });
+}
+/* 選択画面の「試しに使う」：0.6秒の無音を送り、通るか・何秒かかるかを見る */
+function hubTryStt(prov, id){
+  if (prov === 'groq'){
+    var gk = hubKeyFor('groq', 'stt'); if (!gk) return Promise.reject(new Error('Groq のAPIキーが未入力です'));
+    var fd = new FormData(), bin = atob(orSilentWavB64(600)), u8 = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    fd.append('file', new Blob([u8], { type:'audio/wav' }), 'try.wav'); fd.append('model', id);
+    return fetch(STT_BASE.groq + '/audio/transcriptions', { method:'POST', headers:{ 'Authorization':'Bearer ' + gk }, body:fd })
+      .then(chk).then(function(){ return '通信OK（無音を送ったので文字は返りません）'; });
+  }
+  var key = hubKeyFor('openrouter', 'stt'); if (!key) return Promise.reject(new Error('OpenRouter のAPIキーが未入力です'));
+  return fetch(OR_BASE + '/audio/transcriptions', { method:'POST', headers:orHeaders(key, true),
+    body:JSON.stringify({ model:id, input_audio:{ data:orSilentWavB64(600), format:'wav' }, language:(CFG.langB || 'ja').split('-')[0] }) })
+    .then(chk).then(function(){ return '通信OK（無音を送ったので文字は返りません）'; });
+}
+/* OpenRouter を選んだとき、一覧（キー無しで取れる）を読み、モデルが空ならよく使われているものを入れる */
+function orSttEnsure(){
+  return hubList('openrouter', 'stt', false).then(function(models){
+    if (CFG.sttProvider !== 'openrouter') return;
+    if (CFG.sttModel && models.some(function(m){ return m.id === CFG.sttModel; })){ refreshProviderUI(); return; }
+    var pop = HUB_PRESETS.filter(function(p){ return p.id === 'popular'; })[0];
+    return hubReco('openrouter', 'stt', pop, false).catch(function(){ return []; }).then(function(reco){
+      var pick = (reco[0] || models[0] || {}).id || '';
+      if (pick && CFG.sttProvider === 'openrouter' && !CFG.sttModel){ CFG.sttModel = pick; persistSetting('sttModel', pick); }
+      refreshProviderUI();
+    });
+  }).catch(function(e){ $('sttModelNote').textContent = 'OpenRouter の文字起こしモデル一覧を取得できませんでした：' + String(e.message || e).slice(0, 80); });
 }
 
 function geminiSTT(blob, lang,requestOptions){
@@ -10627,13 +11003,15 @@ function minutesRequest(snapshot,settings,signal){
     body={systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:user}]}]};
   }else{
     url=settings.base+'/chat/completions';if(settings.key)headers.Authorization='Bearer '+settings.key;
+    if(settings.provider==='openrouter'){var oh=orHeaders(settings.key,true);Object.keys(oh).forEach(function(k){headers[k]=oh[k];});}
     body={model:settings.model,messages:[{role:'system',content:sys},{role:'user',content:user}]};
     if(settings.provider==='openai'&&isReasoningModel(settings.model))body.reasoning_effort='low';else body.temperature=0.3;
+    if(settings.provider==='openrouter')orChatTune(body,settings.model);else if(settings.provider==='groq')groqChatTune(body,settings.model);
   }
   return fetch(url,{method:'POST',headers:headers,body:JSON.stringify(body),signal:signal}).then(chk).then(function(j){
     if(p.kind==='anthropic')return (j.content||[]).map(function(b){return b.text||'';}).join('');
     if(p.kind==='gemini'){var c=j.candidates&&j.candidates[0];return c?(c.content.parts||[]).map(function(x){return x.text||'';}).join(''):'';}
-    return j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||'';
+    return stripThink(j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content||'');
   });
 }
 function genMinutes(){
@@ -10735,6 +11113,7 @@ function tierModels(list, prov){
     }
     return m;
   });
+  if (hubProviderOk(prov)) return hubTier(arr, prov);
   if (prov !== 'openai') return { primary: arr, rest: [] };
   var primary = [], rest = [];
   arr.forEach(function(m){
@@ -10743,6 +11122,19 @@ function tierModels(list, prov){
   });
   if (!primary.length){ primary = arr; rest = []; } // 念のため：おすすめが0件なら全件表示にフォールバック
   return { primary: sortByCuratedOrder(primary, prov), rest: sortByCuratedOrder(rest, prov) };
+}
+function hubTier(arr, prov){
+  var keep = {};
+  normList((PROVIDERS[prov] && PROVIDERS[prov].models) || []).forEach(function(m){ keep[m.id] = 1; });
+  HUB_PRESETS.forEach(function(p){
+    var hit = HUB.reco[prov + ':text:' + p.id];
+    if (hit) hit.models.forEach(function(m){ keep[m.id] = 1; });
+  });
+  keep[CFG.model] = 1;
+  var primary = [], rest = [];
+  arr.forEach(function(m){ (keep[m.id] ? primary : rest).push(m); });
+  if (!primary.length){ primary = arr; rest = []; }
+  return { primary: sortByCuratedOrder(primary, prov), rest: rest.sort(function(a, b){ return a.id.localeCompare(b.id); }) };
 }
 /* 翻訳モデル用コンボ：主要モデルのみ初期表示し、「他◯件」ボタンで全件展開 */
 function renderModelCombo(list, current, onSet){
@@ -10822,12 +11214,495 @@ function renderCombo(selId, custId, list, current, onSet){
 }
 
 /* ---- 自分のアカウントで使えるモデルをAPIから取得 ---- */
+/* ---------------- OpenRouter・Groq のモデル選び（機能別・段階表示） ----------------
+   OpenRouter は数百のモデルを持つ。翻訳・STT・TTS ごとに使えるものだけを取り、
+   おすすめ（速さ・精度・安さ・人気）か、作った会社 → モデル の2段で選べるようにする。
+   - 一覧（GET /models）はキー無しで返る。機能は output_modalities で分かれる
+     （text＝翻訳、transcription＝STT、speech＝TTS）。並べ替え（sort）もサーバーに任せる。
+   - Groq の一覧には機能の情報が無いので、名前で分ける（whisper＝STT、orpheus・tts＝TTS）。
+     速さ・性能の情報も無いので、おすすめは内蔵の候補のうち一覧にあるものだけを出す。
+   - 取得した一覧は機能ごとに24時間ブラウザに置く。「🔄 更新」で取り直す。 */
+var OR_BASE = 'https://openrouter.ai/api/v1';
+var HUB_TTL_MS = 24*3600*1000;
+var HUB = { lists:{}, reco:{}, zdr:{}, lat:{} };
+var HUB_PRESETS = [
+  { id:'speed',   label:'速さ', sort:'latency-low-to-high', note:'応答の速い順' },
+  { id:'quality', label:'精度', sort:'intelligence-high-to-low', note:'性能指標の高い順',
+    audioSort:'most-popular', audioNote:'音声には性能指標が無いので、よく使われている順' },
+  { id:'price',   label:'安さ', sort:'pricing-low-to-high', note:'安い順' },
+  { id:'popular', label:'人気', sort:'top-weekly', note:'直近1週間によく使われた順' }
+];
+var GROQ_RECO = {
+  text:{ speed:['openai/gpt-oss-20b','qwen/qwen3.8-27b'], quality:['openai/gpt-oss-120b','qwen/qwen3.8-27b'],
+         price:['openai/gpt-oss-20b','openai/gpt-oss-120b'], popular:['openai/gpt-oss-120b','openai/gpt-oss-20b'] },
+  stt:{ speed:['whisper-large-v3-turbo'], quality:['whisper-large-v3'], price:['whisper-large-v3-turbo'], popular:['whisper-large-v3-turbo','whisper-large-v3'] },
+  tts:{ speed:['canopylabs/orpheus-v1-english'], quality:['canopylabs/orpheus-v1-english'], price:['canopylabs/orpheus-v1-english'],
+        popular:['canopylabs/orpheus-v1-english','canopylabs/orpheus-arabic-saudi'] }
+};
+function hubProviderOk(prov){ return prov === 'openrouter' || prov === 'groq'; }
+function hubOrigin(){ try{ return location.origin && location.origin !== 'null' ? location.origin : 'https://localhost'; }catch(e){ return 'https://localhost'; } }
+/* 出典ヘッダは今までの翻訳と同じ2つだけにする。ブラウザから呼ぶので、ヘッダを増やすと
+   事前確認（CORS）で断られるおそれがある。 */
+function orHeaders(key, json){
+  var h = { 'HTTP-Referer':hubOrigin(), 'X-Title':'Duo Interpreter' };
+  if (json) h['Content-Type'] = 'application/json';
+  if (key) h['Authorization'] = 'Bearer ' + key;
+  return h;
+}
+function hubModality(kind){ return kind === 'stt' ? 'transcription' : kind === 'tts' ? 'speech' : 'text'; }
+function hubNum(v){ var n = parseFloat(v); return isFinite(n) ? n : 0; }
+function hubNormOR(m){
+  var arch = m.architecture || {}, pr = m.pricing || {}, rs = m.reasoning || null, id = String(m.id || '');
+  var price = { prompt:hubNum(pr.prompt), completion:hubNum(pr.completion), audio:hubNum(pr.audio),
+                audioOut:hubNum(pr.audio_output), request:hubNum(pr.request) };
+  return { id:id, name:String(m.name || id), author:id.split('/')[0], created:m.created || 0,
+    inMods:arch.input_modalities || [], outMods:arch.output_modalities || [], price:price,
+    free:/:free$/.test(id) || (!price.prompt && !price.completion && !price.request && !price.audio && !price.audioOut),
+    params:m.supported_parameters || [], voices:Array.isArray(m.supported_voices) ? m.supported_voices : null,
+    reasoning:rs ? { mandatory:!!rs.mandatory, efforts:Array.isArray(rs.supported_efforts) ? rs.supported_efforts.filter(Boolean) : null } : null,
+    expires:m.expiration_date || null };
+}
+function groqKind(id){
+  var s = String(id || '').toLowerCase();
+  if (/whisper|transcri/.test(s)) return 'stt';
+  if (/tts|orpheus|playai/.test(s)) return 'tts';
+  if (/guard|safeguard|embed/.test(s)) return '';
+  return 'text';
+}
+function hubNormGroq(m){
+  var id = String(m.id || '');
+  return { id:id, name:id, author:String(m.owned_by || id.split('/')[0] || 'groq'), created:m.created || 0,
+    inMods:[], outMods:[], price:null, free:false, params:[], voices:null, reasoning:null, expires:null };
+}
+function hubStoreGet(k){ try{ var s = JSON.parse(store.get(k, 'null')); return s && s.at && Date.now() - s.at < HUB_TTL_MS ? s : null; }catch(e){ return null; } }
+function hubStoreSet(k, v){ try{ store.set(k, JSON.stringify(v)); }catch(e){} }
+function hubCached(prov, kind){
+  var k = prov + ':' + kind, hit = HUB.lists[k];
+  if (hit && Date.now() - hit.at < HUB_TTL_MS) return hit;
+  hit = hubStoreGet('di.hub.' + k);
+  if (hit && Array.isArray(hit.models)){ HUB.lists[k] = hit; return hit; }
+  return null;
+}
+function hubFind(prov, kind, id){
+  var hit = hubCached(prov, kind); if (!hit) return null;
+  for (var i = 0; i < hit.models.length; i++) if (hit.models[i].id === id) return hit.models[i];
+  return null;
+}
+function hubKeyFor(prov, kind){
+  var own = (KEYS[(kind === 'stt' ? 'stt:' : kind === 'tts' ? 'tts:' : '') + prov] || '').trim();
+  if (own) return own;
+  if (prov === 'groq') return keyOf('groq') || (KEYS['stt:groq'] || '').trim() || (KEYS['tts:groq'] || '').trim();
+  return keyOf('openrouter') || (KEYS['stt:openrouter'] || '').trim() || (KEYS['tts:openrouter'] || '').trim();
+}
+/* 機能ごとの一覧。force で取り直す。 */
+function hubList(prov, kind, force){
+  var hit = !force && hubCached(prov, kind);
+  if (hit) return Promise.resolve(hit.models);
+  var job;
+  if (prov === 'groq'){
+    var key = hubKeyFor('groq', kind);
+    if (!key) return Promise.reject(new Error('Groq のモデル一覧を取るには APIキーが要ります'));
+    job = fetch(STT_BASE.groq + '/models', { headers:{ 'Authorization':'Bearer ' + key } }).then(chk).then(function(j){
+      return (j.data || []).filter(function(m){ return m && m.id && m.active !== false && groqKind(m.id) === kind; }).map(hubNormGroq);
+    });
+  } else {
+    job = fetch(OR_BASE + '/models?output_modalities=' + hubModality(kind), { headers:orHeaders('', false) }).then(chk).then(function(j){
+      return (j.data || []).filter(function(m){ return m && m.id; }).map(hubNormOR);
+    });
+  }
+  return job.then(function(models){
+    var v = { at:Date.now(), models:models };
+    HUB.lists[prov + ':' + kind] = v; hubStoreSet('di.hub.' + prov + ':' + kind, v);
+    dlog('models', 'hub-list', { prov:prov, kind:kind, count:models.length });
+    return models;
+  });
+}
+/* おすすめ。OpenRouter は sort を付けて上位3件だけ取る（翻訳は用途 translation で絞る）。
+   Groq は内蔵の候補のうち、そのアカウントの一覧にあるものだけ。 */
+function hubReco(prov, kind, preset, force){
+  var k = prov + ':' + kind + ':' + preset.id, hit = HUB.reco[k];
+  if (!force && hit && Date.now() - hit.at < HUB_TTL_MS) return Promise.resolve(hit.models);
+  if (!force){ hit = hubStoreGet('di.hubr.' + k); if (hit && Array.isArray(hit.models)){ HUB.reco[k] = hit; return Promise.resolve(hit.models); } }
+  var job;
+  if (prov === 'groq'){
+    job = hubList(prov, kind, false).then(function(models){
+      var by = {}; models.forEach(function(m){ by[m.id] = m; });
+      return ((GROQ_RECO[kind] || {})[preset.id] || []).filter(function(id){ return by[id]; }).map(function(id){ return by[id]; });
+    });
+  } else {
+    var q = 'output_modalities=' + hubModality(kind) + '&sort=' + hubPresetSort(preset, kind) + '&limit=3' + (kind === 'text' ? '&category=translation' : '');
+    job = fetch(OR_BASE + '/models?' + q, { headers:orHeaders('', false) }).then(chk).then(function(j){
+      return (j.data || []).filter(function(m){ return m && m.id; }).map(hubNormOR);
+    });
+  }
+  return job.then(function(models){
+    var v = { at:Date.now(), models:models };
+    HUB.reco[k] = v; hubStoreSet('di.hubr.' + k, v);
+    return models;
+  });
+}
+function hubPresetSort(preset, kind){ return (kind !== 'text' && preset.audioSort) || preset.sort; }
+function hubPresetNote(preset, kind){ return (kind !== 'text' && preset.audioNote) || preset.note; }
+/* 「データを残さない先だけ」の絞り込み用。OpenRouter だけ。 */
+function hubZdrIds(kind){
+  var hit = HUB.zdr[kind];
+  if (hit && Date.now() - hit.at < HUB_TTL_MS) return Promise.resolve(hit.ids);
+  return fetch(OR_BASE + '/models?zdr=true&output_modalities=' + hubModality(kind), { headers:orHeaders('', false) }).then(chk).then(function(j){
+    var ids = {}; (j.data || []).forEach(function(m){ if (m && m.id) ids[m.id] = 1; });
+    HUB.zdr[kind] = { at:Date.now(), ids:ids };
+    return ids;
+  });
+}
+/* 提供元ごとの直近30分の遅延（p50）のうち、いちばん速いもの。表示する行の分だけ取る。
+   単位は資料で確かめられていないので、20 以上なら ms、未満なら秒とみなす。 */
+function hubLatency(id){
+  var hit = HUB.lat[id];
+  if (hit) return hit.promise;
+  var p = fetch(OR_BASE + '/models/' + String(id).split('/').map(encodeURIComponent).join('/') + '/endpoints', { headers:orHeaders('', false) })
+    .then(chk).then(function(j){
+      var eps = (j.data && j.data.endpoints) || [], best = null;
+      eps.forEach(function(e){
+        var st = e.latency_last_30m || e.latency || null, v = st && hubNum(st.p50);
+        if (v > 0 && (best === null || v < best)) best = v;
+      });
+      return best === null ? null : (best >= 20 ? best / 1000 : best);
+    }).catch(function(){ return null; });
+  HUB.lat[id] = { promise:p };
+  return p;
+}
+function hubPriceText(m, kind){
+  if (!m || !m.price) return '';
+  var p = m.price, f = function(v){ v = v * 1e6; return '$' + (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(2) : v.toFixed(3)); };
+  if (m.free) return '無料';
+  if (kind === 'text' && (p.prompt || p.completion)) return '入力 ' + f(p.prompt) + '・出力 ' + f(p.completion) + '（100万トークン）';
+  var parts = [];
+  if (p.audio) parts.push('音声入力 ' + f(p.audio));
+  if (p.audioOut) parts.push('音声出力 ' + f(p.audioOut));
+  if (p.prompt) parts.push('入力 ' + f(p.prompt));
+  if (p.completion) parts.push('出力 ' + f(p.completion));
+  if (p.request) parts.push('1回 $' + p.request);
+  return parts.length ? parts.join('・') + '（100万単位）' : '';
+}
+function hubBadges(m){
+  var out = [];
+  if (m.free) out.push('無料');
+  if (m.reasoning) out.push(m.reasoning.mandatory ? '考えてから訳す（遅い）' : '推論あり（切って使う）');
+  if (m.voices && m.voices.length) out.push('声 ' + m.voices.length + '種');
+  if (m.expires) out.push('提供終了 ' + m.expires);
+  return out;
+}
+
+/* ---- 選択画面 ---- */
+var MPICK = { opts:null, tab:'reco', preset:'speed', author:'', sel:null, models:[], zdrIds:null, back:null };
+function mpickEsc(s){ return realtimeEscape(String(s == null ? '' : s)); }
+function mpickEnsure(){
+  var d = $('mpick'); if (d) return d;
+  d = document.createElement('div');
+  d.id = 'mpick'; d.className = 'mpick'; d.hidden = true;
+  d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true'); d.setAttribute('aria-labelledby', 'mpickTitle');
+  d.innerHTML =
+    '<div class="mpick-card">' +
+      '<div class="mpick-head"><b id="mpickTitle">モデルを選ぶ</b><button type="button" class="btn ghost" id="mpickClose" aria-label="閉じる">✕</button></div>' +
+      '<div class="mpick-tabs" role="tablist">' +
+        '<button type="button" role="tab" data-tab="reco">おすすめ</button>' +
+        '<button type="button" role="tab" data-tab="all">全部から選ぶ</button>' +
+      '</div>' +
+      '<div id="mpickReco"><div class="mpick-chips" id="mpickPresets"></div><small id="mpickPresetNote"></small><div class="mpick-list" id="mpickRecoList"></div></div>' +
+      '<div id="mpickAll" hidden>' +
+        '<input type="search" id="mpickSearch" placeholder="名前・IDで探す" autocomplete="off">' +
+        '<div class="mpick-filters"><label><input type="checkbox" id="mpickFree"> 無料だけ</label>' +
+        '<label id="mpickZdrWrap"><input type="checkbox" id="mpickZdr"> データを残さない先があるものだけ</label></div>' +
+        '<div class="mpick-crumb" id="mpickCrumb"></div><div class="mpick-list" id="mpickAllList"></div>' +
+      '</div>' +
+      '<div class="mpick-foot"><div class="mpick-sel" id="mpickSel">モデルを選んでください</div>' +
+        '<div class="mpick-actions"><button type="button" class="btn ghost" id="mpickTry" disabled>試しに使う</button>' +
+        '<button type="button" class="btn primary" id="mpickOk" disabled>これにする</button></div>' +
+        '<small id="mpickMsg" aria-live="polite"></small></div>' +
+    '</div>';
+  document.body.appendChild(d);
+  d.addEventListener('click', function(ev){ if (ev.target === d) mpickClose(); });
+  /* 開いた直後はまだ画面の外（開いたボタン）に焦点がある。ページ全体で Esc を受ける。 */
+  document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape' && !d.hidden){ ev.preventDefault(); mpickClose(); } });
+  $('mpickClose').onclick = mpickClose;
+  Array.prototype.forEach.call(d.querySelectorAll('[data-tab]'), function(b){ b.onclick = function(){ mpickTab(b.getAttribute('data-tab')); }; });
+  $('mpickSearch').oninput = function(){ mpickRenderAll(); };
+  $('mpickFree').onchange = function(){ mpickRenderAll(); };
+  $('mpickZdr').onchange = function(){
+    if (!this.checked){ MPICK.zdrIds = null; mpickRenderAll(); return; }
+    $('mpickMsg').textContent = 'データを残さない先を調べています…';
+    hubZdrIds(MPICK.opts.kind).then(function(ids){ MPICK.zdrIds = ids; $('mpickMsg').textContent = ''; mpickRenderAll(); },
+      function(e){ $('mpickZdr').checked = false; $('mpickMsg').textContent = '調べられませんでした：' + String(e.message || e).slice(0, 80); });
+  };
+  $('mpickOk').onclick = function(){
+    var o = MPICK.opts, m = MPICK.sel; if (!o || !m) return;
+    mpickClose(); o.onPick(m.id, m);
+  };
+  $('mpickTry').onclick = function(){
+    var o = MPICK.opts, m = MPICK.sel; if (!o || !m || !o.tryFn) return;
+    var btn = this, t0 = Date.now(); btn.disabled = true; $('mpickMsg').textContent = '試しています…';
+    Promise.resolve().then(function(){ return o.tryFn(m.id, m); }).then(function(res){
+      $('mpickMsg').textContent = '✅ ' + ((Date.now() - t0) / 1000).toFixed(2) + '秒' + (res ? '：' + String(res).slice(0, 120) : '');
+    }, function(e){
+      $('mpickMsg').textContent = '⚠ ' + String((e && e.message) || e).slice(0, 160);
+    }).then(function(){ btn.disabled = false; });
+  };
+  return d;
+}
+/* opts = { prov, kind:'text'|'stt'|'tts', current, title, onPick(id, model), tryFn(id, model) } */
+function openModelPicker(opts){
+  var d = mpickEnsure();
+  MPICK.opts = opts; MPICK.sel = null; MPICK.author = ''; MPICK.models = []; MPICK.zdrIds = null;
+  MPICK.back = document.activeElement;
+  $('mpickTitle').textContent = opts.title || 'モデルを選ぶ';
+  $('mpickSearch').value = ''; $('mpickFree').checked = false; $('mpickZdr').checked = false;
+  $('mpickZdrWrap').style.display = opts.prov === 'openrouter' ? '' : 'none';
+  $('mpickTry').style.display = opts.tryFn ? '' : 'none';
+  $('mpickMsg').textContent = '';
+  mpickSelect(null);
+  d.hidden = false;
+  document.body.classList.add('mpick-open');
+  var chips = $('mpickPresets'); chips.innerHTML = '';
+  HUB_PRESETS.forEach(function(p){
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'mpick-chip'; b.textContent = p.label;
+    b.setAttribute('data-preset', p.id); b.onclick = function(){ MPICK.preset = p.id; mpickRenderReco(); };
+    chips.appendChild(b);
+  });
+  mpickTab('reco');
+  hubList(opts.prov, opts.kind, false).then(function(models){
+    MPICK.models = models;
+    var cur = models.filter(function(m){ return m.id === opts.current; })[0];
+    if (cur) mpickSelect(cur);
+    if (MPICK.tab === 'all') mpickRenderAll();
+  }, function(e){
+    $('mpickMsg').textContent = '一覧を取得できませんでした：' + String(e.message || e).slice(0, 120);
+  });
+  setTimeout(function(){ var c = chips.querySelector('.on') || chips.firstChild; if (c) c.focus(); }, 0);
+}
+function mpickClose(){
+  var d = $('mpick'); if (!d || d.hidden) return;
+  d.hidden = true; document.body.classList.remove('mpick-open');
+  var back = MPICK.back; MPICK.back = null;
+  if (back && back.focus) try{ back.focus(); }catch(e){}
+}
+function mpickTab(tab){
+  MPICK.tab = tab;
+  Array.prototype.forEach.call(document.querySelectorAll('#mpick [data-tab]'), function(b){
+    var on = b.getAttribute('data-tab') === tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  $('mpickReco').hidden = tab !== 'reco'; $('mpickAll').hidden = tab !== 'all';
+  if (tab === 'reco') mpickRenderReco(); else mpickRenderAll();
+}
+function mpickSelect(m){
+  MPICK.sel = m;
+  $('mpickOk').disabled = !m; $('mpickTry').disabled = !m;
+  var box = $('mpickSel'), o = MPICK.opts;
+  if (!m){ box.textContent = 'モデルを選んでください'; }
+  else {
+    var bits = [hubPriceText(m, o.kind)].concat(hubBadges(m)).filter(Boolean);
+    box.innerHTML = '<b>' + mpickEsc(m.name) + '</b> <code>' + mpickEsc(m.id) + '</code>' + (bits.length ? '<br><small>' + mpickEsc(bits.join('・')) + '</small>' : '');
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('#mpick .mpick-row'), function(r){ r.classList.toggle('on', !!m && r.getAttribute('data-id') === m.id); });
+}
+function mpickRow(m, withLatency){
+  var o = MPICK.opts, b = document.createElement('button');
+  b.type = 'button'; b.className = 'mpick-row' + (MPICK.sel && MPICK.sel.id === m.id ? ' on' : '');
+  b.setAttribute('data-id', m.id);
+  var meta = [hubPriceText(m, o.kind)].concat(hubBadges(m)).filter(Boolean).join('・');
+  b.innerHTML = '<span class="mpick-name">' + mpickEsc(m.name) + (m.id === o.current ? ' <em>選択中</em>' : '') + '</span>' +
+    '<span class="mpick-id">' + mpickEsc(m.id) + '</span>' +
+    (meta ? '<span class="mpick-meta">' + mpickEsc(meta) + '</span>' : '') +
+    (withLatency ? '<span class="mpick-lat"></span>' : '');
+  b.onclick = function(){ mpickSelect(m); };
+  if (withLatency && o.prov === 'openrouter'){
+    hubLatency(m.id).then(function(s){ var el = b.querySelector('.mpick-lat'); if (el && s) el.textContent = '応答まで 約' + s.toFixed(2) + '秒（直近30分の中央値）'; });
+  }
+  return b;
+}
+function mpickRenderReco(){
+  var o = MPICK.opts, list = $('mpickRecoList'), preset = HUB_PRESETS.filter(function(p){ return p.id === MPICK.preset; })[0] || HUB_PRESETS[0];
+  Array.prototype.forEach.call(document.querySelectorAll('#mpickPresets .mpick-chip'), function(b){
+    var on = b.getAttribute('data-preset') === preset.id; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  $('mpickPresetNote').textContent = o.prov === 'groq' ? 'Groq の一覧には速さ・性能の情報が無いので、内蔵の候補のうちこのアカウントで使えるものを出しています。' : hubPresetNote(preset, o.kind);
+  list.innerHTML = '<small>読み込んでいます…</small>';
+  hubReco(o.prov, o.kind, preset, false).then(function(models){
+    if (MPICK.opts !== o || MPICK.preset !== preset.id) return;
+    list.innerHTML = '';
+    if (!models.length){ list.innerHTML = '<small>この型のおすすめはありません。「全部から選ぶ」を使ってください。</small>'; return; }
+    models.forEach(function(m){ list.appendChild(mpickRow(m, true)); });
+  }, function(e){
+    list.innerHTML = '<small>おすすめを取得できませんでした：' + mpickEsc(String(e.message || e).slice(0, 120)) + '</small>';
+  });
+}
+function mpickRenderAll(){
+  var o = MPICK.opts, list = $('mpickAllList'), crumb = $('mpickCrumb');
+  if (!o) return;
+  var q = $('mpickSearch').value.trim().toLowerCase(), free = $('mpickFree').checked, zdr = MPICK.zdrIds;
+  var models = MPICK.models.filter(function(m){
+    if (free && !m.free) return false;
+    if (zdr && !zdr[m.id]) return false;
+    if (q && (m.id + ' ' + m.name).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+  list.innerHTML = ''; crumb.innerHTML = '';
+  if (!MPICK.models.length){ list.innerHTML = '<small>一覧を読み込んでいます…</small>'; return; }
+  /* 探しているとき・会社を選んだときはモデルを、それ以外は作った会社を並べる */
+  if (q || MPICK.author){
+    if (MPICK.author && !q){
+      var back = document.createElement('button'); back.type = 'button'; back.className = 'btn ghost mpick-back';
+      back.textContent = '‹ 作った会社'; back.onclick = function(){ MPICK.author = ''; mpickRenderAll(); };
+      crumb.appendChild(back);
+      var t = document.createElement('b'); t.textContent = MPICK.author; crumb.appendChild(t);
+      models = models.filter(function(m){ return m.author === MPICK.author; });
+    }
+    models.sort(function(a, b){ return (b.created || 0) - (a.created || 0); });
+    if (!models.length){ list.innerHTML = '<small>見つかりません。</small>'; return; }
+    models.slice(0, 200).forEach(function(m){ list.appendChild(mpickRow(m, false)); });
+    if (models.length > 200){ var more = document.createElement('small'); more.textContent = '先頭の200件を出しています。名前で絞ってください。'; list.appendChild(more); }
+    return;
+  }
+  var by = {};
+  models.forEach(function(m){ by[m.author] = (by[m.author] || 0) + 1; });
+  var names = Object.keys(by).sort(function(a, b){ return by[b] - by[a] || a.localeCompare(b); });
+  var hint = document.createElement('small'); hint.textContent = '作った会社を選ぶと、その会社のモデルが新しい順に出ます。'; crumb.appendChild(hint);
+  if (!names.length){ list.innerHTML = '<small>見つかりません。</small>'; return; }
+  names.forEach(function(a){
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'mpick-row mpick-author';
+    b.innerHTML = '<span class="mpick-name">' + mpickEsc(a) + '</span><span class="mpick-meta">' + by[a] + ' 件</span>';
+    b.onclick = function(){ MPICK.author = a; mpickRenderAll(); };
+    list.appendChild(b);
+  });
+}
+
+/* ---- 翻訳の呼び出しを OpenRouter・Groq に合わせる ---- */
+/* OpenRouter：推論モデルは推論を切る（切れないモデルはいちばん弱く）。temperature は
+   受け付けるモデルにだけ送る。提供元の選び方と、データを残さない先の指定を付ける。
+   モデルの情報がまだ無いときは、今までどおり temperature だけを送る。 */
+function orChatTune(body, model){
+  var m = hubFind('openrouter', 'text', model);
+  if (m && m.params.length && m.params.indexOf('temperature') < 0) delete body.temperature;
+  if (m && m.reasoning){
+    var ef = m.reasoning.efforts;
+    body.reasoning = { effort: !m.reasoning.mandatory ? 'none' : (ef && ef.length ? ef[ef.length - 1] : 'minimal') };
+  }
+  var route = {};
+  if (CFG.orRoute === 'latency' || CFG.orRoute === 'price') route.sort = CFG.orRoute;
+  if (CFG.orZdr){ route.zdr = true; route.data_collection = 'deny'; }
+  if (Object.keys(route).length) body.provider = route;
+  return body;
+}
+/* Groq：gpt-oss は推論を弱く、Qwen3 は推論を切る。考えた過程は本文に混ぜない。 */
+function groqChatTune(body, model){
+  var s = String(model || '').toLowerCase();
+  if (/gpt-oss/.test(s)) body.reasoning_effort = 'low';
+  else if (/qwen3|qwq|deepseek-r1|magistral/.test(s)){
+    body.reasoning_format = 'hidden';
+    if (/qwen3/.test(s)) body.reasoning_effort = 'none';
+  }
+  return body;
+}
+/* 推論モデルが本文に考えた過程（<think>…</think>）を混ぜて返すことがある */
+function stripThink(text){ return String(text == null ? '' : text).replace(/<think>[\s\S]*?<\/think>\s*/gi, '').replace(/^\s*<think>[\s\S]*$/i, '').trim(); }
+
+/* ---- ① 接続テスト：音声の入口をブラウザから呼べるか ---- */
+var OR_TEST = null;
+function orSilentWavB64(ms){
+  var rate = 16000, n = Math.round(rate * ms / 1000), buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  function put(o, s){ for (var i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); }
+  put(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); put(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  put(36, 'data'); v.setUint32(40, n * 2, true);
+  var u8 = new Uint8Array(buf), s = '';
+  for (var i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function orTestStep(name, run){
+  var t0 = Date.now();
+  return Promise.resolve().then(run).then(function(detail){
+    return { name:name, ok:true, ms:Date.now() - t0, detail:detail || '' };
+  }, function(e){
+    var m = String((e && e.message) || e), cors = e instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(m);
+    return { name:name, ok:false, ms:Date.now() - t0, status:(e && e.status) || 0,
+      detail:cors ? 'ブラウザから呼べませんでした（CORS か通信）' : m.slice(0, 140) };
+  });
+}
+function orHttpCheck(r){
+  if (r.ok) return r;
+  return r.text().then(function(t){ var e = new Error('HTTP ' + r.status + ' ' + String(t || '').slice(0, 120)); e.status = r.status; throw e; });
+}
+function orConnectionTest(){
+  var key = hubKeyFor('openrouter', 'text');
+  if (!key) return Promise.reject(new Error('OpenRouter の APIキーが未入力です'));
+  var steps = [];
+  steps.push(function(){ return orTestStep('キー（GET /key）', function(){
+    return fetch(OR_BASE + '/key', { headers:orHeaders(key, false) }).then(orHttpCheck).then(function(r){ return r.json(); }).then(function(j){
+      var d = j.data || j || {};
+      return (d.is_free_tier ? '無料枠' : '有料') + (d.limit_remaining != null ? '・残り $' + d.limit_remaining : '');
+    });
+  }); });
+  steps.push(function(){ return orTestStep('翻訳（/chat/completions）', function(){
+    var model = CFG.provider === 'openrouter' && CFG.model ? CFG.model : PROVIDERS.openrouter.models[0].id;
+    var body = orChatTune({ model:model, messages:[{ role:'user', content:'Reply with OK.' }], max_tokens:8, temperature:0 }, model);
+    return fetch(OR_BASE + '/chat/completions', { method:'POST', headers:orHeaders(key, true), body:JSON.stringify(body) })
+      .then(orHttpCheck).then(function(r){ return r.json(); }).then(function(j){ return model + (j.provider ? '（' + j.provider + '）' : ''); });
+  }); });
+  steps.push(function(){ return orTestStep('読み上げ（/audio/speech）', function(){
+    return hubList('openrouter', 'tts', false).then(function(models){
+      var m = hubFind('openrouter', 'tts', CFG.orTtsModel) || models[0];
+      if (!m) throw new Error('読み上げモデルが一覧にありません');
+      var body = { model:m.id, input:'テスト', response_format:'pcm' };
+      if (m.voices && m.voices.length) body.voice = m.voices[0];
+      return fetch(OR_BASE + '/audio/speech', { method:'POST', headers:orHeaders(key, true), body:JSON.stringify(body) })
+        .then(orHttpCheck).then(function(r){
+          var ct = r.headers.get('content-type') || '(不明)';
+          return r.arrayBuffer().then(function(b){ return m.id + '・' + ct + '・' + b.byteLength + ' バイト'; });
+        });
+    });
+  }); });
+  steps.push(function(){ return orTestStep('音声認識（/audio/transcriptions）', function(){
+    return hubList('openrouter', 'stt', false).then(function(models){
+      var m = hubFind('openrouter', 'stt', CFG.sttProvider === 'openrouter' ? CFG.sttModel : '') || models[0];
+      if (!m) throw new Error('文字起こしモデルが一覧にありません');
+      var body = { model:m.id, input_audio:{ data:orSilentWavB64(600), format:'wav' }, language:'ja' };
+      return fetch(OR_BASE + '/audio/transcriptions', { method:'POST', headers:orHeaders(key, true), body:JSON.stringify(body) })
+        .then(orHttpCheck).then(function(r){ return r.json(); }).then(function(){ return m.id; });
+    });
+  }); });
+  /* 順に1つずつ。同時に投げると、どれが断られたのか記録から追いにくい。 */
+  var out = [];
+  return steps.reduce(function(p, step){ return p.then(function(){ return step().then(function(r){ out.push(r); }); }); }, Promise.resolve()).then(function(){
+    OR_TEST = { at:Date.now(), results:out };
+    dlog('models', 'openrouter-test', { results:out.map(function(r){ return { name:r.name, ok:r.ok, ms:r.ms, status:r.status || 0, detail:r.detail }; }) });
+    return out;
+  });
+}
+function hubTryTranslate(prov, id){
+  var key = prov === 'openrouter' ? hubKeyFor('openrouter', 'text') : keyOf(prov);
+  if (!key) return Promise.reject(new Error('APIキーが未入力です'));
+  var from = CFG.langA, to = CFG.langB === CFG.langA ? (CFG.langA === 'en' ? 'ja' : 'en') : CFG.langB;
+  var sample = { ja:'今日の会議を始めます。資料は先ほど共有しました。', en:"Let's start today's meeting. I shared the slides a moment ago." }[from] ||
+               "Let's start today's meeting. I shared the slides a moment ago.";
+  var body = { model:id, temperature:0.2, messages:[
+    { role:'system', content:'Translate the user text into ' + L(to).en + '. Output only the translation.' },
+    { role:'user', content:sample } ] };
+  if (prov === 'openrouter') orChatTune(body, id); else if (prov === 'groq') groqChatTune(body, id);
+  var base = prov === 'openrouter' ? OR_BASE : PROVIDERS[prov].base;
+  var h = prov === 'openrouter' ? orHeaders(key, true) : { 'Content-Type':'application/json', 'Authorization':'Bearer ' + key };
+  return fetch(base + '/chat/completions', { method:'POST', headers:h, body:JSON.stringify(body) }).then(chk).then(function(j){
+    return stripThink(j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content);
+  });
+}
+function orTestSummary(){
+  if (!OR_TEST) return '(未実施)';
+  return OR_TEST.results.map(function(r){ return r.name.replace(/（.*$/, '') + ' ' + (r.ok ? 'OK' : 'NG') + ' ' + r.ms + 'ms'; }).join(' ／ ');
+}
+
 function classifyModels(ids){
   var out = { chat:[], stt:[], tts:[] };
   ids.forEach(function(id){
     var s = id.toLowerCase();
     if (s.indexOf('transcribe') >= 0 || s.indexOf('whisper') >= 0) out.stt.push({id:id});
-    else if (s.indexOf('tts') >= 0 || s.indexOf('speech') >= 0)    out.tts.push({id:id});
+    else if (s.indexOf('tts') >= 0 || s.indexOf('speech') >= 0 || /orpheus|playai/.test(s)) out.tts.push({id:id});
     // realtime / audio 系は WebSocket 専用のため、この画面の翻訳用途では使えない
     else if (/embedding|moderation|image|dall|sora|video|guard|rerank|realtime|audio|search-preview|computer-use/.test(s)) { /* 除外 */ }
     else out.chat.push({id:id});
@@ -10857,6 +11732,8 @@ function fetchModels(silent){
     job = fetch('https://api.anthropic.com/v1/models?limit=100', {
       headers:{ 'x-api-key':key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' }
     }).then(chk).then(function(j){ return (j.data||[]).map(function(m){ return m.id; }); });
+  } else if (CFG.provider === 'openrouter'){
+    job = hubList('openrouter', 'text', true).then(function(models){ return models.map(function(m){ return m.id; }); });
   } else {
     var h = {};
     if (key) h['Authorization'] = 'Bearer ' + key;
@@ -10890,6 +11767,16 @@ function fetchSttModels(silent){
   if (!silent) $('sttModelNote').textContent = 'モデル一覧を取得しています...';
 
   var job;
+  if (prov === 'openrouter'){
+    return hubList('openrouter', 'stt', true).then(function(models){
+      refreshProviderUI();
+      $('sttModelNote').textContent = '✅ ' + models.length + ' 件の文字起こしモデルを取得しました（OpenRouter）';
+      if (!silent) toast(models.length + ' 件の音声認識モデルを取得しました', true);
+    }, function(e){
+      $('sttModelNote').textContent = '一覧を取得できませんでした';
+      if (!silent) toast('モデル一覧の取得に失敗: ' + String(e.message||e));
+    });
+  }
   if (prov === 'gemini'){
     job = fetch(PROVIDERS.gemini.base + '/models?key=' + encodeURIComponent(key) + '&pageSize=200')
       .then(chk).then(function(j){
@@ -10925,6 +11812,7 @@ function chatModelsFor(prov){
 }
 function sttModelsFor(prov){
   if (prov === 'webspeech') return STT_MODELS.webspeech;
+  if (prov === 'openrouter'){ var hit = hubCached('openrouter', 'stt'); return hit ? hit.models.map(function(m){ return { id:m.id }; }) : []; }
   var c = MODEL_CACHE[prov];
   if (c && c.stt && c.stt.length) return c.stt;
   return STT_MODELS[prov] || [];
@@ -10952,6 +11840,9 @@ function refreshProviderUI(){
   $('translationContextField').style.display=noTranslation?'none':'';
   $('model').disabled = isFree||noTranslation;
   $('fetchModels').disabled = isFree||noTranslation;
+  $('modelPick').style.display = hubProviderOk(CFG.provider) && !noTranslation ? '' : 'none';
+  $('orTransOpts').style.display = CFG.provider === 'openrouter' ? '' : 'none';
+  $('orTestOut').textContent = CFG.provider === 'openrouter' && OR_TEST ? orTestSummary() : '';
   renderModelCombo(chatModelsFor(CFG.provider), CFG.model, function(v){
     if(CFG.model===v)return;CFG.model = v; persistSetting("model", v);segRefreshTranslations();
   });
@@ -10963,6 +11854,7 @@ function refreshProviderUI(){
   var sttFetchable = (CFG.sttProvider !== 'webspeech' && CFG.sttProvider !== 'realtime'
                       && CFG.sttProvider !== 'xai');
   $('fetchSttModels').style.display = sttFetchable ? '' : 'none';
+  $('sttModelPick').style.display = hubProviderOk(CFG.sttProvider) ? '' : 'none';
 
   renderCombo('ttsModel','ttsModelCustom', ttsModelsFor(), CFG.ttsModel, function(v){
     CFG.ttsModel = v; persistSetting("ttsModel", v);
@@ -11504,12 +12396,33 @@ function autoFetchModels(){
   fetchModels(true);
 }
 $('fetchModels').onclick = function(){ fetchModels(false); };
+$('modelPick').onclick = function(){
+  var prov = CFG.provider;
+  openModelPicker({ prov:prov, kind:'text', current:CFG.model,
+    title:'翻訳モデルを選ぶ（' + PROVIDERS[prov].label + '）',
+    onPick:function(id){
+      var cache = MODEL_CACHE[prov] = MODEL_CACHE[prov] || {};
+      var have = normList(cache.chat || []).some(function(m){ return m.id === id; });
+      if (!have){ var hit = hubCached(prov, 'text'); cache.chat = hit ? hit.models.map(function(m){ return { id:m.id }; }) : normList(PROVIDERS[prov].models).concat([{ id:id }]); }
+      CFG.model = id; persistSetting("model", id); refreshProviderUI(); segRefreshTranslations();
+      toast('翻訳モデルを ' + realtimeEscape(id) + ' にしました', true);
+    },
+    tryFn:function(id){ return hubTryTranslate(prov, id); } });
+};
+$('orTest').onclick = function(){
+  if (!window.confirm('OpenRouter へ、翻訳・読み上げ・音声認識を1回ずつ小さく送ります（少額の料金がかかります）。続けますか？')) return;
+  var btn = this, out = $('orTestOut'); btn.disabled = true; out.textContent = '確かめています…';
+  orConnectionTest().then(function(rs){
+    out.innerHTML = rs.map(function(r){ return (r.ok ? '✅ ' : '⚠ ') + realtimeEscape(r.name) + '：' + realtimeEscape(r.detail) + '（' + r.ms + 'ms）'; }).join('<br>');
+  }, function(e){ out.textContent = '⚠ ' + String((e && e.message) || e); }).then(function(){ btn.disabled = false; });
+};
 $('fetchSttModels').onclick = function(){ fetchSttModels(false); };
 var sttKeyTimer = null;
 function autoFetchSttModels(){
   var prov = CFG.sttProvider;
   if (prov === 'webspeech' || prov === 'realtime') return;
   if (prov === 'xai') return;                           // モデルを選ばないので一覧は不要
+  if (prov === 'openrouter'){ orSttEnsure(); return; }   // 一覧はキー無しで取れる
 
   if ((sttKey()||'').length < 15) return;               // キーが入りきっていない
   if (MODEL_CACHE[prov] && MODEL_CACHE[prov].stt && MODEL_CACHE[prov].stt.length) return; // 取得済み
@@ -11521,6 +12434,13 @@ $('sttKey').oninput = function(){
   clearTimeout(sttKeyTimer); sttKeyTimer = setTimeout(autoFetchSttModels, 1200);
 };
 $('baseUrl').oninput = function(){ CFG.baseUrl = this.value.trim(); persistSetting("baseUrl", CFG.baseUrl); };
+$('sttModelPick').onclick = function(){
+  var prov = CFG.sttProvider;
+  if (prov === 'groq' && !hubKeyFor('groq', 'stt')){ toast('先に Groq のAPIキーを入力してください'); return; }
+  openModelPicker({ prov:prov, kind:'stt', current:CFG.sttModel, title:'音声認識モデルを選ぶ（' + (prov === 'groq' ? 'Groq' : 'OpenRouter') + '）',
+    onPick:function(id){ fourOSetModel(id); refreshProviderUI(); toast('音声認識モデルを ' + realtimeEscape(id) + ' にしました', true); },
+    tryFn:function(id){ return hubTryStt(prov, id); } });
+};
 $('sttProvider').onchange = function(){
   var wasRunning=S.running;if(wasRunning)stopAll();
   CFG.sttProvider = this.value; persistSetting("sttProvider", CFG.sttProvider);
@@ -11621,6 +12541,28 @@ $('rtCardSeconds').onchange=function(){
 };
 
 $('oaiTtsKey').oninput=function(){KEYS['tts:openai']=this.value.trim();saveKeys();openaiTtsWarned=false;refreshVvUI();};
+$('orTtsKey').oninput=function(){KEYS['tts:openrouter']=this.value.trim();saveKeys();window.orTtsWarned=false;refreshVvUI();};
+$('groqTtsKey').oninput=function(){KEYS['tts:groq']=this.value.trim();saveKeys();window.groqTtsWarned=false;refreshVvUI();};
+['A','B'].forEach(function(seat){
+  $('orVoice'+seat).onchange=function(){CFG['orVoice'+seat]=this.value;persistSetting('orVoice'+seat,this.value);refreshVvUI();};
+  $('groqVoice'+seat).onchange=function(){CFG['groqVoice'+seat]=this.value.trim();persistSetting('groqVoice'+seat,CFG['groqVoice'+seat]);refreshVvUI();};
+});
+$('orTtsFetch').onclick=function(){
+  var btn=this;btn.disabled=true;$('orTtsNote').textContent='一覧を取り直しています…';
+  hubList('openrouter','tts',true).then(function(ms){refreshVvUI();$('orTtsNote').textContent='✅ '+ms.length+' 件の読み上げモデルを取得しました';},
+    function(e){$('orTtsNote').textContent='一覧を取得できませんでした：'+String(e.message||e).slice(0,80);}).then(function(){btn.disabled=false;});
+};
+$('orTtsPick').onclick=function(){
+  openModelPicker({prov:'openrouter',kind:'tts',current:CFG.orTtsModel,title:'読み上げモデルを選ぶ（OpenRouter）',
+    onPick:function(id){CFG.orTtsModel=id;persistSetting('orTtsModel',id);refreshVvUI();toast('読み上げモデルを '+realtimeEscape(id)+' にしました',true);},
+    tryFn:function(id){return hubTryTts('openrouter',id);}});
+};
+$('groqTtsPick').onclick=function(){
+  if(!groqTtsKey()){toast('先に Groq のAPIキーを入力してください');return;}
+  openModelPicker({prov:'groq',kind:'tts',current:CFG.groqTtsModel,title:'読み上げモデルを選ぶ（Groq）',
+    onPick:function(id){CFG.groqTtsModel=id;persistSetting('groqTtsModel',id);refreshVvUI();toast('読み上げモデルを '+realtimeEscape(id)+' にしました',true);},
+    tryFn:function(id){return hubTryTts('groq',id);}});
+};
 
 $('vvSpeakerFetch').onclick=function(){ vvLoadSpeakers(true); };
 
@@ -11960,7 +12902,13 @@ var DIAG_ROWS = [
   {section:"environment",order:8,label:'画面スリープ防止(WakeLock)',value:function(ctx){ return ('wakeLock' in navigator) ? '対応' : '非対応'; }},
   {section:"settings",order:0,label:'翻訳プロバイダ',value:function(ctx){ return CFG.provider; }},
   {section:"settings",order:1,label:'翻訳モデル',value:function(ctx){ return translationDisabled() ? '(未使用)' : CFG.model; }},
-  {section:"settings",order:2,label:'音声認識(STT)',value:function(ctx){ return CFG.sttProvider; }},
+  {section:"settings",order:1.2,label:'OpenRouter',value:function(ctx){
+    if (CFG.provider !== 'openrouter' && CFG.sttProvider !== 'openrouter' && CFG.ttsMode !== 'openrouter') return '(未使用)';
+    var k = hubKeyFor('openrouter', 'text');
+    return 'キー ' + (k ? k.length + '文字' : '未設定') + '／提供元 ' + CFG.orRoute + '／データを残さない先だけ ' + (CFG.orZdr ? 'ON' : 'OFF') +
+      '／最後に翻訳した提供元 ' + (OR_LAST_PROVIDER || '(まだ無し)') + '／接続テスト ' + orTestSummary(); }},
+  {section:"settings",order:2,label:'音声認識(STT)',value:function(ctx){ return CFG.sttProvider +
+    (CFG.sttProvider === 'openrouter' ? '（JSON・input_audio' + (OR_STT_WAV[CFG.sttModel] ? '・WAVに変換して送信' : '') + '）' : ''); }},
   {section:"settings",order:3,label:'STTモデル',value:function(ctx){ return CFG.sttModel; }},
   {section:"settings",order:4,label:'4o系の録音上限',value:function(ctx){ return fourOFileModel()?fourOSeconds(CFG.fourOSeconds)+'秒／末尾繰越 '+(CFG.fourOCarry!==false?'ON':'OFF')+'／無音待ち '+sttSilenceHoldMs()+'ms／録音ファイルAPI':'(未使用)'; }},
   {section:"settings",order:5,label:'有効なSTT通信方式',value:function(ctx){ return diagSttTransport(); }},
@@ -15161,6 +16109,10 @@ setMode(store.get('di.automode','1') === '1');
 setFocus(CFG.focus || 'split');
 updateStatus();
 dlog('app','build',{id:APP_BUILD,voicevoxApi:'v3'});
+if (GROQ_MODEL_FIXED){
+  dlog('models','groq-model-retired',GROQ_MODEL_FIXED);
+  setTimeout(function(){ toast('Groq の ' + GROQ_MODEL_FIXED.from + ' は提供が終わったため、翻訳モデルを ' + GROQ_MODEL_FIXED.to + ' に替えました。', true); }, 800);
+}
 
 /* =========================================================================
    iOS（iPhone / iPad）向けの環境チェックと自動調整
