@@ -2692,8 +2692,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.31';
-var APP_BUILD = '20260927-v14931-4o-tuning';
+var APP_VERSION = 'v1.49.32';
+var APP_BUILD = '20260927-v14932-4o-join';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -10852,7 +10852,9 @@ StreamEngine.prototype.start = function(){
     if(self.fourO)self.fourO.poll(t,t-self.last>900);
     if (self.voice && (t-self.last)>sttSilenceHoldMs() && (t-self.segStart)>700) self.cut(true,'silence');
     else if (!self.voice && (t-self.segStart)>8000) self.cut(false,'silence');
-    else if ((t-self.segStart)>(self.fourO&&self.rec&&self.rec._fourOMeta?self.rec._fourOMeta.seconds*1000:20000)) self.cut(true,'limit');
+    /* 上限で切るとき、声が一度も無かった録音は送らない。4o 系の上限（既定6秒）は
+       無音で捨てる8秒より短いので、音の来ないマイクでも6秒ごとに送っていた。 */
+    else if ((t-self.segStart)>(self.fourO&&self.rec&&self.rec._fourOMeta?self.rec._fourOMeta.seconds*1000:20000)) self.cut(self.voice,'limit');
   }, 60);
 };
 StreamEngine.prototype.newRec = function(){
@@ -10953,11 +10955,12 @@ function fourOSentenceEnds(text){
     ends.push(m.index+m[0].length);
   }return ends;
 }
-function fourOSplit(text,reserve){
+function fourOSplit(text,reserve,trustEnd){
   if(!reserve)return {ready:text,tail:''};
   var ends=fourOSentenceEnds(text),cut=ends.length?ends[ends.length-1]:0;
   // On a timed cut, even a final period may have been inferred from truncated audio.
-  if(cut===text.length)cut=ends.length>1?ends[ends.length-2]:0;
+  // After a silence cut the speaker really paused, so a final period is kept.
+  if(cut===text.length&&!trustEnd)cut=ends.length>1?ends[ends.length-2]:0;
   return {ready:text.slice(0,cut),tail:text.slice(cut)};
 }
 function fourOJoin(a,b){
@@ -11032,7 +11035,12 @@ FourOFileBuffer.prototype.drain=function(){
     var text=q.text;
     if(held){held.entry.audioEndedAt=e.audioEndedAt;text=fourOJoin(held.entry.srcText,text);removeEntry(e);e=held.entry;e.prosody=null;this.held=null;}
     else if(CFG.prosodyOn&&q.prosody){e.srcText=text;attachProsody(e,q.prosody);}
-    var parts=fourOSplit(text,q.meta.reason==='limit'&&q.meta.carry),tail;
+    /* 無音で切った録音も、文の終わりが無ければ次の結果につなぐ。息継ぎ（0.5秒前後）で
+       切れるたびにカードが分かれ、v1.49.29 の記録（無音待ち 450ms）では相手の74枚のうち
+       28枚が「。」「？」「！」で終わらず、「情報を」「一方で、」「まずその」のような
+       8文字以下が10枚あった。つないだ末尾は、次の録音に声が無いまま0.9秒たつと確定する。 */
+    var silenceCut=q.meta.reason==='silence';
+    var parts=fourOSplit(text,q.meta.carry&&(q.meta.reason==='limit'||silenceCut),silenceCut),tail;
     if(parts.ready){
       fourOCardText(e,parts.ready,true,'sentence-prefix');fourOFinalize(e,'sentence-prefix',false);
       if(parts.tail){
@@ -11044,7 +11052,7 @@ FourOFileBuffer.prototype.drain=function(){
     if(tail){
       // Never reset an already-waiting tail's deadline merely because new text arrived.
       this.held={entry:tail,until:held&&!parts.ready?held.until:Date.now()+(q.meta.seconds+5)*1000};
-      dlog('stt','4o-tail-held',{cardId:tail.id,chars:tail.srcText.length,until:this.held.until,request:q.id});
+      dlog('stt','4o-tail-held',{cardId:tail.id,chars:tail.srcText.length,until:this.held.until,request:q.id,cut:q.meta.reason,joined:!!held});
     }
   }
 };

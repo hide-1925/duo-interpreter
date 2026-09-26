@@ -124,4 +124,78 @@ test('behind: a different voice or seat still splits the request',()=>{
   assert.equal(w.ctx.segAivisGroup(a,false,100000,false).group.length,1);
 });
 
+/* ---------- 無音で切れた切れ端を次の結果につなぐ ---------- */
+function bufWorld(o={}){
+  const w={entries:[],logs:[],calls:[],now:1000};let n=0;
+  const ctx={console,String,Number,Object,JSON,Math,Array,Promise,Error,isFinite,
+    Date:{now:()=>w.now},setTimeout:()=>0,clearTimeout:()=>{},AbortController:function(){this.abort=()=>{};},
+    S:{running:true,entries:w.entries,autoMode:false},sessionGen:1,
+    CFG:Object.assign({langA:'ja',langB:'ja',sttModel:'gpt-4o-mini-transcribe',prosodyOn:false},o.cfg||{}),
+    addEntry:(seat,text,interim)=>{const e={id:'e'+(++n),seat,srcText:text,interim,srcLang:'ja',dstLang:'ja'};w.entries.push(e);return e;},
+    removeEntry:(e)=>{const i=w.entries.indexOf(e);if(i>=0)w.entries.splice(i,1);},
+    render:()=>{},segEnabled:()=>false,segInit:()=>{},segUpdate:()=>{},speakSrcNow:()=>{},translate:()=>{},
+    dlog:(c,m,d)=>w.logs.push({m,d}),hasSpeechContent:(x)=>!!String(x).trim(),isEcho:()=>false,
+    toast:()=>{},realtimeEscape:(x)=>x,redact:(x)=>x,attachProsody:()=>{},
+    langOf:()=>'ja',micSeats:()=>['A'],duoShouldAutoDetectInput:()=>false,sttAutoDetect:()=>false,
+    sttCall:()=>new Promise((res)=>w.calls.push(res))};
+  vm.createContext(ctx);
+  vm.runInContext([block('function fourOSentenceEnds('),block('function fourOSplit('),block('function fourOJoin('),
+    block('function fourOCardText('),block('function fourOFinalize('),block('function fourOPlaceAfter('),block('function fourOTailStart('),
+    block('function FourOFileBuffer('),block('FourOFileBuffer.prototype.alive='),block('FourOFileBuffer.prototype.submit='),
+    block('FourOFileBuffer.prototype.release='),block('FourOFileBuffer.prototype.drain='),block('FourOFileBuffer.prototype.poll=')].join('\n'),ctx);
+  const buf=vm.runInContext('new FourOFileBuffer({})',ctx);
+  w.clip=async(text,reason,carry=true)=>{buf.submit({},'B',null,{reason,seconds:6,carry,startedAt:w.now-2000,endedAt:w.now});
+    w.calls.shift()(text);await new Promise(r=>setImmediate(r));};
+  w.cards=()=>w.entries.map(e=>({text:e.srcText,open:!!(e.fourOState&&e.fourOState.pending)}));
+  w.buf=buf;return w;
+}
+const atest=async(n,f)=>{await f();tests.push(n);};
+const bufTests=(async()=>{
+await atest('a silence cut without a sentence end waits and joins the next result into the same card',async()=>{
+  const w=bufWorld();
+  await w.clip('まずその','silence');
+  assert.deepEqual(w.cards(),[{text:'まずその',open:true}],'shown right away, still open');
+  await w.clip('組織改革ですけど、旅団を中心にしていました。','silence');
+  assert.deepEqual(w.cards(),[{text:'まずその組織改革ですけど、旅団を中心にしていました。',open:false}]);
+  const held=w.logs.filter(l=>l.m==='4o-tail-held');
+  assert.equal(held.length,1);assert.equal(held[0].d.cut,'silence');
+});
+await atest('a silence cut that ends a sentence closes the card at once, as before',async()=>{
+  const w=bufWorld();
+  await w.clip('地雷を次々と見つけて、爆破処理していきます。','silence');
+  assert.deepEqual(w.cards(),[{text:'地雷を次々と見つけて、爆破処理していきます。',open:false}]);
+  await w.clip('ウクライナメディアは、','silence');
+  assert.deepEqual(w.cards().map(c=>c.open),[false,true]);
+});
+await atest('sentences are closed and only the unfinished rest waits',async()=>{
+  const w=bufWorld();
+  await w.clip('全体が一つのオーケストラだ。ビバルディ作戦には、','silence');
+  assert.deepEqual(w.cards(),[{text:'全体が一つのオーケストラだ。',open:false},{text:'ビバルディ作戦には、',open:true}]);
+});
+await atest('the waiting rest is closed after 0.9 s without voice in the next recording',async()=>{
+  const w=bufWorld();
+  await w.clip('一方で、','silence');
+  w.buf.poll(w.now,false);assert.equal(w.cards()[0].open,true,'voice is back: keep waiting');
+  w.buf.poll(w.now,true);assert.deepEqual(w.cards(),[{text:'一方で、',open:false}]);
+});
+await atest('with carry off, every silence cut is its own card as before',async()=>{
+  const w=bufWorld();
+  await w.clip('まずその','silence',false);await w.clip('組織改革です。','silence',false);
+  assert.deepEqual(w.cards(),[{text:'まずその',open:false},{text:'組織改革です。',open:false}]);
+});
+await atest('on a timed cut a final period is still not trusted',async()=>{
+  const w=bufWorld();
+  await w.clip('ロシア軍は地雷原で防御している。','limit');
+  assert.deepEqual(w.cards(),[{text:'ロシア軍は地雷原で防御している。',open:true}]);
+});
+})();
+
+/* ---------- 声の無い録音は上限で切っても送らない ---------- */
+test('a recording that never had voice is not sent when the time limit cuts it',()=>{
+  const l=lines.find(x=>/self\.cut\(.*'limit'\)/.test(x));
+  assert.ok(l,'limit cut line');assert.match(l,/self\.cut\(self\.voice,'limit'\)/);
+});
+
+bufTests.then(()=>{
 console.log(JSON.stringify({test:'4o-tuning',passed:tests.length}));
+}).catch(e=>{console.error(e);process.exit(1);});

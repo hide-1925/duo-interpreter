@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.42",
-  "version_name": "1.4.42 HTML v1.49.31 と対。gpt-4o 系で2人とも同じ言語なら言語を伝えて送る／読み上げが遅れているあいだは Prosody で遅くせず、Aivis へまとめて送る",
+  "version": "1.4.43",
+  "version_name": "1.4.43 HTML v1.49.32 と対。gpt-4o 系で、息継ぎで切れた文の途中を次の結果と同じカードにつなぐ／声の無い録音は上限で切っても送らない",
   "optional_host_permissions": [
     "https://*/*"
   ],
