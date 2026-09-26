@@ -79,7 +79,7 @@ function reset(over){
     turnDecisionCommitWaitMs:300,turnDecisionHoldMaxWaitMs:2000,
     turnDecisionMaxAsksPerRevision:3,turnDecisionProsody:true},over||{});
   peeked.count=0; D().cache={}; D().inflight={}; D().sessionSalt=null;
-  D()._confirm={}; D()._lastSend={}; D()._asks={}; D().circuit={}; T().reset();
+  D()._confirm={}; D()._lastSend={}; D()._asks={}; D()._recent={}; D().circuit={}; T().reset();
 }
 const card=(over)=>Object.assign({id:'e1',utteranceId:'u1',seat:'A',srcLang:'ja',dstLang:'en',
   segment:{revision:3,final:false},segments:[]},over||{});
@@ -935,6 +935,153 @@ test('spoken text on the same card shape still goes through the layer',()=>{
   D().cache[D().key(st)]={sessionId:st.sessionId,utteranceId:st.utteranceId,revision:st.revision,
     boundary:{choice:'HOLD',confidence:0.9,probabilities:{HOLD:0.9}},decisionId:'spoken'};
   assert.equal(D().boundary(e,seg,i,rule,900,now).waiting,'provider-hold','the bypass is for typed text only');
+});
+
+/* ── 息継ぎを切り所の候補にする（v1.49.26）────────────────────────────
+   v1.49.25 実測：話し言葉の文末（〜んじゃないの／〜だぜ／〜っけ）を規則が拾えず、
+   112字の長さ打切りが2回。うち1回は「、」で終わり、読み上げがさらに4.7秒待った。
+   Web Speech のカードでは、空白を直した「、」の位置を「。で終わる」「？で終わる」の
+   2択で候補に出し、判断層に選ばせる。 */
+const BREATH='そんなに強いなら日本は1人で作れちゃうんじゃないの、そこがまた面白いところでな、日本は';
+const breathInput=(over)=>input(Object.assign({text:BREATH,stableLength:BREATH.length,breaths:true},over||{}));
+test('breaths on a Web Speech card become paired statement and question candidates',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const i=breathInput(),cands=D().candidatesOf(i,{length:0});
+  const first=BREATH.indexOf('、')+1;
+  const at=cands.filter(c=>c.offset===first).map(c=>c.kind).sort().join(',');
+  assert.equal(at,'C_PAUSE_Q,C_PAUSE_S','one position, two readings');
+  assert.equal(cands.find(c=>c.id==='C_PAUSE_Q_'+first).left.slice(-4),'ないの、');
+});
+test('no breath candidates for other recognisers, where a comma is a real comma',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const cands=D().candidatesOf(breathInput({breaths:false}),{length:0});
+  assert.equal(cands.filter(c=>/^C_PAUSE/.test(c.kind)).length,0);
+});
+test('breath candidates stay inside the stable prefix and off structural positions',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const first=BREATH.indexOf('、')+1,second=BREATH.indexOf('、',first)+1;
+  let cands=D().candidatesOf(breathInput({stableLength:first+2}),{length:0});
+  assert.ok(!cands.some(c=>c.offset===second),'past the stable prefix is not offered');
+  cands=D().candidatesOf(breathInput(),{length:first});
+  assert.ok(!cands.some(c=>c.offset===first&&/^C_PAUSE/.test(c.kind)),
+    'the rules answer already sits there; a second option for the same cut would split the probability');
+});
+const pauseHit=(st,kind,offset,over)=>{
+  const id=kind+'_'+offset,probs={HOLD:0.03};probs[id]=0.93;
+  return Object.assign({sessionId:st.sessionId,utteranceId:st.utteranceId,revision:st.revision,
+    boundary:{choice:id,confidence:0.9,probabilities:probs},
+    turnState:{choice:'CONTINUING',confidence:0.9,probabilities:{CONTINUING:0.9,COMPLETE:0.1}},
+    safeToSpeak:0.2,repairLikelihood:0.02,decisionId:'p1',probabilitySemantics:'native_calibrated'},over||{});
+};
+test('a question at a breath is cut with a question mark, while the speaker is still talking',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const i=breathInput(),rule=D().rules(i),first=BREATH.indexOf('、')+1;
+  const st=D().stateOf(card(),{},i,rule,120,Date.now());
+  D()._confirm={};
+  let out=D().pick(st,pauseHit(st,'C_PAUSE_Q',first),rule,false);
+  assert.equal(out.waiting,'provider-confirming','Japanese still needs the answer twice');
+  out=D().pick(st,pauseHit(st,'C_PAUSE_Q',first),rule,false);
+  assert.equal(out.length,first);
+  assert.equal(out.mark,'？');
+  assert.deepEqual(Array.from(out.reasons),['provider-C_PAUSE_Q','stable']);
+});
+test('a statement at a breath is cut with a full stop',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const i=breathInput(),rule=D().rules(i),second=BREATH.indexOf('、',BREATH.indexOf('、')+1)+1;
+  const st=D().stateOf(card(),{},i,rule,120,Date.now());
+  D().pick(st,pauseHit(st,'C_PAUSE_S',second),rule,false);
+  const out=D().pick(st,pauseHit(st,'C_PAUSE_S',second),rule,false);
+  assert.equal(out.mark,'。');
+});
+/* 文中の切り所で「話し終わったか」を問うと、話し続ける相手では毎回止まる。 */
+test('an inner cut is not held because the utterance as a whole is continuing',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const i=breathInput(),rule=D().rules(i),first=BREATH.indexOf('、')+1;
+  const st=D().stateOf(card(),{},i,rule,50,Date.now());
+  D().pick(st,pauseHit(st,'C_PAUSE_S',first),rule,false);
+  const out=D().pick(st,pauseHit(st,'C_PAUSE_S',first),rule,false);
+  assert.equal(out.length,first,'CONTINUING and 50 ms of silence do not block a cut that has speech after it');
+});
+test('the end of the text still needs the speaker to have finished',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const t='来週の予定は火曜日です。',i=input({text:t,stableLength:t.length}),rule=D().rules(i);
+  const st=D().stateOf(card(),{},i,rule,900,Date.now()),cand=st.candidateBoundaries.find(c=>c.offset===t.length);
+  const probs={HOLD:0.03};probs[cand.id]=0.93;
+  const hit={sessionId:st.sessionId,utteranceId:st.utteranceId,revision:st.revision,
+    boundary:{choice:cand.id,confidence:0.9,probabilities:probs},
+    turnState:{choice:'CONTINUING',confidence:0.9,probabilities:{CONTINUING:0.9}},
+    safeToSpeak:0.5,repairLikelihood:0.02,decisionId:'end'};
+  assert.equal(D().pick(st,hit,rule,false).waiting,'provider-continuing','unchanged for the tail');
+  const st2=D().stateOf(card(),{},i,rule,100,Date.now());
+  hit.turnState={choice:'COMPLETE',confidence:0.9,probabilities:{COMPLETE:0.95,CONTINUING:0.02}};
+  assert.equal(D().pick(st2,hit,rule,false),null,'and the silence guard still applies at the tail');
+});
+test('the stable edge is not a punctuation point, so it keeps the finished-speaking gate',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const i=breathInput({stableLength:30}),rule=D().rules(i);
+  const st=D().stateOf(card(),{},i,rule,900,Date.now()),cand=st.candidateBoundaries.find(c=>c.kind==='C_STABLE');
+  assert.ok(cand&&/\S/.test(cand.right),'the edge has unsettled speech after it');
+  const probs={HOLD:0.03};probs[cand.id]=0.93;
+  const hit={sessionId:st.sessionId,utteranceId:st.utteranceId,revision:st.revision,
+    boundary:{choice:cand.id,confidence:0.9,probabilities:probs},
+    turnState:{choice:'CONTINUING',confidence:0.9,probabilities:{CONTINUING:0.9}},
+    safeToSpeak:0.5,repairLikelihood:0.02,decisionId:'edge'};
+  assert.equal(D().pick(st,hit,rule,false).waiting,'provider-continuing');
+});
+test('a self-repair still holds even an inner cut',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const i=breathInput(),rule=D().rules(i),first=BREATH.indexOf('、')+1;
+  const st=D().stateOf(card(),{},i,rule,50,Date.now());
+  const out=D().pick(st,pauseHit(st,'C_PAUSE_S',first,{turnState:{choice:'SELF_REPAIR',confidence:0.9}}),rule,false);
+  assert.equal(out.waiting,'provider-self_repair');
+});
+/* ── 文中の切り所の答えは版をまたいで使う ─────────────────────────────
+   途中結果が0.2秒ごとに伸びる相手では、往復のあいだに必ず版が変わる。
+   選んだ切り所の前後が同じなら、判断の材料は変わっていない。 */
+const remember=(st,hit)=>{D()._recent[st.speakerKey]={hit,sessionId:st.sessionId,
+  utteranceId:st.utteranceId,segmentStart:st.segmentStart,cands:st.candidateBoundaries};};
+const grown=(extra,rev,over)=>{const t=BREATH+extra;
+  return {e:card({segment:{revision:rev,final:false}}),i:breathInput(Object.assign({text:t,stableLength:t.length},over||{}))};};
+test('an inner answer is used on later revisions while its context is unchanged',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const first=BREATH.indexOf('、')+1,i=breathInput(),rule=D().rules(i);
+  const st=D().stateOf(card(),{start:0},i,rule,50,Date.now());
+  remember(st,pauseHit(st,'C_PAUSE_Q',first));
+  const g=grown('ちゃんと自分の',9),r2=D().rules(g.i);
+  let out=D().boundary(g.e,{start:0},g.i,r2,50,Date.now());
+  out=D().boundary(g.e,{start:0},g.i,r2,50,Date.now());
+  assert.equal(out.length,first,'the answer from revision 3 applies at revision 9');
+  assert.equal(out.mark,'？');
+});
+test('a changed context, a HOLD or a tail answer is not carried',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const first=BREATH.indexOf('、')+1,i=breathInput(),rule=D().rules(i);
+  const st=D().stateOf(card(),{start:0},i,rule,50,Date.now());
+  remember(st,pauseHit(st,'C_PAUSE_Q',first));
+  const t='そんなに強いなら日本は1人で作れちゃうんじゃないか、そこがまた面白いところでな、日本は';
+  const other=breathInput({text:t,stableLength:t.length});
+  assert.equal(D().carried(D().stateOf(card({segment:{revision:9}}),{start:0},other,D().rules(other),50,Date.now())),null,
+    'the recogniser revised the words before the cut');
+  const hold={sessionId:st.sessionId,utteranceId:st.utteranceId,revision:st.revision,
+    boundary:{choice:'HOLD',confidence:0.9,probabilities:{HOLD:0.9}},decisionId:'h'};
+  remember(st,hold);
+  const g=grown('ちゃんと',9);
+  assert.equal(D().carried(D().stateOf(g.e,{start:0},g.i,D().rules(g.i),50,Date.now())),null,'HOLD is about the tail');
+});
+test('an answer is not carried once a commit moves the part start, or into another utterance',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const first=BREATH.indexOf('、')+1,i=breathInput(),rule=D().rules(i);
+  const st=D().stateOf(card(),{start:0},i,rule,50,Date.now());
+  remember(st,pauseHit(st,'C_PAUSE_Q',first));
+  const g=grown('ちゃんと',9);
+  assert.equal(D().carried(D().stateOf(g.e,{start:5},g.i,D().rules(g.i),50,Date.now())),null,'offsets are measured from the part start');
+  assert.equal(D().carried(D().stateOf(card({utteranceId:'u2',segment:{revision:9}}),{start:0},g.i,D().rules(g.i),50,Date.now())),null);
+  assert.ok(D().carried(D().stateOf(g.e,{start:0},g.i,D().rules(g.i),50,Date.now())),'and is carried when nothing moved');
+});
+test('reset forgets carried answers',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  D()._recent={x:1};D().reset('test');
+  assert.deepEqual(Object.keys(D()._recent),[]);
 });
 
 console.log(JSON.stringify({passed:tests.length,tests},null,2));
