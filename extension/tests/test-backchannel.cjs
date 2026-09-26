@@ -182,8 +182,10 @@ test('no answer-shaped word has slipped into the built-in lists',()=>{
         '「'+w+'」 can answer a question and must not be dropped by default');
 });
 test('both hook sites go through the same predicate, so the two paths cannot disagree',()=>{
-  assert.equal((src.match(/ttsShortSkipFor\(/g)||[]).length,3,
-    'one definition plus exactly two call sites: speak() and segPump()');
+  assert.equal((src.match(/ttsShortSkipFor\(/g)||[]).length,4,
+    'one definition plus exactly three call sites: speak(), segPump() and the prefetch plan');
+  assert.ok(/function segPrefetchPlan\(now\)\{[\s\S]*?if\(ttsShortSkipFor\([\s\S]*?\)\)return null;/.test(src),
+    'the prefetch plan declines a part segPump would skip, so no request is spent on it');
   assert.ok(/function speak\(e\)\{[\s\S]*?ttsShortSkipFor\(e,useSrc\)/.test(src),'speak() calls it');
   assert.ok(/backchannel-skip/.test(src),'segPump logs its own skip so the card can be traced');
   assert.ok(/if\(!j\.manual\)\{\s*\n\s*var shortWhy=ttsShortSkipFor/.test(src),

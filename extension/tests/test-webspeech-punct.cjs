@@ -24,7 +24,8 @@ const c=vm.createContext(ctx);
 for(const name of ['JA_SPOKEN_QUESTION','JA_SPOKEN_END']) vm.runInContext(constLine(name),c);
 for(const b of [block('function hasSpeechContent(s){'),block('function punctuateTranscript(text, lang){'),
   block('function jaSpacePunct(text){'),block('function webSpeechPunct(text, lang){'),
-  block('function segSemanticTail(text,lang){'),block('function segSemanticDecision(input){')])
+  block('function segSemanticTail(text,lang){'),block('function segSemanticDecision(input){'),
+  block('function segPartEndsSentence(q,useSource){')])
   vm.runInContext(b,c);
 
 const tests=[];const test=(n,f)=>{f();tests.push(n);};
@@ -125,20 +126,25 @@ test('the API transcription paths are left alone',()=>{
    見えてから確定まで約4.7秒かかった。約60秒で打ち切られた前半は語の途中で
    確定し、「…協力を得られ。」と別カード「れば、作り上げられるという発想だな」に
    割れていた。 */
-const W={};
-const wctx={console,String,Object,JSON,Math,CFG:{prosodyOn:false},
+const W={timers:[]};
+const wctx={console,String,Object,JSON,Math,Date,Number,CFG:{prosodyOn:false},
+  setTimeout:(fn)=>{W.timers.push(fn);return W.timers.length;},
+  clearTimeout:(id)=>{if(id)W.timers[id-1]=null;},
   segEnabled:()=>true,langOf:()=>W.lang||'ja-JP',
-  addEntry:(seat,text,interim)=>{const e={id:'e'+(W.cards.length+1),seat,segments:[],segment:{final:false},texts:[]};W.cards.push(e);return e;},
+  addEntry:(seat,text,interim)=>{const e={id:'e'+(W.cards.length+1),seat,segments:[],segment:{final:false},texts:[],startedAt:Date.now()};W.cards.push(e);return e;},
   segUpdate:(e,text,final)=>{e.texts.push(text);e.srcText=text;e.segment.final=!!final;},
   attachProsody(){},micProsodySnapshot:()=>null,dlog:(...a)=>W.logs.push(a)};
 const wc=vm.createContext(wctx);
-for(const name of ['JA_SPOKEN_QUESTION','JA_SPOKEN_END']) vm.runInContext(constLine(name),wc);
+for(const name of ['JA_SPOKEN_QUESTION','JA_SPOKEN_END','SEG_WEB_JOIN_MS']) vm.runInContext(constLine(name),wc);
 for(const b of [block('function hasSpeechContent(s){'),block('function punctuateTranscript(text, lang){'),
   block('function jaSpacePunct(text){'),block('function webSpeechPunct(text, lang){'),
+  block('function segSemanticTail(text,lang){'),block('function segWebHoldable(e,shown,lang){'),block('function segWebRelease(owner){'),
   block('function segApplyMark(e,pos,mark){'),block('function segWebMarks(e,text){'),block('function segWebJoin(parts){'),block('function segWebClose(owner,e,text,seat,raw){'),
   block('function segWebResult(owner,ev,seat){'),block('function segWebEnd(owner){')])
   vm.runInContext(b,wc);
-function wreset(lang){W.cards=[];W.logs=[];W.lang=lang||'ja-JP';return {};}
+function wreset(lang){W.cards=[];W.logs=[];W.timers=[];W.lang=lang||'ja-JP';return {};}
+const fire=()=>{const t=W.timers.slice();W.timers=[];t.forEach(f=>f&&f());};
+const logged=(m)=>W.logs.filter(a=>a[1]===m).length;
 /* SpeechRecognitionResultList の形。isFinal を持つ配列の配列。 */
 const R=(...rows)=>({resultIndex:0,results:rows.map(([t,fin])=>Object.assign([{transcript:t}],{isFinal:!!fin}))});
 const last=(e)=>e.texts[e.texts.length-1];
@@ -245,6 +251,75 @@ test('the card is rotated at a boundary the decision layer marked',()=>{
   assert.equal(e.segment.final,true);
   assert.equal(last(W.cards[1]),'大丈夫なの');
 });
+/* ── Chrome の60秒確定で文の途中からカードが割れない（v1.49.26実測）──────── */
+const CUT='公式ドキュメントではどちらも マニュアル つまり 全ての操作を';
+test('a final that stops mid-sentence is held, and the next result joins the same card',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R([CUT,true]),'B');
+  assert.equal(W.cards.length,1);
+  assert.equal(W.cards[0].segment.final,false,'the forced final is not the end of the sentence');
+  assert.equal(logged('webspeech-final-held'),1);
+  assert.ok(!/。$/.test(last(W.cards[0])),'no full stop is invented at the cut');
+  wc.segWebResult(o,R([CUT,true],['確認するモードで始まると書かれています',false]),'B');
+  assert.equal(W.cards.length,1,'the continuation stays on the same card');
+  assert.match(last(W.cards[0]),/全ての操作を確認するモードで始まると/);
+  assert.equal(logged('webspeech-final-joined'),1);
+  wc.segWebResult(o,R([CUT,true],['確認するモードで始まると書かれています',true]),'B');
+  assert.equal(W.cards[0].segment.final,true,'a sentence end closes it at once');
+  assert.match(last(W.cards[0]),/書かれています。$/);
+  fire();
+  assert.equal(W.cards.length,1);
+});
+test('a held final closes by itself when nothing follows',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R([CUT,true]),'B');
+  fire();
+  assert.equal(W.cards[0].segment.final,true);
+  assert.match(last(W.cards[0]),/操作を。$/,'the old terminal mark is applied only when the card really ends');
+  wc.segWebResult(o,R([CUT,true],['次の話です',false]),'B');
+  assert.equal(W.cards.length,2,'after the close, new speech is a new card');
+});
+test('a final that ends a sentence closes at once, without waiting',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R(['ありがとうございます',true]),'B');
+  assert.equal(W.cards[0].segment.final,true);
+  assert.equal(W.timers.filter(Boolean).length,0);
+});
+test('a card near the 60 second limit is held even at a sentence-like ending',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R(['同じバージョンで改善もありです',false]),'B');
+  W.cards[0].startedAt=Date.now()-55000;
+  wc.segWebResult(o,R(['同じバージョンで改善もありです',true]),'B');
+  assert.equal(W.cards[0].segment.final,false,'the forced cut can land on です in the middle of a sentence');
+});
+test('the end of recognition closes a held card at once',()=>{
+  const o=wreset();
+  wc.segWebResult(o,R([CUT,true]),'B');
+  wc.segWebEnd(o);
+  assert.equal(W.cards[0].segment.final,true);
+  assert.equal(o._webHold,null);
+  assert.equal(o._webStart,0);
+});
+
+/* ── 読み上げが「文の終わり」を待ち続けない（v1.49.26実測 8.2秒・3.3秒・8.4秒）── */
+const tq=(text,over,cardText)=>({segment:Object.assign({sourceText:text,end:text.length,commitReason:['semantic-sentence','stable']},over||{}),
+  card:{segment:{final:false,text:cardText==null?text:cardText}}});
+test('a part is a sentence end when it ends with a mark',()=>{
+  assert.equal(c.segPartEndsSentence(tq('全94項目です。'),true),true);
+  assert.equal(c.segPartEndsSentence(tq('確認できたのは2件だけです'),true),false);
+});
+test('a part committed at a sentence ending by the rules is a sentence end',()=>{
+  assert.equal(c.segPartEndsSentence(tq('確認できたのは2件だけです',{commitReason:['semantic-ending','stable']}),true),true);
+});
+test('a part whose full stop landed at the start of the next part is a sentence end',()=>{
+  const t='確認できたのは2件だけです';
+  assert.equal(c.segPartEndsSentence(tq(t,{},t+'。他は'),true),true,'the space after です became 。 on the next update');
+  assert.equal(c.segPartEndsSentence(tq(t,{},t+'、他は'),true),false,'a comma is not a sentence end');
+});
+test('the Aivis grouping uses the sentence-end check',()=>{
+  assert.match(src,/group\.forEach\(function\(q,i\)\{if\(segPartEndsSentence\(q,useSource\)\)cut=i\+1;\}\);/);
+});
+
 test('empty results make no card',()=>{
   const o=wreset();
   wc.segWebResult(o,R(['  ',false]),'B');

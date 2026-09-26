@@ -707,15 +707,19 @@ test('boundary leaves the answer on the part, so the floor never asks again',()=
    （v1.49.18 実測 送信51／応答51／適用0）。待つ相手と上限を検査する。 */
 const inflightFor=(st,over)=>({abort:null,revision:st.revision,at:Date.now(),
   key:D().key(st),...(over||{})});
+/* 待つのは Rules が記号の無い位置で切るときだけ（v1.49.29）。句点で切る文は待たない
+   ので、ここでは「です」までで Rules が切る、記号の無い文を使う。 */
+const UNMARKED='来週の予定は火曜日で、それから木曜日も会議があります';
+const unmarked=(over)=>input(Object.assign({text:UNMARKED,stableLength:UNMARKED.length,silenceMs:900,idleMs:900},over||{}));
 
 test('nothing is in flight with the rules provider, so active never waits',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
-  const i=input(),rule=D().rules(i);
+  const i=unmarked(),rule=D().rules(i);
   assert.equal(D().boundary(card(),{},i,rule,250,Date.now()),rule);
 });
 test('the commit waits only while this exact state is in flight',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
-  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const e=card(),seg={},i=unmarked(),rule=D().rules(i),now=Date.now();
   const st=D().stateOf(e,seg,i,rule,250,now);
   D().inflight[st.speakerKey]=inflightFor(st);
   const held=D().boundary(e,seg,i,rule,250,now);
@@ -730,7 +734,7 @@ test('the commit waits only while this exact state is in flight',()=>{
 });
 test('the wait is capped, and Rules commits once it expires',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
-  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const e=card(),seg={},i=unmarked(),rule=D().rules(i),now=Date.now();
   const st=D().stateOf(e,seg,i,rule,250,now);
   D().inflight[st.speakerKey]=inflightFor(st);
   assert.equal(D().boundary(e,seg,i,rule,250,now).waiting,'provider-pending');
@@ -741,7 +745,7 @@ test('the wait is capped, and Rules commits once it expires',()=>{
 });
 test('a value of 0 disables the wait entirely',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active',turnDecisionCommitWaitMs:0});
-  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const e=card(),seg={},i=unmarked(),rule=D().rules(i),now=Date.now();
   const st=D().stateOf(e,seg,i,rule,250,now);
   D().inflight[st.speakerKey]=inflightFor(st);
   assert.equal(D().boundary(e,seg,i,rule,250,now),rule);
@@ -749,7 +753,7 @@ test('a value of 0 disables the wait entirely',()=>{
 });
 test('the wait is clamped to 1000ms however large the setting is',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active',turnDecisionCommitWaitMs:99999});
-  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const e=card(),seg={},i=unmarked(),rule=D().rules(i),now=Date.now();
   const st=D().stateOf(e,seg,i,rule,250,now);
   D().inflight[st.speakerKey]=inflightFor(st);
   D().boundary(e,seg,i,rule,250,now);
@@ -758,7 +762,7 @@ test('the wait is clamped to 1000ms however large the setting is',()=>{
 test('off and shadow never wait, whatever is in flight (INV-08)',()=>{
   for(const mode of ['off','shadow']){
     reset({turnDecisionMode:mode,turnDecisionLangJa:mode==='off'?'active':'shadow'});
-    const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+    const e=card(),seg={},i=unmarked(),rule=D().rules(i),now=Date.now();
     const st=D().stateOf(e,seg,i,rule,250,now);
     D().inflight[st.speakerKey]=inflightFor(st);
     assert.equal(D().boundary(e,seg,i,rule,250,now),rule,mode);
@@ -767,7 +771,7 @@ test('off and shadow never wait, whatever is in flight (INV-08)',()=>{
 });
 test('once the answer lands the wait ends and the provider boundary is taken',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
-  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const e=card(),seg={},i=unmarked(),rule=D().rules(i),now=Date.now();
   const st=D().stateOf(e,seg,i,rule,900,now);
   D().inflight[st.speakerKey]=inflightFor(st);
   assert.equal(D().boundary(e,seg,i,rule,900,now).waiting,'provider-pending');
@@ -782,6 +786,62 @@ test('once the answer lands the wait ends and the provider boundary is taken',()
   const out=D().boundary(e,seg,i,rule,900,now+80);
   assert.equal(out.length,cand.offset,'the answer that arrived is the one that decides');
   assert.equal(out.source,'provider');
+});
+
+test('the fixture really is a rules cut without a mark',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const r=D().rules(unmarked());
+  assert.ok(r.length>0,'rules cuts here');
+  assert.equal(D().markCut(UNMARKED,r),false);
+});
+test('a rules cut at a sentence mark does not wait for the answer',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  assert.equal(rule.length,12);
+  const st=D().stateOf(e,seg,i,rule,250,now);
+  D().inflight[st.speakerKey]=inflightFor(st);
+  const before=D().stats.markNoWait||0,logs=dlogs.length;
+  assert.equal(D().boundary(e,seg,i,rule,250,now),rule,'the rule result passes at once');
+  assert.ok(!seg.decisionWaitUntil,'no wait clock is started');
+  assert.equal(D().stats.markNoWait,before+1);
+  D().boundary(e,seg,i,rule,250,now+80);
+  assert.equal(D().stats.markNoWait,before+1,'counted once per question, not per tick');
+  assert.equal(dlogs.slice(logs).filter(x=>x[1]==='turn-decision-no-wait').length,1);
+});
+test('question and exclamation marks and an English full stop count, a decimal point does not',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const cut=(t)=>D().markCut(t,{length:t.length});
+  assert.equal(cut('それは本当ですか？'),true);
+  assert.equal(cut('すごい！'),true);
+  assert.equal(cut('「わかりました。」'),true,'a closing bracket after the mark');
+  assert.equal(cut('That is fine. '),true);
+  assert.equal(cut('Is it? '),true);
+  assert.equal(cut('The rate is 3.'),false,'3. may be 3.5');
+  assert.equal(cut('来週の予定は、'),false);
+  assert.equal(D().markCut('来週の予定は火曜日です。それから',{length:12}),true,'only the text up to the cut is read');
+  assert.equal(D().markCut('来週の予定は火曜日です。',{length:0}),false,'no cut, nothing to skip');
+});
+test('with the wait disabled there is nothing to skip and nothing is counted',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active',turnDecisionCommitWaitMs:0});
+  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,250,now);
+  D().inflight[st.speakerKey]=inflightFor(st);
+  const before=D().stats.markNoWait||0;
+  assert.equal(D().boundary(e,seg,i,rule,250,now),rule);
+  assert.equal(D().stats.markNoWait||0,before);
+});
+test('an answer that already arrived still decides a mark cut',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const e=card({segment:{revision:3,final:false}}),seg={start:0},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,900,now);
+  D().cache[D().key(st)]={sessionId:st.sessionId,utteranceId:st.utteranceId,revision:st.revision,
+    boundary:{choice:'HOLD',confidence:0.9,probabilities:{HOLD:0.9}},
+    turnState:{choice:'CONTINUING',confidence:0.9,probabilities:{}},
+    safeToSpeak:0.9,repairLikelihood:0.01,decisionId:'d12'};
+  const before=D().stats.markNoWait||0;
+  const out=D().boundary(e,seg,i,rule,900,now);
+  assert.equal(out.length,0,'the HOLD that is already here is followed');
+  assert.equal(D().stats.markNoWait||0,before);
 });
 
 /* ── INV-11 「待て」にも上限 ───────────────────────────────────────────────
@@ -1082,6 +1142,106 @@ test('reset forgets carried answers',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
   D()._recent={x:1};D().reset('test');
   assert.deepEqual(Object.keys(D()._recent),[]);
+});
+
+/* 確定した本文は待っても伸びない。HOLD に従うと上限まで読み上げが遅れるだけ。 */
+test('a HOLD does not hold text the recogniser has already finalized',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const t='来週の予定は火曜日です',i=input({text:t,stableLength:t.length,final:true}),rule=D().rules(i),now=Date.now();
+  const e=card(),st=D().stateOf(e,{start:0},i,rule,900,now);
+  D().cache[D().key(st)]={sessionId:st.sessionId,utteranceId:st.utteranceId,revision:st.revision,
+    boundary:{choice:'HOLD',confidence:0.9,probabilities:{HOLD:0.9}},turnState:{choice:'CONTINUING',confidence:0.9},
+    safeToSpeak:0.2,repairLikelihood:0.4,decisionId:'fin'};
+  const out=D().boundary(e,{start:0},i,rule,900,now);
+  assert.equal(out.length,rule.length,'the rules commit goes through');
+  assert.ok(!e.segment.holdSince,'no hold clock is started');
+  const j=input({text:t,stableLength:t.length,final:false}),r2=D().rules(j),e2=card(),st2=D().stateOf(e2,{start:0},j,r2,900,now);
+  D().cache[D().key(st2)]=Object.assign({},D().cache[D().key(st)],{revision:st2.revision});
+  assert.equal(D().boundary(e2,{start:0},j,r2,900,now).length,0,'text still coming is held as before');
+});
+
+/* ── gpt-live のカードを閉じる判断（INV-13）─────────────────────────────
+   固定の待ち（0.65／0.95／1.5秒）で閉じていた。turn_state が「話し終わった」と
+   はっきり答えていれば短くできる。既定は記録だけ。 */
+const liveCard=(over)=>card(Object.assign({srcLang:'en',utteranceId:'u9',segment:{revision:7,final:false}},over||{}));
+const turnAnswer=(e,ts,over)=>{D()._turn={};D()._turn[e.utteranceId]=Object.assign({revision:e.segment.revision,lang:e.srcLang,
+  ts:ts,repair:0.02,semantics:'native_calibrated',at:Date.now()},over||{});};
+const COMPLETE={choice:'COMPLETE',confidence:0.9,probabilities:{COMPLETE:0.93,CONTINUING:0.04,SELF_REPAIR:0.02,UNKNOWN:0.01}};
+test('live close follows the language mode, and never acts outside active',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active',turnDecisionLiveClose:'on'});
+  assert.equal(D().liveCloseMode('en'),'active');
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'shadow',turnDecisionLiveClose:'on'});
+  assert.equal(D().liveCloseMode('en'),'shadow','a shadow language only records');
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active'});
+  assert.equal(D().liveCloseMode('en'),'shadow','the default is to record only');
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active',turnDecisionLiveClose:'off'});
+  assert.equal(D().liveCloseMode('en'),'off');
+  reset({turnDecisionMode:'off',turnDecisionLangEn:'active',turnDecisionLiveClose:'on'});
+  assert.equal(D().liveCloseMode('en'),'off','with the layer off there are no answers to read');
+});
+test('a clear COMPLETE with silence closes the card early in active',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active',turnDecisionLiveClose:'on'});
+  const e=liveCard();turnAnswer(e,COMPLETE);
+  assert.equal(D().liveClose(e,350,400,Date.now()),true);
+  const x={};D().liveClosed(e,x,'turn-complete',{idle:950},350,Date.now());
+  assert.equal(D().stats.liveCloseEarly>=1,true);
+  assert.ok(x.earlyClosedAt>0,'the item remembers the early close to notice a continuation');
+  assert.ok(dlogs.some(a=>a[1]==='turn-live-close'&&a[2].savedMs===600));
+});
+test('shadow records what would have happened and does not close',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active'});
+  D().stats.liveCloseWould=0;D().stats.liveCloseSavedN=0;D().stats.liveCloseSavedMs=0;
+  const e=liveCard(),t0=Date.now();turnAnswer(e,COMPLETE);
+  assert.equal(D().liveClose(e,350,400,t0),false,'the closing time is unchanged');
+  assert.equal(D().stats.liveCloseWould,1);
+  D().liveClose(e,430,480,t0+80);
+  assert.equal(D().stats.liveCloseWould,1,'counted once per revision, not per tick');
+  D().liveClosed(e,{},'audio-pause',{idle:950},950,t0+600);
+  assert.equal(D().stats.liveCloseSavedMs,600,'saved is the time between the answer and the policy close');
+  assert.ok(dlogs.some(a=>a[1]==='turn-live-close-shadow'&&a[2].policyReason==='audio-pause'));
+});
+test('anything short of a clear COMPLETE leaves the fixed wait alone',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active',turnDecisionLangJa:'active',turnDecisionLiveClose:'on'});
+  const e=liveCard(),now=Date.now();
+  turnAnswer(e,{choice:'CONTINUING',confidence:0.9,probabilities:{CONTINUING:0.9}});
+  assert.equal(D().liveClose(e,350,400,now),false,'continuing');
+  turnAnswer(e,{choice:'COMPLETE',confidence:0.5,probabilities:{COMPLETE:0.7,CONTINUING:0.25}});
+  assert.equal(D().liveClose(e,350,400,now),false,'COMPLETE but not sure enough');
+  turnAnswer(e,COMPLETE,{repair:0.4});
+  assert.equal(D().liveClose(e,350,400,now),false,'a restatement is likely');
+  turnAnswer(e,COMPLETE);
+  assert.equal(D().liveClose(e,200,400,now),false,'text stopped only 200 ms ago');
+  assert.equal(D().liveClose(e,350,null,now),false,'no microphone level: stopping text alone is not the end of speech');
+  assert.equal(D().liveClose(e,350,100,now),false,'still making sound');
+  turnAnswer(e,COMPLETE,{revision:6});
+  assert.equal(D().liveClose(e,350,400,now),false,'the answer is about older text');
+  const j=liveCard({srcLang:'ja'});turnAnswer(j,{choice:'COMPLETE',confidence:0.9,probabilities:{COMPLETE:0.88,CONTINUING:0.05}});
+  assert.equal(D().liveClose(j,500,500,now),false,'Japanese needs 0.9');
+  turnAnswer(e,{choice:'COMPLETE',confidence:0.9,probabilities:{COMPLETE:0.88,CONTINUING:0.05}},{semantics:'uncalibrated'});
+  assert.equal(D().liveClose(e,350,400,now),false,'an uncalibrated route needs more');
+});
+test('speech that continues after the answer is counted, punctuation alone is not',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active'});
+  D().stats.liveCloseResumed=0;
+  const e=liveCard(),t0=Date.now();turnAnswer(e,COMPLETE);
+  D().liveClose(e,350,400,t0);
+  D().liveResumed(e,{},t0+200,'.');
+  assert.equal(D().stats.liveCloseResumed,0,'a trailing full stop is not more speech');
+  D().liveResumed(e,{},t0+300,' and then');
+  assert.equal(D().stats.liveCloseResumed,1);
+  assert.equal(e.segment.liveCloseAt,0);
+  const x={earlyClosedAt:t0};
+  D().liveResumed(liveCard({segment:undefined}),x,t0+900,'more words');
+  assert.equal(D().stats.liveCloseResumed,2,'after an early close the continuation lands on a new card');
+});
+test('an arriving answer is remembered per utterance and reset clears it',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangEn:'active'});
+  const st={utteranceId:'u5',revision:3,sourceLanguage:'en'};
+  D().noteTurn(st,{turnState:COMPLETE,repairLikelihood:0.1,probabilitySemantics:'native_calibrated'});
+  assert.equal(D()._turn.u5.revision,3);
+  assert.equal(D()._turn.u5.ts.choice,'COMPLETE');
+  D().reset('test');
+  assert.deepEqual(Object.keys(D()._turn),[]);
 });
 
 console.log(JSON.stringify({passed:tests.length,tests},null,2));

@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.37",
-  "version_name": "1.4.37 HTML v1.49.26 と対。直接開いたHTML本体も接続／Web Speech の途中結果を1枚に／息継ぎを判断層の候補に",
+  "version": "1.4.40",
+  "version_name": "1.4.40 HTML v1.49.29 と対。Aivis の次の部分を先読み／文末待ちに1.2秒の上限／句点では判断層を待たない／アドオンのタブ音声で Web Speech が network を返し続けたら中継して試し、だめなら止めて理由を出す",
   "optional_host_permissions": [
     "https://*/*"
   ],
