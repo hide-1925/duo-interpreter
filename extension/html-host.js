@@ -49,7 +49,8 @@ async function attachHtmlSourceOnce(tabId){
     htmlRevision:0,htmlEntries:[],htmlError:'',htmlLastReceived:null,htmlReceived:0,htmlDelivered:0});
   await chrome.scripting.executeScript({target:{tabId},files:['html-source-content.js']});
   await chrome.scripting.executeScript({target:{tabId},world:'MAIN',files:['html-source-main.js']});
-  if(state.htmlTabAudio)await setHtmlTabAudio(true);
+  // Without a caption target there is no tab audio to route; the relay and captions still attach.
+  if(state.htmlTabAudio&&(await getState()).targetTabId)await setHtmlTabAudio(true);
   if((await getState()).htmlCaptionGuide){await runHtmlCaptionCommand('guide');await setState({htmlCaptionGuide:false});}
   return tab;
 }
@@ -144,6 +145,21 @@ async function receiveHtml(message,sender){
 }
 function queueHtmlOperation(operation){const task=htmlQueue.then(operation);htmlQueue=task.catch(()=>{});return task;}
 function queueHtml(message,sender){return queueHtmlOperation(()=>receiveHtml(message,sender));}
+/* 登録したURLのHTML本体を、ポップアップを通さずに開いたとき（ブックマーク・URL直打ち）も
+   接続する。判断層（Jev）の中継は登録済みのタブからしか頼めないので、接続しないと
+   「アドオン経由」を選んでいても一度も届かない（v1.49.25実測：送信3件がすべて到達不能で
+   8.4秒で遮断）。生きている登録タブが別にあれば奪わない。認識は開始しない。 */
+async function htmlAutoAttachable(tabId,tab,state){
+  if(tabId===state.targetTabId)return false;
+  const url=await getHtmlSourceUrl();
+  let here;try{here=canonicalHtmlUrl(tab&&tab.url||'');}catch(_){return false;}
+  if(here!==url)return false;
+  if(!await chrome.permissions.contains({origins:[new URL(url).origin+'/*']}))return false;
+  if(state.htmlTabId){
+    try{const current=await chrome.tabs.get(state.htmlTabId);if(canonicalHtmlUrl(current.url)===url)return false;}catch(_){}
+  }
+  return true;
+}
 chrome.tabs.onUpdated.addListener((tabId,change,tab)=>{
   if(change.status!=='complete')return;
   (async()=>{
@@ -152,6 +168,9 @@ chrome.tabs.onUpdated.addListener((tabId,change,tab)=>{
       try{await attachHtmlSource(tabId);if(s.htmlOpenSettings)await chrome.tabs.sendMessage(tabId,{type:'DUO_HTML_COMMAND',command:{action:'settings'}});await setState({htmlOpenSettings:false});}
       catch(e){await setState({htmlError:String(e.message||e)});}
     }else if(tabId===s.targetTabId&&s.htmlTabId){try{await deliverHtml(s);}catch(e){await setState({htmlError:String(e.message||e)});}}
+    else if(await htmlAutoAttachable(tabId,tab,s)){
+      try{await attachHtmlSource(tabId);}catch(e){await setState({htmlError:String(e.message||e)});}
+    }
   })().catch(()=>{});
 });
 
