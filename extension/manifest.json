@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.48",
-  "version_name": "1.4.48 HTML v1.49.37 と対。Groq の翻訳モデルを今の顔ぶれ（最速は gpt-oss-20b）にし、提供の終わった Llama を保存していたら置き換える",
+  "version": "1.4.49",
+  "version_name": "1.4.49 HTML v1.49.38 と対。英語の小数点・略語で文を切らない。gpt-4o 系で話し続けるあいだカードを1枚にまとめる",
   "optional_host_permissions": [
     "https://*/*"
   ],

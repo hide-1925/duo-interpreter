@@ -797,8 +797,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.37';
-var APP_BUILD = '20260927-v14937-groq-models';
+var APP_VERSION = 'v1.49.38';
+var APP_BUILD = '20260927-v14938-4o-cards';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -9235,8 +9235,8 @@ StreamEngine.prototype.start = function(){
       self.hbAt = t; self.hbPeak = 0;
     }
 
-    if (rms > CFG.vad/1000) { self.voice=true; self.last=t; }
-    if(self.fourO)self.fourO.poll(t,t-self.last>900);
+    if (rms > CFG.vad/1000) { self.voice=true; self.last=t; self.heardAt=t; }
+    if(self.fourO)self.fourO.poll(t,t-self.last>900,t-(self.heardAt||self.segStart));
     if (self.voice && (t-self.last)>sttSilenceHoldMs() && (t-self.segStart)>700) self.cut(true,'silence');
     else if (!self.voice && (t-self.segStart)>8000) self.cut(false,'silence');
     /* 上限で切るとき、声が一度も無かった録音は送らない。4o 系の上限（既定6秒）は
@@ -9339,7 +9339,8 @@ function fourOSetModel(value){
 function fourOSentenceEnds(text){
   var ends=[],re=/[。！？!?]+["'」』）】〕〉》\]]*\s*|\.["'”’）\])]*(?:\s+|$)/g,m;
   while((m=re.exec(text))){
-    if(m[0][0]==='.'&&/\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e)\.$/i.test(text.slice(0,m.index+1)))continue;
+    // A period after an initialism, a title or a trailing number may not end the sentence; it waits for the next result.
+    if(m[0][0]==='.'&&segPeriodHold(text,m.index+1))continue;
     ends.push(m.index+m[0].length);
   }return ends;
 }
@@ -9353,7 +9354,9 @@ function fourOSplit(text,reserve,trustEnd){
 }
 function fourOJoin(a,b){
   // Preserve recognized characters; do not guess missing words or erase API punctuation.
-  return a+(/[A-Za-z0-9]$/.test(a)&&/^[A-Za-z0-9]/.test(b)?' ':'')+b;
+  // "done." + "And" needs the space, or the period no longer ends a sentence; "1." + "5" and "1," + "000" stay numbers.
+  var space=/[A-Za-z0-9]$/.test(a)&&/^[A-Za-z0-9]/.test(b)||/[A-Za-z0-9%)"'”’][.,!?;:]$/.test(a)&&/^[A-Za-z0-9("'“‘$]/.test(b)&&!(/\d[.,]$/.test(a)&&/^\d/.test(b));
+  return a+(space?' ':'')+b;
 }
 function fourOCardText(e,text,final,reason){
   e.fourOState.pending=!final;e.fourOState.reason=reason;
@@ -9377,19 +9380,46 @@ function fourOPlaceAfter(e,anchor){
   }
   render(e);
 }
+/* gpt-4o 系の録音結果を、一人が話し続けているあいだ1枚のカードにまとめる。
+   v1.49.37 までは録音1回（無音0.9秒か録音上限で切れる）ごとにカードを閉じていたので、文の切れ目で
+   息を継ぐ話し手では、ほぼ1文1枚になった。今は gpt-live と同じく、カードは読みやすい大きさで閉じ、
+   訳と読み上げはカードの中の文ごとに進める（segCheck が commitTo までを確定する）。訳と読み上げが
+   始まる時刻は前と変わらない。文が終わった部分はすぐ、終わっていない末尾は0.9秒の無音で確定する。
+   カードを閉じるのは、話し手か言語が替わったとき・別のカードが後ろに来たとき・声が2秒途切れたとき・
+   30秒か480字を超えて文の切れ目が来たとき。逐次読み上げが OFF のときはカードの確定が翻訳の合図なので、
+   前のまま録音ごとに閉じる。 */
+var FOURO_CARD_MAX_MS=30000,FOURO_CARD_MAX_CHARS=480,FOURO_CARD_GAP_MS=2000,FOURO_TAIL_MAX_CHARS=200;
+function fourOOpenText(e,text,commitTo,reason){
+  var st=e.fourOState;st.pending=true;st.reason='open';st.why=reason;
+  st.commitTo=Math.min(text.length,Math.max(st.commitTo||0,commitTo||0));
+  segUpdate(e,text,false);
+}
+function fourOTailPending(e){var st=e&&e.fourOState,b=e&&e.segment;return !!(st&&b&&st.reason==='open'&&(st.commitTo||0)<b.text.length);}
 function FourOFileBuffer(engine){
   this.engine=engine;this.model=String(CFG.sttModel).trim();this.session=sessionGen;
   this.queue=[];this.held=null;this.dead=false;this.serial=0;
 }
 FourOFileBuffer.prototype.alive=function(){return !this.dead&&S.running&&this.session===sessionGen;};
+FourOFileBuffer.prototype.grouping=function(){return segEnabled();};
+FourOFileBuffer.prototype.openCard=function(){
+  var h=this.held;return h&&h.open&&S.entries.indexOf(h.entry)>=0?h.entry:null;
+};
+FourOFileBuffer.prototype.entryFor=function(q){
+  var e=addEntry(q.seat,'',true);e.srcLang=q.srcLang;e.dstLang=q.dstLang;
+  e.startedAt=q.meta.startedAt||e.startedAt;e.audioEndedAt=q.meta.endedAt||Date.now();
+  e.fourOState={pending:true,reason:'recognizing',model:this.model,request:q.id};
+  if(segEnabled())segInit(e);render(e);return e;
+};
 FourOFileBuffer.prototype.submit=function(blob,seat,prosody,meta){
   if(!this.alive())return;
-  var self=this,e=addEntry(seat,'',true),q={id:++this.serial,entry:e,seat:seat,lang:langOf(seat),autoLanguage:duoShouldAutoDetectInput(seat),
+  var open=this.grouping()?this.openCard():null;
+  var self=this,q={id:++this.serial,entry:null,seat:seat,lang:langOf(seat),autoLanguage:duoShouldAutoDetectInput(seat),
     srcLang:langOf(seat),dstLang:langOf(seat==='A'?'B':'A'),prosody:prosody,meta:meta,done:false,
     created:Date.now(),text:'',controller:new AbortController()};
-  e.startedAt=meta.startedAt||e.startedAt;e.audioEndedAt=meta.endedAt||Date.now();
-  e.fourOState={pending:true,reason:'recognizing',model:this.model,request:q.id};
-  if(segEnabled())segInit(e);render(e);this.queue.push(q);
+  // While a card is open its continuation is recognized inside it; no placeholder card flashes up below.
+  if(open){open.fourOState.next=q.id;render(open);}
+  var e=q.entry=open?null:this.entryFor(q);
+  this.queue.push(q);
   function settle(text,error){
     if(q.done)return;q.done=true;clearTimeout(q.timer);
     if(!self.alive())return;
@@ -9397,9 +9427,10 @@ FourOFileBuffer.prototype.submit=function(blob,seat,prosody,meta){
     else{
       q.text=String(text||'').trim();
       if(S.autoMode&&micSeats().length>1&&q.text){q.seat=guessSeatFromText(q.text);q.srcLang=langOf(q.seat);q.dstLang=langOf(q.seat==='A'?'B':'A');}
-      e.seat=q.seat;e.srcLang=q.srcLang;e.dstLang=q.dstLang;if(q.autoLanguage){duoAssignRecognizedLanguage(e,q.text);q.srcLang=e.srcLang;q.dstLang=e.dstLang;}
-      if(S.entries.indexOf(e)>=0)fourOCardText(e,q.text,false,'ordered-result-wait');
-      dlog('stt','4o-file-result',{request:q.id,model:self.model,cardId:e.id,chars:q.text.length,ms:Date.now()-q.created,cut:meta.reason,seconds:meta.seconds,
+      var who=e||{id:open?open.id:null,seat:q.seat,srcLang:q.srcLang,dstLang:q.dstLang};
+      who.seat=q.seat;who.srcLang=q.srcLang;who.dstLang=q.dstLang;if(q.autoLanguage){duoAssignRecognizedLanguage(who,q.text);q.srcLang=who.srcLang;q.dstLang=who.dstLang;}
+      if(e&&S.entries.indexOf(e)>=0)fourOCardText(e,q.text,false,'ordered-result-wait');
+      dlog('stt','4o-file-result',{request:q.id,model:self.model,cardId:e?e.id:null,into:e?null:(open&&open.id),chars:q.text.length,ms:Date.now()-q.created,cut:meta.reason,seconds:meta.seconds,
         language:sttAutoDetect({autoLanguage:q.autoLanguage})?'auto':q.lang});
     }
     self.drain();
@@ -9413,10 +9444,13 @@ FourOFileBuffer.prototype.release=function(reason,muted){
 };
 FourOFileBuffer.prototype.drain=function(){
   while(this.alive()&&this.queue.length&&this.queue[0].done){
-    var q=this.queue.shift(),e=q.entry;
-    if(q.error){if(S.entries.indexOf(e)>=0)removeEntry(e);this.release('recognition-gap',false);toast('音声認識: '+realtimeEscape(redact(q.error)));continue;}
-    if(S.entries.indexOf(e)<0){this.release('card-removed',false);continue;}
-    if(!hasSpeechContent(q.text)||isEcho(q.text)){removeEntry(e);continue;}
+    var q=this.queue.shift(),e=q.entry,open=this.openCard();
+    if(open&&open.fourOState.next===q.id){open.fourOState.next=null;render(open);}
+    if(q.error){if(e&&S.entries.indexOf(e)>=0)removeEntry(e);this.release('recognition-gap',false);toast('音声認識: '+realtimeEscape(redact(q.error)));continue;}
+    if(e&&S.entries.indexOf(e)<0){this.release('card-removed',false);continue;}
+    if(!hasSpeechContent(q.text)||isEcho(q.text)){if(e)removeEntry(e);continue;}
+    if(this.grouping()){this.take(q);continue;}
+    if(!e)e=this.entryFor(q);
     var held=this.held;
     if(held&&S.entries.indexOf(held.entry)<0)this.held=held=null;
     if(held&&(held.entry.seat!==q.seat||held.entry.srcLang!==q.srcLang||held.entry.dstLang!==q.dstLang)){this.release('speaker-language-change',false);held=null;}
@@ -9444,8 +9478,67 @@ FourOFileBuffer.prototype.drain=function(){
     }
   }
 };
-FourOFileBuffer.prototype.poll=function(now,silent){
+/* 別のカード（相手の発話・入力した文など）が後ろに入ったら、続きを前のカードへ足さない。
+   足すと、時間の順が逆のカードが画面に並ぶ。自分の録音待ちの仮カードは数えない。 */
+FourOFileBuffer.prototype.interrupted=function(entry,q){
+  var at=S.entries.indexOf(entry),mine=this.queue.map(function(x){return x.entry;});if(q)mine.push(q.entry);
+  for(var i=at+1;i>0&&i<S.entries.length;i++){var x=S.entries[i];
+    // Another microphone's recording that has no text yet may still turn out to be noise.
+    if(mine.indexOf(x)<0&&!(x.fourOState&&x.fourOState.reason==='recognizing'&&!String(x.srcText||'').trim()))return true;}
+  return false;
+};
+FourOFileBuffer.prototype.take=function(q){
+  var open=this.openCard(),e=q.entry,now=Date.now(),st;
+  if(!open)this.held=null;
+  if(open&&(open.seat!==q.seat||open.srcLang!==q.srcLang||open.dstLang!==q.dstLang)){this.release('speaker-language-change',false);open=null;}
+  if(open&&this.interrupted(open,q)){this.release('another-card',false);open=null;}
+  var text=q.text,joined=!!open;
+  if(open){if(e&&e!==open)removeEntry(e);e=open;text=fourOJoin(e.segment.text,text);e.audioEndedAt=q.meta.endedAt||now;}
+  else{if(!e)e=this.entryFor(q);if(CFG.prosodyOn&&q.prosody){e.srcText=text;attachProsody(e,q.prosody);}}
+  st=e.fourOState;st.request=q.id;
+  var silenceCut=q.meta.reason==='silence';
+  var parts=fourOSplit(text,q.meta.carry&&(q.meta.reason==='limit'||silenceCut),silenceCut);
+  // Already committed text never moves to another card.
+  var closeAt=Math.max(parts.ready.length,st.commitTo||0),span=(e.audioEndedAt||now)-(e.startedAt||now),why='';
+  if(closeAt&&(span>=FOURO_CARD_MAX_MS||text.length>=FOURO_CARD_MAX_CHARS))why=span>=FOURO_CARD_MAX_MS?'max-duration':'max-chars';
+  else if(span>=FOURO_CARD_MAX_MS*2||text.length>=FOURO_CARD_MAX_CHARS*2){why='hard-limit';closeAt=text.length;}
+  if(why){
+    var ready=text.slice(0,closeAt),rest=text.slice(closeAt),tail=null,done=e.segments.filter(function(x){return x.committedAt;}).pop();
+    if(ready.replace(/\s+$/,'').length>=(done?done.end:0))ready=ready.replace(/\s+$/,'');
+    this.held=null;
+    fourOCardText(e,ready,true,why);fourOFinalize(e,why,false);
+    if(rest.trim()){
+      tail=addEntry(q.seat,'',true);tail.startedAt=fourOTailStart(e,ready.length,rest.length);tail.audioEndedAt=e.audioEndedAt;tail.srcLang=q.srcLang;tail.dstLang=q.dstLang;
+      tail.fourOState={pending:true,reason:'open',model:this.model,request:q.id,commitTo:0};
+      segInit(tail);fourOPlaceAfter(tail,e);fourOOpenText(tail,rest.replace(/^\s+/,''),0,'tail');
+      this.held={entry:tail,until:now+(q.meta.seconds+5)*1000,open:true};
+    }
+    dlog('stt','4o-card-split',{cardId:e.id,reason:why,chars:ready.length,spanMs:span,next:tail&&tail.id,nextChars:tail?tail.segment.text.length:0,request:q.id});
+    return;
+  }
+  var had=this.held&&this.held.entry===e&&fourOTailPending(e),from=st.commitTo||0;
+  fourOOpenText(e,text,parts.ready.length,joined?'joined':'first');
+  if(text.length-e.fourOState.commitTo>=FOURO_TAIL_MAX_CHARS)fourOOpenText(e,text,text.length,'tail-length');
+  // Never reset an already-waiting tail's deadline merely because new text arrived without a sentence end.
+  this.held={entry:e,until:had&&e.fourOState.commitTo===from?this.held.until:now+(q.meta.seconds+5)*1000,open:true};
+  dlog('stt','4o-card-open',{cardId:e.id,chars:text.length,commitTo:e.fourOState.commitTo,joined:joined,cut:q.meta.reason,spanMs:span,request:q.id});
+};
+FourOFileBuffer.prototype.flush=function(reason){
+  var e=this.openCard();if(!e||!fourOTailPending(e))return;
+  var from=e.fourOState.commitTo||0;fourOOpenText(e,e.segment.text,e.segment.text.length,reason);
+  dlog('stt','4o-tail-commit',{cardId:e.id,reason:reason,chars:e.segment.text.length-from});
+};
+FourOFileBuffer.prototype.poll=function(now,silent,quietMs){
   if(!this.alive()||!this.held)return;
+  if(this.held.open){
+    var e=this.openCard();if(!e){this.held=null;return;}
+    // Translation and reading do not wait for the card: the unfinished rest goes after 0.9 s without voice.
+    if(fourOTailPending(e)&&(now>=this.held.until||(silent&&!this.queue.length)))this.flush(now>=this.held.until?'carry-time-limit':'audio-silence');
+    if(this.queue.length)return;
+    if(quietMs>=FOURO_CARD_GAP_MS)this.release('audio-pause',false);
+    else if(this.interrupted(e))this.release('another-card',false);
+    return;
+  }
   if(now>=this.held.until)this.release('carry-time-limit',false);
   else if(silent&&!this.queue.length)this.release('audio-silence',false);
 };
@@ -9939,6 +10032,8 @@ RealtimeTranscriptionEngine.prototype.ensureEntry=function(x){
 RealtimeTranscriptionEngine.prototype.boundaryContext=function(text,lang){
   var s=String(text||'').trim(),tail=s.replace(/[\"'」』）】〕〉》\]]+$/,'').trim();
   if(!tail)return 'neutral';
+  // "U.S." or "1." at the end may continue ("U.S. stock", "1.5"); give it the ordinary wait.
+  if(/\.$/.test(tail)&&segPeriodHold(tail,tail.length))return 'neutral';
   if(/[。！？!?…]|\.(?:\s*)$/.test(tail.slice(-2)))return 'strong';
   if(/^ja(?:-|$)/i.test(lang||'')){
     if(/(?:けど|けれど|けれども|ので|のに|から|ながら|つつ|たり|て|で|が|と|なら|また|そして|しかし|つまり|例えば|たとえば|えっと|その|この|あの)$/.test(tail))return 'continuing';
@@ -12910,7 +13005,8 @@ var DIAG_ROWS = [
   {section:"settings",order:2,label:'音声認識(STT)',value:function(ctx){ return CFG.sttProvider +
     (CFG.sttProvider === 'openrouter' ? '（JSON・input_audio' + (OR_STT_WAV[CFG.sttModel] ? '・WAVに変換して送信' : '') + '）' : ''); }},
   {section:"settings",order:3,label:'STTモデル',value:function(ctx){ return CFG.sttModel; }},
-  {section:"settings",order:4,label:'4o系の録音上限',value:function(ctx){ return fourOFileModel()?fourOSeconds(CFG.fourOSeconds)+'秒／末尾繰越 '+(CFG.fourOCarry!==false?'ON':'OFF')+'／無音待ち '+sttSilenceHoldMs()+'ms／録音ファイルAPI':'(未使用)'; }},
+  {section:"settings",order:4,label:'4o系の録音上限',value:function(ctx){ return fourOFileModel()?fourOSeconds(CFG.fourOSeconds)+'秒／末尾繰越 '+(CFG.fourOCarry!==false?'ON':'OFF')+'／無音待ち '+sttSilenceHoldMs()+'ms／録音ファイルAPI'+
+    '／カード '+(segEnabled()?'話し続けるあいだ1枚（間 '+(FOURO_CARD_GAP_MS/1000)+'秒・'+(FOURO_CARD_MAX_MS/1000)+'秒か'+FOURO_CARD_MAX_CHARS+'字で文の切れ目）・訳と読み上げは文ごと':'録音ごと（逐次読み上げOFF）'):'(未使用)'; }},
   {section:"settings",order:5,label:'有効なSTT通信方式',value:function(ctx){ return diagSttTransport(); }},
   {section:"settings",order:6,label:'gpt-live発話確定',value:function(ctx){ return isLiveTranscribe() ? (segEnabled()?'逐次部分翻訳＋文脈・無音・文字停止でカード確定／TTS待ちとは独立':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）') : '(未使用)'; }},
   {section:"settings",order:7,label:'共有音声STT経路',value:function(ctx){ return CFG.displaySttRoute+' → '+effectiveDisplaySttRoute(); }},
@@ -14776,7 +14872,11 @@ function segDecision(input){
   var text=input.text||'', p=input.policy, stable=input.stableLength||0;
   if(!text.trim())return {length:0,reasons:[]};
   var bound=0,reasons=[], candidates=[], rx=/[。！？!?]|\.(?=\s|$)/g,m;
-  while((m=rx.exec(text)))candidates.push({end:m.index+1,why:'punctuation'});
+  while((m=rx.exec(text))){
+    var hold=m[0]==='.'?segPeriodHold(text,m.index+1):'';
+    if(hold==='skip'||(hold==='wait'&&!input.final&&!(input.idleMs>=SEG_PERIOD_WAIT_MS)))continue;
+    candidates.push({end:m.index+1,why:'punctuation'});
+  }
   if(input.mode==='fast'){
     rx=/[、,;:；：]/g;while((m=rx.exec(text))) {
       if(/[0-9]/.test(text[m.index-1]||'')&&/[0-9]/.test(text[m.index+1]||''))continue;
@@ -14831,6 +14931,8 @@ function segReceiveDisplay(e){
   }
 }
 function segRecognitionLabel(e){
+  if(e.fourOState&&e.fourOState.pending&&e.fourOState.reason==='open'&&e.segment&&!e.segment.final)
+    return (e.fourOState.next?'続きを音声認識中':'話の続きを待っています')+' · '+e.srcText.length+'字';
   if(e.fourOState&&e.fourOState.pending)return e.fourOState.reason==='recognizing'?'音声認識を処理中':e.fourOState.reason==='tail'?'末尾を保留 · 次の認識結果待ち':'認識済み · 前の結果待ち';
   if(!e.segment)return '';
   if(e.segment.cancelled)return '停止';
@@ -14973,6 +15075,8 @@ function segPartEndsSentence(q,useSource){
   var s=q.segment,b=q.card.segment,text=useSource?s.sourceText:s.translationText||'';
   if(/[。！？!?][\s」』）]*$/.test(text)||/\.[\s"')]*$/.test(text)||b.final)return true;
   if((s.commitReason||[]).indexOf('semantic-ending')>=0)return true;
+  // A 4o tail committed after a pause (flushed as settled text) is where the speaker stopped.
+  if(q.card.fourOState&&(s.commitReason||[]).indexOf('stt-final')>=0)return true;
   return typeof b.text==='string'&&s.end>0&&/^[。！？!?]/.test(b.text.slice(s.end));
 }
 function segApplyMark(e,pos,mark){
@@ -15010,11 +15114,14 @@ function segBackpressure(e,p,debt){
 }
 function segCheck(e){
   var b=e.segment;if(!b||b.cancelled)return;
-  if(e.fourOState&&e.fourOState.pending&&!b.final)return;
+  // A 4o card is either waiting for its text (no commit) or open up to commitTo: text past it waits for the next recording.
+  var fo=e.fourOState,limit=fo&&fo.pending&&!b.final?(fo.reason==='open'?fo.commitTo||0:0):-1;
+  if(limit===0)return;
   var debt=segDebt(),p=segPolicyFor(e,debt),now=Date.now();
   var count=0;
   while(count++<100){
     var s=e.segments[e.segments.length-1];if(!s||s.committedAt)break;
+    if(limit>0&&s.start>=limit)break;
     if(b.final&&!hasSpeechContent(s.sourceText)){
       var previous=e.segments[e.segments.length-2];
       if(previous){previous.end=s.end;
@@ -15025,8 +15132,10 @@ function segCheck(e){
     debt=segDebt();segBackpressure(e,p,debt); // Audio debt never blocks text commits or translation.
     var stable=0;while(s.start+stable<b.stableSince.length&&now-b.stableSince[s.start+stable]>=p.stability)stable++;
     var silence=segSilence(e,now);
-    var decisionInput={text:s.sourceText,stableLength:b.final?s.sourceText.length:stable,policy:p,lang:e.srcLang,idleMs:now-b.lastUpdate,
-      mode:p.mode,debt:debt,silenceMs:silence===null?-1:silence,final:b.final,breaths:!!e.webSpeech};
+    // The part of a 4o card before commitTo is recognized text that will not change; it is flushed like a final result.
+    var view=limit>0?s.sourceText.slice(0,limit-s.start):s.sourceText,settled=b.final||limit>0;
+    var decisionInput={text:view,stableLength:settled?view.length:stable,policy:p,lang:e.srcLang,idleMs:now-b.lastUpdate,
+      mode:p.mode,debt:debt,silenceMs:silence===null?-1:silence,final:settled,breaths:!!e.webSpeech};
     var ruleResult=TurnDecision.rules(decisionInput);
     var d=TurnDecision.boundary(e,s,decisionInput,ruleResult,silence,now);
     if(d.waiting)b.boundaryWaiting=d.waiting;else b.boundaryWaiting='';
@@ -15858,6 +15967,20 @@ var SEG_PLAYBACK_CSS='.segment-playing{background:rgba(255,196,75,.25);color:inh
 
 /* Phase 3: bounded language rules, not an LLM judgment of semantic truth. */
 function segSemanticEnabled(){return CFG.segmentBoundary==='semantic';}
+/* 英語の「.」のうち、そこで文が終わるとは決められないもの。
+   - 'skip'：U.S.・D.C. のような頭字語と Mr. などの敬称。後ろに語が続いていれば文の終わりにしない。
+   - 'wait'：その「.」が今の本文の最後にあり、頭字語・敬称か数字の直後にある。小数点や頭字語の途中かも
+     しれないので、次の文字が来るか、文字が SEG_PERIOD_WAIT_MS 止まるまで待つ。
+   v1.49.37 の実測で、"it'll be 1.5 trillion dollars" が「1.」で、"U.S. stock markets" が「U.S.」で、
+   "in Washington, D.C., it was" が「D.C.」で切れた。切れた後ろを訳すときに前の文を訳し直し、
+   「1兆ドル」「1兆5000億ドル」と数字が変わったり、同じ文が2回読まれたりしていた。 */
+var SEG_PERIOD_WAIT_MS=1200;
+function segPeriodHold(text,end){
+  text=String(text||'');if(text.charAt(end-1)!=='.')return '';
+  var head=text.slice(0,end),rest=text.slice(end).replace(/^["'”’）\])]+/,'').trim();
+  if(/(?:^|[^A-Za-z.])(?:[A-Za-z]\.){2,}$/.test(head)||/\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc)\.$/i.test(head))return rest?'skip':'wait';
+  return /\d\.$/.test(head)&&!rest?'wait':'';
+}
 function segSemanticTail(text,lang){
   var t=String(text||'').trim().replace(/["'」』）】\])]+$/,'').trim();
   if(!t)return 'empty';
@@ -15876,12 +15999,14 @@ function segSemanticDecision(input){
   var text=input.text||'',stable=Math.min(text.length,input.stableLength||0),lang=input.lang||'',p=input.policy;
   if(!text.trim())return {length:0,reasons:[]};
   var max=/^(ja|zh)/.test(lang)?120:240;
-  var rx=/[。！？!?]|\.(?=\s|$)/g,m;
+  var rx=/[。！？!?]|\.(?=\s|$)/g,m,periodWait=false;
   while((m=rx.exec(text))){
     var end=m.index+1;if(end>stable||end>max)break;
-    // Do not interpret a decimal or common short title as the end of a sentence.
-    if(m[0]==='.'&&(/\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc)\.$/i.test(text.slice(0,end))||/\d\.\d/.test(text.slice(Math.max(0,end-2),end+1))))continue;
-    if(hasSpeechContent(text.slice(0,end)))return {length:end,reasons:['semantic-sentence','stable'].concat(input.final?['stt-final']:[])};
+    // Do not interpret a decimal, an initialism or a common short title as the end of a sentence.
+    var hold=m[0]==='.'?segPeriodHold(text,end):'';
+    if(hold==='skip'||/\d\.\d/.test(text.slice(Math.max(0,end-2),end+1)))continue;
+    if(hold==='wait'&&!input.final&&!(input.idleMs>=SEG_PERIOD_WAIT_MS)){periodWait=true;continue;}
+    if(hasSpeechContent(text.slice(0,end)))return {length:end,reasons:['semantic-sentence','stable'].concat(hold&&!input.final?['period-idle']:[],input.final?['stt-final']:[])};
   }
   var tail=segSemanticTail(text.slice(0,stable),lang);
   if(stable===text.length&&stable>=p.min&&tail==='complete'&&(input.silenceMs>=p.silence||input.idleMs>=1200))
@@ -15898,7 +16023,7 @@ function segSemanticDecision(input){
   }
   if(input.final)return {length:text.length,reasons:['stt-final','semantic-final-tail']};
   if(stable===text.length&&input.idleMs>=3000)return {length:stable,reasons:['semantic-idle-fallback','stable']};
-  return {length:0,reasons:[],waiting:tail==='continuing'?'continuing-phrase':'sentence-boundary'};
+  return {length:0,reasons:[],waiting:periodWait?'ambiguous-period':tail==='continuing'?'continuing-phrase':'sentence-boundary'};
 }
 function segTranslationContext(e,s){
   var index=S.entries.indexOf(e);

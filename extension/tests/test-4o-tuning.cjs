@@ -139,10 +139,13 @@ function bufWorld(o={}){
     langOf:()=>'ja',micSeats:()=>['A'],duoShouldAutoDetectInput:()=>false,sttAutoDetect:()=>false,
     sttCall:()=>new Promise((res)=>w.calls.push(res))};
   vm.createContext(ctx);
-  vm.runInContext([block('function fourOSentenceEnds('),block('function fourOSplit('),block('function fourOJoin('),
+  vm.runInContext([line('var SEG_PERIOD_WAIT_MS'),block('function segPeriodHold('),block('function fourOSentenceEnds('),block('function fourOSplit('),block('function fourOJoin('),
     block('function fourOCardText('),block('function fourOFinalize('),block('function fourOPlaceAfter('),block('function fourOTailStart('),
-    block('function FourOFileBuffer('),block('FourOFileBuffer.prototype.alive='),block('FourOFileBuffer.prototype.submit='),
-    block('FourOFileBuffer.prototype.release='),block('FourOFileBuffer.prototype.drain='),block('FourOFileBuffer.prototype.poll=')].join('\n'),ctx);
+    line('var FOURO_CARD_MAX_MS'),block('function fourOOpenText('),block('function fourOTailPending('),
+    block('function FourOFileBuffer('),block('FourOFileBuffer.prototype.alive='),block('FourOFileBuffer.prototype.grouping='),
+    block('FourOFileBuffer.prototype.openCard='),block('FourOFileBuffer.prototype.entryFor='),block('FourOFileBuffer.prototype.submit='),
+    block('FourOFileBuffer.prototype.release='),block('FourOFileBuffer.prototype.drain='),block('FourOFileBuffer.prototype.interrupted='),
+    block('FourOFileBuffer.prototype.take='),block('FourOFileBuffer.prototype.flush='),block('FourOFileBuffer.prototype.poll=')].join('\n'),ctx);
   const buf=vm.runInContext('new FourOFileBuffer({})',ctx);
   w.clip=async(text,reason,carry=true)=>{buf.submit({},'B',null,{reason,seconds:6,carry,startedAt:w.now-2000,endedAt:w.now});
     w.calls.shift()(text);await new Promise(r=>setImmediate(r));};
