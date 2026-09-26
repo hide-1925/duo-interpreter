@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.34",
-  "version_name": "1.4.34 HTML v1.49.23 と対。会議マイクをワンタッチに／無音待ちを設定化",
+  "version": "1.4.35",
+  "version_name": "1.4.35 HTML v1.49.24 と対。入力文が読まれない理由を出す／入力文に判断層をかけない",
   "optional_host_permissions": [
     "https://*/*"
   ],
