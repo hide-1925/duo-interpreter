@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.39",
-  "version_name": "1.4.39 HTML v1.49.28 と対。gpt-live のカードを判断層で早く閉じる（既定は記録だけ）／確定した本文を HOLD で待たせない",
+  "version": "1.4.40",
+  "version_name": "1.4.40 HTML v1.49.29 と対。Aivis の次の部分を先読み／文末待ちに1.2秒の上限／句点では判断層を待たない／アドオンのタブ音声で Web Speech が network を返し続けたら中継して試し、だめなら止めて理由を出す",
   "optional_host_permissions": [
     "https://*/*"
   ],

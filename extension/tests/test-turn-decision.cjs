@@ -707,15 +707,19 @@ test('boundary leaves the answer on the part, so the floor never asks again',()=
    （v1.49.18 実測 送信51／応答51／適用0）。待つ相手と上限を検査する。 */
 const inflightFor=(st,over)=>({abort:null,revision:st.revision,at:Date.now(),
   key:D().key(st),...(over||{})});
+/* 待つのは Rules が記号の無い位置で切るときだけ（v1.49.29）。句点で切る文は待たない
+   ので、ここでは「です」までで Rules が切る、記号の無い文を使う。 */
+const UNMARKED='来週の予定は火曜日で、それから木曜日も会議があります';
+const unmarked=(over)=>input(Object.assign({text:UNMARKED,stableLength:UNMARKED.length,silenceMs:900,idleMs:900},over||{}));
 
 test('nothing is in flight with the rules provider, so active never waits',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
-  const i=input(),rule=D().rules(i);
+  const i=unmarked(),rule=D().rules(i);
   assert.equal(D().boundary(card(),{},i,rule,250,Date.now()),rule);
 });
 test('the commit waits only while this exact state is in flight',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
-  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const e=card(),seg={},i=unmarked(),rule=D().rules(i),now=Date.now();
   const st=D().stateOf(e,seg,i,rule,250,now);
   D().inflight[st.speakerKey]=inflightFor(st);
   const held=D().boundary(e,seg,i,rule,250,now);
@@ -730,7 +734,7 @@ test('the commit waits only while this exact state is in flight',()=>{
 });
 test('the wait is capped, and Rules commits once it expires',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
-  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const e=card(),seg={},i=unmarked(),rule=D().rules(i),now=Date.now();
   const st=D().stateOf(e,seg,i,rule,250,now);
   D().inflight[st.speakerKey]=inflightFor(st);
   assert.equal(D().boundary(e,seg,i,rule,250,now).waiting,'provider-pending');
@@ -741,7 +745,7 @@ test('the wait is capped, and Rules commits once it expires',()=>{
 });
 test('a value of 0 disables the wait entirely',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active',turnDecisionCommitWaitMs:0});
-  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const e=card(),seg={},i=unmarked(),rule=D().rules(i),now=Date.now();
   const st=D().stateOf(e,seg,i,rule,250,now);
   D().inflight[st.speakerKey]=inflightFor(st);
   assert.equal(D().boundary(e,seg,i,rule,250,now),rule);
@@ -749,7 +753,7 @@ test('a value of 0 disables the wait entirely',()=>{
 });
 test('the wait is clamped to 1000ms however large the setting is',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active',turnDecisionCommitWaitMs:99999});
-  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const e=card(),seg={},i=unmarked(),rule=D().rules(i),now=Date.now();
   const st=D().stateOf(e,seg,i,rule,250,now);
   D().inflight[st.speakerKey]=inflightFor(st);
   D().boundary(e,seg,i,rule,250,now);
@@ -758,7 +762,7 @@ test('the wait is clamped to 1000ms however large the setting is',()=>{
 test('off and shadow never wait, whatever is in flight (INV-08)',()=>{
   for(const mode of ['off','shadow']){
     reset({turnDecisionMode:mode,turnDecisionLangJa:mode==='off'?'active':'shadow'});
-    const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+    const e=card(),seg={},i=unmarked(),rule=D().rules(i),now=Date.now();
     const st=D().stateOf(e,seg,i,rule,250,now);
     D().inflight[st.speakerKey]=inflightFor(st);
     assert.equal(D().boundary(e,seg,i,rule,250,now),rule,mode);
@@ -767,7 +771,7 @@ test('off and shadow never wait, whatever is in flight (INV-08)',()=>{
 });
 test('once the answer lands the wait ends and the provider boundary is taken',()=>{
   reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
-  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const e=card(),seg={},i=unmarked(),rule=D().rules(i),now=Date.now();
   const st=D().stateOf(e,seg,i,rule,900,now);
   D().inflight[st.speakerKey]=inflightFor(st);
   assert.equal(D().boundary(e,seg,i,rule,900,now).waiting,'provider-pending');
@@ -782,6 +786,62 @@ test('once the answer lands the wait ends and the provider boundary is taken',()
   const out=D().boundary(e,seg,i,rule,900,now+80);
   assert.equal(out.length,cand.offset,'the answer that arrived is the one that decides');
   assert.equal(out.source,'provider');
+});
+
+test('the fixture really is a rules cut without a mark',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const r=D().rules(unmarked());
+  assert.ok(r.length>0,'rules cuts here');
+  assert.equal(D().markCut(UNMARKED,r),false);
+});
+test('a rules cut at a sentence mark does not wait for the answer',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  assert.equal(rule.length,12);
+  const st=D().stateOf(e,seg,i,rule,250,now);
+  D().inflight[st.speakerKey]=inflightFor(st);
+  const before=D().stats.markNoWait||0,logs=dlogs.length;
+  assert.equal(D().boundary(e,seg,i,rule,250,now),rule,'the rule result passes at once');
+  assert.ok(!seg.decisionWaitUntil,'no wait clock is started');
+  assert.equal(D().stats.markNoWait,before+1);
+  D().boundary(e,seg,i,rule,250,now+80);
+  assert.equal(D().stats.markNoWait,before+1,'counted once per question, not per tick');
+  assert.equal(dlogs.slice(logs).filter(x=>x[1]==='turn-decision-no-wait').length,1);
+});
+test('question and exclamation marks and an English full stop count, a decimal point does not',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const cut=(t)=>D().markCut(t,{length:t.length});
+  assert.equal(cut('それは本当ですか？'),true);
+  assert.equal(cut('すごい！'),true);
+  assert.equal(cut('「わかりました。」'),true,'a closing bracket after the mark');
+  assert.equal(cut('That is fine. '),true);
+  assert.equal(cut('Is it? '),true);
+  assert.equal(cut('The rate is 3.'),false,'3. may be 3.5');
+  assert.equal(cut('来週の予定は、'),false);
+  assert.equal(D().markCut('来週の予定は火曜日です。それから',{length:12}),true,'only the text up to the cut is read');
+  assert.equal(D().markCut('来週の予定は火曜日です。',{length:0}),false,'no cut, nothing to skip');
+});
+test('with the wait disabled there is nothing to skip and nothing is counted',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active',turnDecisionCommitWaitMs:0});
+  const e=card(),seg={},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,250,now);
+  D().inflight[st.speakerKey]=inflightFor(st);
+  const before=D().stats.markNoWait||0;
+  assert.equal(D().boundary(e,seg,i,rule,250,now),rule);
+  assert.equal(D().stats.markNoWait||0,before);
+});
+test('an answer that already arrived still decides a mark cut',()=>{
+  reset({turnDecisionMode:'active',turnDecisionLangJa:'active'});
+  const e=card({segment:{revision:3,final:false}}),seg={start:0},i=input(),rule=D().rules(i),now=Date.now();
+  const st=D().stateOf(e,seg,i,rule,900,now);
+  D().cache[D().key(st)]={sessionId:st.sessionId,utteranceId:st.utteranceId,revision:st.revision,
+    boundary:{choice:'HOLD',confidence:0.9,probabilities:{HOLD:0.9}},
+    turnState:{choice:'CONTINUING',confidence:0.9,probabilities:{}},
+    safeToSpeak:0.9,repairLikelihood:0.01,decisionId:'d12'};
+  const before=D().stats.markNoWait||0;
+  const out=D().boundary(e,seg,i,rule,900,now);
+  assert.equal(out.length,0,'the HOLD that is already here is followed');
+  assert.equal(D().stats.markNoWait||0,before);
 });
 
 /* ── INV-11 「待て」にも上限 ───────────────────────────────────────────────

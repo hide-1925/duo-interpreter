@@ -1645,6 +1645,16 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
       「ブラウザ内蔵音声で読む」にすると、10回を超えた分は Aivis に送らず内蔵音声で読み上げます（課金は増えませんが声が替わります）。
       「枠が空くまで待つ」は v1.49.9 以前と同じ動作で、読み上げが数十秒遅れることがあります。<br>
       なお <b>Aivis が実際に 429 を返して止めてきたとき</b>は、どの設定でも最後はブラウザ内蔵音声で読み上げます（発話を捨てないため）。</small>
+      <div class="sublabel">次の部分の先読み</div>
+      <select id="aivisPrefetch">
+        <option value="on">先読みする — 部分の切り替わりの無音を短くする（既定）</option>
+        <option value="off">先読みしない — 前の音が鳴り終わってから次を頼む（v1.49.28 以前と同じ）</option>
+      </select>
+      <small>ストリーミング再生のときだけ効きます。前の音の受信が終わり、鳴り終わりまで約1.2秒になったら、次に読む部分の合成を先に頼みます。
+      <b>鳴らすのは前の音が終わってから</b>なので、声は重なりません。
+      読み上げが話し手に追いつくぶん、まとめて頼める部分が減り、<b>60秒あたりの回数は増えます</b>。
+      直近60秒に8回以上頼んでいるときは先読みせず、従来どおりまとめて頼みます。
+      頼んだ後に訳文が変わったときは、先読みした音声を捨てて頼み直します（その1回は余分に数えます）。</small>
       <details class="adv" id="aivisAdv">
         <summary>話し方の調整</summary>
         <label class="sl"><span>話速</span>
@@ -2682,8 +2692,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.28';
-var APP_BUILD = '20260926-v14928-live-turn-close';
+var APP_VERSION = 'v1.49.29';
+var APP_BUILD = '20260926-v14929-tts-prefetch';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -3020,6 +3030,7 @@ var CONFIG_SCHEMA = [
   /* 60秒10回はAivisの公表値。ただし上位プランでは超過分をクレジットで払う設定に
      できるので、こちら側の数え（＝予測）で送信を止めてはいけない。既定は送る。 */
   { prop:"aivisOverLimit", key:'di.aiovl', embed:'aivisOverLimit', def:'send', portable:true, el:"aivisOverLimit" },
+  { prop:"aivisPrefetch", key:'di.aipf', embed:'aivisPrefetch', def:'on', coerce:function(raw){ return raw==='off' ? 'off' : 'on'; }, portable:true, el:"aivisPrefetch" },
   /* Google Cloud TTS。声の系統で名前の組み立て方が変わる（Chirp3は言語込み、Geminiは素の名前）。 */
   { prop:"gttsFamily", key:'di.gttsfam', embed:'gttsFamily', def:'chirp3', portable:true, el:"gttsFamily", bind:'custom' },
   { prop:"gttsVoice", key:'di.gttsv', embed:'gttsVoice', def:'Aoede', portable:true, el:"gttsVoice", bind:'custom' },
@@ -7808,8 +7819,13 @@ function aivisSpeakStream(text, lang, seat, prosody){
   /* 受信完了ではなく、AudioContext に並べた最後のPCMが鳴り終わるまで再生ロックを保持する。
      これが無いと、その間に生成されたBlob方式の次発話が割り込み、2つの声が重なる。 */
   var streamDone = false, streamEndTimer = null, streamWatchdog = null, timedOut = false;
+  /* 先読み（aivisPrefetchTick）が見る「この音があと何ms鳴るか」。受信が終わるまでは
+     長さが決まらないので、recvDone が立つまで先読みしない。 */
+  var tail = { gen: myGen, recvDone: false, remainMs: function(){ return Math.max(0, (next - ctx.currentTime) * 1000); } };
+  AIVIS_STREAM_TAIL = tail;
   var streamEnd = function(why){
     if (streamDone) return; streamDone = true;
+    if (AIVIS_STREAM_TAIL === tail) AIVIS_STREAM_TAIL = null;
     clearTimeout(streamEndTimer); clearTimeout(streamWatchdog);
     if (ttsCurEnd === streamEnd) ttsCurEnd = null;
     ttsPlayingNow = false;
@@ -7865,16 +7881,19 @@ function aivisSpeakStream(text, lang, seat, prosody){
     };
     if (!started){
       started = true; waMode = true; firstMs = Date.now() - t0;
-      dlog('tts','aivis-first',{ ms: firstMs, leadMs: Math.round(LEAD*1000), rate: head.rate, ch: head.ch, style: stLog });
+      dlog('tts','aivis-first',{ ms: firstMs, leadMs: Math.round(LEAD*1000), rate: head.rate, ch: head.ch, style: stLog, prefetched: !!pre });
     }
   };
 
-  aivisLimitedFetch(AIVIS_URL, {
+  var bodyJson = JSON.stringify(body), pre = aivisPrefetchTake(bodyJson);
+  /* 先読みした要求は送信済みなので、送信時に張るはずだった時計をここで張る。 */
+  if (pre){ finish.armPhase('synthesis', guardMs); armStreamWatchdog(); }
+  (pre ? pre.promise : aivisLimitedFetch(AIVIS_URL, {
     method:'POST', signal: ctrl && ctrl.signal,
     headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + aivisKey() },
-    body: JSON.stringify(body)
-  },{finish:finish,guardMs:guardMs,wait:function(){clearTimeout(streamWatchdog);},send:armStreamWatchdog}).then(function(r){
-    var meta=aivisBillingMeta(r);aivisLogBilling(meta,'stream');
+    body: bodyJson
+  },{finish:finish,guardMs:guardMs,wait:function(){clearTimeout(streamWatchdog);},send:armStreamWatchdog})).then(function(r){
+    var meta=aivisBillingMeta(r);aivisLogBilling(meta,pre?'stream-prefetch':'stream');
     if (!r.ok) return r.text().then(function(x){ throw aivisHttpError(r,x); });
     if (!r.body || !r.body.getReader) throw new Error('ストリーミング非対応');
     var reader = r.body.getReader();
@@ -7883,9 +7902,10 @@ function aivisSpeakStream(text, lang, seat, prosody){
         if (myGen !== ttsGen){ try{ reader.cancel(); }catch(e){} return; }   /* 停止された */
         if (res.done){
           drain(true);
+          tail.recvDone = true;
           if (!started) throw new Error('音声データが空でした');
           var remainMs = endAfterBuffered('ended');
-          dlog('tts','aivis-stream-ok',{ chars:text.length, firstMs:firstMs, totalMs:Date.now()-t0,
+          dlog('tts','aivis-stream-ok',{ chars:text.length, firstMs:firstMs, totalMs:Date.now()-t0, prefetched:!!pre,
                                          seat:seat, style:stLog, spk:(body.speaker_uuid?'あり':'なし'),
                                          tweaks:twLog, underruns:underruns, playRemainMs:Math.round(remainMs) });
           if (ttsQueue.length) dlog('tts','overlap-prevented',{ waiting:ttsQueue.length, remainMs:Math.round(remainMs) });
@@ -9937,6 +9957,15 @@ var TTS_PROVIDERS = {
         +' ／ 直近60秒 '+AIVIS_RATE.sent.length+'回'
         +(srv>0?' ／ Aivisが429で停止中 あと'+(srv/1000).toFixed(1)+'秒'
           :win>0?' ／ 予測では枠切れ あと'+(win/1000).toFixed(1)+'秒':' ／ 送信可能'); },inactive:'(未使用)'},
+    /* 先読みが効いているか。使った数と捨てた数を並べる。捨てた分は60秒10回の枠を
+       余分に使っているので、理由ごとに分ける。 */
+    {section:"settings",order:46.3,label:'Aivis の先読み',value:function(){
+      var st=AIVIS_PREFETCH_STATS,why=Object.keys(st.drops).map(function(k){return k+' '+st.drops[k];}).join('・');
+      if(aivisPrefetchMode()==='off')return '先読みしない（設定）';
+      if(!CFG.aivisStream)return '先読みしない（ストリーミング再生がOFF）';
+      return '先読み '+st.started+' / 使用 '+st.hit+' / 捨てた '+st.dropped+(why?'（'+why+'）':'')
+        +(st.budget?' / 枠が近く見送り '+st.budget:'')
+        +(st.hit?' ／ 平均 '+Math.round(st.aheadMs/st.hit)+'ms 前に依頼'+(st.headersLate?'・応答待ち '+st.headersLate+'回':''):''); },inactive:'(未使用)'},
     /* OpenAI の上限はアカウントの usage tier で決まるので、公表値では自分の枠が分からない。
        応答ヘッダに入っている実値をそのまま出す。Aivis と併用するなら、どちらが先に
        詰まるのかはこの2行を並べて見るのがいちばん早い。 */
@@ -10142,6 +10171,7 @@ function stopSpeaking(why){
   segCancelAudio(why||'読み上げ停止');
   var had = ttsIsBusy();
   ttsGen++;                                  /* 以後に届く音声は鳴らさない */
+  aivisPrefetchDrop('stopped');
   ttsPendingOrders = {}; ttsOrderWaitLogged = '';
   clearTtsQueue();                           /* 待ち行列を先に空にする */
   /* VOICEVOXは合成要求を並列化しているため、世代番号だけで再生を止めるのではなく
@@ -10540,10 +10570,53 @@ function killRec(){ recRun=false; restarting=false; if(rec){ try{ rec.onend=null
 /* Chrome 135+ の SpeechRecognition.start(audioTrack) 専用エンジン。
    既定マイクへフォールバックすると別音声を誤認識するため、Trackが使えない場合は
    明示的に停止する。再起動時も必ず同一Trackを渡す。 */
+/* アドオンのタブ音声（tabCapture）の Track では、同じ Chrome で画面共有の Track は
+   認識できるのに、開始から約0.15秒で network を返し続けた（v1.49.26 の記録で22回）。
+   一度も結果が来ないまま開始直後の network が続いたら、同じ音声を WebAudio で
+   1ch に通した Track に替えて試す。それでも同じなら、再起動を続けずに止めて理由を出す。 */
+var WEB_TRACK_QUICK_MS=1500,WEB_TRACK_QUICK_MAX=2;
 function WebSpeechTrackEngine(seat,track,opts){
   this.seat=seat;this.track=track;this.opts=opts||{};this.rec=null;this.dead=false;
   this.interim=null;this.restarts=0;this.errs=0;this.startAt=0;
+  this.recTrack=track;this.relay=null;this.relayReady=null;this.heard=false;this.quick=0;
 }
+WebSpeechTrackEngine.prototype.addonTrack=function(){
+  return !!(window.__duoTabAudio&&window.__duoTabAudio.isActive&&window.__duoTabAudio.isActive()&&!this.opts.fromOverlay);
+};
+/* 開始直後の network が続いたときの切替先。元の Track は計測と生存確認に使い続ける。 */
+WebSpeechTrackEngine.prototype.useRelay=function(){
+  var AC=window.AudioContext||window.webkitAudioContext,ctx=null,src=null,dest=null;
+  try{
+    try{ctx=new AC({sampleRate:16000});src=ctx.createMediaStreamSource(new MediaStream([this.track]));}
+    catch(e){if(ctx)ctx.close().catch(function(){});ctx=new AC();src=ctx.createMediaStreamSource(new MediaStream([this.track]));}
+    dest=ctx.createMediaStreamDestination();dest.channelCount=1;dest.channelCountMode='explicit';dest.channelInterpretation='speakers';
+    src.connect(dest);
+    var out=dest.stream.getAudioTracks()[0];
+    if(!out)throw new Error('中継Trackを作れません');
+    this.relay={ctx:ctx,src:src,dest:dest,track:out};this.recTrack=out;
+    this.relayReady=ctx.resume().catch(function(){});
+    dlog('stt','track-relay',{seat:this.seat,rate:ctx.sampleRate,channels:1,addon:this.addonTrack(),
+      trackId:String(out.id||'').slice(0,8)});
+    return true;
+  }catch(err){
+    try{if(ctx)ctx.close().catch(function(){});}catch(_){}
+    dlog('stt','track-relay-FAIL',{seat:this.seat,err:String((err&&err.message)||err).slice(0,160)});
+    return false;
+  }
+};
+WebSpeechTrackEngine.prototype.dropRelay=function(){
+  var r=this.relay;this.relay=null;this.relayReady=null;this.recTrack=this.track;if(!r)return;
+  try{r.src.disconnect();}catch(e){}
+  try{r.track.stop();}catch(e){}
+  try{r.ctx.close().catch(function(){});}catch(e){}
+};
+WebSpeechTrackEngine.prototype.quickFail=function(){
+  var addon=this.addonTrack();
+  this.fail((addon?'アドオンのタブ音声では':'この共有音声では')+'、Chrome の Web Speech が認識を始められませんでした（network）',null,
+    addon?'⚙→音声認識で gpt-4o-mini-transcribe などの外部APIを選んでください。'
+      +'アドオンの字幕表示を使わず、HTML本体の画面共有なら Web Speech で認識できます。'
+      :'ネットワークを確認するか、⚙→音声認識で外部APIを選んでください。');
+};
 WebSpeechTrackEngine.prototype.start=function(){
   if(!SR)throw new Error('Web Speech API非対応です');
   if(!this.track||this.track.kind!=='audio'||this.track.readyState!=='live')throw new Error('有効な共有音声Trackがありません');
@@ -10553,30 +10626,35 @@ WebSpeechTrackEngine.prototype.start=function(){
 WebSpeechTrackEngine.prototype.startSameTrack=function(){
   if(this.dead)return false;
   if(!this.track||this.track.readyState!=='live'){this.fail('共有音声Trackが終了しました');return false;}
+  if(this.relay&&this.relay.ctx.state!=='running'){this.quickFail();return false;}
   this.startAt=Date.now();
   try{
-    this.rec.start(this.track);
+    this.rec.start(this.recTrack||this.track);
     dlog('stt','track-start',{seat:this.seat,trackId:String(this.track.id||'').slice(0,8),restart:this.restarts,
-      chrome:overlayChromeMajor(),sameTrack:true});
+      chrome:overlayChromeMajor(),sameTrack:true,relay:!!this.relay,addon:this.addonTrack()});
     return true;
   }catch(err){
     this.fail('このブラウザは共有音声Trackの直接認識に対応していません',err);
     return false;
   }
 };
-WebSpeechTrackEngine.prototype.fail=function(message,err){
+WebSpeechTrackEngine.prototype.fail=function(message,err,hint){
   segDetachMeter(this);segWebEnd(this.rec);
   if(this.dead)return;this.dead=true;
-  dlog('stt','track-FAIL',{seat:this.seat,err:String((err&&err.message)||err||message).slice(0,160),fallback:false});
+  dlog('stt','track-FAIL',{seat:this.seat,err:String((err&&err.message)||err||message).slice(0,160),fallback:false,
+    relay:!!this.relay,addon:this.addonTrack()});
   try{if(this.rec){this.rec.onend=null;this.rec.abort();}}catch(e){}
+  this.dropRelay();
   if(this.interim){removeEntry(this.interim);this.interim=null;}
-  toast(message+'。マイクへは自動切替しません。⚙→音声で「VB-CABLE入力」または「外部API」を選んでください。');
+  toast(message+'。マイクへは自動切替しません。'+(hint||'⚙→音声で「VB-CABLE入力」または「外部API」を選んでください。'));
 };
 WebSpeechTrackEngine.prototype.build=function(){
   var self=this,r=new SR();this.rec=r;segAttachMeter(this,this.track,this.seat);
   r.lang=L(langOf(this.seat)).sr;r.continuous=true;r.interimResults=true;r.maxAlternatives=1;
   r.onresult=function(ev){
     if(self.dead||!S.running)return;
+    if(!self.heard){self.heard=true;self.quick=0;
+      dlog('stt','track-heard',{seat:self.seat,relay:!!self.relay,afterMs:Date.now()-self.startAt,restart:self.restarts});}
     if(segWebResult(r,ev,self.seat)){self.errs=0;return;}
     var itm='',fin=[];
     for(var i=ev.resultIndex;i<ev.results.length;i++){
@@ -10604,13 +10682,17 @@ WebSpeechTrackEngine.prototype.build=function(){
   r.onerror=function(ev){var code=(ev&&ev.error)||'';
     if(code==='no-speech'||code==='aborted')return;
     self.errs++;dlog('stt','track-ERROR',{seat:self.seat,err:code,count:self.errs});
-    if(code==='not-allowed'||code==='service-not-allowed'||code==='audio-capture')self.fail('共有音声Trackを直接認識できませんでした：'+code);
+    if(code==='not-allowed'||code==='service-not-allowed'||code==='audio-capture'){self.fail('共有音声Trackを直接認識できませんでした：'+code);return;}
+    if(code!=='network'||self.heard||Date.now()-self.startAt>=WEB_TRACK_QUICK_MS){self.quick=0;return;}
+    if(++self.quick<WEB_TRACK_QUICK_MAX)return;
+    self.quick=0;
+    if(self.relay||!self.useRelay())self.quickFail();
   };
   r.onend=function(){
     if(self.dead)return;segWebEnd(r);self.restarts++;
-    var wait=Math.min(3000,120+self.errs*350);
-    dlog('stt','track-restart',{seat:self.seat,restart:self.restarts,waitMs:wait,sameTrack:true});
-    setTimeout(function(){if(!self.dead)self.startSameTrack();},wait);
+    var wait=Math.min(3000,120+self.errs*350),ready=self.relayReady||Promise.resolve();
+    dlog('stt','track-restart',{seat:self.seat,restart:self.restarts,waitMs:wait,sameTrack:true,relay:!!self.relay});
+    setTimeout(function(){ready.then(function(){if(!self.dead)self.startSameTrack();});},wait);
   };
   return this.startSameTrack();
 };
@@ -10618,6 +10700,7 @@ WebSpeechTrackEngine.prototype.stop=function(){
   segDetachMeter(this);segWebEnd(this.rec);
   if(this.dead)return;this.dead=true;
   try{if(this.rec){this.rec.onend=null;this.rec.abort();}}catch(e){}
+  this.dropRelay();
   if(this.interim){removeEntry(this.interim);this.interim=null;}
   if(this.opts.ownsStream&&this.opts.stream)try{this.opts.stream.getTracks().forEach(function(t){t.stop();});}catch(e){}
   this.rec=null;
@@ -11978,7 +12061,7 @@ function startAll(){
       jobs.push(
         getDisplayAudioForStt().then(function(info){
           if(!captureCurrent(info.stream,info.ownsStream))return;
-          var eng=new WebSpeechTrackEngine(dispSeat,info.track,{ownsStream:info.ownsStream,stream:info.stream});
+          var eng=new WebSpeechTrackEngine(dispSeat,info.track,{ownsStream:info.ownsStream,stream:info.stream,fromOverlay:!!info.fromOverlay});
           engines.push(eng);eng.start();
           dlog('stt','transport-override',{selectedModel:CFG.sttModel,effective:'webspeech-track',reason:'共有音声STT経路=direct'});
           toast('共有音声Trackの直接Web Speech認識を開始しました'
@@ -13739,7 +13822,8 @@ var DIAG_ROWS = [
     return '送信 '+(s.requested||0)+' / 正常応答 '+(s.answered||0)
       +' / 解析失敗 '+(s.parseFailed||0)+' / 古くて破棄 '+(s.stale||0)
       +' / 到達不能 '+(s.unreachable||0)+' / 適用 '+(s.applied||0)
-      +'　保持tick '+(s.holdTicks||0)+' / 打切り '+(s.holdExpired||0);
+      +'　保持tick '+(s.holdTicks||0)+' / 打切り '+(s.holdExpired||0)
+      +'　句点で待たず '+(s.markNoWait||0);
   }},
   /* INV-13 の効果。shadow では「従っていれば」、on では実際に早めた分。 */
   {section:"settings",order:29.45,label:'gpt-live の区切り（判断層）',value:function(ctx){
@@ -15145,6 +15229,11 @@ var TurnDecision={
     if(!isFinite(n)||n<=0)return 0;
     return Math.min(1000,n);
   },
+  markCut:function(text,ruleResult){
+    var n=ruleResult&&ruleResult.length;
+    if(!n||!this.commitWaitMs())return false;
+    return /(?:[。！？!?]|[^.\d]\.)[\s」』）"'’”)\]]*$/.test(String(text||'').slice(0,n));
+  },
   waitingFor:function(s,state,now){
     var ms=this.commitWaitMs();
     if(!ms||!s)return false;
@@ -15393,6 +15482,16 @@ var TurnDecision={
     if(mode==='shadow')return ruleResult;
     var hit=this.read(state)||this.carried(state),out=null;
     if(!hit){
+      /* Rules が文末の記号で切るなら答えを待たない。句点の位置は判断層に聞いても
+         変わらない（v1.49.26 の実測で、日本語383件の往復のうち判断層が切った部分は0）。
+         待てば、その分だけ翻訳と読み上げが遅れる。 */
+      if(this.markCut(input.text,ruleResult)){
+        var k=this.key(state),rec=this.inflight[state.speakerKey];
+        if(s&&rec&&rec.key===k&&s.markNoWaitKey!==k){s.markNoWaitKey=k;this.bump('markNoWait');
+          dlog('segment','turn-decision-no-wait',{utteranceId:state.utteranceId,revision:state.revision,
+            speakerKey:state.speakerKey,why:'sentence-mark',ruleLength:ruleResult.length});}
+        return ruleResult;
+      }
       if(!this.waitingFor(s,state,now))return ruleResult;
       out={length:0,reasons:[],waiting:'provider-pending',source:'provider'};
     }else{
@@ -15890,6 +15989,50 @@ function segEarlierOpen(j){
 // Compare only settings sent to Aivis; timestamps/confidence do not change the voice.
 // Deliberately keep differing rates, dynamics and volumes in separate requests.
 function segAivisVoiceKey(e){return JSON.stringify(aivisBody('',e.seat,'mp3',e.prosody));}
+/* Aivis へ文の途中で渡さないための待ちに上限を置く。待ちは「カードが1.5秒以内に
+   伸びた」あいだ続くので、句点の来ない話し方では、文字が止まるか500字に届くまで
+   読み上げが止まる（実測 平均3.4秒・最長15秒）。Aivis は最初の音まで0.2〜0.5秒なので、
+   待ちが1.2秒を超えるなら、ここまでで読み始めたほうが早い。
+   時計は「その部分が読める状態になった時刻」（訳文が届いた時刻、原文読み上げなら確定時刻）
+   から回す。前の音を鳴らしているあいだも続きを待っていたことになるので、鳴り終わった時点で
+   1.2秒を過ぎていれば、もう待たない。dry は先読みの下見で、時計も記録も動かさない。 */
+var SEG_SENTENCE_WAIT_MAX_MS=1200;
+function segSentenceWaitLeft(j,now,dry){
+  var s=j.segment,ready=Number(j.manual||CFG.ttsSrc?s.committedAt:s.translatedAt)||now;
+  var at=j.sentenceWaitAt||Math.min(now,ready);
+  if(!dry&&!j.sentenceWaitAt)j.sentenceWaitAt=at;
+  var left=SEG_SENTENCE_WAIT_MAX_MS-(now-at);
+  if(!dry&&left<=0&&!j.sentenceWaitCapped){j.sentenceWaitCapped=true;SEG.sentenceWaitCapped=(SEG.sentenceWaitCapped||0)+1;
+    dlog('segment','tts-wait-capped',{cardId:j.card.id,segmentId:j.segment.id,reason:'sentence-boundary',waitMs:now-at});}
+  return left;
+}
+/* Aivis に一度に送る部分の組。segPump と先読みの両方がこれを使うので、先読みした組と
+   実際に送る組の決め方が食い違わない。queue は segQueueCompare で並べてある前提。 */
+function segAivisGroup(j,useSource,now,dry){
+  var e=j.card,s=j.segment,group=[j],source=s.sourceText,target=s.translationText||'';
+  var voiceKey=segAivisVoiceKey(e),start=SEG.queue.indexOf(j);
+  // Collect adjacent ready parts with identical effective synthesis settings.
+  for(var n=start+1;n>0&&n<SEG.queue.length;n++){
+    var next=SEG.queue[n],ns=next.segment,ne=next.card;
+    if(segEarlierOpen(next))break;
+    if(next.partOnly||j.partOnly||!segManualJobValid(next)||next.cancelled||next.epoch!==j.epoch||ne.segment.cancelled||!!next.manual!==!!j.manual||
+      ne.seat!==e.seat||ne.srcLang!==e.srcLang||ne.dstLang!==e.dstLang||JSON.stringify(ne.origin)!==JSON.stringify(e.origin)||((ne.speaker&&ne.speaker.id)!==(e.speaker&&e.speaker.id))||
+      segAivisVoiceKey(ne)!==voiceKey||
+      (!useSource&&(!ns.translationReady||ns.translationError))||(!next.manual&&!segAudioAllowed(ne)))break;
+    var more=useSource?ns.sourceText:ns.translationText||'';
+    if(!(more.trim())||(useSource?source:target).length+more.length+(useSource?0:1)>500)break;
+    source+=ns.sourceText;target+=(target&&ns.translationText?' ':'')+(ns.translationText||'');group.push(next);
+  }
+  // Prefer full sentences for Aivis, even if Fast translation commits at commas.
+  var cut=0;
+  group.forEach(function(q,i){if(segPartEndsSentence(q,useSource))cut=i+1;});
+  if(cut&&cut<group.length)group=group.slice(0,cut);
+  else if(!cut&&(useSource?source:target).length<500&&now-(group[group.length-1].card.segment.lastUpdate||0)<1500&&
+    segSentenceWaitLeft(j,now,dry)>0)return {wait:true,group:group};
+  return {wait:false,group:group,
+    source:group.map(function(q){return q.segment.sourceText;}).join(''),
+    target:group.map(function(q){return q.segment.translationText||'';}).filter(Boolean).join(' ')};
+}
 function segTtsWait(j,reason,details){
   if(j.ttsWait&&j.ttsWait.reason===reason)return;
   segTtsResume(j);
@@ -15900,6 +16043,117 @@ function segTtsResume(j){
   if(!j.ttsWait)return;
   dlog('segment','tts-wait-end',{cardId:j.card.id,segmentId:j.segment.id,
     reason:j.ttsWait.reason,waitMs:Date.now()-j.ttsWait.at});j.ttsWait=null;
+}
+
+/* ---------------- Aivis の先読み ----------------
+   読み上げは1件ずつで、次の部分の合成要求は、前の音が鳴り終わってから出していた。
+   Aivis は最初の音まで0.2〜0.5秒かかるので、部分が替わるたびにその分の無音が挟まる
+   （190秒の記録で約15回の切り替わり）。前の音を受信し終え、鳴り終わりまで
+   AIVIS_PREFETCH_LEAD_MS を切ったら、次に送る組の要求を先に出しておく。
+   - 鳴らすのは今までどおり前の音が終わってから。音は重ねない。
+   - 送る本文は segPump と同じ segAivisGroup で決める。送るときに本文・声・話速の
+     どれか1つでも違えば、先読みした応答は使わずに捨てて頼み直す。
+   - 1回の先読みは1回の要求。ただし前の音と重ならないぶん読み上げが話し手に追いつくので、
+     まとめて送れる部分が減り、要求の数は増える（代役の Aivis で6文が4回→6回）。
+     直近60秒に AIVIS_PREFETCH_BUDGET 回以上送っていたら先読みせず、従来どおり
+     まとめて送る。429 で止められているとき、枠を使い切っているときも先読みしない。
+   - 前の音の受信中は先読みしない（Aivis へ同時に2本つながない）。 */
+var AIVIS_PREFETCH_LEAD_MS=1200,AIVIS_PREFETCH_MAX_AGE_MS=8000,AIVIS_PREFETCH_BUDGET=8;
+var AIVIS_PREFETCH=null,AIVIS_STREAM_TAIL=null;
+var AIVIS_PREFETCH_STATS={started:0,hit:0,dropped:0,aheadMs:0,headersLate:0,budget:0,drops:{}};
+function aivisPrefetchMode(){return String((typeof CFG!=='undefined'&&CFG&&CFG.aivisPrefetch)||'on')==='off'?'off':'on';}
+function aivisPrefetchDrop(why){
+  var p=AIVIS_PREFETCH;if(!p)return;AIVIS_PREFETCH=null;
+  try{if(p.ctrl)p.ctrl.abort();}catch(e){}
+  /* 応答が届いた後の abort は本文を止めない。読まずに閉じる。 */
+  p.promise.then(function(r){try{if(r&&r.body&&r.body.cancel)r.body.cancel().catch(function(){});}catch(e){}},function(){});
+  AIVIS_PREFETCH_STATS.dropped++;AIVIS_PREFETCH_STATS.drops[why]=(AIVIS_PREFETCH_STATS.drops[why]||0)+1;
+  dlog('tts','aivis-prefetch-drop',{why:why,ageMs:Date.now()-p.at,members:p.jobs.length,chars:p.chars});
+}
+/* 送る直前に呼ぶ。要求本文が完全に一致したときだけ先読みを渡す。 */
+function aivisPrefetchTake(key){
+  var p=AIVIS_PREFETCH;if(!p)return null;
+  if(p.gen!==ttsGen){aivisPrefetchDrop('stopped');return null;}
+  if(p.key!==key){aivisPrefetchDrop('body-changed');return null;}
+  AIVIS_PREFETCH=null;
+  var age=Date.now()-p.at;
+  AIVIS_PREFETCH_STATS.hit++;AIVIS_PREFETCH_STATS.aheadMs+=age;if(!p.headersAt)AIVIS_PREFETCH_STATS.headersLate++;
+  dlog('tts','aivis-prefetch-hit',{ageMs:age,headersReady:!!p.headersAt,headersMs:p.headersAt?p.headersAt-p.at:null,
+    members:p.jobs.length,chars:p.chars});
+  return p;
+}
+/* segPump の送り出しで、先読みした組がそのまま使えるか。本文は部分ごとに比べる。 */
+function aivisPrefetchPlanned(j,useSource){
+  var p=AIVIS_PREFETCH;if(!p)return null;
+  if(p.jobs[0]!==j||p.useSource!==!!useSource){aivisPrefetchDrop('plan-changed');return null;}
+  var ok=p.jobs.every(function(q,i){var t=useSource?q.segment.sourceText:q.segment.translationText||'';
+    return !q.cancelled&&q.epoch===SEG.epoch&&!q.card.segment.cancelled&&SEG.queue.indexOf(q)>=0&&!q.segment.dispatched&&
+      t===p.parts[i]&&(useSource||(q.segment.translationReady&&!q.segment.translationError))&&segAudioAllowed(q.card);});
+  if(!ok){aivisPrefetchDrop('text-changed');return null;}
+  return {wait:false,group:p.jobs.slice(),rate:p.rate,
+    source:p.jobs.map(function(q){return q.segment.sourceText;}).join(''),
+    target:p.jobs.map(function(q){return q.segment.translationText||'';}).filter(Boolean).join(' ')};
+}
+/* 鳴っている部分の次に送る組を下見する。segPump が送り出す前に確かめることを、
+   副作用なしで同じ順に確かめる。1つでも通らなければ先読みしない。 */
+function segPrefetchPlan(now){
+  var a=SEG.active;if(!a||a.manual)return null;
+  SEG.queue.sort(segQueueCompare);
+  var members=a.group||[a],j=null;
+  for(var i=0;i<SEG.queue.length;i++){var c=SEG.queue[i];
+    if(members.indexOf(c)>=0||c.cancelled||c.epoch!==SEG.epoch||c.card.segment.cancelled)continue;j=c;break;}
+  if(!j||j.manual||j.forceBrowserTts||j.segment.dispatched)return null;
+  var e=j.card,s=j.segment,useSource=!!CFG.ttsSrc,lang=useSource?e.srcLang:e.dstLang;
+  if(lang!=='ja'||!ttsProv().segmentJapaneseBatch||!segManualJobValid(j)||segEarlierOpen(j))return null;
+  if(!useSource&&(!s.translationReady||s.translationError))return null;
+  if(!segAudioAllowed(e)||!(useSource?s.sourceText:s.translationText||'').trim())return null;
+  if(ttsShortSkipFor({srcText:s.sourceText,dstText:s.translationText||'',srcLang:e.srcLang,dstLang:e.dstLang},useSource))return null;
+  var debt=segDebt(),silence=segSilence(e,now),overlap=segOverlapFor(e,debt);
+  if(overlap==='avoid'&&!e.segment.final&&(silence===null||silence<segPolicyFor(e,debt).silence))return null;
+  if(TurnDecision.applies(e.srcLang)&&TurnDecision.floorHold(j,silence,now,overlap))return null;
+  if(aivisFallbackWait()>0||aivisRateWait()>0||ttsRateWaitMs()>0)return null;
+  if(!CFG.aivisStream||!window.ReadableStream||!aivisKey()||!aivisModelFor(e.seat))return null;
+  var ctx=ttsAudioCtx();if(!ctx||!ttsCtxCanRoute(ctx,e.seat))return null;
+  var g=segAivisGroup(j,useSource,now,true);if(g.wait)return null;
+  return {jobs:g.group,text:useSource?g.source:g.target,useSource:useSource,seat:e.seat,prosody:e.prosody,
+    rate:e.segment.mode==='adaptive'?segAdaptiveState(e,debt).rate:1,
+    parts:g.group.map(function(q){return useSource?q.segment.sourceText:q.segment.translationText||'';})};
+}
+function aivisPrefetchStart(plan,now){
+  var prev=SEG.dispatchRate,body;SEG.dispatchRate=plan.rate;
+  try{body=aivisBody(plan.text,plan.seat,'wav',plan.prosody);}finally{SEG.dispatchRate=prev;}
+  var key=JSON.stringify(body),ctrl=null;try{ctrl=new AbortController();}catch(e){}
+  var p={key:key,gen:ttsGen,epoch:SEG.epoch,at:now,ctrl:ctrl,jobs:plan.jobs,parts:plan.parts,
+    useSource:plan.useSource,rate:plan.rate,chars:plan.text.length,headersAt:0};
+  p.promise=aivisLimitedFetch(AIVIS_URL,{method:'POST',signal:ctrl&&ctrl.signal,
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+aivisKey()},body:key},
+    {guardMs:Math.min(120000,12000+plan.text.length*200)});
+  p.promise.then(function(){p.headersAt=Date.now();},function(){});
+  AIVIS_PREFETCH=p;AIVIS_PREFETCH_STATS.started++;
+  dlog('tts','aivis-prefetch',{cardId:plan.jobs[0].card.id,members:plan.jobs.map(function(q){return q.segment.id;}),
+    chars:plan.text.length,remainMs:AIVIS_STREAM_TAIL?Math.round(AIVIS_STREAM_TAIL.remainMs()):null,rate:plan.rate});
+}
+/* segTick から毎回呼ぶ。古くなった先読みを捨て、条件がそろえば1件だけ先読みする。 */
+function aivisPrefetchTick(now){
+  var p=AIVIS_PREFETCH;
+  if(p){
+    var why=p.gen!==ttsGen?'stopped':p.epoch!==SEG.epoch?'reset':now-p.at>AIVIS_PREFETCH_MAX_AGE_MS?'expired':
+      (SEG.queue.indexOf(p.jobs[0])<0||p.jobs[0].segment.dispatched)?'unused':aivisPrefetchMode()==='off'?'off':'';
+    if(why)aivisPrefetchDrop(why);
+    return;
+  }
+  if(aivisPrefetchMode()==='off')return;
+  var t=AIVIS_STREAM_TAIL;
+  if(!SEG.active||!t||t.gen!==ttsGen||!t.recvDone||t.remainMs()>AIVIS_PREFETCH_LEAD_MS)return;
+  var plan=segPrefetchPlan(now);
+  if(!plan)return;
+  aivisWindowWait();                         /* 60秒より古い記録を落としてから数える */
+  if(AIVIS_RATE.sent.length>=AIVIS_PREFETCH_BUDGET){
+    if(SEG.active.prefetchBudget!==true){SEG.active.prefetchBudget=true;AIVIS_PREFETCH_STATS.budget++;
+      dlog('tts','aivis-prefetch-skip',{why:'budget',count60s:AIVIS_RATE.sent.length,budget:AIVIS_PREFETCH_BUDGET,limit:10});}
+    return;
+  }
+  aivisPrefetchStart(plan,now);
 }
 function segPump(){
   if(SEG.active||ttsIsBusy())return;
@@ -15944,7 +16198,7 @@ function segPump(){
         continue;
       }
     }
-    var group=[j],source=s.sourceText,target=s.translationText||'';
+    var group=[j],source=s.sourceText,target=s.translationText||'',planned=null;
     if(ttsProv().segmentJapaneseBatch&&lang==='ja'&&!j.forceBrowserTts){
       /* ここで逃がすのは、こちら側の数え（＝予測）では無く aivisOverLimit が
          「回す」と言っている場合か、Aivis が429で実際に止めている場合だけ。
@@ -15961,28 +16215,15 @@ function segPump(){
           overLimit:aivisOverLimitMode(),
           waitMs:rateWait,count60s:AIVIS_RATE.sent.length,limit:10});
       }
-      var voiceKey=segAivisVoiceKey(e);
-      // Collect adjacent ready parts with identical effective synthesis settings.
-      for(var n=1;n<SEG.queue.length;n++){
-        var next=SEG.queue[n],ns=next.segment,ne=next.card;
-        if(segEarlierOpen(next))break;
-        if(next.partOnly||j.partOnly||!segManualJobValid(next)||next.cancelled||next.epoch!==j.epoch||ne.segment.cancelled||!!next.manual!==!!j.manual||
-          ne.seat!==e.seat||ne.srcLang!==e.srcLang||ne.dstLang!==e.dstLang||JSON.stringify(ne.origin)!==JSON.stringify(e.origin)||((ne.speaker&&ne.speaker.id)!==(e.speaker&&e.speaker.id))||
-          segAivisVoiceKey(ne)!==voiceKey||
-          (!useSource&&(!ns.translationReady||ns.translationError))||(!next.manual&&!segAudioAllowed(ne)))break;
-        var more=useSource?ns.sourceText:ns.translationText||'';
-        if(!(more.trim())||(useSource?source:target).length+more.length+(useSource?0:1)>500)break;
-        source+=ns.sourceText;target+=(target&&ns.translationText?' ':'')+(ns.translationText||'');group.push(next);
-      }
-      // Prefer full sentences for Aivis, even if Fast translation commits at commas.
-      var cut=0;
-      group.forEach(function(q,i){if(segPartEndsSentence(q,useSource))cut=i+1;});
-      if(cut&&cut<group.length)group=group.slice(0,cut);
-      else if(!cut&&(useSource?source:target).length<500&&Date.now()-(group[group.length-1].card.segment.lastUpdate||0)<1500){segTtsWait(j,'sentence-boundary');return;}
-      source=group.map(function(q){return q.segment.sourceText;}).join('');
-      target=group.map(function(q){return q.segment.translationText||'';}).filter(Boolean).join(' ');
+      /* 先読みした組がまだ有効なら、その組のまま送る。あとから続きが届いて組が
+         伸びるとしても、合成済みの要求を捨てて頼み直すより早く、回数も増えない。 */
+      if(j.forceBrowserTts)aivisPrefetchDrop('browser-fallback');
+      else planned=aivisPrefetchPlanned(j,useSource);
+      var g=planned||segAivisGroup(j,useSource,Date.now(),false);
+      if(g.wait){segTtsWait(j,'sentence-boundary');return;}
+      group=g.group;source=g.source;target=g.target;
     }
-    var rate=e.segment.mode==='adaptive'&&ttsProv().segmentJapaneseBatch&&lang==='ja'?segAdaptiveState(e,segDebt()).rate:1;
+    var rate=planned?planned.rate:e.segment.mode==='adaptive'&&ttsProv().segmentJapaneseBatch&&lang==='ja'?segAdaptiveState(e,segDebt()).rate:1;
     segTtsResume(j);
     j.group=group;
     j.dispatchOrder=++SEG.dispatchOrder;
@@ -16047,7 +16288,7 @@ function segTick(){
         SEG.queue=SEG.queue.filter(function(q){return finishedGroup.indexOf(q)<0;});SEG.active=null;segRefreshPlayback(j);
       }
     }
-    segPump();segStatus();
+    segPump();aivisPrefetchTick(Date.now());segStatus();
     // Completed cards remain on S.entries for logs; release runtime scheduling references.
     SEG.cards=SEG.cards.filter(function(e){return !e.segment.cancelled&&(!e.segment.final||e.segments.some(function(s){return s.translating||!s.translationReady;})||SEG.queue.some(function(j){return j.card===e;}));});
     if(!SEG.cards.length&&!SEG.queue.length&&!SEG.translations&&!SEG.retranslations.length){clearInterval(SEG.timer);SEG.timer=null;}
