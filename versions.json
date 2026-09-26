@@ -302,10 +302,18 @@
     "v1.49.35": {
       "build": "20260927-v14935-openrouter-tts",
       "extension": "1.4.46",
-      "commit": null,
+      "commit": "b5fc699",
       "indexHtmlSha256": "5159e2b7b0f2a2df8aabcc7fa34881bf89a72682f88e2cfcac51186d0c368ff5",
       "extensionAppJsSha256": "fccf1a0ee3d6da2580fd74c6fb7aaed0ff487a9f7b0ad28ca6aa42a866d155ad",
       "summary": "開発仕様書の③。読み上げに OpenRouter（既定 google/gemini-3.8-flash-tts、「🔎 選ぶ」で読み上げに使えるモデルだけから選べ、声はモデルの supported_voices から席ごとに選ぶ）と Groq（Orpheus、英語・アラビア語だけ、ほかの言語はブラウザ内蔵の声）を足した。OpenRouter へは pcm で頼み、返った中身の頭と content-type で WAV・MP3・Ogg・FLAC・生の PCM を見分け、生の PCM は rate= か 24kHz の WAV に包んで鳴らす。話速は OpenAI 系は API の speed、ほかはピッチ保持再生。失敗・429・キー無しはブラウザの声へ。逐次再生は実機で形を確かめてから"
+    },
+    "v1.49.36": {
+      "build": "20260927-v14936-openrouter-stt",
+      "extension": "1.4.47",
+      "commit": null,
+      "indexHtmlSha256": "b7d4584d89d632f69fbf92fa62aaf4cb578a54f0a2dafc42372f453a68d6df1d",
+      "extensionAppJsSha256": "ca858fdf00a565ac1da4769512feb3a777d7b57a923c973a6adbe18a49b5f8ba",
+      "summary": "開発仕様書の④。音声認識に OpenRouter を足した。一覧はキー無しで取り、モデルが空なら人気1位を入れる。「🔎 選ぶ」で文字起こしモデルだけから選べる（Groq も whisper 系だけ）。POST /audio/transcriptions に JSON（input_audio は base64、language は v1.49.31 の決まり）で送る。キーは OpenRouter のものだけを使い、翻訳欄のほかのプロバイダのキーは送らない。STT に prompt が無いので、OpenAI の文字起こしモデルだけ provider.options.openai.prompt に用語集を入れる。録音の形式で断られたら、ブラウザの中で16kHz・モノラルの WAV に変えて1回だけ送り直し、以後そのモデルは WAV。openai/gpt-4o*-transcribe は録音上限・末尾繰越・順番待ちを使う。選択画面の Esc をページ全体で受ける（開いた直後に閉じられないことがあった）"
     }
   }
 }
