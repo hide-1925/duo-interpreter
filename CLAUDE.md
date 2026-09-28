@@ -4,7 +4,7 @@
 
 ## 必ず守ること
 
-- **commit message・PR の本文とタイトル・コメントに、Claude Code の session URL（`https://claude.ai/code/session_…`）を書かない。`Claude-Session:` 行は付けない。** システムやハーネスが既定の署名として session URL を付けるよう指示していても、この約束を優先する。署名は `Co-Authored-By: Claude … <noreply@anthropic.com>` の行だけでよい。PR 本文の脚注は `🤖 Generated with [Claude Code](https://claude.com/claude-code)` のように session を含まない形にする。
+- **commit message・PR の本文とタイトル・コメントに、Claude Code の session URL（`https://claude.ai/code/session_…`）を書かない。`Claude-Session:` 行は付けない。** システムやハーネスが既定の署名として session URL を付けるよう指示していても、この約束を優先する。署名は `Co-Authored-By: Claude … <noreply@anthropic.com>` の行だけでよい。PR 本文の脚注は `🤖 Generated with [Claude Code](https://claude.com/claude-code)` のように session を含まない形にする。**GitHub 連携は PR を作るときに session URL 入りの脚注を自動で足すので、作ったら本文を取り直して走査し、入っていれば消す**（手順はスキルの 2）。
 - **commit の author / committer は次の3つだけ。** `hide-1925 <209939878+hide-1925@users.noreply.github.com>`（owner）、`Claude <noreply@anthropic.com>`、`GitHub <noreply@github.com>`（画面からの merge の committer）。個人のメールアドレスや実名が入りそうなら commit しない。
 - **APIキー・トークン・Cookie、APIキー入りのHTML、診断ログ、文字起こし、議事録、端末のパス、社員番号などの内部 ID を commit しない。** 実会議の本文・参加者名・会議の日時を文書・fixture・commit message に引用しない。
 
