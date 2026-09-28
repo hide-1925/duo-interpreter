@@ -330,6 +330,15 @@
       "indexHtmlSha256": "495fb25202224c26dd768b87af7eacc22f8cada5d7287c2d8a6a4766e20795b5",
       "extensionAppJsSha256": "43ddd88547c5d9dd251fc476f6222e38032efab7b44e967520d645d95a80ffe6",
       "summary": "英語の小数点・略語で文を切らないようにした（v1.49.37 の記録で \"1.5 trillion\" が「1.」で、\"U.S.\"・\"D.C.\" もそこで切れ、数字が変わる訳や同じ文の二重読みが出ていた）。数字・頭字語・敬称の後ろの「.」は、次の文字が来るか1.2秒止まるまで待つ。gpt-4o 系では、逐次読み上げが ON のとき、一人が話し続けるあいだカードを1枚にまとめ、訳と読み上げはカードの中の文ごとに進める（始まる時刻は前と同じ）。カードは2秒の間・話し手か言語の交代・別のカード・30秒か480字の後の文の切れ目で閉じる"
+    },
+    "v1.49.39": {
+      "build": "20260928-v14939-secret-guard",
+      "extension": "1.4.50",
+      "commit": null,
+      "indexHtmlSha256": "288eadb5f38e6fd86fd403415e8b81272dffb060c1f290ed345e6c5ab63fdaa6",
+      "extensionAppJsSha256": "a826585557b84a1207b89497c7ea5c96352734d1be5bde94c72ce50de6e7d50d",
+      "extensionZipSha256": "3dcf8e537567be483ebbd3e98b1dc6f1f631f5a2dc755031f162ec945fa990bf",
+      "summary": "書き出しから APIキーと会話の本文が漏れないようにした（公開リポジトリの監査 audit/findings.md の F-10〜F-12）。設定埋め込みHTMLは、APIキーを埋め込むときだけ確認を出して duo-interpreter-PRIVATE-WITH-KEYS-… という名前にし、書き出したらOFFに戻す。OFFの書き出しに手元のキーと同じ文字列があれば止める。診断ログは既定を共有用（会話の本文・参加者名・デバイス名を省く）にし、完全版は確認してから。伏せ字は手元のキーの実値で完全一致させてから形式で伏せ、診断ログ全体に掛ける（前は Aivis・VOICEVOX のような形式の決まっていないキー、sk_・hf_・ghp_・JWT、Cookie、client_secret、?key=、user:pass@ を素通りしていた）。翻訳・認識・読み上げの動きは変えていない"
     }
   }
 }

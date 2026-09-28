@@ -797,8 +797,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.38';
-var APP_BUILD = '20260927-v14938-4o-cards';
+var APP_VERSION = 'v1.49.39';
+var APP_BUILD = '20260928-v14939-secret-guard';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -3399,13 +3399,32 @@ try{
     dlog('app','REJECT',{msg:String((r&&r.message)||r||'').slice(0,200)});
   });
 }catch(_e){}
-/* APIキーらしき文字列は書き出し時に必ず伏せる（そのまま貼れるようにするため） */
+/* APIキーらしき文字列は書き出し時に必ず伏せる（そのまま貼れるようにするため）。
+   形式の決まっていないキー（Aivis・VOICEVOX・独自の互換APIなど）は正規表現では
+   拾えないので、いま手元にあるキーの実値を先に完全一致で伏せ、そのあと形式で伏せる。 */
+function knownSecrets(){
+  var out=[],add=function(v){v=String(v==null?'':v).trim();if(v.length>=8&&out.indexOf(v)<0)out.push(v);};
+  var each=function(map){if(map&&typeof map==='object')Object.keys(map).forEach(function(k){add(map[k]);});};
+  try{each(KEYS);}catch(e){}
+  try{each(EMBED&&EMBED.keys);}catch(e){}
+  try{var m=CFG.turnDecisionKeys;each(typeof m==='string'&&m?JSON.parse(m):m);}catch(e){}
+  try{add(CFG.turnDecisionApiKey);}catch(e){}
+  return out.sort(function(a,b){return b.length-a.length;});
+}
 function redact(s){
-  return String(s)
+  s=String(s);
+  knownSecrets().forEach(function(v){s=s.split(v).join('***REDACTED***');});
+  return s
     .replace(/\bek_[A-Za-z0-9_\-]{6,}/g, 'ek_***REDACTED***')
     .replace(/\b(sk|rk|gsk|xai|pk|sk-ant)-[A-Za-z0-9_\-]{6,}/gi, '$1-***REDACTED***')
+    .replace(/\b(sk|gsk|hf|ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_\-]{12,}/g, '$1_***REDACTED***')
     .replace(/\bAIza[A-Za-z0-9_\-]{8,}/g, 'AIza***REDACTED***')
-    .replace(/(Bearer\s+)[A-Za-z0-9._\-]{6,}/gi, '$1***REDACTED***');
+    .replace(/\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}/g, '***REDACTED***')
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+\/=\-]{6,}/gi, '$1***REDACTED***')
+    .replace(/(\b(?:authorization|proxy-authorization|x-api-key|api-key|xi-api-key|x-goog-api-key|set-cookie|cookie)["']?\s*[:=]\s*["']?)[^"'\r\n}]+/gi, '$1***REDACTED***')
+    .replace(/(\b(?:api_?key|apikey|client_secret|secret|access_token|refresh_token|token|password|credential)["']?\s*[:=]\s*["'])[^"'\r\n]{4,}?(["'])/gi, '$1***REDACTED***$2')
+    .replace(/([?&#;](?:key|api_?key|apikey|token|access_token|secret|client_secret|auth|sig|signature|password)=)[^&#\s"'<>]+/gi, '$1***REDACTED***')
+    .replace(/(\b[a-z][a-z0-9+.\-]*:\/\/)[^\/\s:@"'<>]+:[^\/\s@"'<>]+@/gi, '$1***REDACTED***@');
 }
 
 /* =========================================================================
@@ -10945,9 +10964,24 @@ function stamp(){
 /* =========================================================================
    HTML 埋め込み書き出し
    ========================================================================= */
+/* APIキー入りのファイルは名前で見分けられるようにし、.gitignore の
+   duo-interpreter-*PRIVATE*.html に必ず当たる形にする。 */
+function exportHtmlFileName(withKeys){
+  return (withKeys ? 'duo-interpreter-PRIVATE-WITH-KEYS-' : 'duo-interpreter-') + stamp() + '.html';
+}
+/* 埋め込みOFFの書き出しに、手元のキーと同じ文字列が1つでも入っていれば止める。
+   コンテキストや用語集へキーを貼ってしまった場合もここで捕まえる。 */
+function exportLeaksKey(html){
+  return knownSecrets().some(function(v){ return html.indexOf(v) >= 0; });
+}
 function exportHtml(){
+  var withKeys = !!$('embedKey').checked;
+  if (withKeys && !confirm('APIキーを平文のままHTMLへ埋め込みます。\n\n'
+      + '・このファイルを人に渡したり、Git に commit したりしないでください。\n'
+      + '・ファイル名は duo-interpreter-PRIVATE-WITH-KEYS-… になります。\n\n'
+      + 'APIキーを埋め込んで書き出しますか？')) return;
   var data = exportData();
-  if ($('embedKey').checked) data.keys = KEYS;
+  if (withKeys) data.keys = KEYS;
 
   var clone = document.documentElement.cloneNode(true);
   // 動的要素を掃除
@@ -10974,8 +11008,13 @@ function exportHtml(){
   if (ec) ec.textContent = '\n' + JSON.stringify(data, null, 1).replace(/</g, '\\u003c') + '\n';
 
   var html = '<!DOCTYPE html>\n' + clone.outerHTML;
-  download('duo-interpreter-' + stamp() + '.html', html, 'text/html;charset=utf-8');
-  toast('設定と用語集を埋め込んだHTMLを書き出しました（' + data.glossary.length + '件）', true);
+  if (!withKeys && exportLeaksKey(html)){
+    toast('書き出しを止めました。APIキーと同じ文字列が設定・用語集・コンテキストのどこかに入っています。消してから書き出してください。');
+    return;
+  }
+  download(exportHtmlFileName(withKeys), html, 'text/html;charset=utf-8');
+  $('embedKey').checked = false;
+  toast((withKeys ? 'APIキー入りの' : '') + '設定と用語集を埋め込んだHTMLを書き出しました（' + data.glossary.length + '件）', true);
 }
 
 /* =========================================================================
@@ -13144,15 +13183,41 @@ function diagnosticRows(section,ctx){
     });
 }
 
-function diagText(devices){
-  var out = [], now = new Date();
+/* 共有用（既定）の診断では、会話の本文・参加者名・デバイス名を落とす。
+   動作ログの値は、本文を運ぶ名前のキーを字数に置き換える。それ以外のキーでも、
+   英数字記号だけの短い値でなければ字数に置き換える（本文の取りこぼしを防ぐ）。
+   理由・エラー・状態などの識別用のキーは、原因調査に要るので残す。 */
+var DIAG_TEXT_KEYS=/^(text|texts|from|to|context|label|labels|dev|what|detail|speaker|speakers|speakerName|participant|participants|instructions|prompt|raw|rawText|delta|tail|before|after|currentText|sourceText|srcText|dstText|translation|translationText|content|transcript|utterance|glossary|ctx|body|deviceId|groupId)$/;
+var DIAG_REASON_KEYS=/^(why|reason|reasons|err|error|msg|message|name|stage|route|kind|provider|model|mode|state|status|src|tag|seat|lang|language|source|type|event|phase|step|policy|profile|surface|transport|engine|sessionType|voice)$/;
+function diagSafeValue(v,key){
+  if(v===null||v===undefined||typeof v==='number'||typeof v==='boolean')return v;
+  if(key&&DIAG_TEXT_KEYS.test(key))return typeof v==='string'?'['+v.length+'文字]':'[省略]';
+  if(typeof v==='string'){
+    if(key&&DIAG_REASON_KEYS.test(key))return v.slice(0,200);
+    return /^[\x20-\x7e]{0,80}$/.test(v)?v:'['+v.length+'文字]';
+  }
+  if(Array.isArray(v))return v.map(function(x){return diagSafeValue(x,key);});
+  if(typeof v==='object'){var o={};Object.keys(v).forEach(function(k){o[k]=diagSafeValue(v[k],k);});return o;}
+  return '['+typeof v+']';
+}
+/* 設定の行に出るデバイス名（マイク・仮想ケーブル・出力先）を伏せる。 */
+function diagSafeRow(v){
+  var s=String(v==null?'':v);
+  ['micDevLbl','vbDevLbl','outDevLocalLbl','outDevRemoteLbl'].forEach(function(k){
+    var l=String(CFG[k]||'');if(l)s=s.split(l).join('(デバイス名は省略)');
+  });
+  return s;
+}
+function diagText(devices, full){
+  var out = [], now = new Date(), safe = !full;
   var pad = function(s,n){ s=String(s); while(s.length<n) s+=' '; return s; };
   var lpad = function(s,n){ s=String(s); while(s.length<n) s=' '+s; return s; };   // 時刻は右寄せで桁を揃える
   var cell = function(v){ return String(v==null?'':v).replace(/\|/g,'\\|').replace(/\n/g,' '); };
 
-  out.push('# Duo Interpreter 診断ログ', '');
+  out.push('# Duo Interpreter 診断ログ' + (safe ? '（共有用）' : '（完全版）'), '');
   out.push('> このファイルをそのまま Claude に貼って「これを見て原因を教えて」と伝えてください。');
-  out.push('> APIキーは自動で伏せ字にしています。ただし**会話の内容が含まれる**ので、共有前に中身をご確認ください。', '');
+  if (safe) out.push('> 共有用です。会話の本文・参加者名・デバイス名は省き、APIキーは伏せ字にしています。', '');
+  else out.push('> **完全版です。会話の本文・参加者名・デバイス名が含まれます。** APIキーは伏せ字にしていますが、共有前に中身をご確認ください。', '');
   out.push('- 生成日時: ' + now.toLocaleString());
   out.push('- バージョン: Duo Interpreter '+APP_VERSION);
   out.push('- ビルドID: ' + APP_BUILD);
@@ -13167,14 +13232,15 @@ function diagText(devices){
 
   out.push('## 設定', '', '| 項目 | 値 |', '|---|---|');
 
-  diagnosticRows('settings',diagContext).forEach(function(r){ out.push('| ' + cell(r[0]) + ' | ' + cell(r[1]) + ' |'); });
+  diagnosticRows('settings',diagContext).forEach(function(r){ out.push('| ' + cell(r[0]) + ' | ' + cell(safe ? diagSafeRow(r[1]) : r[1]) + ' |'); });
   var ks = Object.keys(KEYS||{}).filter(function(k){ return String(KEYS[k]||'').trim(); });
   out.push('| APIキー設定済み | ' + (ks.length ? cell(ks.join(', ')) : 'なし') + ' |');
   out.push('| Base URL | ' + cell(CFG.baseUrl ? redact(CFG.baseUrl) : '(未設定)') + ' |', '');
 
   if (devices && devices.length){
     out.push('## 検出された音声入力デバイス', '');
-    devices.forEach(function(d,i){ out.push('- ' + (i+1) + '. ' + cell(d.label || '(ラベル非公開)')); });
+    if (safe) out.push('- ' + devices.length + ' 台（名称は共有用のため省略）');
+    else devices.forEach(function(d,i){ out.push('- ' + (i+1) + '. ' + cell(d.label || '(ラベル非公開)')); });
     out.push('');
   }
 
@@ -13209,7 +13275,12 @@ function diagText(devices){
     var b=e.segment;out.push('- '+cell(e.id)+' / '+cell(e.status)+' / 部分数 '+e.segments.length+' / overlap '+(b.playMs?(100*b.overlapMs/b.playMs).toFixed(1):'0')+'%（入力レベルからの推定）');
     e.segments.forEach(function(s){out.push('  - seq='+s.seq+' '+cell(s.state)+' / '+s.sourceText.length+'文字 / '+cell((s.commitReason||[]).join('+'))+' / 訂正 '+(s.corrected?'あり':'なし')+' / audio '+cell(s.audio?s.audio.status+(s.audio.skipReason?'（'+s.audio.skipReason+'）':''):'none'));});
   });out.push('');
-  out.push('## Speaker / Conference', '',JSON.stringify({conference:{mode:conferenceAudioState.mode,connected:conferenceAudioState.connected,relay:conferenceAudioState.relay,micGain:conferenceAudioState.micGain,ttsGain:conferenceAudioState.ttsGain},speakerAvailable:DuoSpeakers.available,participants:Array.from(DuoSpeakers.registry.values()),cards:S.entries.map(function(e){return {cardId:e.id,utteranceId:e.utteranceId,startedAt:e.startedAt,endedAt:e.audioEndedAt||e.endedAt,speaker:e.speaker};})},null,2),'');
+  var conf={mode:conferenceAudioState.mode,connected:conferenceAudioState.connected,relay:conferenceAudioState.relay,micGain:conferenceAudioState.micGain,ttsGain:conferenceAudioState.ttsGain};
+  var participants=Array.from(DuoSpeakers.registry.values());
+  var speakerCards=S.entries.map(function(e){return {cardId:e.id,utteranceId:e.utteranceId,startedAt:e.startedAt,endedAt:e.audioEndedAt||e.endedAt,speaker:e.speaker};});
+  out.push('## Speaker / Conference', '',JSON.stringify(safe
+    ? {conference:conf,speakerAvailable:DuoSpeakers.available,participants:participants.length,cards:speakerCards.length,cardsWithSpeaker:speakerCards.filter(function(c){return !!c.speaker;}).length}
+    : {conference:conf,speakerAvailable:DuoSpeakers.available,participants:participants,cards:speakerCards},null,2),'');
   out.push('## 動作ログ', '');
   if (!DLOG.length){
     out.push('（記録なし。「開始」を押して操作したあとに書き出すと記録されます）', '');
@@ -13219,7 +13290,7 @@ function diagText(devices){
       var ts = '+' + (e.t/1000).toFixed(3) + 's';
       var line = '[' + lpad(ts, 10) + '] ' + pad(e.c, 9) + ' ' + pad(e.m, 14);
       if (e.d !== undefined && e.d !== null){
-        var j; try{ j = JSON.stringify(e.d); }catch(_){ j = '(未整形)'; }
+        var j; try{ j = JSON.stringify(safe ? diagSafeValue(e.d) : e.d); }catch(_){ j = '(未整形)'; }
         line += ' ' + j;
       }
       out.push(redact(line));
@@ -13230,6 +13301,7 @@ function diagText(devices){
   var rows = logRows();
   out.push('## 会話ログ（' + rows.length + ' 件）', '');
   if (!rows.length) out.push('（なし）', '');
+  else if (safe) out.push('（共有用のため本文は省きました。「完全版」で書き出すと含まれます）', '');
   else {
     rows.forEach(function(e){
       out.push('- `' + e.time + '` **' + duoSpeakerName(e) + '** (' + L(e.srcLang).name + ') ' + cell(e.srcText));
@@ -13237,12 +13309,20 @@ function diagText(devices){
     });
     out.push('');
   }
-  return out.join('\n');
+  /* 最後に全体へ掛ける。動作ログ以外の行（エラー文・URL・状態）にもキーが紛れうる。 */
+  return redact(out.join('\n'));
 }
 
+/* 完全版はチェックに加えて書き出す前に確認する。取り消したら何も出さない。 */
+function diagMode(){
+  var box=$('diagFull');
+  if(!box||!box.checked)return 'safe';
+  return confirm('完全版の診断ログには、会話の本文・参加者名・デバイス名が含まれます。\n'
+    +'共有する前に中身を確認してください。\n\n完全版で書き出しますか？') ? 'full' : '';
+}
 /* マイク一覧（どのマイクが繋がっているか）も入れられれば入れてから組み立てる */
-function withDiagText(cb){
-  var go = function(devs){ cb(diagText(devs)); };
+function withDiagText(cb, full){
+  var go = function(devs){ cb(diagText(devs, full)); };
   if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices){
     navigator.mediaDevices.enumerateDevices()
       .then(function(ds){ go(ds.filter(function(d){ return d.kind === 'audioinput'; })); })
@@ -13250,18 +13330,20 @@ function withDiagText(cb){
   } else go(null);
 }
 $('dlDiag').onclick = function(){
+  var mode=diagMode();if(!mode)return;
   withDiagText(function(t){
-    download('duo-diagnostics-' + stamp() + '.md', t, 'text/markdown;charset=utf-8');
-    toast('診断ログを書き出しました。そのまま Claude に貼り付けられます。', true);
-  });
+    download('duo-diagnostics-' + (mode==='full'?'full-':'') + stamp() + '.md', t, 'text/markdown;charset=utf-8');
+    toast((mode==='full'?'完全版の':'共有用の')+'診断ログを書き出しました。そのまま Claude に貼り付けられます。', true);
+  }, mode==='full');
 };
 /* スマホではファイルを保存して開き直すのが手間なので、クリップボードに直接入れる */
 $('copyDiag').onclick = function(){
+  var mode=diagMode();if(!mode)return;
   withDiagText(function(t){
-    var ok = function(){ toast('診断ログをコピーしました（' + t.length + '文字）。Claudeの入力欄に貼り付けてください。', true); };
+    var ok = function(){ toast((mode==='full'?'完全版の':'共有用の')+'診断ログをコピーしました（' + t.length + '文字）。Claudeの入力欄に貼り付けてください。', true); };
     var ng = function(){
       // クリップボードが使えない場合は、選択してコピーできる状態で見せる
-      if(MINUTES.busy){download('duo-diagnostics-'+stamp()+'.md',t,'text/markdown;charset=utf-8');return;}
+      if(MINUTES.busy){download('duo-diagnostics-'+(mode==='full'?'full-':'')+stamp()+'.md',t,'text/markdown;charset=utf-8');return;}
       minutesStopMonitor();MINUTES.snapshot=null;MINUTES.fingerprint='';
       $('minStatus').textContent='診断ログ';$('dlMinSource').disabled=true;
       $('minBody').textContent = t;
@@ -13271,7 +13353,7 @@ $('copyDiag').onclick = function(){
     if (navigator.clipboard && navigator.clipboard.writeText)
       navigator.clipboard.writeText(t).then(ok).catch(ng);
     else ng();
-  });
+  }, mode==='full');
 };
 
 /* ログ */

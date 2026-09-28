@@ -1,3 +1,35 @@
 # probe-jev.ps1 が保存する実応答。会議の本文は入らないが、アカウント固有の
 # 応答なので版管理には載せない。
 tools/probe-jev-response.json
+
+# 監査用のローカル入力（実名・勤務先などの検索語）。Git に入れない。
+.audit-private-terms.txt
+
+# 秘密情報
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+credentials*.json
+secrets*.json
+
+# Duo が書き出す個人用・生成物（APIキー入りHTML、診断、文字起こし、議事録）
+duo-interpreter-20*.html
+duo-interpreter-*PRIVATE*.html
+duo-diagnostics-*.md
+duo-diagnostics-*.txt
+interpret-log-*.txt
+interpret-log-*.csv
+minutes-*.txt
+duo-subtitle-interaction*.json
+
+# ローカルの一時出力
+*.log
+*.tmp
+.scratch/
+.audit-work/

@@ -1,0 +1,6 @@
+{
+  "note": "tools/security-scan.cjs が確認済みの誤検知として飛ばす値。値そのものは書かず、規則名と SHA-256 の先頭8桁と理由だけを置く。",
+  "allow": [
+    {"rule": "private-ip", "sha256_8": "f5047344", "reason": "extension/tests/test-turn-proxy.cjs の X-Forwarded-For 偽装を拒否する試験の入力値（RFC1918 の例示アドレス）"}
+  ]
+}

@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.49",
-  "version_name": "1.4.49 HTML v1.49.38 と対。英語の小数点・略語で文を切らない。gpt-4o 系で話し続けるあいだカードを1枚にまとめる",
+  "version": "1.4.50",
+  "version_name": "1.4.50 HTML v1.49.39 と対。書き出し（設定埋め込みHTML・診断ログ）からAPIキーと会話の本文が漏れないようにする",
   "optional_host_permissions": [
     "https://*/*"
   ],

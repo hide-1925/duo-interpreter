@@ -1872,6 +1872,7 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
     <div class="field">
       <label>このHTMLファイルに焼き込んで保存</label>
       <label class="settings-check switch"><input type="checkbox" id="embedKey"> APIキーも埋め込む（自分専用ファイルにする場合のみ）</label>
+      <small id="embedKeyNote">⚠ ONにすると<b>APIキーが平文のままHTMLに入ります</b>。書き出したファイルは人に渡さず、Git に commit しないでください。ファイル名は「duo-interpreter-PRIVATE-WITH-KEYS-…」になり、書き出す前に確認を出し、書き出したあとはOFFに戻ります。</small>
       <button class="btn primary" id="saveHtml">⤓ 設定・用語集を埋め込んだHTMLを書き出す</button>
       <small>用語集・コンテキスト・各種設定を埋め込んだ新しい HTML を書き出します。書き出したファイルを配れば、相手のPCでも同じ用語集で動きます。<br>
       ※ 元ファイルは上書きされないので、ダウンロードしたものと置き換えてお使いください。</small>
@@ -1949,8 +1950,10 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
         <button class="btn" id="copyDiag">コピー（スマホ推奨）</button>
         <button class="btn" id="dlDiag">ファイルDL</button>
       </div>
-      <small>環境・設定・使用中のマイク・動作の記録・会話ログをまとめて出力します。不具合の原因調査用です。
-      そのまま Claude に貼り付けてください。APIキーは自動で伏せ字にしますが、会話内容が含まれるため共有前にご確認ください。</small>
+      <label class="settings-check switch"><input type="checkbox" id="diagFull"> 会話の本文・参加者名・デバイス名も含める（完全版）</label>
+      <small>環境・設定・動作の記録をまとめて出力します。不具合の原因調査用です。そのまま Claude に貼り付けてください。
+      既定は<b>共有用</b>で、会話の本文・参加者名・デバイス名を省き、APIキーは伏せ字にします。
+      完全版は会話の中身が入るので、書き出す前に確認を出します。共有する前に中身をご確認ください。</small>
       <button class="btn primary" id="genMinutes">AIで議事録を生成</button>
       <small>AIプロバイダ選択時に利用できます。確定した部分の最新原文と対応する訳を使います。認識を停止すると、停止時点の本文も含められます。</small>
     </div>
