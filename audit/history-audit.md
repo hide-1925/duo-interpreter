@@ -81,7 +81,10 @@ return message
 
 `extension/history/README-v1.4.11.md`・`validation-v1.4.11.json` にも旧 SHA があるが、過去版の記録で配布 zip にも入っているので変えない（書き換え後は辿れない参照になる）。
 
-## 3. dry-run の結果
+## 3. dry-run と実施の結果
+
+**2026-09-28 に実施済み。** owner が指定した identity は dry-run の仮の値と同じだったので、下の新しい SHA が実際の値になった。
+新しいリポジトリに入れたのは `main` とタグだけ（他のブランチは owner の決定で入れていない）。
 
 bundle から作った bare repo に、公開中の全ブランチ・タグと今回のブランチを入れて実行した。
 公開 identity は**仮に** `hide-1925 <209939878+hide-1925@users.noreply.github.com>`（GitHub の noreply 形式）とした。owner が別の identity を指定すれば、下の新しい SHA はすべて変わる。
@@ -100,12 +103,12 @@ bundle から作った bare repo に、公開中の全ブランチ・タグと�
 
 | ref | 旧 | 新（dry-run） |
 |---|---|---|
-| `main` | `283fda8` | `23ef82f` |
+| `main`（旧） | `283fda8` | `23ef82f`（新しい `main` の祖先） |
 | `claude/kind-dijkstra-y879gv` | `a5ff07a` | `ef4d122` |
 | `claude/teams-tts-fix` | `300c507` | `b482fd3` |
 | `feature/prosody-preservation` | `3ada518` | `561161c` |
 | `v1.48.0`（タグ） | `454a232` | `ff7245e` |
-| `claude/duo-github-cleanup-xkdy6h` | この監査の commit | 実行時に確定 |
+| `claude/duo-github-cleanup-xkdy6h` → `main` | `00c7fda` | `a2d90ba`（＋ SHA 参照の修正 `fea1b1e`） |
 
 **全 306 commit の SHA が変わる。** 既存の clone は使えなくなるので、書き換え後はどの端末でも clone し直す。
 

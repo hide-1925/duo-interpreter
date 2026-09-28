@@ -1,6 +1,6 @@
 # Public Release Gate
 
-2026-09-28 時点。`[x]` は確認済み、`[ ]` は未了（理由を併記）。
+2026-09-28、リポジトリの作り直しと検証のあと。`[x]` は確認済み、`[ ]` は未了（理由を併記）。
 
 ## Critical gate
 
@@ -10,10 +10,10 @@
 
 ## Privacy gate
 
-- [ ] 対象の個人メール 0件 … **F-01。書き換えの承認待ち**（dry-run では 0件）
-- [ ] 対象の実名メタデータ 0件 … **F-02。同上**
-- [ ] Claude Code session URL 0件 … **F-03（commit message）・F-04（PR 本文）。承認待ち**
-- [ ] private term 0件 … commit メタデータにだけ残っている（F-02）。ファイルの中身は 0件
+- [x] 対象の個人メール 0件（作り直したリポジトリを clone し直して確認）
+- [x] 対象の実名メタデータ 0件
+- [x] Claude Code session URL 0件（commit message 0、PR は作り直しで無くなった）
+- [x] private term 0件（3語。作業ツリー・全履歴・commit メタデータ・zip）
 - [x] 誤って入った文字起こし・診断 0件（F-06・F-07 は owner 確認事項として記録）
 
 ## Git gate
@@ -23,17 +23,17 @@
 - [x] 全 tag を監査（1個）
 - [x] commit メタデータを監査
 - [x] commit message を監査
-- [ ] 旧い sensitive な object に到達できない … **F-05。PR ref の扱いの決定待ち**
+- [x] 旧い sensitive な object に到達できない（旧 SHA は 422、PR ref 0本）
 - [x] force push の対象一覧を明示（`history-audit.md` §3）
 
 ## GitHub metadata gate
 
-- [ ] PR 本文の走査 0件 … 45か所。編集か作り直しの承認待ち
+- [x] PR 本文の走査 0件（PR 0件）
 - [x] PR コメントの走査 0件（コメント・review 自体が 0件）
 - [x] Issue / コメントの走査 0件（0件）
 - [x] Release の本文・asset の走査
-- [ ] Wiki の走査 … **未確認**（取得できず）。使っていなければ無効化を推奨
-- [ ] Pages の配信物の確認 … **未確認**（接続できず）。build 元の `main` は走査済み
+- [ ] Wiki … 新しいリポジトリなので空のはず。使っていなければ無効化を推奨（owner）
+- [ ] Pages … 作り直しで無効になった。owner が `main` / `(root)` で有効にしてから配信物を確認
 
 ## Artifact gate
 
@@ -57,7 +57,11 @@
 
 ---
 
-## owner の決定が要ること
+## owner の決定（2026-09-28）
+
+1〜4 は推奨どおり、4 は3本とも削除に決まり、実施した。5〜8 は未決定。
+
+### 決定の一覧（当初の表）
 
 | # | 決めること | 選択肢 | 推奨 |
 |---|---|---|---|
@@ -70,7 +74,7 @@
 | 7 | 「APIキーも埋め込む」を残すか | 確認つきで残す（今回の実装）／機能ごと削除 | 使っているなら残す。使っていないなら削除が最も安全 |
 | 8 | fixture の実会議の日時（F-06）・文書中の発話断片（F-07） | 残す / 消す（消すなら履歴の書き換えに含める） | F-07 は出典の確認次第 |
 
-## この後の順序
+## この後の順序（1〜3 は実施済み。残りは `post-rewrite-verification.md` の「owner の作業として残っていること」）
 
 1. owner が上の 1〜4 を決め、**自分の端末でバックアップ**（`git clone --mirror`）を取る
 2. 書き換え（`history-audit.md` §2）→ SHA 参照の修正 commit → push（A なら force push、B なら新しいリポジトリへ push）
