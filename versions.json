@@ -1,12 +1,12 @@
 {
   "note": "出荷した版と、その版の実体のSHA-256。tests/test-release-manifest.cjs が、いま名乗っている版の記録と実ファイルの一致を検査する。中身を変えたのに版を据え置くと落ちる。v1.48.0 を名乗る別物を main へ載せてしまった事故の再発防止。",
-  "incident": "コミット 1bdeb9b は v1.48.0 を名乗りながら 454a232 とは別の index.html を 載せていた（4e16d461… と d689c7fc…）。判断層の経路UIを入れたのに版を上げなかったため。v1.49.0 として名乗り直し、以後はこの検査で止める。",
+  "incident": "コミット 7103cde は v1.48.0 を名乗りながら ff7245e とは別の index.html を 載せていた（4e16d461… と d689c7fc…）。判断層の経路UIを入れたのに版を上げなかったため。v1.49.0 として名乗り直し、以後はこの検査で止める。",
   "pairing": "拡張の zip には app.js が入るので、HTML の版が変われば拡張の版も変わる。対になる版をここに記録する。",
   "releases": {
     "v1.47.1": {
       "build": "20260921-v1471-conference-handshake",
       "extension": "1.4.8",
-      "commit": "974a322",
+      "commit": "1132a36",
       "indexHtmlSha256": "09d2a9f9f0892d778b5ea78957f40ab55525810ad96b4aa357730d22567f743f",
       "extensionAppJsSha256": "be8211c6196f9a47f9dfd1aea38e3403ccc766c71b0a49a0ff8fec5d3bf531c4",
       "summary": "Teams会議への読み上げ送出"
@@ -14,7 +14,7 @@
     "v1.48.0": {
       "build": "20260922-v1480-turn-decision",
       "extension": "1.4.9",
-      "commit": "454a232",
+      "commit": "ff7245e",
       "indexHtmlSha256": "4e16d4616ca1dc2db931e6ced614d1f6e5b35aab248a08dd1ad5a4d9490d8e96",
       "extensionAppJsSha256": "c742c7e8782d12866bb93891c20f6323ad7603c9ca81d718956c93f298ff20e5",
       "summary": "判断層の計測基盤と契約（UIからは経路を選べない）"
@@ -38,7 +38,7 @@
     "v1.49.2": {
       "build": "20260923-v1492-mode-ceiling",
       "extension": "1.4.13",
-      "commit": "f4663dd",
+      "commit": "a3a6321",
       "indexHtmlSha256": "feb3f0843b74f1648cce8c9d523b4f35fd08364d52822c2e666ccd38d6417b22",
       "extensionAppJsSha256": "18a259df86067d4441d74521ef081d50b2ead765b39f7dd86d210cac410a33a7",
       "summary": "全体モードを上限にし、保持していないFloorの期限発火を止め、疎通の成否を解析結果で判定し、往復の内訳を診断へ出す"
@@ -46,7 +46,7 @@
     "v1.49.3": {
       "build": "20260923-v1493-extension-transport",
       "extension": "1.4.14",
-      "commit": "0f144b1",
+      "commit": "bbb7266",
       "indexHtmlSha256": "3762a9f5409e628aa3a86bd4afcecd71b25ab12cff30a68d63ffc65febcd0d72",
       "extensionAppJsSha256": "9406822eb8a672ec4b7202189ac5c9fa75b36a55f33a86fb06ed1017562db7b4",
       "summary": "api.typesafe.ai が CORS 応答ヘッダを出さないことを実測で確定したので、判断層の往復をアドオンのバックグラウンドに肩代わりさせる経路を足す"
@@ -54,7 +54,7 @@
     "v1.49.4": {
       "build": "20260923-v1494-state-projection",
       "extension": "1.4.15",
-      "commit": "8a93c36",
+      "commit": "caaba33",
       "indexHtmlSha256": "f8fd7157fae941c778f47dbac30b5c63bf4786568e6ba0ad0b531d98c9225263",
       "extensionAppJsSha256": "2b967c63f4a7165b8c912bd6cc94de0f9d619721523a4dd2910f61236f5fd5bf",
       "summary": "公式の Models と jaggedness を読み、文脈上限の誤りを直し、質問が名指ししない state を送らないようにする"
@@ -62,7 +62,7 @@
     "v1.49.5": {
       "build": "20260923-v1495-route-log-dedup",
       "extension": "1.4.16",
-      "commit": "f5fa425",
+      "commit": "2c98aba",
       "indexHtmlSha256": "888cbfc6aec3dbde3bd0e70dbe65f6d9a505776ca2ed444ee3e540a53db45042",
       "extensionAppJsSha256": "2f2e4067c6d7c74511d857fbcc7606a5fd0ee74805f02ebcd1383f895d8d56db",
       "summary": "streaming TTS がPCMバッファごとに同じ経路判定を書いて診断ログを埋めていたのを、結果が変わったときだけに絞る"
@@ -70,7 +70,7 @@
     "v1.49.6": {
       "build": "20260923-v1496-tail-card-span",
       "extension": "1.4.17",
-      "commit": "f965439",
+      "commit": "57a25fb",
       "indexHtmlSha256": "e8dda5cb5ed01fc8ccda8f241f17ec46aa7056d398f1bd60abcbeb99c3ade14b",
       "extensionAppJsSha256": "7228b6ee28aa145a3a832db7f9cc3d0b21dec6f4664043ce4a8cfafbc6c11114",
       "summary": "繰越した末尾カードが元の発話開始時刻を引き継いでいたため、話者帰属の照合窓が話し続けるほど広がり誤帰属していたのを正す"
@@ -78,7 +78,7 @@
     "v1.49.7": {
       "build": "20260923-v1497-correction-metric",
       "extension": "1.4.18",
-      "commit": "88bec21",
+      "commit": "a48e1e1",
       "indexHtmlSha256": "b46b9a2e9ad19c327f1a6503345175d24dce7bee2f17545db75bea1fb28f3586",
       "extensionAppJsSha256": "057852b59980e9edbfb9fc406ba19bf7d6e97efce0b41ce688a599ce94ef24db",
       "summary": "前後の空白だけの差を訂正として数えていたため、判断層の評価基準である訂正率が0%から13.3%に跳ねていたのを正す"
@@ -86,7 +86,7 @@
     "v1.49.8": {
       "build": "20260923-v1498-tail-window-share",
       "extension": "1.4.19",
-      "commit": "0f7670a",
+      "commit": "b291a1c",
       "indexHtmlSha256": "bdde398ad961cba87dd6ee78069c978e9ed73ffe3a4e0f0501b357f9f2947db6",
       "extensionAppJsSha256": "266a3a9df851e74fc11543d692b093e024df75d3004de12d03018ea6fb58b3cb",
       "summary": "v1.49.6 の繰越カード修正で、無音で解放された末尾カードの区間が0秒に潰れていたのを、文字数比で窓の内側に置くようにする"
@@ -94,7 +94,7 @@
     "v1.49.9": {
       "build": "20260923-v1499-openai-tts-limits",
       "extension": "1.4.20",
-      "commit": "575b768",
+      "commit": "b655217",
       "indexHtmlSha256": "911b97f620018db8afccc7ea3b5701c76a0d4244499b56282cbabe05c56e0ca8",
       "extensionAppJsSha256": "8b25d76bd7bb7821315b81d4077b2b1d93aa387b788fb6db22fbe44d1ff03c80",
       "summary": "OpenAI音声には429の扱いが無く上限に当たると黙って音声を捨てていたので、応答ヘッダの実上限を記録し429を他の失敗と分ける"
@@ -102,7 +102,7 @@
     "v1.49.10": {
       "build": "20260923-v14910-rate-browser-voice",
       "extension": "1.4.21",
-      "commit": "778637a",
+      "commit": "2370572",
       "indexHtmlSha256": "1bb9136f8c60676aae8127e362a4277fa7597d8906acafa558e6787d1d3ca2be",
       "extensionAppJsSha256": "bd6a4e21eec2d04590caf19d7f5d35c9ca3412689bbd734f92d8dc8acdff2835",
       "summary": "API読み上げがレート上限に達している間は待たずにブラウザ内蔵音声で読む。待つ設計では実測でTTS待ちが20〜40秒に達していた"
@@ -110,7 +110,7 @@
     "v1.49.11": {
       "build": "20260923-v14911-aivis-overage-policy",
       "extension": "1.4.22",
-      "commit": "af2a51c",
+      "commit": "728fa3b",
       "indexHtmlSha256": "f86b5d3b74971213c9bed0d95cac844666cba3c886339e772d9510728f9b6ba2",
       "extensionAppJsSha256": "c82b85dcb4f0c34aab3653c062721d8256b94b7193e8cd09efa8ea6cd36d90fc",
       "summary": "v1.49.10のAivis判定はこちら側の予測（60秒10回）で送信を止めており、超過分をクレジットで払う設定のアカウントでも声がブラウザ内蔵音声に替わっていた。予測（設定可・既定は止めない）とサーバの429（必ず従う）を分けた"
@@ -118,7 +118,7 @@
     "v1.49.12": {
       "build": "20260923-v14912-backchannel-skip",
       "extension": "1.4.23",
-      "commit": "7394f18",
+      "commit": "eafb6c9",
       "indexHtmlSha256": "31df4a1fc9257cabd4bcef65e5731a0bebb8d5256214467c980bf34684dfc919",
       "extensionAppJsSha256": "a5e378dfdb1eba938677c299144a8f1182ce260796be12c6444ce2f77073a192",
       "summary": "相づちを読み上げない設定（既定OFF）。B-8bの三択のうち①読まないと③そのまま読むのハイブリッドで、語の一覧で切る。文字数だけでは実測4件のうち1件しか正しく判定できない。答えになりうる語は既定の一覧に入れない"
@@ -126,7 +126,7 @@
     "v1.49.13": {
       "build": "20260923-v14913-settings-layout",
       "extension": "1.4.24",
-      "commit": "92fd24b",
+      "commit": "968d8ef",
       "indexHtmlSha256": "73d027cf1cfcd01b0137cbbcbb99d72937d58ea041fd26771e3054a78de4e276",
       "extensionAppJsSha256": "e5de0a13ef1c91f76001bdf2394f9ebde784b282e83146552d1770844eecc535",
       "summary": "設定欄とポップアップの並び替え。あわせてextension/app.htmlの版ずれを修正（v1.49.11のAivis超過設定とv1.49.12の相づち設定が拡張のページに入っていなかった）。再発防止の検査を追加"
@@ -134,7 +134,7 @@
     "v1.49.14": {
       "build": "20260923-v14914-settings-type-scale",
       "extension": "1.4.25",
-      "commit": "9f1986a",
+      "commit": "6166003",
       "indexHtmlSha256": "e3294e8a53a7b24a19353eeb63ac6972b93dc1c425cc31cd64568af6dc56dd99",
       "extensionAppJsSha256": "17d26a1fbc9b13033a4cfcbabd80bed8229be0396c8da235bf82e7e9c8a23314",
       "summary": "設定UIの文字の段を3つ（本文11.5・操作12.5・入力16）に揃え、設定UI設計指針.mdと検査で縛った。JSから注入するパネルがクラス不足でブラウザ既定の16pxになっていたのが不揃いの原因。長い説明は押して開く形にした"
@@ -142,7 +142,7 @@
     "v1.49.15": {
       "build": "20260923-v14915-key-note-fold",
       "extension": "1.4.26",
-      "commit": "566c9a5",
+      "commit": "bf4c0b4",
       "indexHtmlSha256": "fb6c26188b9dd4ee9f2afce74f194202747e23747dfd0f9bee3a6be3849d3c07",
       "extensionAppJsSha256": "b55f1de4a277f5f24b1784ae49a0de491c349cedf4fa68cc70b82178fe1ff298",
       "summary": "JevのAPIキーの説明をたたんだ。ただし「いまアドオンを経由できません」のような状態は残す。隠すとキーを入れても動かない理由が画面から消えるため。外部へ送らない経路では折りたたみごと消す"
@@ -150,7 +150,7 @@
     "v1.49.16": {
       "build": "20260924-v14916-assist-hold-and-floor",
       "extension": "1.4.27",
-      "commit": "5f65db4",
+      "commit": "1b2b0b4",
       "indexHtmlSha256": "7e13cb429eaa1c78de9bdc9e1353730b34182838fbd0c62a39ea7ca3e4f9a39a",
       "extensionAppJsSha256": "11e672dae94795be0aee65a00657f08961720e083a474841f09bc5b7c4d570e7",
       "summary": "assistを「待つ判断だけ採用・切る位置はRulesのまま」に変えた（従来はactiveと同一だった）。実測で Jev が Rules より前で切れと言った回数は0で、価値は待つ側に全部あるため。あわせて毎回聞いて捨てていた safe_to_speak を読み上げ開始の床へつないだ。追加のAPI費用は無い"
@@ -158,7 +158,7 @@
     "v1.49.17": {
       "build": "20260924-v14917-stability-range",
       "extension": "1.4.28",
-      "commit": "a9074d3",
+      "commit": "9ed421a",
       "indexHtmlSha256": "519a794c6205799b1aac2f5bf595c8febf219466a8e9b5422248a384711f1c55",
       "extensionAppJsSha256": "fffd6660207dcfad5c1dcc0a79821899048e24f4dfd671526adfa6e1e106af06",
       "summary": "認識の安定待ちを10ms刻み・実効100〜2000msへ。下限はコード側で200msに丸められており、100と入力しても画面は100のまま200で動いていた。入力欄とコードの丸めの一致を検査で縛った"
@@ -166,7 +166,7 @@
     "v1.49.18": {
       "build": "20260924-v14918-src-font-ratio",
       "extension": "1.4.29",
-      "commit": "11677bd",
+      "commit": "387e7be",
       "indexHtmlSha256": "539aba256fd40a1285edc9ab7a0e1b71f3b9debd5d7a36c8cc61ac952e45ac94",
       "extensionAppJsSha256": "da0fcb3456a9b21c8589193d283c386b8ba931fac84eb3cdad0628431241e635",
       "summary": "原文（併記）の大きさを訳文比の％で1か所に集約し、会話バブル50%／タブ内字幕58%／別ウィンドウ字幕65%の直書きを既定60%の1つの設定へ統一した。あわせて Jev 経路の既定 model を alias から固定version（jev-1.13.0）に変え、alias のまま assist／active にしている状態を状態行に出す。行動ログの保持を800→3000件にし、audio-start も上限を守る経路で記録する（読み上げが始まらなかった原因の audio-cancel が窓の外に落ちていた）"
@@ -174,7 +174,7 @@
     "v1.49.19": {
       "build": "20260925-v14919-commit-wait",
       "extension": "1.4.30",
-      "commit": "3d25f81",
+      "commit": "0d81706",
       "indexHtmlSha256": "f9c6335b6d30ffb6aacff8335624a7baab8e148d31c0073811dc18577c8a5874",
       "extensionAppJsSha256": "ab588640dcd20c9bc1b490faf0de273c372fb2ddc59d2ed8fa38c5e0b852b6fa",
       "summary": "assist／activeで、いま投げた同じ文の答えだけを有界に待ってからcommitする（turnDecisionCommitWaitMs、既定300ms・0で無効、上限1000ms）。質問はcommitと同じtickで飛ぶため、録音分割RESTのように確定文が一度に届く経路では答えが必ず一手遅れ、実測で送信51／応答51／適用0になっていた。あわせて segCancelAudio が理由を残すようにし、取り消されたカードに「（認識停止）」のように出す"
@@ -182,7 +182,7 @@
     "v1.49.20": {
       "build": "20260925-v14920-hold-cap",
       "extension": "1.4.31",
-      "commit": "0699344",
+      "commit": "d5ce086",
       "indexHtmlSha256": "c3ed94d602d20ba84c10d74be25faf8956c151532ee2df62b3d1074868fcc5ce",
       "extensionAppJsSha256": "1285cf513f5ff37691a6affca2a17ab8558ccccad894dd3b78e188abdc99eebf",
       "summary": "判断層の「待て」に上限を置いた（INV-11・turnDecisionHoldMaxWaitMs、既定2000ms・0で従わない・上限10000ms）。答えは(文,版)に紐づき、版は新しいテキストが来たときだけ進むため、認識が止まった瞬間のHOLDが期限なく残り、確定も翻訳も読み上げもされないカードが停止まで放置されていた（実測 stabilityMs 112557／83967、いずれも最後にaudio cancelled（speech-stopped））。あわせて同じ版を聞き直す回数を上限3回に（無音を100ms刻みで量子化していたため、テキストが凍ったまま無音だけ伸びる状態が延々と新しい質問になり、内容の同じ往復が187秒で433件・406秒で1251件に達していた）。適用の計数を tick 単位から答え1件単位に直し、保持tickと打切りを別に出す"
@@ -190,7 +190,7 @@
     "v1.49.21": {
       "build": "20260925-v14921-prosody-google-tts",
       "extension": "1.4.32",
-      "commit": "b084a75",
+      "commit": "8c36889",
       "indexHtmlSha256": "759fb5598f2383da104553c2d99856b4c6690f7c0b9178430d7c95e24bdc6521",
       "extensionAppJsSha256": "02191aa882705989e312575f6eae8c2e5da5e60afa8b0229b4da47bb0634f688",
       "summary": "判断層が読む音響解析器を席で決めるようにした（prosodyAnalyzerFor）。共有マイクの解析器だけを見ていたため、タブ音声・VB-CABLE・画面共有だけで通訳しているあいだ音響が常に空で、v1.49.19のgpt-live-transcribe記録では採用6件すべてが音響なしだった。あわせてgpt-live-transcribeのエンジンに解析専用の2048点ノードを足した（境界判定の512点ではYINの探索下限が約189Hzになり男性の話声が範囲外に落ちる）。診断に解析器名を出す。TTS経路にGoogle Cloud Text-to-Speechを追加（Chirp 3: HD／Gemini-TTS／名前の直接指定、CORS対応のため中継不要、Chirp3とGeminiにはspeakingRateとpitchを送らずピッチ保持再生で速度を出す、拒まれた声は覚えて送り直さない）"
@@ -198,7 +198,7 @@
     "v1.49.22": {
       "build": "20260925-v14922-gemini38-model-field",
       "extension": "1.4.33",
-      "commit": "6e66d4a",
+      "commit": "7f6e639",
       "indexHtmlSha256": "722df4bc0ee943b7090399a4934e5b69f3627219f3e7bc24c16921e52be771cc",
       "extensionAppJsSha256": "beb3eadcb769cfb53bd875e4344e99737d2cda2e533f54d8cc7968eba8b3336e",
       "summary": "Gemini-TTS のモデル指定をプルダウンから入力欄へ変えた。v1.4.32 の一覧は Google の公式サンプルに載っていた4つで、その2日後に Gemini 3.8 Flash TTS / Flash-Lite TTS が出ている。表で持つ限り、Googleが新しいモデルを出すたびにこちらの版を上げないと使えない。候補は datalist で出すが、打ち込んだ名前はそのまま voice.modelName へ載せる。既定を gemini-3.8-flash-lite-tts（読み上げ用途向けの高速・低コスト版、gemini-3.1-flash-tts-preview の置き換え）にした。リクエストの形・MP3指定・speakingRateを送らない方針は変更なし"
@@ -206,7 +206,7 @@
     "v1.49.23": {
       "build": "20260925-v14923-one-touch-latency",
       "extension": "1.4.34",
-      "commit": "b822311",
+      "commit": "4d6a596",
       "indexHtmlSha256": "9890e4f9df5adfb186b1ed620a7e21d5b1dfdb71e4f88fa59aaedc0069782782",
       "extensionAppJsSha256": "c256482da606e97d50773a8fdbecf340d00f56f6e8d030fdd2b521fb3e36289d",
       "summary": "録音を切って送るまでの無音待ちを設定にした（sttSilenceHoldMs、既定900ms・200〜2000）。実測（Teams・gpt-4o-mini-transcribe）の内訳は無音待ち0.9秒→転写0.69〜2.33秒→読み上げ先頭0.27〜0.39秒＝話し終わりから声が出るまで1.95〜3.6秒で、こちら側で縮められるのはこの0.9秒だけだった。gpt-live-transcribe に送信RTPの記録（live-audio-transport）を足した。同ログで部分結果が7〜65秒遅れていたが、音声がこちらから出ていたかを示す記録がこの経路だけ無く、切り分けられなかった。拡張の「Web会議マイク音声」をワンタッチにし（字幕対象→HTML本体→翻訳開始→会議送出、足りない手順だけ実行し、前の手順が失敗したら後ろを実行しない）、本体に duoExtensionStart() を足した"
@@ -214,7 +214,7 @@
     "v1.49.24": {
       "build": "20260926-v14924-typed-tts-skip",
       "extension": "1.4.35",
-      "commit": "1be5074",
+      "commit": "5164310",
       "indexHtmlSha256": "dd57dd13e498e0cd2258a862c79c8bc1ff0c3dd044c193989eded54908fbe134",
       "extensionAppJsSha256": "4a564dab3ebd5ecb09f9b12f826c1195a2a75c5a049d4682b2443d7a435be434",
       "summary": "キーボード入力の文が読み上げられなかった件。読み上げ対象が「相手(B)の発言のみ」のところへ、打ち込んだ日本語が自分(A)扱いで入っていた（翻訳の停止・実行は無関係で、4件とも同じ理由）。逐次読み上げの経路は対象外で落としても理由を not-selected-or-empty の1語でしか残さず、画面にも何も出していなかったので、理由を tts-target-B2A／A2B・empty・tts-off・conference-original-only・self-recognition-guard に分け、入力文が対象外で外れたときは1回目から案内するようにした。あわせて入力文を判断層に聞かないようにした（入力1件ごとにJevへ3往復し、HOLDで2.0〜2.1秒止めてから確定していた）"
@@ -222,7 +222,7 @@
     "v1.49.25": {
       "build": "20260926-v14925-webspeech-punct",
       "extension": "1.4.36",
-      "commit": "ec926e9",
+      "commit": "b733d9f",
       "indexHtmlSha256": "3386dbe09516d8bcf5a92f86f6cc231df903b25416d4bd33e7f15a40779eecd5",
       "extensionAppJsSha256": "b5f896ac5915f72a0866b9dbd735c915c9f5272b5c6838bd460b690bd16c6ad8",
       "summary": "Web Speech（日本語）の空白を句読点に直した。Chrome は日本語に句読点を付けず息継ぎに半角スペースを入れて返すので、文末が一つも無いまま120字の長さ打切り（semantic-length-fallback）まで切れず、カードが1枚110〜120字になっていた。空白を直前の語尾だけで「。」（です・ます・ですよね等）「？」（ですか・ませんか等）「、」（それ以外）に置き換え、途中結果にもかける。後ろを見ないので確定済みの前半は変わらない。英数字に接する空白は文末でなければ残す。あわせて判断層を、テキストが turnDecisionSettleMs（既定200ms）止まってから聞くようにした（INV-12）。Web Speech の途中結果は約0.1秒ごとに版が進むため、話している最中の質問は必ず別の版になって捨てられていた（約130秒で送信525／採用0）。STT final は待たない"
@@ -230,7 +230,7 @@
     "v1.49.26": {
       "build": "20260926-v14926-webspeech-breaths",
       "extension": "1.4.37",
-      "commit": "e6ad399",
+      "commit": "d6e87ef",
       "indexHtmlSha256": "176274944344f5152f9bc801ad9214467c41920f99fe2f9d8865fa34e40db8fa",
       "extensionAppJsSha256": "2080fbf6c2e56d611d3af5cbff733dc896cfa92a0f2955e454855ae9bdc2fd9f",
       "summary": "Web Speech＋Jev active の記録から4点。①拡張：登録した URL の HTML 本体を直接開いても自動で接続する（Jev の中継は登録済みタブからしか頼めず、ブックマークから開いた本体では送信3件が到達不能で遮断されていた）。字幕対象が無いときはタブ音声を作らない。②Chrome が「安定した前半」と「揺れる末尾」の2つに分けて返す途中結果を1枚のカードにつなぐ（末尾が別カードになり前半の文末が見えず、確定まで約4.7秒。60秒で打ち切られた前半は語の途中で確定していた）。途中の確定境界で閉じるのは、文末で過不足なく確定済みのときだけ。③Web Speech のカードで、空白を直した「、」を切り所の候補として判断層へ渡す。1か所に「。で終わる」「？で終わる」の2択を出し、選ばれた記号に替えて確定する（話し言葉の文末を規則が拾えず112字の長さ打切りが2回、疑問文が平叙で読まれていた）。④文中の切り所では turn_state の CONTINUING と無音の下限で止めない（話し続ける相手では毎回 HOLD の上限まで遅れていた）。文中の切り所の答えは前後の文字が同じなら次の版でも使う。公開HTMLでは「Jev — TypeSafe に直接」に CORS で不可と表示する"
@@ -238,7 +238,7 @@
     "v1.49.27": {
       "build": "20260926-v14927-webspeech-60s-join",
       "extension": "1.4.38",
-      "commit": "01a7f22",
+      "commit": "af983af",
       "indexHtmlSha256": "51901666d791f9169f9265c4230177135b490b154d8ec06b67cbabf78c8c168e",
       "extensionAppJsSha256": "5ead37abb7243a2c3174baf6a7036f03e91ebd4794baf01bafc6a14e781f9927",
       "summary": "Chrome の Web Speech は話し続けていても約60秒で結果を確定させる（v1.49.26実測：カード3枚が59.3／60.0／60.1秒）。確定のたびにカードを閉じていたので、文の途中でカードが割れ、閉じた側に存在しない「。」が付いていた（「…全ての操作を。」＋次のカード「確認するモード、で始まると…」）。確定した本文が文末で終わっていないとき（続きの形、日本語で語尾から言い切れない形、またはカード開始から50秒以上）は1.5秒待ち、次の結果が来たら同じカードへつなぐ。来なければ閉じ、そのときだけ「。」を付ける。あわせて Aivis の文単位のまとめで、語尾で確定した部分（semantic-ending）と、後ろの本文が「。」「？」で始まる部分を文の終わりとして扱う（Web Speech では空白が「。」になるのが確定の後で、その「。」が次の部分の先頭に入るため、読み上げが次の文まで 8.2秒・3.3秒・8.4秒 止まっていた）"
@@ -246,7 +246,7 @@
     "v1.49.28": {
       "build": "20260926-v14928-live-turn-close",
       "extension": "1.4.39",
-      "commit": "3c30a26",
+      "commit": "585f014",
       "indexHtmlSha256": "e8efa0269d91f48d6832595ca12a22657887607c482ae1661250bc2d08e6c0dc",
       "extensionAppJsSha256": "694ef719ee0e9aab044280522b28ef94283c079f301113d93f10b194c2e04cb1",
       "summary": "gpt-live のカードを判断層の turn_state で早く閉じられるようにした（INV-13）。固定の待ち（0.65／0.95／1.5秒）の間、「。」で終わらない最後の部分は確定も読み上げもされない。COMPLETE の確率が 0.85（日本語 0.9）以上、続き・言い直しが低い、文字が0.3秒止まり、無音が測れて十分なときに閉じる。新しく問い合わせず、区切りのために受け取った答えを読むだけ。既定は記録だけ（turnDecisionLiveClose=shadow）で、従っていれば何ms早かったかと、その後に話が続いた回数を診断に出す。早く閉じるのは on かつその言語が active のとき。あわせて、確定した本文（STT final）には判断層の HOLD をかけないようにした（待っても文字は増えず、上限2秒まで読み上げを遅らせるだけだった）。実ブラウザ（代役の判断層）で、記号で終わらない最後の部分の確定が 約2.1秒 → 記録だけ 約1.0秒 → 早く閉じる 約0.36秒"
@@ -254,7 +254,7 @@
     "v1.49.29": {
       "build": "20260926-v14929-tts-prefetch",
       "extension": "1.4.40",
-      "commit": "e9659db",
+      "commit": "a8602cf",
       "indexHtmlSha256": "e6df5870dfcc076bf854220afd836770968ab03a73987e985eba99b2cc5d3f63",
       "extensionAppJsSha256": "c8a094ef7b98dfc8853b699e1f217fd5ffda1b55098a29c4e63d0d4cfe1155ce",
       "summary": "読み上げの待ちを3つ短くした。①Aivis の先読み：前の音の受信が終わり鳴り終わりまで約1.2秒になったら、次に読む組の合成を先に頼む（鳴らすのは前の音が終わってから）。送るときに本文・声・話速が1つでも違えば捨てて頼み直す。直近60秒に8回以上なら先読みしない。実ブラウザ（代役の Aivis、最初の音まで約0.3秒）で部分の切り替わりの無音が約640ms→約360ms、1.5秒に1文の速さで文ごとの遅れが約1.2秒→約0.5秒。まとめて頼める部分が減るので回数は増える（6文で4回→6回）。設定 aivisPrefetch（既定 on）。②Aivis の文末待ちを、その部分が読める状態になってから1.2秒までにした（句点の来ない約110字の発話で最初の送信まで6.3秒→1.2秒）。③Rules が「。」「？」「！」で切るときは判断層の答えを待たない（INV-10の待ち。確定文が一度に届く場合に約0.32秒の待ちが6文中2文→0文）。あわせて、アドオンのタブ音声で Web Speech が開始直後の network を返し続ける件（v1.49.26実測22回、画面共有の音声では認識できていた）に対し、結果が一度も来ないまま1.5秒以内の network が2回続いたら WebAudio で1ch・16kHz に中継した音声で試し、それでも同じなら止めて外部APIか画面共有を案内する"
@@ -262,7 +262,7 @@
     "v1.49.30": {
       "build": "20260927-v14930-webspeech-stall",
       "extension": "1.4.41",
-      "commit": "ce793c5",
+      "commit": "703daf4",
       "indexHtmlSha256": "93f42517e6427de74a574f3e7b4769e60ae41df1cbe29a675e8b0728c59c1aca",
       "extensionAppJsSha256": "698b9b0f04d42a057a12e25494368a0b70e8b75fba22fb4352cefbf15b80b37d",
       "summary": "音は届いているのに Web Speech（共有音声 Track）が文字を返さず、終わりもしない状態から抜ける。v1.49.29 の記録では「日本の」→「日本」の後38秒間結果が無く、入力レベルは話し声を示し続け（重なり推定90%）、認識が終わらないので再起動もされなかった。アプリが結果を捨てた跡（noise-drop・echo-drop・カード削除）は無い。最後の結果（または開始）から10秒、その半分以上で音が鳴っていたら止めて同じ Track で始め直す。止めても終わらなければ作り直す。続けて始め直すたびに待ちを倍にし（10→20→40秒、最大60秒）、結果が来れば戻す。2回続いたら相手(B)の言語を確かめるよう1回だけ案内する。あわせて、認識1回ごとの続いた時間・結果数・音と発話の検出時刻・終わった理由（no-speech／aborted／stall）を track-restart に、捕まえていない例外を app ERROR／REJECT（30件まで）に残す"
@@ -270,7 +270,7 @@
     "v1.49.31": {
       "build": "20260927-v14931-4o-tuning",
       "extension": "1.4.42",
-      "commit": "8df12d0",
+      "commit": "86f4e07",
       "indexHtmlSha256": "f26198fb14c4350d63f3cb46027c2787136680160cb7ade5c4cc9b12ca799e2b",
       "extensionAppJsSha256": "6c76defb9d101115dabc8606b06e046b1b7d9e3d23bb2b5a799ef8334d187c6b",
       "summary": "gpt-4o 系でニュース音声を読み上げた v1.49.29 の記録から3点直した。①AUTO でも A・B が同じ言語なら 4o に言語を伝えて送る（言語を伝えずに送っていて、日本語の音声がウクライナ語・トルコ語・韓国語で返ったカードが4枚あった）。A・B が違う言語なら今までどおり伝えず、2つの言語名を prompt に添える。4o-file-result に送った言語を残す。②adaptive が読み上げを速めているあいだは、Prosody で遅くしない（話し手 9.0字/秒に対し Aivis 話速1.8 で 8.1字/秒、遅れ最大17.7秒の最中に 0.82倍・0.9倍が59件中20件かかり、実質 1.48〜1.62 になっていた）。速める分・抑揚・音量はそのまま。③読み上げの遅れの見積もりが4秒以上なら、カードごとの Prosody の違いを無視して Aivis へまとめて送り、先頭カードの Prosody で読む（待ちが9〜16枚あっても64回中60回が1枚ずつで、直近60秒の要求が最大25回に達してクレジットを使い、先読みも52回見送っていた）。記録の61件を流し直した見積もりで、要求 61→36回、遅れの中央値 5.7→2.1秒、最大 25.0→18.1秒（実機では未確認）"
@@ -278,7 +278,7 @@
     "v1.49.32": {
       "build": "20260927-v14932-4o-join",
       "extension": "1.4.43",
-      "commit": "c5b22a4",
+      "commit": "95b1d25",
       "indexHtmlSha256": "ea4837e58f2f5dcf0e22a630e9382402b140841e595a87343202394a15103151",
       "extensionAppJsSha256": "1191b52eb3219399cc696af46d2a7678ed0297e5f8ae72ef6f79151acb341f7e",
       "summary": "gpt-4o 系でカードが短く切られすぎる件。v1.49.29 の記録（無音待ち 450ms、末尾繰越 ON）では、話し手の息継ぎ（0.5秒前後）で録音が切れるたびに別のカードになり、相手の74枚のうち28枚が「。」「？」「！」で終わらず、「情報を」「一方で、」「まずその」のような8文字以下が10枚あった。末尾繰越は録音上限で切れたときにしか働いていなかった。無音で切れたときも、文の途中で終わる結果はカードを開いたままにして次の結果をつなぐ。文字が出る時間と 4o への要求の数は変わらない。次の録音に声が無いまま0.9秒たつと残りを確定する。記録に当てはめると 74枚→46枚、8文字以下 10枚→1枚、中央値 17.5字→32字（実機では未確認）。あわせて、上限で切るとき声が一度も無かった録音は送らない（4o の上限6秒が無音で捨てる8秒より短く、音の来ないマイクAが6秒ごとに切れていた。上限で切れた39回のうち34回がこれ）"
@@ -286,7 +286,7 @@
     "v1.49.33": {
       "build": "20260927-v14933-model-tiers",
       "extension": "1.4.44",
-      "commit": "6f7246e",
+      "commit": "553366e",
       "indexHtmlSha256": "e34921652b60407c2c31e2de73e6c28ddd95b4a9a96b85e0ef610a4d4fdbf70d",
       "extensionAppJsSha256": "eefcaac86be6c89fcdba2fcd320823f7692fdd8f1bdd5ed2a36a6f6ee9108136",
       "summary": "翻訳モデル（OpenAI）の初期表示を、5.6系の gpt-5.6-luna・gpt-5.6-terra・gpt-5.6-sol と、6系の日付の付かないモデルすべてにした。これまでは gpt-5.6 で始まるものをすべて出していたため、日付付きの版も並び、6系は「その他」に入っていた。6系は APIキーで取得した一覧にあるものを名前の規則で拾うので、名前をコードへ書き足さなくてよい。日付付きの版（-2026-09-10・-0910 など）と、5.6系のほかの版は「その他」に回す。内蔵の一覧（キーを入れる前）は今までどおり 5.6系の3つ"
@@ -294,7 +294,7 @@
     "v1.49.34": {
       "build": "20260927-v14934-openrouter-picker",
       "extension": "1.4.45",
-      "commit": "61b5531",
+      "commit": "d0e1e8c",
       "indexHtmlSha256": "fc53b901a975081c554b88683351e09138a6ac8fa2290d1326d83c530e53eed4",
       "extensionAppJsSha256": "8db98662323bf4183c2f91b014446695de67ac68bca29f3bc4fe84de79fdc2f1",
       "summary": "開発仕様書の①②。翻訳プロバイダが OpenRouter・Groq のとき、翻訳モデルを「🔎 選ぶ」から選べるようにした。おすすめは速さ・精度・安さ・人気の4型で上位3件（OpenRouter は sort と用途 translation をサーバーに任せ、Groq は内蔵の候補のうちアカウントにあるもの）。全部から選ぶときは作った会社→モデル（新しい順）、検索、無料だけ・データを残さない先だけ。試しに見本の1文を訳せる。一覧は機能ごとに output_modalities で取り24時間置く。OpenRouter の翻訳は、キー確認を GET /key に（一覧はキー無しでも返るので間違ったキーでも通っていた）、推論を切る（切れないモデルはいちばん弱く）、temperature は受け付けるモデルにだけ、提供元の選び方（速さ優先が既定）とデータを残さない先だけの指定を足し、内蔵の一覧を deepseek/deepseek-v4.1-flash・google/gemini-3.8-flash から始めた。カメラ翻訳は openai/ を付け、議事録にも同じ指定。Groq は gpt-oss の推論を弱く、Qwen3 は切り、考えた過程を本文に混ぜない。どのプロバイダでも <think> を取り除く。OpenRouter の接続テスト（キー・翻訳・読み上げ・音声認識を1つずつ小さく送り、ブラウザから呼べるかを見る）を足した"
@@ -302,7 +302,7 @@
     "v1.49.35": {
       "build": "20260927-v14935-openrouter-tts",
       "extension": "1.4.46",
-      "commit": "b5fc699",
+      "commit": "7c0f769",
       "indexHtmlSha256": "5159e2b7b0f2a2df8aabcc7fa34881bf89a72682f88e2cfcac51186d0c368ff5",
       "extensionAppJsSha256": "fccf1a0ee3d6da2580fd74c6fb7aaed0ff487a9f7b0ad28ca6aa42a866d155ad",
       "summary": "開発仕様書の③。読み上げに OpenRouter（既定 google/gemini-3.8-flash-tts、「🔎 選ぶ」で読み上げに使えるモデルだけから選べ、声はモデルの supported_voices から席ごとに選ぶ）と Groq（Orpheus、英語・アラビア語だけ、ほかの言語はブラウザ内蔵の声）を足した。OpenRouter へは pcm で頼み、返った中身の頭と content-type で WAV・MP3・Ogg・FLAC・生の PCM を見分け、生の PCM は rate= か 24kHz の WAV に包んで鳴らす。話速は OpenAI 系は API の speed、ほかはピッチ保持再生。失敗・429・キー無しはブラウザの声へ。逐次再生は実機で形を確かめてから"
@@ -310,7 +310,7 @@
     "v1.49.36": {
       "build": "20260927-v14936-openrouter-stt",
       "extension": "1.4.47",
-      "commit": "638ef16",
+      "commit": "e7bfe94",
       "indexHtmlSha256": "b7d4584d89d632f69fbf92fa62aaf4cb578a54f0a2dafc42372f453a68d6df1d",
       "extensionAppJsSha256": "ca858fdf00a565ac1da4769512feb3a777d7b57a923c973a6adbe18a49b5f8ba",
       "summary": "開発仕様書の④。音声認識に OpenRouter を足した。一覧はキー無しで取り、モデルが空なら人気1位を入れる。「🔎 選ぶ」で文字起こしモデルだけから選べる（Groq も whisper 系だけ）。POST /audio/transcriptions に JSON（input_audio は base64、language は v1.49.31 の決まり）で送る。キーは OpenRouter のものだけを使い、翻訳欄のほかのプロバイダのキーは送らない。STT に prompt が無いので、OpenAI の文字起こしモデルだけ provider.options.openai.prompt に用語集を入れる。録音の形式で断られたら、ブラウザの中で16kHz・モノラルの WAV に変えて1回だけ送り直し、以後そのモデルは WAV。openai/gpt-4o*-transcribe は録音上限・末尾繰越・順番待ちを使う。選択画面の Esc をページ全体で受ける（開いた直後に閉じられないことがあった）"
@@ -318,7 +318,7 @@
     "v1.49.37": {
       "build": "20260927-v14937-groq-models",
       "extension": "1.4.48",
-      "commit": "e462d54",
+      "commit": "1c4c167",
       "indexHtmlSha256": "589a37e41cb7c8b87e9eb48f06f432bcb365cffbe4af38c0729f9b93ce08fee8",
       "extensionAppJsSha256": "57fcdc345a97e26c075b580eb787fe1d00d1ea9589c826a2b953b6e51e132010",
       "summary": "Groq の翻訳モデルを今の顔ぶれにした。Groq は 2026年8月16日で Llama 3.1 8B Instant／3.3 70B Versatile の提供を終え（LiteLLM のモデル一覧でも翻訳に使えるのは gpt-oss-20b・gpt-oss-120b・qwen3.8-27b だけ）、内蔵の一覧の先頭（既定）が llama-3.3-70b-versatile のままだったため、一覧を取り直す前の翻訳が失敗していた。内蔵の一覧を gpt-oss-20b（最速）・gpt-oss-120b・qwen3.8-27b に、おすすめも同じ顔ぶれにした。保存していた Groq の Llama は開いたときに gpt-oss-20b へ置き換えて保存し、1回案内して診断に残す"
@@ -326,7 +326,7 @@
     "v1.49.38": {
       "build": "20260927-v14938-4o-cards",
       "extension": "1.4.49",
-      "commit": null,
+      "commit": "ef4d122",
       "indexHtmlSha256": "495fb25202224c26dd768b87af7eacc22f8cada5d7287c2d8a6a4766e20795b5",
       "extensionAppJsSha256": "43ddd88547c5d9dd251fc476f6222e38032efab7b44e967520d645d95a80ffe6",
       "summary": "英語の小数点・略語で文を切らないようにした（v1.49.37 の記録で \"1.5 trillion\" が「1.」で、\"U.S.\"・\"D.C.\" もそこで切れ、数字が変わる訳や同じ文の二重読みが出ていた）。数字・頭字語・敬称の後ろの「.」は、次の文字が来るか1.2秒止まるまで待つ。gpt-4o 系では、逐次読み上げが ON のとき、一人が話し続けるあいだカードを1枚にまとめ、訳と読み上げはカードの中の文ごとに進める（始まる時刻は前と同じ）。カードは2秒の間・話し手か言語の交代・別のカード・30秒か480字の後の文の切れ目で閉じる"
@@ -334,7 +334,7 @@
     "v1.49.39": {
       "build": "20260928-v14939-secret-guard",
       "extension": "1.4.50",
-      "commit": null,
+      "commit": "7bf9c60",
       "indexHtmlSha256": "288eadb5f38e6fd86fd403415e8b81272dffb060c1f290ed345e6c5ab63fdaa6",
       "extensionAppJsSha256": "a826585557b84a1207b89497c7ea5c96352734d1be5bde94c72ce50de6e7d50d",
       "extensionZipSha256": "3dcf8e537567be483ebbd3e98b1dc6f1f631f5a2dc755031f162ec945fa990bf",
