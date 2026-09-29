@@ -1,7 +1,7 @@
 # Realtime STT マルチプロバイダ 開発仕様書
 
 起点：HTML v1.49.39 / Chrome・Edge 拡張 1.4.50（2026-09-29 時点）
-状態：**仕様（未実装）**。この文書を足しただけでは挙動は変わりません。
+状態：**仕様（未実装）**。この文書を足しただけでは挙動は変わりません。§18 の決定（2026-09-29）を反映済みです。
 元資料：起草された「Duo Interpreter Realtime STT Multi-Provider 実装計画書」（以下「計画書」。`計画書§n` は計画書の節番号）
 
 ---
@@ -29,9 +29,9 @@ TTTR で評価する）はそのまま引き継ぎます。そのうえで、**�
 |#|計画書|本書|理由|
 |---|---|---|---|
 |1|§51 `src/stt/*.js` などにファイルを分ける|`index.html` と `extension/app.js` の**両方へ同じコードを最上位ブロックとして置く**。製品コードの新ファイルは作らない（Node の検証ツールを除く）|ビルド手順が無く、2ファイルを手で同期して `test-file-sync.cjs` で一致を検査している。HTML は1ファイルで配布し、設定を埋め込んで書き出す|
-|2|§28–33 Token Backend を置く。§33 localStorage へのキー保存を禁止|一時資格情報の発行経路を3つ用意する（direct／relay／broker、§8.3）。既定の direct は**今の gpt-live と同じ**で、利用者のキーでブラウザが一時トークンを発行し、WebSocket には一時トークンだけを使う。キーの保存は既存の方針（区分ごとの「このブラウザに保存する」）に従う|Duo は「サーバーを持たず、ブラウザの中だけで動く」（`SECURITY.md` 冒頭）。Backend を必須にすると GitHub Pages 版も拡張版も単体で動かなくなる。localStorage の扱いは **D-1** で判断を仰ぐ|
-|3|§6 OpenAI の delay 初期値は `medium`|既定は **`low`**|今のコードは `delay:'low'` 固定（`RealtimeTranscriptionEngine.prototype.config`、app.js:9897）。既定を変えると既存の利用者の挙動が変わる。`medium` は比較試験で評価する（**D-4**）|
-|4|§48 自動フォールバック既定 ON|既定 **OFF**。明示的に ON にしたときだけ|フォールバックは音声の送り先の会社を変える。`SECURITY.md` §2「送り先は利用者が選んだプロバイダだけ」に反し、別契約の料金も発生する（**D-3**）|
+|2|§28–33 Token Backend を置く。§33 localStorage へのキー保存を禁止|一時資格情報の発行経路を3つ用意する（direct／relay／broker、§8.3）。既定の direct は**今の gpt-live と同じ**で、利用者のキーでブラウザが一時トークンを発行し、WebSocket には一時トークンだけを使う。キーの保存は既存の方針（区分ごとの「このブラウザに保存する」）に従う|Duo は「サーバーを持たず、ブラウザの中だけで動く」（`SECURITY.md` 冒頭）。Backend を必須にすると GitHub Pages 版も拡張版も単体で動かなくなる。localStorage への保存は現行と同じく可とする（**D-1 決定**）|
+|3|§6 OpenAI の delay 初期値は `medium`|既定は **`low`**|今のコードは `delay:'low'` 固定（`RealtimeTranscriptionEngine.prototype.config`、app.js:9897）。既定を変えると既存の利用者の挙動が変わる。`medium` は比較試験で評価する（**D-4 決定**）|
+|4|§48 自動フォールバック既定 ON|既定 **OFF**。明示的に ON にしたときだけ|フォールバックは音声の送り先の会社を変える。`SECURITY.md` §2「送り先は利用者が選んだプロバイダだけ」に反し、別契約の料金も発生する（**D-3 決定**）|
 |5|§34–35 Duo Turn Controller を新設し、§59 Phase 8 で partial を Jev へつなぐ|**新設しない。** 既存の segment 層（`segUpdate`／`segCheck`）と判断層（`TurnDecision`）がその役割を持つ。新 Provider の partial をここへ流せば、partial → 判断 → 翻訳開始は既定の `segmentMode=balanced` でそのまま成立する|gpt-live の経路はすでに partial を `segUpdate` へ流し、安定した前半から逐次翻訳している（`segLiveEvent` app.js:15846、`segCheck` app.js:15197）|
 |6|§8 AssemblyAI の3モードのプリセット値表を Duo が持つ|**Duo はプリセット値を持たない。** `mode` だけを送り、利用者が上書きした項目だけを追加で送る|公式情報で確認できたのは balanced の一部（min 128ms／max 1280ms）だけ。値を持つと、公式が変えたときに画面の表示が嘘になる|
 |7|§24 ElevenLabs の VAD 既定値（1.5／0.4／100／100）に依存|4項目とも**接続時に必ず明示して送る**|検索の要約に、API 側の既定値が SDK と食い違う記述（250ms／2500ms）があった。明示して送れば既定値の差に左右されない（要原典確認）|
@@ -342,7 +342,9 @@ AUTO で2人の言語が違うとき（`sttAutoDetect()` と同じ条件）は�
 |`provider`|Provider の endpoint だけ。安全弁として Duo の「文字が止まって一定時間」と「最長30秒」は残す|`caps.endpoint='turn'` の Provider|
 |`duo`|Duo の区切りだけ。Provider の endpoint は記録するだけ|すべて|
 
-計画書§35 の「Provider の endpoint だけ／Jev だけ／両方」を比べるための設定です（**D-6**）。
+計画書§35 の「Provider の endpoint だけ／Jev だけ／両方」を比べるための設定です。
+既定は `first` です（**D-6 決定**。判断を一任されたため本書で決めた）。理由は2つあります。OpenAI では今の挙動そのものに
+なり、既存の利用者に変化が無いこと。新 Provider でも、Provider と Duo のどちらかの区切りが遅れたとき、遅い方に引きずられないこと。
 segment 層が有効なとき、**翻訳の開始はカードを閉じるのを待ちません**（`segCheck` が安定した前半を確定する）。
 カードを閉じる時刻が効くのは、末尾の確定と、読み上げを文ごとにまとめる判断です。
 
@@ -407,8 +409,16 @@ Provider の確定を Duo の区切りに合わせます。
 |`relay`|拡張の service worker が**発行の要求だけ**を中継する|中継先は §8.2 の固定 URL だけで、任意のオリジンへは中継しない。`turn-proxy.js` と同じく、頼めるのは拡張自身のページと登録済みの HTML 本体のタブだけ。本文とキーを記録しない。拡張の `host_permissions` に発行元を足す|
 |`broker`|利用者が指定した HTTPS の Token Broker が発行する。ページは Provider のキーを持たない|組織で配るとき向け。Duo はサーバーを同梱しない。契約は §8.4|
 
-Phase 0 で各発行元の CORS を実測し（GitHub Pages のオリジンと拡張ページ）、付録A に書きます。
-direct が通らない Provider は、HTML 版では relay（拡張がつながっているとき）か broker を案内します（**D-2**）。
+CORS が問題になるのは **HTML 版（GitHub Pages のタブ）だけ**です。拡張の中のページ（`app.html`）は、
+`host_permissions` にある発行元へは CORS に関係なく要求を送れるので、direct のままで通ります（§8.7 で発行元を足す）。
+
+HTML 版で direct が通らない Provider をどう扱うかは、**実装後の挙動を見て決めます（D-2 決定）**。判断できるように、
+次のことを実装に含めます。
+
+- Phase 0 で各発行元の CORS を実測し（GitHub Pages のオリジンと拡張ページ）、付録A に書く。
+- 発行に失敗したとき、🔍 確認と診断ログで原因を分けて出す。応答を受け取れずに失敗した（`fetch` が HTTP の状態を持たずに
+  失敗した）ときは「ブラウザから発行元へ届きません（CORS の可能性）。拡張から使うか、発行経路を変えてください」、
+  401・403 のときは「キーが無効か、音声認識の権限がありません」。**2つを同じ文言にしません。**
 
 ### 8.4 Token Broker の契約
 
@@ -420,12 +430,14 @@ Content-Type: application/json
 ```
 
 - HTTPS のみ。認証情報を含む URL は受け付けません（`turn-proxy.js` の `normalizeTurnOrigin` と同じ規則）。
-- Duo は Cookie を送りません（`credentials:'omit'`）。Broker が利用者をどう認証するかは **D-8** で決めます。
+- Duo は Cookie を送りません（`credentials:'omit'`）。Broker が利用者をどう認証するかは、**実装後の挙動を見て決めます（D-8 決定）**。
+  Phase 5 では上の契約（URL・要求・応答）だけを実装します。
 - Broker の応答は診断に書きません。
 
 ### 8.5 キーの持ち方
 
-- 新しいキーの名前：`stt:elevenlabs`、`stt:assemblyai`、`stt:soniox`。区分は stt で、既存の「このブラウザに保存する」に従います（**D-1**）。
+- 新しいキーの名前：`stt:elevenlabs`、`stt:assemblyai`、`stt:soniox`。区分は stt で、**現行と同じく**「このブラウザに保存する」が ON のとき `localStorage`（`di.keys.stt`）に保存します（**D-1 決定**）。
+  計画書§33 の「localStorage 禁止」は採りません。
 - `sttLiveKey(provider)`：
   - `elevenlabs` → `KEYS['stt:elevenlabs']`、空なら `KEYS['eleven']`（同じ会社の読み上げ用キー）。
     ElevenLabs のキーは既定で権限が絞られるので（app.js:3311 の注記）、音声認識の権限が無ければ 🔍 確認がそう言うようにします。
@@ -441,7 +453,7 @@ Content-Type: application/json
 ### 8.7 拡張
 
 - `manifest.json` の `host_permissions` に `https://streaming.assemblyai.com/*` と `https://api.soniox.com/*` を足します
-  （`api.elevenlabs.io` はあります）。拡張ページから発行元を呼ぶためです。
+  （`api.elevenlabs.io` はあります）。拡張ページから発行元を CORS に関係なく呼ぶためです。
 - WebSocket に `host_permissions` は要りません。CSP の `connect-src` には `wss://*` があります。
 - `SECURITY.md`（§2 の音声認識の送り先、§5 の権限）と `audit/extension-permission-audit.md` を直します。
 - 各社のデータ保持・学習への利用の設定は Phase 0 で確認し、README に書きます。
@@ -451,33 +463,45 @@ Content-Type: application/json
 ## 9. 設定（`CONFIG_SCHEMA` に足すもの）
 
 保存キーは「`di.` に続けて設定名を省略せず書く」規則に従います（`CONFIG_SCHEMA` の注記）。
-既定値の方針は3つです：**(1) 既存の挙動がある設定は今の値、(2) 新 Provider は公式の既定値、(3) 実測のあとに見直す**（**D-5**）。
+既定値の方針は3つです：**(1) 既存の挙動がある設定は今の値、(2) 新 Provider は公式の既定値、(3) 実測のあとに見直す**（**D-5 決定**）。
 
-|prop|保存キー|既定|値|
+**性能に関わる設定は、すべてプルダウンで選びます（D-5 決定）。** 数値を打ち込む欄は作りません。
+選択肢には必ず次の2つを入れます。
+
+- 公式の既定値（画面では「（既定）」と書く）
+- 計画書が挙げた値（ElevenLabs の 0.3〜1.0秒、AssemblyAI の min_latency とモードごとの値の候補、Soniox の公式の低遅延の出発点など）
+
+これで、比較試験（§13.2）の条件をすべて画面から選べます。選択肢の値は、Phase 0 で原典の範囲と照らして見直します
+（範囲外と分かった値は外す）。
+
+|prop|保存キー|既定|選択肢|
 |---|---|---|---|
 |`sttProvider`（既存）|`di.sttp`|`webspeech`|`elevenlabs`・`assemblyai`・`soniox` を足す。gpt-live は今と同じく `openai`＋モデル名で選ぶ|
-|`sttModel`（既存）|`di.sttm`|Provider ごと|`scribe_v2_realtime`／`universal-3-5-pro`／`stt-rt-v5`。直接入力も可（新しい版が出ても設定で追える）|
+|`sttModel`（既存）|`di.sttm`|Provider ごと|`scribe_v2_realtime`／`universal-3-5-pro`／`stt-rt-v5`。モデル名の直接入力も今と同じく残す（新しい版が出ても追える。性能設定ではないため）|
 |`sttLiveDelay`|`di.sttLiveDelay`|**`low`**|`minimal`・`low`・`medium`・`high`・`xhigh`|
 |`sttElevenLabsCommitStrategy`|`di.sttElevenLabsCommitStrategy`|`vad`|`vad`・`manual`|
-|`sttElevenLabsVadSilenceSecs`|`di.sttElevenLabsVadSilenceSecs`|`1.5`|0.3〜3.0|
-|`sttElevenLabsVadThreshold`|`di.sttElevenLabsVadThreshold`|`0.4`|0.1〜0.9（範囲は要原典確認）|
-|`sttElevenLabsMinSpeechMs`|`di.sttElevenLabsMinSpeechMs`|`100`|50〜2000（要原典確認）|
-|`sttElevenLabsMinSilenceMs`|`di.sttElevenLabsMinSilenceMs`|`100`|50〜2000（要原典確認）|
+|`sttElevenLabsVadSilenceSecs`|`di.sttElevenLabsVadSilenceSecs`|`1.5`|0.3・0.5・0.7・1.0・1.5・2.0・3.0 秒|
+|`sttElevenLabsVadThreshold`|`di.sttElevenLabsVadThreshold`|`0.4`|0.2・0.3・0.4・0.5・0.6（範囲は要原典確認）|
+|`sttElevenLabsMinSpeechMs`|`di.sttElevenLabsMinSpeechMs`|`100`|50・100・250・500 ms（要原典確認）|
+|`sttElevenLabsMinSilenceMs`|`di.sttElevenLabsMinSilenceMs`|`100`|50・100・250・500 ms（要原典確認）|
 |`sttAssemblyAiMode`|`di.sttAssemblyAiMode`|`balanced`|`min_latency`・`balanced`・`max_accuracy`|
-|`sttAssemblyAiMinTurnSilenceMs`|`di.sttAssemblyAiMinTurnSilenceMs`|空（モード既定）|整数 ms|
-|`sttAssemblyAiMaxTurnSilenceMs`|`di.sttAssemblyAiMaxTurnSilenceMs`|空（モード既定）|整数 ms|
-|`sttAssemblyAiInterruptionDelayMs`|`di.sttAssemblyAiInterruptionDelayMs`|空（モード既定）|整数 ms（意味は要原典確認）|
-|`sttSonioxEndpointLevel`|`di.sttSonioxEndpointLevel`|`0`|0〜3（上限は要原典確認）|
-|`sttSonioxEndpointSensitivity`|`di.sttSonioxEndpointSensitivity`|`0.0`|−1.0〜+1.0|
-|`sttSonioxMaxEndpointDelayMs`|`di.sttSonioxMaxEndpointDelayMs`|`2000`|500〜3000|
+|`sttAssemblyAiMinTurnSilenceMs`|`di.sttAssemblyAiMinTurnSilenceMs`|モードの既定（空）|モードの既定・100・128・160・256・400・512 ms|
+|`sttAssemblyAiMaxTurnSilenceMs`|`di.sttAssemblyAiMaxTurnSilenceMs`|モードの既定（空）|モードの既定・640・900・1280・1600・2000・2560 ms|
+|`sttAssemblyAiInterruptionDelayMs`|`di.sttAssemblyAiInterruptionDelayMs`|モードの既定（空）|モードの既定・0・250・500 ms（意味は要原典確認）|
+|`sttSonioxEndpointLevel`|`di.sttSonioxEndpointLevel`|`0`|0・1・2・3（上限は要原典確認）|
+|`sttSonioxEndpointSensitivity`|`di.sttSonioxEndpointSensitivity`|`0.0`|−1.0・−0.5・−0.3・0.0・+0.3・+0.5・+1.0|
+|`sttSonioxMaxEndpointDelayMs`|`di.sttSonioxMaxEndpointDelayMs`|`2000`|500・1000・1500・2000・2500・3000 ms|
 |`sttCardClose`|`di.sttCardClose`|`first`|`first`・`provider`・`duo`|
 |`sttCredentialRoute`|`di.sttCredentialRoute`|`direct`|`direct`・`relay`・`broker`|
-|`sttBrokerUrl`|`di.sttBrokerUrl`|空|HTTPS の URL|
-|`sttAutoFallback`|`di.sttAutoFallback`|`0`（OFF）|bool|
+|`sttBrokerUrl`|`di.sttBrokerUrl`|空|HTTPS の URL（性能設定ではないので入力欄）|
+|`sttAutoFallback`|`di.sttAutoFallback`|`0`（OFF）|OFF・ON|
 |`sttFallbackProvider`|`di.sttFallbackProvider`|`openai`|ストリーミング型の Provider|
-|`sttChunkMs`|`di.sttChunkMs`|`100`|50〜250|
+|`sttChunkMs`|`di.sttChunkMs`|`100`|50・100・200 ms|
 
-- 範囲外・不正な値は `coerce` で既定へ戻します（検査する）。
+AssemblyAI の選択肢に並べた 128・512・640・1280・2560 ms などは、計画書がモードごとのプリセット値として挙げた数字を
+**個別に選べるようにしたもの**です。「モードの既定」を選んでいる項目は送らず、モードの中身を Duo が決め打ちすることはしません（§0.1 #6）。
+
+- 選択肢に無い値（古い保存値や書き換えられた値）は、`coerce` で既定へ戻します（検査する）。
 - 反映は**次の開始から**です。実行中に変えたら、今の `rtCardSeconds` と同じくトーストで知らせます（app.js:12672）。
 - 計画書§24 の入れ子の `sttConfig` は、`sttLiveOptions()` が上の平らな設定から組み立てます。
   診断の `performance` には **Provider 自身のパラメータ名**で書きます（計画書§37 の形）。
@@ -498,6 +522,7 @@ Content-Type: application/json
 ### 10.2 Provider ごとの欄（JS で注入：`details.adv.panel-form#sttLivePanel`）
 
 判断層のパネル（`turnDecisionSettings`、app.js:498）と同じく JS から注入し、選んだ Provider に応じて中身を入れ替えます。
+**欄はすべてプルダウン（`select`）です**（D-5 決定）。選択肢は §9 の表のとおりで、既定の値には「（既定）」を付けます。
 
 **OpenAI（モデルが gpt-live-transcribe のとき）**
 
@@ -513,9 +538,10 @@ Content-Type: application/json
 |項目|選択肢|
 |---|---|
 |確定のしかた|VAD（無音で確定・既定）／手動（Duo の区切りで確定）|
-|確定までの無音|0.3／0.5／0.7／1.0／1.5秒（既定1.5）|
-|詳細：声の判定しきい値|0.1〜0.9（既定0.4）|
-|詳細：最短の発話・最短の無音|50〜2000ms（既定100）|
+|確定までの無音|0.3／0.5／0.7／1.0／1.5（既定）／2.0／3.0秒|
+|詳細：声の判定しきい値|0.2／0.3／0.4（既定）／0.5／0.6|
+|詳細：最短の発話|50／100（既定）／250／500ms|
+|詳細：最短の無音|50／100（既定）／250／500ms|
 
 失うもの：「短くすると文の途中の息継ぎで確定し、1文が複数に割れます。」
 
@@ -524,22 +550,26 @@ Content-Type: application/json
 |項目|選択肢|
 |---|---|
 |性能モード|最小遅延（min_latency）／バランス（balanced・既定）／最大精度（max_accuracy）|
-|詳細：ターン終了の最短無音・最長無音・interruption_delay|空＝モードの既定|
+|詳細：ターン終了の最短無音|モードの既定（既定）／100／128／160／256／400／512ms|
+|詳細：ターン終了の最長無音|モードの既定（既定）／640／900／1280／1600／2000／2560ms|
+|詳細：interruption_delay|モードの既定（既定）／0／250／500ms|
 
-詳細を1つでも埋めると、見出しに「カスタム（モード＋上書き）」と出します。モードごとの値は画面に出しません（§0.1 #6）。
+詳細の1つでも「モードの既定」以外を選ぶと、見出しに「カスタム（モード＋上書き）」と出します。モードごとの値は画面に出しません（§0.1 #6）。
 失うもの：「最短無音を短くすると、電話番号のように続く数字が途中で割れることがあります。」（要原典確認）
 
 **Soniox**
 
 |項目|選択肢|
 |---|---|
+|組み合わせ|公式の既定（Level 0 ／ 0.0 ／ 2000ms）（既定）／公式の低遅延の出発点（Level 2 ／ +0.3 ／ 1500ms）／個別に選ぶ|
 |区切りの速さ（Endpoint Speed）|Level 0 — 標準（既定）／1 — 速め／2 — 低遅延／3 — 最も積極的|
-|詳細：区切りやすさ（endpoint_sensitivity）|−1.0〜+1.0（既定0.0）|
-|詳細：区切りの最大待ち|500〜3000ms（既定2000）|
+|詳細：区切りやすさ（endpoint_sensitivity）|−1.0／−0.5／−0.3／0.0（既定）／+0.3／+0.5／+1.0|
+|詳細：区切りの最大待ち|500／1000／1500／2000（既定）／2500／3000ms|
 
 - この設定を「**認識精度**」と呼びません。区切りを出す速さの設定で、上げると語の精度がわずかに下がることがある、と書きます（計画書§12）。
-- ボタン「公式の低遅延の出発点を入れる（2 / +0.3 / 1500ms）」を置きます。**Soniox の公式ドキュメントが示す出発点**であり、
-  Duo が決めた最適値ではないと書きます。
+- 「組み合わせ」は3つの欄をまとめて変えるプルダウンで、保存はしません（3つの欄の値から表示を決める）。
+  3つのどれかを個別に変えると「個別に選ぶ」になります。「公式の低遅延の出発点」は **Soniox の公式ドキュメントが示す出発点**であり、
+  Duo が決めた最適値ではないと説明に書きます。
 - Duo 独自のプリセット（計画書§16 の Stable／Fast／Aggressive）は、Phase 7 の実測のあと必要なら足します。
   足すときは UI とコードのコメントに「Duo 独自」と明記します。
 
@@ -556,6 +586,8 @@ Content-Type: application/json
 - `test-settings-style.cjs` が通ること（注入パネルに `panel-form`、`#id` に文字サイズを書かない）。
 - `test-app-html-sync.cjs` が通ること（`sttProvider` の選択肢を `index.html` に足し、`app.html` を変換で作り直す）。
 - 実ブラウザで、Provider の切替で欄が入れ替わる・既定値が出る・保存される・再読込で戻ることを E2E で固定します（`test-settings-ui.cjs` と同じ形）。
+- 性能に関わる欄がすべて `select` であること、各 `select` の選択肢が §9 の表と一致し、既定の選択肢にだけ「（既定）」が付くことを検査します。
+- Soniox の「組み合わせ」を選ぶと3つの欄が変わり、3つのどれかを変えると「個別に選ぶ」に戻ることを検査します。
 
 ---
 
@@ -631,7 +663,7 @@ Content-Type: application/json
   同じ時刻・同じ回線の条件で比べられます。帯域が足りなければ条件ごとに順番に流すこともできます。
 - 1倍速で流します（リアルタイムの API は実時間の送出を前提にしている）。
 - ベンチ中は翻訳・読み上げ・会議送出をせず、カードは本体の会話欄ではなくベンチの欄に出します。自動フォールバックは切ります。
-- 実行前に、**送り先の会社の一覧と、送る音声の秒数**を出して確認を取ります（料金と送り先のため）。
+- 実行前に、**送り先の会社の一覧と、送る音声の秒数**を出して、**実行のたびに**確認を取ります（料金と送り先のため。**D-9 決定**）。
 - ファイルの音はマイクの経路を通らないので、実際のマイクと共有音声でのセッションも別に行います。
 
 ### 13.2 試験する条件
@@ -650,14 +682,16 @@ Content-Type: application/json
 ゆっくりした発話、長い間、短い間、雑音あり、システム音声、マイク）。
 「今回の control valve の stroke time ですが」のような言語の混ざる発話を必ず含めます。
 
-- 音声は、合成音声で作るか、権利を持つ録音を使います。**実際の会議の音声は commit しません**（`bench-audio/` を `.gitignore` に足す）。
+- **リポジトリに置く試験素材は合成音声だけ**です（**D-9 決定**）。権利を持つ録音は手元で使い、commit しません。
+  実際の会議の音声も commit しません（`bench-audio/` を `.gitignore` に足す）。合成音声の素材は `extension/tests/fixtures/stt-audio/` に置きます。
 - 参照原稿は音声と一緒に用意します。
 
 ### 13.4 集計と採用の判断
 
 - 各条件3回以上。中央値・p90・件数を出し、日付・版・回線・Provider が返したモデル名をそのまま添えます。
-- 主指標は **TTTR の中央値**。ただし (a) 確定後訂正の率が基準系（OpenAI・low）より悪くない、(b) CER／WER が基準系から
-  許容幅の内にある、を条件にします。**許容幅は本書では決めません**（**D-7**）。
+- **採用は、実装後に実際に使ったときの使用感で owner が判断します（D-7 決定）。** 本書は数値の合否基準を置きません。
+- 判断の材料として、TTTR の中央値、確定後訂正の率、CER／WER を、基準系（OpenAI・low）と並べて出します。
+  主に見る数字は TTTR の中央値です。
 - 結果は `次期仕様実装状況.md` に節を足して残します。
 
 ---
@@ -752,7 +786,8 @@ Provider ごとのエラーコードとの対応は要原典確認です。
   セッションの上限、課金の単位（無音の時間を含むか）、データ保持・学習への利用。
 - 実測：各発行元へ direct で発行できるか（GitHub Pages のオリジンと拡張ページ、CORS）。短い合成音声で接続し、受信の列を記録して fixture にする。
 
-完了条件：□ 付録A の要原典確認が埋まっている □ Provider ごとの fixture がある □ D-2 を判断できる材料がある
+完了条件：□ 付録A の要原典確認が埋まっている □ Provider ごとの fixture がある □ 各発行元の CORS の実測結果が付録A にある（D-2 の判断材料）
+□ §9 の選択肢の値が原典の範囲に収まっている（外れた値は外す）
 
 ### Phase 1 — gpt-live を Adapter 化し、delay を選べるようにする（計画書 Phase 2）
 
@@ -770,16 +805,19 @@ Provider ごとのエラーコードとの対応は要原典確認です。
 ### Phase 4 — Soniox（計画書 Phase 5）
 
 Phase 2〜4 の完了条件（Provider ごと）：
-□ 契約の検査（fixture → 正規化イベント列） □ direct で一時資格情報を発行できる（通らなければ relay か broker で） □ マイク・共有音声・VB
-□ partial の表示、committed、endpoint の正規化 □ 性能設定を UI で切り替え、送った値が診断に出る
+□ 契約の検査（fixture → 正規化イベント列） □ 拡張版で direct の一時資格情報の発行が通る
+□ HTML 版で direct を試し、通らないときは 🔍 確認と診断が「届かない（CORS の可能性）」と「キーの問題」を分けて出す（D-2 の判断材料） □ マイク・共有音声・VB
+□ partial の表示、committed、endpoint の正規化 □ 性能設定をプルダウンで切り替え、送った値が診断に出る（§9 の選択肢すべて）
 □ キーが WebSocket の URL・診断に平文で出ない □ 翻訳・読み上げ・判断層（shadow）・会議送出が壊れていない
 □ `SECURITY.md`・`README.md`・`受入確認手順.md` を更新
 
 ### Phase 5 — 共通の仕組み
 
 再接続（§14.2）、自動フォールバック（§14.3）、relay と broker の経路（§8.3–8.4）、`sttCardClose` の3値。
+Broker は契約（§8.4）だけを実装し、利用者認証は実装後の挙動を見て決めます（D-8）。
 
 完了条件：□ 異常切断・期限切れ・429 を模擬して、分類どおりに動く □ フォールバックは ON のときだけ □ relay は固定 URL 以外を中継しない
+□ HTML 版で relay・broker を使ったときの挙動を実機で確かめ、D-2・D-8 の判断材料として `次期仕様実装状況.md` に残す
 
 ### Phase 6 — 比較の道具（計画書 Phase 7）
 
@@ -789,7 +827,8 @@ Phase 2〜4 の完了条件（Provider ごと）：
 
 ### Phase 7 — 比較試験の実施と既定値の見直し
 
-§13.2 の条件で測り、結果を `次期仕様実装状況.md` に残す。既定の Provider と設定値を変えるかは結果を見て owner が決めます（D-5・D-7）。
+§13.2 の条件で測り、結果を `次期仕様実装状況.md` に残す。既定の Provider と設定値を変えるかは、測った数字を材料に、
+実際に使ったときの使用感で owner が決めます（D-5・D-7）。
 
 ### Phase 8 — 判断層との比較（shadow、計画書 Phase 8）
 
@@ -801,19 +840,22 @@ Phase 2〜4 の完了条件（Provider ごと）：
 
 ---
 
-## 18. 決めていただくこと
+## 18. 決定事項（2026-09-29）
 
-|ID|論点|本書の推奨|
-|---|---|---|
-|D-1|新 Provider のキーを localStorage に保存してよいか（計画書§33 は禁止）|既存の方針（区分ごとの「このブラウザに保存する」）に揃える。禁止するなら、新 Provider は毎回入力か broker だけになる|
-|D-2|HTML 版で direct が CORS で通らない Provider をどう扱うか|Phase 0 の実測のあとで決める。候補は「拡張の relay を案内」「broker 必須」「HTML 版では選べない」|
-|D-3|自動フォールバックの既定|OFF（計画書は ON）|
-|D-4|OpenAI の delay の既定|low（今のまま）。計画書の medium は比較試験で評価|
-|D-5|新 Provider の初期値|公式の既定値（ElevenLabs 1.5秒、AssemblyAI balanced、Soniox Level 0）。計画書の値（0.5秒、min_latency、公式の低遅延の出発点）は試験の条件に入れる|
-|D-6|`sttCardClose` の既定|first（早い方）|
-|D-7|採用の判断基準（TTTR を縮めるために CER／WER をどこまで許すか）|基準系からの許容幅を owner が決める|
-|D-8|Token Broker の利用者認証|broker を実際に使う組織が出てから決める（Phase 5 は契約だけで出荷できる）|
-|D-9|比較試験の費用と、合成音声の試験素材をリポジトリに置くか|費用は Phase 6 の確認画面で都度確認。素材は合成音声のみ置く案|
+owner の回答で決まったことと、本書のどこへ反映したかです。「実装後の挙動で確認」とした項目は、判断に要る材料を
+実装に含めることにしました。
+
+|ID|論点|決定|反映先|
+|---|---|---|---|
+|D-1|新 Provider のキーを localStorage に保存してよいか（計画書§33 は禁止）|**現行と同じくローカル保存可**（区分ごとの「このブラウザに保存する」が ON のとき）|§0.1 #2、§8.5|
+|D-2|HTML 版で direct が CORS で通らない Provider をどう扱うか|**実装後の挙動で確認して決める**|§8.3（失敗の原因を分けて出す）、§17 Phase 0・2〜5 の完了条件|
+|D-3|自動フォールバックの既定|**OFF**|§0.1 #4、§9、§14.3|
+|D-4|OpenAI の delay の既定|**low**（今のまま）。medium は比較試験で評価|§0.1 #3、§9|
+|D-5|新 Provider の初期値|**公式の既定値**（ElevenLabs 1.5秒、AssemblyAI balanced、Soniox Level 0）。**性能設定はすべてプルダウンで選べるようにし**、計画書の値（0.5秒、min_latency、公式の低遅延の出発点など）も選択肢に入れる|§9、§10.2、§10.3|
+|D-6|`sttCardClose` の既定|Claude に一任 → **first**（早い方）。OpenAI では今の挙動のままで、新 Provider でも遅い方の区切りに引きずられないため|§6.3、§9|
+|D-7|採用の判断基準|**実装後の使用感で owner が判定する**。数値の合否基準は置かず、測った数字は判断の材料として出す|§13.4、§17 Phase 7|
+|D-8|Token Broker の利用者認証|**実装後の挙動で確認して決める**。Phase 5 は契約だけを実装|§8.4、§17 Phase 5|
+|D-9|比較試験の費用と試験素材|**費用は実行のたびに確認画面で確かめる。リポジトリに置く素材は合成音声だけ**|§13.1、§13.3|
 
 ---
 
