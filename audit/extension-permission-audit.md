@@ -17,6 +17,7 @@
 | オリジン | 理由 | 判断 |
 |---|---|---|
 | 各社の API（OpenAI・xAI・Anthropic・Gemini・Groq・DeepSeek・OpenRouter・Mistral・Together・Google 翻訳・MyMemory・Aivis・ElevenLabs・tts.quest） | 拡張のページから API を呼ぶ | 必要。使わない会社のものも入っているが、呼ぶのは利用者が選んだものだけ |
+| `streaming.assemblyai.com`・`api.soniox.com`（1.4.52 で追加） | ストリーミング認識の一時資格情報を拡張のページから作る（CORS に左右されない）。音声の WebSocket 自体は CSP の `connect-src wss://*` で足り、権限は要らない | 必要。呼ぶのは利用者が AssemblyAI／Soniox を選んだときだけ |
 | `127.0.0.1` / `localhost`（http） | ローカルの読み上げエンジン | 必要 |
 | `hide-1925.github.io` | 既定の HTML本体（Pages） | 必要 |
 | Teams（3ドメイン） | 会議のマイク送出・話者の検出 | 必要 |

@@ -60,7 +60,7 @@ function world(segmentMode){
   vm.runInContext(CODE,ctx);
   /* 偽の Adapter。受信はすでに正規化イベントの配列として渡す。 */
   vm.runInContext(`STT_LIVE_PROVIDERS.fake={id:'fake',label:'Fake',defaultModel:'fake-rt',transport:'websocket',
-    caps:{endpoint:'turn',stable:'tokens'},model:function(){return 'fake-rt';},performance:function(){return {level:0};},
+    caps:{endpoint:'turn',stable:'tokens'},model:function(){return 'fake-rt';},performance:function(){return {level:0};},classify:function(){return 'transient';},
     map:function(st,raw){return raw;}};`,ctx);
   return {w,ctx,
     host(provider){return vm.runInContext('new SttLiveHost('+JSON.stringify(provider||'fake')+',"A",null,{})',ctx);},
@@ -162,5 +162,107 @@ test('messages that arrive after stop do not reach the adapter or the cards',()=
   h.stop();
   h.onMessage([{type:'partial',key:'x',text:'late'}]);
   assert.equal(mapped,0);assert.equal(r.w.entries.length,0);
+});
+/* ── Phase 2〜4：カードを閉じる合図・つなぎ・切断 ───────────────────────── */
+test('card close "provider": the device waits for the provider instead of its own text timeout',()=>{
+  const r=world('balanced');r.ctx.CFG.sttCardClose='provider';const h=r.host();
+  assert.equal(h.cardClose,'provider');
+  h.onMessage([{type:'partial',key:'s1',text:'We start the test.'}]);
+  for(let k=0;k<25;k++)r.tick(h,80);
+  assert.equal(r.w.entries[0].segment.final,false,'first would have closed at 1.25 s; provider waits');
+  h.onMessage([{type:'committed',key:'s1',text:'We start the test.',closeReason:'semantic'},{type:'endpoint',key:'s1',reason:'semantic'}]);
+  r.tick(h,80);
+  assert.equal(r.w.entries[0].segment.final,true);
+});
+test('card close "provider": a stalled card still closes after the 6 s safety valve',()=>{
+  const r=world('balanced');r.ctx.CFG.sttCardClose='provider';const h=r.host();
+  h.onMessage([{type:'partial',key:'s1',text:'and then'}]);
+  for(let k=0;k<70;k++)r.tick(h,80);
+  assert.equal(r.w.entries[0].segment.final,false);
+  for(let k=0;k<10;k++)r.tick(h,80);
+  assert.equal(r.w.entries[0].segment.final,true);
+});
+test('card close "provider" is not offered where the provider has no per-utterance endpoint',()=>{
+  const r=world('balanced');r.ctx.CFG.sttCardClose='provider';
+  assert.equal(r.host('openai').cardClose,'first','gpt-live completed can be very late');
+  r.ctx.CFG.sttElevenLabsCommitStrategy='manual';
+  assert.equal(r.host('elevenlabs').cardClose,'first','manual commit means Duo gives the boundary');
+  r.ctx.CFG.sttElevenLabsCommitStrategy='vad';
+  assert.equal(r.host('elevenlabs').cardClose,'provider');
+  r.ctx.CFG.sttCardClose='bogus';assert.equal(r.host().cardClose,'first');
+});
+test('card close "duo": provider segments are joined and only the device closes the card',()=>{
+  const r=world('balanced');r.ctx.CFG.sttCardClose='duo';const h=r.host();
+  h.onMessage([{type:'partial',key:'s1',text:'The valve'}]);r.tick(h,80);
+  h.onMessage([{type:'committed',key:'s1',text:'The valve opens.'},{type:'endpoint',key:'s1',reason:'semantic'}]);r.tick(h,80);
+  assert.equal(r.w.entries.length,1);assert.equal(r.w.entries[0].segment.final,false,'the provider endpoint does not close it');
+  h.onMessage([{type:'partial',key:'s2',text:'Then'}]);r.tick(h,80);
+  assert.equal(r.w.entries[0].segment.text,'The valve opens. Then','joined with one space');
+  for(let k=0;k<45;k++)r.tick(h,80);          /* "Then" reads as continuing: the 3 s wait */
+  assert.equal(r.w.entries[0].segment.final,true);
+  h.onMessage([{type:'committed',key:'s2',text:'Then stop.'}]);for(let k=0;k<30;k++)r.tick(h,80);
+  assert.deepEqual(r.w.entries.map(e=>e.segment.text),['The valve opens. Then',' stop.']);
+  assert.equal(h.stitched.base,'','once everything is in closed cards the joined text starts over');
+});
+test('card close "duo": a card the device closed early is corrected by the provider\'s final text',()=>{
+  const r=world('balanced');r.ctx.CFG.sttCardClose='duo';const h=r.host();
+  h.onMessage([{type:'partial',key:'s1',text:'control value'}]);
+  for(let k=0;k<30;k++)r.tick(h,80);
+  assert.equal(r.w.entries[0].segment.final,true);
+  h.onMessage([{type:'committed',key:'s1',text:'control valve.'}]);r.tick(h,80);
+  assert.equal(r.w.entries.length,1,'no empty card for the corrected tail');
+  assert.equal(r.w.entries[0].segment.text,'control valve.');
+});
+test('a card whose provisional text is withdrawn is removed rather than left empty',()=>{
+  const r=world('balanced'),h=r.host('soniox');
+  h.onMessage(JSON.stringify({tokens:[{text:'Hel',is_final:false}]}));
+  assert.equal(r.w.entries.length,1);
+  h.onMessage(JSON.stringify({tokens:[]}));
+  assert.equal(r.w.entries.length,0);
+});
+test('soniox through the host: tokens become one card per <end>, without the markers',()=>{
+  const r=world('balanced'),h=r.host('soniox'),t=(x,f)=>({text:x,is_final:!!f,confidence:1});
+  h.onMessage(JSON.stringify({tokens:[t('The'),t(' control')]}));r.tick(h,80);
+  h.onMessage(JSON.stringify({tokens:[t('The',1),t(' control',1),t(' valve',1),t(' opens.',1),t('<end>',1),t(' Then',0)]}));
+  for(let k=0;k<3;k++)r.tick(h,80);
+  assert.deepEqual(r.w.entries.map(e=>[e.segment.text,e.segment.final]),[['The control valve opens.',true],['Then',false]]);
+  assert.ok(!r.w.entries.some(e=>/<end>|<fin>/.test(e.segment.text)));
+});
+test('errors: auth and config are shown; others are only remembered for the reconnect decision',()=>{
+  const r=world('balanced'),h=r.host(),toasts=[];r.ctx.toast=(m)=>toasts.push(m);
+  h.adapter=Object.assign({},h.adapter,{classify:(e)=>e.code==='bad-key'?'auth':'transient'});
+  h.onMessage([{type:'error',code:'blip',message:'hiccup'}]);
+  assert.equal(toasts.length,0);assert.equal(h.lastErrorClass,'transient');
+  h.onMessage([{type:'error',code:'bad-key',message:'nope'}]);
+  assert.equal(toasts.length,1);assert.equal(h.lastErrorClass,'auth');
+  const fail=r.w.logs.filter(l=>l.m==='live-FAIL').map(l=>l.d);
+  assert.equal(fail[1].errorClass,'auth');assert.equal(fail[1].provider,'fake');
+});
+test('an unexpected close closes the open card and reconnects at most 3 times a minute',()=>{
+  const r=world('balanced'),h=r.host(),toasts=[],timers=[];
+  r.ctx.toast=(m)=>toasts.push(m);r.ctx.setTimeout=(f,ms)=>{timers.push(ms);return timers.length;};
+  h.onMessage([{type:'partial',key:'s1',text:'half a sentence'}]);
+  h.onSocketClose({code:1006,reason:''});
+  assert.equal(r.w.entries[0].segment.final,true,'the text so far is kept as a closed card');
+  assert.equal(r.w.entries[0].segment.finalReason,'reconnect');
+  h.onSocketClose({code:1006,reason:''});h.onSocketClose({code:1006,reason:''});
+  assert.deepEqual(timers,[500,1000,2000]);
+  h.onSocketClose({code:1006,reason:''});
+  assert.equal(timers.length,3,'no fourth attempt within a minute');
+  assert.match(toasts[toasts.length-1],/3回/);
+  r.w.now+=61000;h.onSocketClose({code:1006,reason:''});assert.equal(timers.length,4,'the window slides');
+});
+test('a close after an auth or config error does not reconnect',()=>{
+  const r=world('balanced'),h=r.host(),toasts=[],timers=[];
+  r.ctx.toast=(m)=>toasts.push(m);r.ctx.setTimeout=(f,ms)=>{timers.push(ms);return 1;};
+  h.lastErrorClass='auth';h.onSocketClose({code:1000,reason:''});
+  assert.equal(timers.length,0);assert.match(toasts[0],/キーか権限/);
+});
+test('joining provider segments puts a space only between words of space-separated languages',()=>{
+  const r=world('balanced'),j=r.ctx.sttLiveJoin;
+  assert.equal(j('The valve opens.','Then'),'The valve opens. Then');
+  assert.equal(j('今日は晴れです。','明日は'),'今日は晴れです。明日は');
+  assert.equal(j('control valve','の stroke'),'control valveの stroke');
+  assert.equal(j('Hello ','world'),'Hello world');assert.equal(j('','x'),'x');assert.equal(j('x',''),'x');
 });
 console.log(JSON.stringify({passed:tests.length,tests},null,2));

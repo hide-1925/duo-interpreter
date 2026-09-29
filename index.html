@@ -1148,6 +1148,9 @@ details.adv.panel-form .row.wrap{flex-wrap:wrap;gap:6px;margin-top:10px}
         <option value="webspeech">🆓 ブラウザ内蔵 Web Speech API（無料・低遅延 / Chrome・Edge）</option>
         <option value="realtime">⚡ リアルタイム同時通訳（gpt-realtime-translate / OpenAI）</option>
         <option value="openai">OpenAI（gpt-4o-transcribe / whisper-1）</option>
+        <option value="elevenlabs">ElevenLabs Scribe v2 Realtime（ストリーミング）</option>
+        <option value="assemblyai">AssemblyAI Universal-3.5 Pro Realtime（ストリーミング）</option>
+        <option value="soniox">Soniox v5 Realtime（ストリーミング）</option>
         <option value="xai">xAI Grok（多言語・キーは翻訳側と共通）</option>
         <option value="groq">Groq Whisper（高速・安価）</option>
         <option value="openrouter">OpenRouter（各社の文字起こしモデル）</option>
@@ -2024,7 +2027,11 @@ var STT_ADAPTER_CAPABILITIES={
   groq:{microphone:true,systemAudio:true,arbitraryTrack:true},
   openrouter:{microphone:true,systemAudio:true,arbitraryTrack:true},
   gemini:{microphone:true,systemAudio:true,arbitraryTrack:true},
-  realtime:{microphone:true,systemAudio:true,arbitraryTrack:true}
+  realtime:{microphone:true,systemAudio:true,arbitraryTrack:true},
+  /* ストリーミング型（STTマルチプロバイダ開発仕様書）。受け取った Track を PCM にして送る。 */
+  elevenlabs:{microphone:true,systemAudio:true,arbitraryTrack:true},
+  assemblyai:{microphone:true,systemAudio:true,arbitraryTrack:true},
+  soniox:{microphone:true,systemAudio:true,arbitraryTrack:true}
 };
 var AudioRoutingPolicy={resolve:function(job){
   var valid=job&&job.sourceParticipantId&&job.sourceEndpointId&&job.utteranceId&&job.sessionId;
@@ -2775,8 +2782,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.50.0';
-var APP_BUILD = '20260929-v1500-stt-live-host';
+var APP_VERSION = 'v1.51.0';
+var APP_BUILD = '20260929-v1510-stt-multi-provider';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -2876,14 +2883,36 @@ var STT_MODELS = {
   groq:  [{id:'whisper-large-v3-turbo', note:'高速'}, {id:'whisper-large-v3', note:'turboより高精度・やや低速'}],
   gemini:[{id:'gemini-2.5-flash', note:'高精度'}, {id:'gemini-2.5-flash-lite', note:'軽量・高速'}],
   webspeech:[{id:'(ブラウザ内蔵)'}],
-  realtime:[{id:'gpt-realtime-translate', note:'音声→訳した音声＋字幕を同時生成'}]
+  realtime:[{id:'gpt-realtime-translate', note:'音声→訳した音声＋字幕を同時生成'}],
+  /* ストリーミング型（STTマルチプロバイダ開発仕様書）。一覧を取る API は使わない。モデル名は直接入力でも変えられる。 */
+  elevenlabs:[{id:'scribe_v2_realtime', note:'Scribe v2 Realtime・低遅延'}],
+  assemblyai:[{id:'universal-3-5-pro', note:'Universal-3.5 Pro Realtime（既定）'},{id:'universal-3-6-pro', note:'新しい版（未検証）'}],
+  soniox:[{id:'stt-rt-v5', note:'Soniox v5 Realtime'}]
 };
 /* ストリーミング型 STT の性能設定の選択肢（STTマルチプロバイダ開発仕様書 §9・D-5）。
    すべてプルダウンで選び、数値を打ち込む欄は作らない。def は公式の既定値。
    ただし gpt-live-transcribe の delay は、今まで固定で送っていた low を既定にする。 */
 var STT_LIVE_CHOICES={
   sttLiveDelay:{def:'low',values:[['minimal','最小（minimal）— いちばん早く出る'],['low','低（low）— 字幕向け'],['medium','中（medium）'],
-    ['high','高（high）— 音声を多めに聞いてから出す'],['xhigh','最高（xhigh）— 遅れを最大まで許す']]}
+    ['high','高（high）— 音声を多めに聞いてから出す'],['xhigh','最高（xhigh）— 遅れを最大まで許す']]},
+  /* ElevenLabs。範囲は公式 SDK の検査（0.3〜3.0 秒・0.1〜0.9・50〜2000ms）の内側だけ。 */
+  sttElevenLabsCommitStrategy:{def:'vad',values:[['vad','無音で確定（VAD）'],['manual','Duo の区切りで確定（手動）']]},
+  sttElevenLabsVadSilenceSecs:{def:'1.5',values:[['0.3','0.3秒'],['0.5','0.5秒'],['0.7','0.7秒'],['1.0','1.0秒'],['1.5','1.5秒'],['2.0','2.0秒'],['3.0','3.0秒']]},
+  sttElevenLabsVadThreshold:{def:'0.4',values:[['0.2','0.2'],['0.3','0.3'],['0.4','0.4'],['0.5','0.5'],['0.6','0.6']]},
+  sttElevenLabsMinSpeechMs:{def:'100',values:[['50','50ms'],['100','100ms'],['250','250ms'],['500','500ms']]},
+  sttElevenLabsMinSilenceMs:{def:'100',values:[['50','50ms'],['100','100ms'],['250','250ms'],['500','500ms']]},
+  /* AssemblyAI。モードの中身は Duo が持たない。空＝そのモードの既定（送らない）。 */
+  sttAssemblyAiMode:{def:'balanced',values:[['min_latency','最小遅延（min_latency）'],['balanced','バランス（balanced）'],['max_accuracy','最大精度（max_accuracy）']]},
+  sttAssemblyAiMinTurnSilenceMs:{def:'',values:[['','モードの既定'],['100','100ms'],['128','128ms'],['160','160ms'],['256','256ms'],['400','400ms'],['512','512ms']]},
+  sttAssemblyAiMaxTurnSilenceMs:{def:'',values:[['','モードの既定'],['640','640ms'],['900','900ms'],['1280','1280ms'],['1600','1600ms'],['2000','2000ms'],['2560','2560ms']]},
+  sttAssemblyAiInterruptionDelayMs:{def:'',values:[['','モードの既定'],['0','0ms'],['250','250ms'],['500','500ms']]},
+  /* Soniox。Level は 0〜3、区切りやすさは −1.0〜+1.0、最大待ちは 500〜3000ms（公式 SDK の注記）。 */
+  sttSonioxEndpointLevel:{def:'0',values:[['0','Level 0 — 標準'],['1','Level 1 — 速め'],['2','Level 2 — 低遅延'],['3','Level 3 — 最も積極的']]},
+  sttSonioxEndpointSensitivity:{def:'0',values:[['-1','−1.0'],['-0.5','−0.5'],['-0.3','−0.3'],['0','0.0'],['0.3','+0.3'],['0.5','+0.5'],['1','+1.0']]},
+  sttSonioxMaxEndpointDelayMs:{def:'2000',values:[['500','500ms'],['1000','1000ms'],['1500','1500ms'],['2000','2000ms'],['2500','2500ms'],['3000','3000ms']]},
+  /* 共通。カードを閉じる合図（§6.3・D-6 で first）と、送る音声の1回の長さ（AssemblyAI は 50〜1000ms）。 */
+  sttCardClose:{def:'first',values:[['first','Provider と Duo の早いほう'],['provider','Provider の区切りだけ'],['duo','Duo の区切りだけ']]},
+  sttChunkMs:{def:'100',values:[['50','50ms'],['100','100ms'],['200','200ms']]}
 };
 var TTS_MODELS = [
   {id:'gpt-4o-mini-tts', note:'自然・安価（おすすめ）'},
@@ -2984,6 +3013,21 @@ var CONFIG_SCHEMA = [
   { prop:"sttSilenceHoldMs", key:'di.sttSilenceHold', embed:'sttSilenceHoldMs', def:'900', portable:true, el:"sttSilenceHoldMs" },
   /* gpt-live-transcribe の delay（STTマルチプロバイダ開発仕様書 §9）。既定は今まで固定で送っていた low。 */
   { prop:"sttLiveDelay", key:'di.sttLiveDelay', embed:'sttLiveDelay', def:'low', coerce:function(raw){ return sttLiveChoice('sttLiveDelay',raw); }, portable:true, el:"sttLiveDelay" },
+  /* ElevenLabs・AssemblyAI・Soniox の性能設定と、ストリーミング認識に共通の設定（同 §9）。すべてプルダウン。 */
+  { prop:"sttElevenLabsCommitStrategy", key:'di.sttElevenLabsCommitStrategy', embed:'sttElevenLabsCommitStrategy', def:STT_LIVE_CHOICES.sttElevenLabsCommitStrategy.def, coerce:function(raw){ return sttLiveChoice('sttElevenLabsCommitStrategy',raw); }, portable:true, el:"sttElevenLabsCommitStrategy" },
+  { prop:"sttElevenLabsVadSilenceSecs", key:'di.sttElevenLabsVadSilenceSecs', embed:'sttElevenLabsVadSilenceSecs', def:STT_LIVE_CHOICES.sttElevenLabsVadSilenceSecs.def, coerce:function(raw){ return sttLiveChoice('sttElevenLabsVadSilenceSecs',raw); }, portable:true, el:"sttElevenLabsVadSilenceSecs" },
+  { prop:"sttElevenLabsVadThreshold", key:'di.sttElevenLabsVadThreshold', embed:'sttElevenLabsVadThreshold', def:STT_LIVE_CHOICES.sttElevenLabsVadThreshold.def, coerce:function(raw){ return sttLiveChoice('sttElevenLabsVadThreshold',raw); }, portable:true, el:"sttElevenLabsVadThreshold" },
+  { prop:"sttElevenLabsMinSpeechMs", key:'di.sttElevenLabsMinSpeechMs', embed:'sttElevenLabsMinSpeechMs', def:STT_LIVE_CHOICES.sttElevenLabsMinSpeechMs.def, coerce:function(raw){ return sttLiveChoice('sttElevenLabsMinSpeechMs',raw); }, portable:true, el:"sttElevenLabsMinSpeechMs" },
+  { prop:"sttElevenLabsMinSilenceMs", key:'di.sttElevenLabsMinSilenceMs', embed:'sttElevenLabsMinSilenceMs', def:STT_LIVE_CHOICES.sttElevenLabsMinSilenceMs.def, coerce:function(raw){ return sttLiveChoice('sttElevenLabsMinSilenceMs',raw); }, portable:true, el:"sttElevenLabsMinSilenceMs" },
+  { prop:"sttAssemblyAiMode", key:'di.sttAssemblyAiMode', embed:'sttAssemblyAiMode', def:STT_LIVE_CHOICES.sttAssemblyAiMode.def, coerce:function(raw){ return sttLiveChoice('sttAssemblyAiMode',raw); }, portable:true, el:"sttAssemblyAiMode" },
+  { prop:"sttAssemblyAiMinTurnSilenceMs", key:'di.sttAssemblyAiMinTurnSilenceMs', embed:'sttAssemblyAiMinTurnSilenceMs', def:STT_LIVE_CHOICES.sttAssemblyAiMinTurnSilenceMs.def, coerce:function(raw){ return sttLiveChoice('sttAssemblyAiMinTurnSilenceMs',raw); }, portable:true, el:"sttAssemblyAiMinTurnSilenceMs" },
+  { prop:"sttAssemblyAiMaxTurnSilenceMs", key:'di.sttAssemblyAiMaxTurnSilenceMs', embed:'sttAssemblyAiMaxTurnSilenceMs', def:STT_LIVE_CHOICES.sttAssemblyAiMaxTurnSilenceMs.def, coerce:function(raw){ return sttLiveChoice('sttAssemblyAiMaxTurnSilenceMs',raw); }, portable:true, el:"sttAssemblyAiMaxTurnSilenceMs" },
+  { prop:"sttAssemblyAiInterruptionDelayMs", key:'di.sttAssemblyAiInterruptionDelayMs', embed:'sttAssemblyAiInterruptionDelayMs', def:STT_LIVE_CHOICES.sttAssemblyAiInterruptionDelayMs.def, coerce:function(raw){ return sttLiveChoice('sttAssemblyAiInterruptionDelayMs',raw); }, portable:true, el:"sttAssemblyAiInterruptionDelayMs" },
+  { prop:"sttSonioxEndpointLevel", key:'di.sttSonioxEndpointLevel', embed:'sttSonioxEndpointLevel', def:STT_LIVE_CHOICES.sttSonioxEndpointLevel.def, coerce:function(raw){ return sttLiveChoice('sttSonioxEndpointLevel',raw); }, portable:true, el:"sttSonioxEndpointLevel" },
+  { prop:"sttSonioxEndpointSensitivity", key:'di.sttSonioxEndpointSensitivity', embed:'sttSonioxEndpointSensitivity', def:STT_LIVE_CHOICES.sttSonioxEndpointSensitivity.def, coerce:function(raw){ return sttLiveChoice('sttSonioxEndpointSensitivity',raw); }, portable:true, el:"sttSonioxEndpointSensitivity" },
+  { prop:"sttSonioxMaxEndpointDelayMs", key:'di.sttSonioxMaxEndpointDelayMs', embed:'sttSonioxMaxEndpointDelayMs', def:STT_LIVE_CHOICES.sttSonioxMaxEndpointDelayMs.def, coerce:function(raw){ return sttLiveChoice('sttSonioxMaxEndpointDelayMs',raw); }, portable:true, el:"sttSonioxMaxEndpointDelayMs" },
+  { prop:"sttCardClose", key:'di.sttCardClose', embed:'sttCardClose', def:STT_LIVE_CHOICES.sttCardClose.def, coerce:function(raw){ return sttLiveChoice('sttCardClose',raw); }, portable:true, el:"sttCardClose" },
+  { prop:"sttChunkMs", key:'di.sttChunkMs', embed:'sttChunkMs', def:STT_LIVE_CHOICES.sttChunkMs.def, coerce:function(raw){ return sttLiveChoice('sttChunkMs',raw); }, portable:true, el:"sttChunkMs" },
   { prop:"segmentMode", key:'di.segmentMode', embed:'segmentMode', def:'balanced', portable:true, el:"segmentMode", bind:'custom' },
   { prop:"segmentBoundary", key:'di.segmentBoundary', embed:'segmentBoundary', def:'semantic', portable:true, el:"segmentBoundary", bind:'custom' },
   { prop:"segmentOverlap", key:'di.segmentOverlap', embed:'segmentOverlap', def:'allow', portable:true, el:"segmentOverlap", bind:'custom' },
@@ -5207,6 +5251,15 @@ function verifySttKey(){
     var prov = CFG.sttProvider;
     if (prov === 'webspeech')
       return Promise.resolve('ブラウザ内蔵の音声認識はAPIキー不要です。');
+    if (prov !== 'openai' && STT_LIVE_PROVIDERS[prov]){
+      /* 一時キーの発行が通ること＝キーの有効性と、ブラウザから発行元へ届くか（CORS）。音声は送らない。 */
+      var live=STT_LIVE_PROVIDERS[prov],liveKey=sttLiveKey(prov),liveHost=new SttLiveHost(prov,S.listenSeat||'A',null,{});
+      if(!liveKey)return Promise.reject(new Error(prov==='elevenlabs'?'APIキーが未入力です（音声認識欄か、読み上げ欄の ElevenLabs のキー）':'APIキーが未入力です（'+live.label+' のキーを音声認識欄に入れてください）'));
+      liveHost.startedAt=Date.now();
+      return live.credential(liveHost,liveKey,live.options(liveHost)).then(function(){
+        return 'このキーで '+live.label+' の一時キーを発行できました。この画面から接続できます。';
+      });
+    }
     var key = sttKey();
     if (!key) return Promise.reject(new Error('APIキーが未入力です（翻訳側のキーも空です）'));
     if (prov === 'realtime')
@@ -5396,6 +5449,7 @@ function knownSecrets(){
   try{each(EMBED&&EMBED.keys);}catch(e){}
   try{var m=CFG.turnDecisionKeys;each(typeof m==='string'&&m?JSON.parse(m):m);}catch(e){}
   try{add(CFG.turnDecisionApiKey);}catch(e){}
+  try{STT_LIVE_SECRETS.forEach(add);}catch(e){}
   return out.sort(function(a,b){return b.length-a.length;});
 }
 function redact(s){
@@ -11705,6 +11759,8 @@ function sttCall(blob, lang,requestOptions){
   }
   if(p==='openai'&&/^gpt-live-transcribe(?:$|-)/.test(mdl))
     return Promise.reject(new Error('gpt-live-transcribe はRealtime WebRTC専用です。録音ファイルAPIでは利用できません'));
+  if(p!=='openai'&&STT_LIVE_PROVIDERS[p])
+    return Promise.reject(new Error(STT_LIVE_PROVIDERS[p].label+' はストリーミング専用です。録音ファイルAPIでは利用できません'));
   var ext = blob.type.indexOf('mp4')>=0 ? 'mp4' : (blob.type.indexOf('ogg')>=0 ? 'ogg' : 'webm');
   var fd = new FormData();
   fd.append('file', blob, 'seg.'+ext);
@@ -11874,6 +11930,14 @@ function sttLiveProviderId(){
 }
 function isStreamingStt(){return !!sttLiveProviderId();}
 /* 開始時の記録と診断に出す設定。performance は Provider 自身のパラメータ名で書く（§9・計画書§37）。 */
+/* 開始・失敗のトースト。gpt-live は今までの文言のまま。 */
+function sttLiveMsg(kind,err){
+  var id=sttLiveProviderId(),label=id?STT_LIVE_PROVIDERS[id].label:'';
+  if(id==='openai')return {mic:'OpenAI Realtime音声認識を開始しました',vb:'VB-CABLE入力の認識を開始しました（Realtime WebRTC）',
+    display:'共有音声をOpenAI Realtime WebRTCで認識します',fail:'Realtime音声認識を開始できません：',displayFail:'画面／タブ音声のRealtime認識を開始できません：'}[kind];
+  return {mic:label+' のストリーミング認識を開始しました',vb:'VB-CABLE入力を '+label+' で認識します',
+    display:'共有音声を '+label+' で認識します',fail:label+' の音声認識を開始できません：',displayFail:'画面／タブ音声を '+label+' で認識できません：'}[kind];
+}
 function sttLiveOptions(){
   var id=sttLiveProviderId();if(!id)return null;
   var a=STT_LIVE_PROVIDERS[id];
@@ -11893,6 +11957,146 @@ function sttLiveKey(provider){
   if(provider==='elevenlabs')return (KEYS['stt:elevenlabs']||'').trim()||(KEYS['eleven']||'').trim();
   return (KEYS['stt:'+provider]||'').trim();
 }
+/* カードを閉じる合図（§6.3）。provider は Provider が発話ごとに区切りを出すときだけ選べる。
+   gpt-live（completed は遅れることがある）と、ElevenLabs の手動確定（区切りは Duo が出す）は first にする。 */
+function sttLiveCardClose(provider){
+  var v=sttLiveChoice('sttCardClose',CFG.sttCardClose),a=STT_LIVE_PROVIDERS[provider];
+  if(v==='provider'&&(!a||a.caps.endpoint!=='turn'))return 'first';
+  if(v==='provider'&&provider==='elevenlabs'&&sttLiveChoice('sttElevenLabsCommitStrategy',CFG.sttElevenLabsCommitStrategy)==='manual')return 'first';
+  return v;
+}
+/* Provider へ伝える言語。gpt-live の session と同じ決め方（AUTO で2人の言語が違うときは両方）。 */
+function sttLiveLangs(host){
+  var langs=[];
+  if((S.autoMode&&micSeats().length>1)||duoShouldAutoDetectInput(host.seat))langs=[CFG.langA,CFG.langB];
+  else langs=[langOf(host.seat||S.listenSeat||'A')];
+  langs=langs.map(function(x){return String(x||'').toLowerCase().split('-')[0];});
+  return langs.filter(function(x,i,a){return x&&a.indexOf(x)===i;});
+}
+/* 用語集の語。gpt-live と同じ出どころ（先頭60語）から、Provider の上限に合わせて取る。 */
+function sttLiveTerms(max,maxLen){
+  return CFG.glossary.slice(0,60).map(function(r){return String(r.s||'').trim();})
+    .filter(function(x){return x&&x.length<=maxLen&&!/[<>\r\n]/.test(x);}).slice(0,max);
+}
+/* 区間をつなぐ。空白で区切る言語の語どうしのあいだにだけ空白を入れる。 */
+function sttLiveJoin(a,b){
+  a=String(a||'');b=String(b||'');
+  if(!a)return b;if(!b)return a;
+  if(/\s$/.test(a)||/^\s/.test(b))return a+b;
+  if(/[A-Za-z0-9,.;:!?'")\]]$/.test(a)&&/^[A-Za-z0-9"'(\[]/.test(b))return a+' '+b;
+  return a+b;
+}
+/* 記録に出す設定。用語集とコンテキストは語数と字数だけにする（gpt-live の記録も用語を出していない）。 */
+function sttLiveLogOptions(opts){
+  var o={},k;
+  for(k in opts){
+    if(k==='keyterms'||k==='keyterms_prompt')o[k]=opts[k].length+'語';
+    else if(k==='context')o[k]={terms:(opts[k].terms||[]).length,textChars:String(opts[k].text||'').length};
+    else o[k]=opts[k];
+  }
+  return o;
+}
+function sttLiveMajority(counts){
+  var best=null,n=0;Object.keys(counts||{}).forEach(function(k){if(counts[k]>n){n=counts[k];best=k;}});return best;
+}
+/* 接続中の一時資格情報。診断ログの伏せ字（knownSecrets）に入れる。 */
+var STT_LIVE_SECRETS=[];
+function sttLiveSecretAdd(v){v=String(v||'');if(v.length>=8&&STT_LIVE_SECRETS.indexOf(v)<0){STT_LIVE_SECRETS.push(v);if(STT_LIVE_SECRETS.length>16)STT_LIVE_SECRETS.shift();}}
+/* WebSocket で PCM を送る Provider の共通部分。接続・送信・切断は Host が持つ。 */
+function sttLiveWs(spec){
+  spec.transport='websocket';
+  spec.connect=function(host,key,track){return host.connectSocket(key,track);};
+  spec.close=function(host){host.closeSocket();};
+  spec.stats=function(host){host.pcmStats();};
+  return spec;
+}
+/* ── 音声を PCM16・16kHz・モノラルにする（§7）────────────────────────────
+   変換の関数はここに1回だけ書き、AudioWorklet のソースはその関数の文字列から
+   組み立てる。同じコードを vm で検査できる。低域通過（Blackman 窓の sinc）を
+   掛けてから間引く。48kHz→16kHz は1/3、44.1kHz など整数比でないときは補間する。 */
+function sttPcmTaps(inRate,outRate,n){
+  var fc=Math.min(0.5,0.45*outRate/inRate),m=n-1,t=new Float32Array(n),sum=0,i;
+  for(i=0;i<n;i++){
+    var x=i-m/2,s=x===0?2*fc:Math.sin(2*Math.PI*fc*x)/(Math.PI*x);
+    var w=0.42-0.5*Math.cos(2*Math.PI*i/m)+0.08*Math.cos(4*Math.PI*i/m);
+    t[i]=s*w;sum+=t[i];
+  }
+  for(i=0;i<n;i++)t[i]/=sum;
+  return t;
+}
+function sttPcmDownsample(input,inRate,outRate,st){
+  if(!st.taps||st.inRate!==inRate){st.inRate=inRate;st.taps=sttPcmTaps(inRate,outRate,31);st.hist=new Float32Array(30);st.phase=1;st.prev=0;}
+  var taps=st.taps,n=taps.length,step=inRate/outRate,len=input.length,i,k;
+  var buf=new Float32Array(st.hist.length+len);buf.set(st.hist,0);buf.set(input,st.hist.length);
+  var f=new Float32Array(len+1);f[0]=st.prev;
+  for(i=0;i<len;i++){var acc=0;for(k=0;k<n;k++)acc+=taps[k]*buf[i+k];f[i+1]=acc;}
+  st.hist=buf.slice(buf.length-(n-1));
+  var out=[],p=st.phase,last=f.length-1;
+  while(p<=last){var j=Math.floor(p),fr=p-j;out.push(fr&&j<last?f[j]+(f[j+1]-f[j])*fr:f[j]);p+=step;}
+  st.phase=p-last;st.prev=f[last];
+  return Float32Array.from(out);
+}
+function sttPcmToInt16(f32){
+  var out=new Int16Array(f32.length),i,v;
+  for(i=0;i<f32.length;i++){v=Math.max(-1,Math.min(1,f32[i]));out[i]=v<0?Math.round(v*0x8000):Math.round(v*0x7FFF);}
+  return out;
+}
+function sttPcmWorkletSource(){
+  return [sttPcmTaps.toString(),sttPcmDownsample.toString(),sttPcmToInt16.toString(),
+    'class DuoSttPcm extends AudioWorkletProcessor {',
+    '  constructor(o){super();var p=(o&&o.processorOptions)||{};this.out=p.outRate||16000;',
+    '    this.size=Math.max(1,Math.round(this.out*(p.chunkMs||100)/1000));this.st={};this.buf=new Int16Array(this.size);this.n=0;this.on=true;',
+    '    this.port.onmessage=(e)=>{if(e.data==="stop")this.on=false;};}',
+    '  process(inputs){',
+    '    if(!this.on)return false;var ch=inputs[0]||[],len=ch.length?ch[0].length:128,mono=new Float32Array(len),c,i;',
+    '    for(c=0;c<ch.length;c++){var d=ch[c];for(i=0;i<len;i++)mono[i]+=d[i]/ch.length;}',
+    '    var q=sttPcmToInt16(sttPcmDownsample(mono,sampleRate,this.out,this.st));',
+    '    for(i=0;i<q.length;i++){this.buf[this.n++]=q[i];if(this.n===this.size){this.port.postMessage(this.buf.buffer,[this.buf.buffer]);this.buf=new Int16Array(this.size);this.n=0;}}',
+    '    return true;}',
+    '}',
+    'registerProcessor("duo-stt-pcm",DuoSttPcm);'].join('\n');
+}
+/* 受け取った Stream から PCM を取り出す。新たに getUserMedia／getDisplayMedia を呼ばない（INV-STT-03）。
+   Worklet は無音の出力を gain 0 で destination へつなぐ（つながないと処理されないブラウザがある）。 */
+function SttPcmTap(stream,chunkMs,onChunk){
+  this.stream=stream;this.chunkMs=chunkMs||100;this.onChunk=onChunk;this.ac=null;this.node=null;this.url='';this.inRate=0;this.dead=false;
+}
+SttPcmTap.prototype.start=function(){
+  var self=this,AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC)return Promise.reject(new Error('このブラウザは Web Audio に対応していません'));
+  var ac=new AC();this.ac=ac;this.inRate=ac.sampleRate;
+  if(!ac.audioWorklet||typeof AudioWorkletNode==='undefined')return Promise.reject(new Error('このブラウザは AudioWorklet に対応していません'));
+  this.url=URL.createObjectURL(new Blob([sttPcmWorkletSource()],{type:'text/javascript'}));
+  if(ac.state==='suspended'){var r=ac.resume();if(r&&r.catch)r.catch(function(){});}
+  return ac.audioWorklet.addModule(this.url).then(function(){
+    if(self.dead)return;
+    var node=new AudioWorkletNode(ac,'duo-stt-pcm',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],
+      processorOptions:{outRate:16000,chunkMs:self.chunkMs}});
+    node.port.onmessage=function(e){if(!self.dead&&e.data instanceof ArrayBuffer)self.onChunk(new Int16Array(e.data));};
+    var mute=ac.createGain();mute.gain.value=0;
+    ac.createMediaStreamSource(self.stream).connect(node);node.connect(mute);mute.connect(ac.destination);
+    self.node=node;
+  });
+};
+SttPcmTap.prototype.stop=function(){
+  this.dead=true;
+  try{if(this.node){this.node.port.postMessage('stop');this.node.disconnect();}}catch(e){}
+  try{if(this.ac)this.ac.close();}catch(e){}
+  if(this.url)try{URL.revokeObjectURL(this.url);}catch(e){}
+  this.node=null;this.ac=null;
+};
+function sttLiveB64(int16){
+  var u8=new Uint8Array(int16.buffer,int16.byteOffset,int16.byteLength),s='',i,step=0x8000;
+  for(i=0;i<u8.length;i+=step)s+=String.fromCharCode.apply(null,u8.subarray(i,i+step));
+  return btoa(s);
+}
+/* エラーの分類（§14.1）。auth・config は再試行しない。rate・transient は再接続する。 */
+var STT_EL_ERRORS={auth_error:'auth',quota_exceeded:'config',unaccepted_terms:'config',invalid_request:'config',input_error:'config',
+  chunk_size_exceeded:'config',rate_limited:'rate',resource_exhausted:'rate',queue_overflow:'rate',commit_throttled:'rate',
+  session_time_limit_exceeded:'transient',transcriber_error:'transient',insufficient_audio_activity:'transient',error:'transient'};
+var STT_AAI_CLOSE={4001:'auth',4002:'config',4003:'config',4000:'config',4101:'config',3006:'config',3007:'config',
+  4029:'rate',3009:'rate',4102:'rate'};
+var STT_SONIOX_ERRORS={401:'auth',403:'auth',400:'config',402:'config',429:'rate'};
 var STT_LIVE_PROVIDERS={
   /* OpenAI gpt-live-transcribe 専用の Realtime WebRTC 経路。録音Blobを
      /audio/transcriptions へ送るモデルではないため、入力Trackをそのまま接続する。 */
@@ -12025,7 +12229,182 @@ var STT_LIVE_PROVIDERS={
       if(t==='error'||e.error)return [{type:'error',key:id,message:(e.error&&e.error.message)||e.message||'Realtime音声認識エラー'}];
       return [];
     }
-  }
+  },
+  /* ElevenLabs Scribe v2 Realtime。形は公式 SDK（@elevenlabs/client 1.26.0）で照合（仕様書 付録A2）。
+     partial_transcript は区間の全文で、足していかない（計画書§26）。 */
+  elevenlabs:sttLiveWs({
+    id:'elevenlabs',label:'ElevenLabs',defaultModel:'scribe_v2_realtime',
+    caps:{endpoint:'turn',stable:'none'},
+    model:function(){var m=String(CFG.sttModel||'').trim();return m&&m.charAt(0)!=='('?m:'scribe_v2_realtime';},
+    performance:function(){return {
+      commit_strategy:sttLiveChoice('sttElevenLabsCommitStrategy',CFG.sttElevenLabsCommitStrategy),
+      vad_silence_threshold_secs:+sttLiveChoice('sttElevenLabsVadSilenceSecs',CFG.sttElevenLabsVadSilenceSecs),
+      vad_threshold:+sttLiveChoice('sttElevenLabsVadThreshold',CFG.sttElevenLabsVadThreshold),
+      min_speech_duration_ms:+sttLiveChoice('sttElevenLabsMinSpeechMs',CFG.sttElevenLabsMinSpeechMs),
+      min_silence_duration_ms:+sttLiveChoice('sttElevenLabsMinSilenceMs',CFG.sttElevenLabsMinSilenceMs)};},
+    /* VAD の4項目は既定値に頼らず毎回送る（仕様書 §0.1 #7）。 */
+    options:function(host){
+      var o=Object.assign({model_id:this.model(),audio_format:'pcm_16000'},this.performance()),langs=sttLiveLangs(host),kw=sttLiveTerms(50,20);
+      if(langs.length===1)o.language_code=langs[0];
+      if(kw.length)o.keyterms=kw;
+      return o;
+    },
+    init:function(st,opts){st.manual=opts.commit_strategy==='manual';},
+    credential:function(host,key){
+      return host.request('token','https://api.elevenlabs.io/v1/single-use-token/realtime_scribe',
+        {method:'POST',headers:{'xi-api-key':key}},12000,true).then(function(j){
+        if(!j||!j.token)throw new Error('ElevenLabs の一時トークンを受け取れませんでした');return {secret:j.token};
+      });
+    },
+    url:function(opts,cred){
+      var q=new URLSearchParams();q.append('model_id',opts.model_id);q.append('token',cred.secret);
+      Object.keys(opts).forEach(function(k){
+        if(k==='model_id')return;
+        if(Array.isArray(opts[k]))opts[k].forEach(function(v){q.append(k,v);});else q.append(k,String(opts[k]));
+      });
+      return 'wss://api.elevenlabs.io/v1/speech-to-text/realtime?'+q.toString();
+    },
+    hello:function(){return null;},
+    readyOn:function(raw){return /"message_type"\s*:\s*"session_started"/.test(raw);},
+    frame:function(int16){return JSON.stringify({message_type:'input_audio_chunk',audio_base_64:sttLiveB64(int16),commit:false,sample_rate:16000});},
+    commit:function(st){return st.manual?JSON.stringify({message_type:'input_audio_chunk',audio_base_64:'',commit:true,sample_rate:16000}):null;},
+    bye:function(){return null;},
+    classify:function(e){return STT_EL_ERRORS[e.code]||'transient';},
+    map:function(st,raw){
+      var m;try{m=JSON.parse(raw);}catch(_){return [];}
+      var t=m.message_type||'',key='el'+(st.seq||(st.seq=1));
+      if(t==='session_started')return [{type:'status',reason:'open',key:key}];
+      if(t==='partial_transcript'||t==='final_transcript'){
+        var tx=String(m.text||'');if(tx===(st.last||''))return [];st.last=tx;
+        return [{type:'partial',key:key,text:tx,stableChars:t==='final_transcript'?tx.length:null}];
+      }
+      if(t==='committed_transcript'){
+        var why=st.manual?'manual':'vad';st.seq++;st.last='';
+        return [{type:'committed',key:key,text:String(m.text||''),closeReason:why},{type:'endpoint',key:key,reason:why}];
+      }
+      if(STT_EL_ERRORS[t])return [{type:'error',key:key,code:t,message:String(m.error||m.message||t)}];
+      return [];
+    }
+  }),
+  /* AssemblyAI Universal-3.5 Pro Realtime。形は公式 SDK（assemblyai 4.41.5）で照合（仕様書 付録A2）。
+     ブラウザは API キーで接続できないので、一時トークンを URL に付ける。区間は turn_order で見分け、
+     本文では見分けない。 */
+  assemblyai:sttLiveWs({
+    id:'assemblyai',label:'AssemblyAI',defaultModel:'universal-3-5-pro',
+    caps:{endpoint:'turn',stable:'words'},
+    model:function(){var m=String(CFG.sttModel||'').trim();return m&&m.charAt(0)!=='('?m:'universal-3-5-pro';},
+    /* モードの中身（ターン終了の無音など）は Duo が持たない。上書きした項目だけ送る（仕様書 §0.1 #6）。 */
+    performance:function(){
+      var o={mode:sttLiveChoice('sttAssemblyAiMode',CFG.sttAssemblyAiMode)};
+      [['min_turn_silence','sttAssemblyAiMinTurnSilenceMs'],['max_turn_silence','sttAssemblyAiMaxTurnSilenceMs'],
+       ['interruption_delay','sttAssemblyAiInterruptionDelayMs']].forEach(function(p){
+        var v=sttLiveChoice(p[1],CFG[p[1]]);if(v!=='')o[p[0]]=+v;
+      });
+      return o;
+    },
+    options:function(host){
+      var o=Object.assign({speech_model:this.model(),sample_rate:16000,encoding:'pcm_s16le'},this.performance(),{continuous_partials:true});
+      var langs=sttLiveLangs(host),kw=sttLiveTerms(60,50);
+      /* language_codes は Universal-3.5 Pro だけが受け付ける（SDK の注記）。 */
+      if(/^universal-3-5-pro/.test(o.speech_model)&&langs.length)o.language_codes=langs;
+      if(kw.length)o.keyterms_prompt=kw;
+      return o;
+    },
+    credential:function(host,key){
+      return host.request('token','https://streaming.assemblyai.com/v3/token?expires_in_seconds=60',
+        {method:'GET',headers:{Authorization:key}},12000,true).then(function(j){
+        if(!j||!j.token)throw new Error('AssemblyAI の一時トークンを受け取れませんでした');return {secret:j.token};
+      });
+    },
+    url:function(opts,cred){
+      var q=new URLSearchParams();q.append('token',cred.secret);
+      Object.keys(opts).forEach(function(k){q.append(k,Array.isArray(opts[k])?JSON.stringify(opts[k]):String(opts[k]));});
+      return 'wss://streaming.assemblyai.com/v3/ws?'+q.toString();
+    },
+    hello:function(){return null;},
+    readyOn:function(raw){return /"type"\s*:\s*"Begin"/.test(raw);},
+    frame:function(int16){return int16.buffer.slice(int16.byteOffset,int16.byteOffset+int16.byteLength);},
+    commit:function(){return null;},
+    bye:function(){return '{"type":"Terminate"}';},
+    classify:function(e){return STT_AAI_CLOSE[+e.code]||'transient';},
+    map:function(st,raw){
+      var m;try{m=JSON.parse(raw);}catch(_){return [];}
+      var t=m.type||'';st.done=st.done||{};
+      if(t==='Begin')return [{type:'status',reason:'open',key:''}];
+      if(t==='Turn'){
+        var key='t'+(m.turn_order==null?0:m.turn_order),tx=String(m.transcript||''),lang=m.language_code||null;
+        if(st.done[key])return [{type:'status',reason:'duplicate-turn'+(m.turn_is_formatted?'-formatted':''),key:key}];
+        if(m.end_of_turn){
+          st.done[key]=1;var dk=Object.keys(st.done);if(dk.length>64)delete st.done[dk[0]];
+          return [{type:'committed',key:key,text:tx,language:lang,closeReason:'end-of-turn'},{type:'endpoint',key:key,reason:'end-of-turn'}];
+        }
+        if(!tx)return [];
+        return [{type:'partial',key:key,text:tx,stableChars:null,language:lang}];
+      }
+      if(t==='Termination')return [{type:'status',reason:'closed',key:''}];
+      if(t==='Warning')return [{type:'status',reason:'warning '+(m.warning_code==null?'':m.warning_code),key:''}];
+      if(t==='Error'||m.error)return [{type:'error',key:'',code:m.error_code==null?'':String(m.error_code),message:String(m.error||'AssemblyAI error')}];
+      return [];
+    }
+  }),
+  /* Soniox v5 Realtime。形は公式 SDK（@soniox/node 2.3.0）で照合（仕様書 付録A2）。
+     is_final の token は変わらない前半（stableChars）で、committed ではない（仕様書 §0.1 #10）。
+     <end> で区間を確定し、<end>・<fin> は本文に入れない。 */
+  soniox:sttLiveWs({
+    id:'soniox',label:'Soniox',defaultModel:'stt-rt-v5',
+    caps:{endpoint:'turn',stable:'tokens'},
+    model:function(){var m=String(CFG.sttModel||'').trim();return m&&m.charAt(0)!=='('?m:'stt-rt-v5';},
+    performance:function(){return {
+      endpoint_latency_adjustment_level:+sttLiveChoice('sttSonioxEndpointLevel',CFG.sttSonioxEndpointLevel),
+      endpoint_sensitivity:+sttLiveChoice('sttSonioxEndpointSensitivity',CFG.sttSonioxEndpointSensitivity),
+      max_endpoint_delay_ms:+sttLiveChoice('sttSonioxMaxEndpointDelayMs',CFG.sttSonioxMaxEndpointDelayMs)};},
+    options:function(host){
+      var o={model:this.model(),audio_format:'pcm_s16le',sample_rate:16000,num_channels:1},langs=sttLiveLangs(host),kw=sttLiveTerms(60,50);
+      if(langs.length)o.language_hints=langs;
+      o.enable_language_identification=true;o.enable_endpoint_detection=true;
+      /* 3つとも stt-rt-v5 が要る（SDK の注記）。ほかのモデルでは送らない。 */
+      if(/^stt-rt-v5/.test(o.model))Object.assign(o,this.performance());
+      var ctx={};if(kw.length)ctx.terms=kw;if(CFG.ctx)ctx.text=String(CFG.ctx).slice(0,600);
+      if(ctx.terms||ctx.text)o.context=ctx;
+      return o;
+    },
+    credential:function(host,key){
+      return host.request('token','https://api.soniox.com/v1/auth/temporary-api-key',
+        {method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},
+         body:JSON.stringify({usage_type:'transcribe_websocket',expires_in_seconds:60,single_use:true})},12000,true).then(function(j){
+        if(!j||!j.api_key)throw new Error('Soniox の一時キーを受け取れませんでした');return {secret:j.api_key};
+      });
+    },
+    url:function(){return 'wss://stt-rt.soniox.com/transcribe-websocket';},
+    hello:function(opts,cred){return JSON.stringify(Object.assign({api_key:cred.secret},opts));},
+    readyOn:null,
+    frame:function(int16){return int16.buffer.slice(int16.byteOffset,int16.byteOffset+int16.byteLength);},
+    commit:function(){return null;},
+    bye:function(){return '';},
+    classify:function(e){return STT_SONIOX_ERRORS[+e.code]||'transient';},
+    map:function(st,raw){
+      var m;try{m=JSON.parse(raw);}catch(_){return [];}
+      if(m.error_code!=null||m.error_message)return [{type:'error',key:'',code:m.error_code==null?'':String(m.error_code),message:String(m.error_message||'Soniox error')}];
+      if(st.fin==null){st.fin='';st.seq=1;st.langs={};st.last='';}
+      var out=[],pend='',toks=Array.isArray(m.tokens)?m.tokens:[],i;
+      var lead=function(s){return (/^\s*/.exec(s)||[''])[0].length;};
+      for(i=0;i<toks.length;i++){
+        var k=toks[i]||{},tx=String(k.text==null?'':k.text);
+        if(tx==='<end>'){
+          var key='s'+st.seq,fin=st.fin.slice(lead(st.fin));
+          out.push({type:'committed',key:key,text:fin,language:sttLiveMajority(st.langs),closeReason:'semantic'},{type:'endpoint',key:key,reason:'semantic'});
+          st.seq++;st.fin='';st.langs={};st.last='';pend='';continue;
+        }
+        if(tx==='<fin>'){out.push({type:'endpoint',key:'s'+st.seq,reason:'finalize'});continue;}
+        if(k.is_final){st.fin+=tx;if(k.language)st.langs[k.language]=(st.langs[k.language]||0)+tx.length;}
+        else pend+=tx;
+      }
+      var full=st.fin+pend,cut=lead(full),text=full.slice(cut);
+      if(text!==st.last){st.last=text;out.push({type:'partial',key:'s'+st.seq,text:text,stableChars:Math.max(0,st.fin.length-cut),language:sttLiveMajority(st.langs)});}
+      if(m.finished)out.push({type:'status',reason:'finished',key:''});
+      return out;
+    }
+  })
 };
 /* ストリーミング型 STT のカード・区切り・計測・停止（開発仕様書 §6）。
    gpt-live-transcribe は1つの item_id を長時間更新し続けることがある。
@@ -12040,6 +12419,9 @@ function SttLiveHost(provider,seat,stream,opts){
   this.statsTimer=null;this.statsBusy=false;this.lastBytes=null;
   /* 計測（§11）。発話開始は Provider によらず端末側の同じ音量判定で取る。 */
   this.speechAt=0;this.lastCardClosedAt=0;this.metricsPending=[];
+  /* WebSocket 系（§7・§14）とカードを閉じる合図（§6.3）。 */
+  this.ws=null;this.wsReady=false;this.pcm=null;this.reconnects=[];this.lastErrorClass='';this.stitched=null;
+  this.cardClose=sttLiveCardClose(this.provider);
 }
 SttLiveHost.prototype.model=function(){return this.adapter.model();};
 /* 診断の記録に Provider を足す。OpenAI は v1.49.39 と同じ形のまま残す。 */
@@ -12064,7 +12446,10 @@ SttLiveHost.prototype.request=function(stage,url,opts,timeoutMs,asJson){
     var requestId='';try{requestId=r.headers.get('x-request-id')||'';}catch(e){}
     dlog('stt','live-'+stage+'-response',self.tag({status:r.status,ok:r.ok,ms:Date.now()-self.startedAt,requestId:requestId}));
     if(!r.ok)return r.text().then(function(t){
-      var e=new Error(label+' '+stage+'失敗 '+r.status+': '+String(t||'').slice(0,300));e.liveStage=stage;e.status=r.status;throw e;
+      var e=new Error(label+' '+stage+'失敗 '+r.status+': '+String(t||'').slice(0,300));e.liveStage=stage;e.status=r.status;
+      /* 届いたうえで断られた。キーの問題は CORS と別の文言にする（D-2 の判断材料）。 */
+      if(self.provider!=='openai'&&(r.status===401||r.status===403))e.message=label+' のキーが無効か、音声認識の権限がありません（HTTP '+r.status+'）';
+      throw e;
     });
     return asJson?r.json():r.text();
   }).catch(function(err){
@@ -12072,6 +12457,11 @@ SttLiveHost.prototype.request=function(stage,url,opts,timeoutMs,asJson){
     if(self.dead)throw self.cancelError();
     if(err&&err.name==='AbortError'){
       var te=new Error(label+' '+stage+'が'+Math.round(timeoutMs/1000)+'秒でタイムアウトしました');te.liveStage=stage;throw te;
+    }
+    /* 応答を受け取れなかった（HTTP の状態が無い）。ブラウザからは CORS で読めないことがある。 */
+    if(self.provider!=='openai'&&err&&err.name==='TypeError'&&!err.status){
+      var ce=new Error('ブラウザから '+label+' の'+(stage==='token'?'一時キー発行先':'接続先')+'へ届きません（CORS の可能性）。Chrome／Edge 拡張の画面から使うか、発行経路を変えてください');
+      ce.liveStage=stage;ce.unreachable=true;throw ce;
     }
     if(err&&!err.liveStage)err.liveStage=stage;throw err;
   });
@@ -12183,7 +12573,7 @@ SttLiveHost.prototype.checkBoundaries=function(){
   if(this.metricsPending.length)sttLiveMetricsFlush(this,now,false);
   if(segEnabled()){
     if(this.boundaryAn)segVoice(this.seat||S.listenSeat||'A',rms);
-    segLiveBoundaries(this);return;
+    segLiveBoundaries(this);if(this.stitched)this.rebaseStitch();return;
   }
   var self=this;
   Object.keys(this.items).forEach(function(id){
@@ -12194,8 +12584,10 @@ SttLiveHost.prototype.checkBoundaries=function(){
     if(idle>=p.hard)reason='delta-timeout';
     else if(idle>=p.idle&&audioQuiet)reason=(kind==='strong'||kind==='likely')?'context-complete':'audio-pause';
     else if((now-x.segmentStarted)>=30000&&idle>=650)reason='max-duration';
+    if(self.cardClose==='provider')reason=idle>=STT_LIVE_PROVIDER_IDLE_MS?'delta-timeout':((now-x.segmentStarted)>=30000&&idle>=650?'max-duration':'');
     if(reason)self.finalizeSegment(id,x,reason,{context:kind,idleMs:idle,silenceMs:self.boundaryAn?silence:null,rms:rms});
   });
+  if(this.stitched)this.rebaseStitch();
 };
 SttLiveHost.prototype.finalizeSegment=function(id,x,reason,meta){
   if(!x||!x.entry)return false;var text=String(x.text||'').trim(),holder=x.entry;
@@ -12212,7 +12604,9 @@ SttLiveHost.prototype.finalizeSegment=function(id,x,reason,meta){
   dlog('stt','live-boundary',this.tag({item:id,segment:x.segmentNo,reason:reason,context:meta.context||this.boundaryContext(raw,lang),chars:text.length,
     idleMs:meta.idleMs==null?null:Math.round(meta.idleMs),silenceMs:meta.silenceMs==null?null:Math.round(meta.silenceMs)}));
   dlog('stt','live-result',{provider:this.provider,model:this.model(),transport:this.adapter.transport,seat:holder.seat,lang:lang,item:id,segment:x.segmentNo,chars:text.length,punctuated:text!==raw,boundary:reason});
-  speakSrcNow(holder);translate(holder);sttLiveMetricsClose(this,holder,reason,true);return true;
+  speakSrcNow(holder);translate(holder);sttLiveMetricsClose(this,holder,reason,true);
+  if(STT_LIVE_PROVIDER_REASONS.indexOf(reason)<0)this.duoClosed();
+  return true;
 };
 /* 受信1件。止めたあとに届いたものは Adapter へも渡さない（状態を進めない）。 */
 SttLiveHost.prototype.onMessage=function(data){
@@ -12229,10 +12623,18 @@ SttLiveHost.prototype.handle=function(ev){
   }
   if(t==='error'){
     var msg=ev.message||this.label()+'音声認識エラー';
-    dlog('stt','live-FAIL',this.tag({model:this.model(),err:String(msg).slice(0,200)}));toast(this.label()+'音声認識失敗: '+msg);return;
+    if(this.provider==='openai'){dlog('stt','live-FAIL',this.tag({model:this.model(),err:String(msg).slice(0,200)}));toast(this.label()+'音声認識失敗: '+msg);return;}
+    /* 切断の前に届くことが多い。分類を覚えておき、切断のときに再接続するかを決める。 */
+    var cls=this.adapter.classify(ev);this.lastErrorClass=cls;
+    dlog('stt','live-FAIL',this.tag({err:String(msg).slice(0,200),code:ev.code,errorClass:cls}));
+    if(cls==='auth'||cls==='config')toast(this.label()+' の音声認識でエラー：'+realtimeEscape(String(msg)));
+    return;
   }
   if(t==='endpoint'){sttLiveMetricsProvider(this,'endpoint',id,ev);return;}
   if(t==='committed')sttLiveMetricsProvider(this,'commit',id,ev);
+  if(this.cardClose==='duo'&&(t==='partial'||t==='committed')){
+    var sev=this.stitch(ev);if(!segLiveEvent(this,sev))this.partial(sev.key,sev);this.afterStitch(sev);return;
+  }
   if(segLiveEvent(this,ev))return;
   if(t==='partial')this.partial(id,ev);
   else if(t==='committed')this.committed(id,ev);
@@ -12250,6 +12652,7 @@ SttLiveHost.prototype.partial=function(id,ev){
     delta=text.slice(sttLiveCommonPrefix(old,text));x.allText=text;x.text=text.slice(at);
   }
   x.lastDeltaAt=Date.now();x.deltaCount++;
+  if(!x.text.trim()){removeEntry(entry);x.entry=null;return;}
   entry.srcText=x.text;render(entry);sttLiveMetricsPartial(entry,prev,x.text);
   if(x.deltaCount===1)dlog('stt','live-delta',this.tag({item:id,segment:x.segmentNo+1,chars:delta.length,context:this.boundaryContext(x.text,langOf(entry.seat))}));
 };
@@ -12266,7 +12669,7 @@ SttLiveHost.prototype.committed=function(id,ev){
   }else if(serverText&&serverText!==y.allText){
     dlog('stt','live-reconcile',this.tag({item:id,serverChars:serverText.length,deltaChars:y.allText.length,action:'keep-local-segments'}));
   }
-  if(y.entry)this.finalizeSegment(id,y,'server-completed',{context:this.boundaryContext(y.text,langOf(y.entry.seat)),idleMs:0,silenceMs:null});
+  if(y.entry)this.finalizeSegment(id,y,ev.closeReason||'server-completed',{context:this.boundaryContext(y.text,langOf(y.entry.seat)),idleMs:0,silenceMs:null});
   else dlog('stt','live-completed',this.tag({item:id,chars:serverText.length,pending:0}));
   delete this.items[id];
 };
@@ -12277,6 +12680,177 @@ SttLiveHost.prototype.stop=function(){
   if(this.opts.ownsStream&&this.stream)try{this.stream.getTracks().forEach(function(t){t.stop();});}catch(e){}
   dlog('stt','live-stop',this.tag({model:this.model(),stage:this.connectStage}));
 };
+/* ── WebSocket で PCM を送る Provider（ElevenLabs・AssemblyAI・Soniox）────────────
+   一時資格情報 → 接続 → 最初のメッセージ → 準備完了の合図 → 音声の送信、の順。
+   一時資格情報は接続ごとに発行し直し、使い回さない（§8.1）。 */
+SttLiveHost.prototype.connectSocket=function(key,track){
+  var self=this,a=this.adapter,opts=a.options(this);
+  this.st={};if(a.init)a.init(this.st,opts);
+  dlog('stt','live-connect',this.tag({seat:this.seat||'auto',transport:'websocket',options:sttLiveLogOptions(opts),trackState:track.readyState,trackMuted:!!track.muted}));
+  return a.credential(this,key,opts).then(function(cred){
+    if(self.dead)throw self.cancelError();
+    sttLiveSecretAdd(cred.secret);
+    return self.openSocket(a.url(opts,cred),a.hello(opts,cred));
+  });
+};
+SttLiveHost.prototype.openSocket=function(url,hello){
+  var self=this,a=this.adapter,label=this.label();
+  this.connectStage='socket';this.wsReady=false;
+  return new Promise(function(resolve,reject){
+    var ws,settled=false,timer;
+    try{ws=new WebSocket(url);}catch(err){err.liveStage='socket';reject(err);return;}
+    ws.binaryType='arraybuffer';self.ws=ws;
+    var fail=function(err,stage){
+      if(settled)return;settled=true;clearTimeout(timer);err.liveStage=stage||self.connectStage;
+      if(self.ws===ws)self.ws=null;try{ws.close(1000);}catch(e){}reject(err);
+    };
+    var ready=function(){
+      if(settled)return;settled=true;clearTimeout(timer);
+      self.connectStage='open';self.wsReady=true;
+      self.startBoundaryMonitor();self.startStats();self.startPcm();
+      dlog('stt','live-open',self.tag({ms:Date.now()-self.startedAt,transport:'websocket'}));resolve();
+    };
+    timer=setTimeout(function(){fail(new Error(label+' への接続が10秒以内に整いませんでした'),self.connectStage);},10000);
+    ws.onopen=function(){
+      if(self.ws!==ws)return;
+      if(self.dead||self.closing){fail(self.cancelError(),'socket');return;}
+      self.connectStage='handshake';
+      if(hello!=null)ws.send(hello);
+      if(!a.readyOn)ready();
+    };
+    ws.onmessage=function(ev){
+      if(self.ws!==ws||typeof ev.data!=='string')return;
+      if(!settled){
+        var evs=[];try{evs=a.map({},ev.data)||[];}catch(e){}
+        var bad=evs.filter(function(x){return x.type==='error';})[0];
+        if(bad){var e=new Error(label+'：'+bad.message);e.code=bad.code;e.errorClass=a.classify(bad);fail(e,'handshake');return;}
+        if(a.readyOn&&a.readyOn(ev.data))ready();
+      }
+      self.onMessage(ev.data);
+    };
+    ws.onerror=function(){if(self.ws===ws&&!settled)fail(new Error(label+' へ接続できませんでした'),'socket');};
+    ws.onclose=function(ev){
+      if(!settled){var e=new Error(label+' の接続が閉じられました（'+ev.code+(ev.reason?' '+String(ev.reason).slice(0,120):'')+'）');
+        e.code=ev.code;e.errorClass=a.classify({code:ev.code});fail(e,'socket');return;}
+      if(self.ws!==ws)return;
+      self.onSocketClose(ev);
+    };
+  });
+};
+SttLiveHost.prototype.startPcm=function(){
+  var self=this;if(this.pcm)return;
+  this.pcmFrames=0;this.pcmBytes=0;this.pcmDropped=0;this.lastBytes=null;this.bpAt=0;
+  this.pcm=new SttPcmTap(this.stream,+sttLiveChoice('sttChunkMs',CFG.sttChunkMs),function(int16){self.sendAudio(int16);});
+  this.pcm.start().catch(function(err){
+    dlog('stt','live-FAIL',self.tag({stage:'pcm',err:String((err&&err.message)||err).slice(0,200)}));
+    toast(self.label()+' へ送る音声を作れませんでした：'+realtimeEscape(String((err&&err.message)||err)));
+  });
+};
+SttLiveHost.prototype.stopPcm=function(){if(this.pcm){this.pcm.stop();this.pcm=null;}};
+/* 詰まり：1秒分を超えたら記録（5秒に1回まで）、5秒分を超えたら通信障害として接続し直す。黙って捨てない（§7）。 */
+SttLiveHost.prototype.sendAudio=function(int16){
+  var ws=this.ws,now=Date.now();this.pcmFrames++;
+  if(!ws||ws.readyState!==1||!this.wsReady){this.pcmDropped++;return;}
+  if(ws.bufferedAmount>160000){
+    dlog('stt','stream-backpressure',this.tag({bufferedBytes:ws.bufferedAmount,action:'reconnect'}));
+    this.lastErrorClass='transient';try{ws.close(4000,'backpressure');}catch(e){}return;
+  }
+  if(ws.bufferedAmount>32000&&now-this.bpAt>5000){this.bpAt=now;dlog('stt','stream-backpressure',this.tag({bufferedBytes:ws.bufferedAmount,action:'wait'}));}
+  try{ws.send(this.adapter.frame(int16));this.pcmBytes+=int16.byteLength;}catch(e){this.pcmDropped++;}
+};
+SttLiveHost.prototype.pcmStats=function(){
+  if(this.dead||this.closing)return;
+  var track=this.stream&&this.stream.getAudioTracks?this.stream.getAudioTracks()[0]:null,ws=this.ws;
+  dlog('stt','live-audio-transport',this.tag({seat:this.seat,socket:ws?ws.readyState:null,
+    trackState:track?track.readyState:null,trackMuted:track?!!track.muted:null,
+    rms:this.lastRms==null?null:+Number(this.lastRms).toFixed(5),inRate:this.pcm?this.pcm.inRate:null,
+    frames:this.pcmFrames,bytesSent:this.pcmBytes,bytesSinceLast:this.lastBytes==null?null:this.pcmBytes-this.lastBytes,
+    dropped:this.pcmDropped,buffered:ws?ws.bufferedAmount:null}));
+  this.lastBytes=this.pcmBytes;
+};
+SttLiveHost.prototype.closeSocket=function(){
+  var ws=this.ws;this.ws=null;this.wsReady=false;
+  if(this.reconnectTimer){clearTimeout(this.reconnectTimer);this.reconnectTimer=null;}
+  this.stopPcm();
+  if(ws){try{if(ws.readyState===1){var m=this.adapter.bye?this.adapter.bye():null;if(m!=null)ws.send(m);}ws.close(1000);}catch(e){}}
+};
+/* 思いがけない切断。開いているカードを閉じ、rate・transient なら接続し直す（§14）。 */
+SttLiveHost.prototype.onSocketClose=function(ev){
+  this.ws=null;this.wsReady=false;
+  if(this.dead||this.closing)return;
+  var cls=this.lastErrorClass||(this.adapter.classify?this.adapter.classify({code:ev.code}):'transient');this.lastErrorClass='';
+  dlog('stt','live-close',this.tag({code:ev.code,reason:String(ev.reason||'').slice(0,120),errorClass:cls}));
+  this.closeCards('reconnect');
+  if(cls==='transient'||cls==='rate'){this.reconnect(cls);return;}
+  this.connectStage='closed';
+  toast(this.label()+' の接続が切れました（'+(cls==='auth'?'キーか権限の問題':'設定の問題')+'・'+ev.code+'）。停止して、キーと設定を確かめてから開始し直してください。');
+};
+SttLiveHost.prototype.reconnect=function(cls){
+  var self=this,now=Date.now(),label=this.label();
+  this.reconnects=(this.reconnects||[]).filter(function(t){return now-t<60000;});
+  if(this.reconnects.length>=3){
+    dlog('stt','live-reconnect-give-up',this.tag({attempts:this.reconnects.length,errorClass:cls}));
+    toast(label+' へ1分間に3回つなぎ直しましたが続きません。停止して開始し直してください。');return;
+  }
+  this.reconnects.push(now);sttLiveCount('reconnects');
+  var wait=(cls==='rate'?[2000,4000,8000]:[500,1000,2000])[this.reconnects.length-1];
+  dlog('stt','live-reconnect',this.tag({attempt:this.reconnects.length,waitMs:wait,errorClass:cls}));
+  this.reconnectTimer=setTimeout(function(){
+    self.reconnectTimer=null;
+    if(self.dead||self.closing||!S.running||self.session!==sessionGen)return;
+    var track=self.stream&&self.stream.getAudioTracks&&self.stream.getAudioTracks()[0];
+    if(!track||track.readyState!=='live'){toast(label+' へつなぎ直せません（音声の入力が止まっています）。');return;}
+    self.items={};self.segmentCompleted={};self.stitched=null;
+    self.connectSocket(sttLiveKey(self.provider),track).then(function(){
+      dlog('stt','live-reconnected',self.tag({attempt:self.reconnects.length}));toast(label+' につなぎ直しました。',true);
+    },function(err){
+      if(err&&err.cancelled)return;
+      var c=err&&err.errorClass||(err&&(err.status===401||err.status===403)?'auth':err&&err.status===429?'rate':'transient');
+      dlog('stt','live-FAIL',self.tag({stage:(err&&err.liveStage)||'reconnect',err:String((err&&err.message)||err).slice(0,200),errorClass:c}));
+      if(c==='transient'||c==='rate')self.reconnect(c);
+      else toast(label+' へつなぎ直せませんでした：'+realtimeEscape(String((err&&err.message)||err)));
+    });
+  },wait);
+};
+/* 開いているカードをその時点の本文で閉じる。 */
+SttLiveHost.prototype.closeCards=function(reason){
+  var self=this;
+  Object.keys(this.items).forEach(function(id){
+    var x=self.items[id];if(!x||!x.entry)return;
+    if(segEnabled())segLiveClose(self,id,x,reason,{});else self.finalizeSegment(id,x,reason,{});
+  });
+  this.items={};
+};
+/* sttCardClose=duo（§6.3）。Provider の区間をつないで1本の流れにし、カードは Duo の区切りだけで閉じる。
+   Provider の確定はつないだ本文の確定部分として扱い、閉じたカードの本文も確定本文へ直す。 */
+SttLiveHost.prototype.stitch=function(ev){
+  var s=this.stitched||(this.stitched={base:''}),text=String(ev.text||''),done=ev.type==='committed';
+  if(done){s.base=sttLiveJoin(s.base,text);text=s.base;}else text=sttLiveJoin(s.base,text);
+  return {type:'partial',key:'duo',text:text,stableChars:null,language:ev.language||null,receivedAt:ev.receivedAt,finalized:done};
+};
+SttLiveHost.prototype.afterStitch=function(ev){
+  var s=this.stitched,x=this.items.duo;if(!s||!x)return;
+  if(ev.finalized&&segEnabled()){
+    var at=0;(x.segmentRanges||[]).forEach(function(r){
+      var end=Math.min(r.end,s.base.length),slice=x.text.slice(at,end);
+      if(end>at&&r.entry.segment&&!r.entry.segment.cancelled&&r.entry.segment.text!==slice)segUpdate(r.entry,slice,true);
+      at=Math.max(at,end);
+    });
+  }
+  this.rebaseStitch();
+};
+/* つないだ本文がすべて閉じたカードに収まったら、長くなり続けないよう0から始め直す。
+   カードは受信が無くても区切りで閉じるので、80ms ごとの判定からも呼ぶ。 */
+SttLiveHost.prototype.rebaseStitch=function(){
+  var s=this.stitched,x=this.items.duo;if(!s||!x||!s.base||x.entry)return;
+  if(segEnabled()){if((x.cardOffset||0)===x.text.length&&x.text===s.base){s.base='';x.text='';x.cardOffset=0;x.segmentRanges=[];}}
+  else if(!x.text&&x.allText===s.base){s.base='';x.allText='';}
+};
+/* Duo がカードを閉じたとき。ElevenLabs の手動確定では、同じ区切りで Provider にも確定させる。 */
+SttLiveHost.prototype.duoClosed=function(){
+  var m=this.adapter.commit?this.adapter.commit(this.st):null;
+  if(m!=null&&this.ws&&this.ws.readyState===1&&this.wsReady){try{this.ws.send(m);}catch(e){}}
+};
 function sttLiveCommonPrefix(a,b){var n=0;while(n<a.length&&n<b.length&&a[n]===b[n])n++;return n;}
 /* ── 計測（開発仕様書 §11）─────────────────────────────────────────────
    本文は記録しない。時刻と字数と回数だけ。発話開始は端末側の音量判定で、
@@ -12284,6 +12858,10 @@ function sttLiveCommonPrefix(a,b){var n=0;while(n<a.length&&n<b.length&&a[n]===b
    話し続けているあいだに次のカードが開いたときは、前のカードを閉じた時刻を
    そのカードの発話開始とする。 */
 var STT_LIVE_SPEECH_GAP_MS=400;
+/* Provider の区切りだけで閉じるとき（sttCardClose=provider）の安全弁。文字がこれだけ止まったら閉じる。 */
+var STT_LIVE_PROVIDER_IDLE_MS=6000;
+/* Provider が区間を閉じた理由。Duo の区切りと違い、Provider へ確定を送り返さない。 */
+var STT_LIVE_PROVIDER_REASONS=['server-completed','vad','manual','end-of-turn','semantic','finalize','reconnect'];
 var STT_LIVE_STATS={samples:{},counts:{}};
 function sttLiveStatsReset(){STT_LIVE_STATS={samples:{},counts:{}};}
 function sttLiveSample(name,ms){
@@ -12346,15 +12924,54 @@ function sttLiveMetricsFlush(host,now,force){
 /* ── 設定欄（開発仕様書 §10）───────────────────────────────────────────
    Provider ごとの性能設定を1つのパネルに入れ、選んだ Provider の欄だけを出す。
    判断層のパネルと同じく JS から注入し、simple() で既存の保存経路へ相乗りする。
-   欄はすべてプルダウン。既定の選択肢にだけ「（既定）」を付ける。 */
+   欄はすべてプルダウン（D-5）。既定の選択肢にだけ「（既定）」を付ける。
+   adv の行は「詳細」の中へたたむ。only があれば、その Provider のときだけ出す。 */
 var STT_LIVE_PANELS=[
   {provider:'openai',rows:[
     {prop:'sttLiveDelay',label:'文字が出る速さと精度（delay）',
-     help:'高いほど文字が出るのが遅れ、難しい音声で精度が上がることがあります。段ごとのミリ秒は公式に決まっていないので、実測で比べてください。'}]}
+     help:'高いほど文字が出るのが遅れ、難しい音声で精度が上がることがあります。段ごとのミリ秒は公式に決まっていないので、実測で比べてください。'}]},
+  {provider:'elevenlabs',rows:[
+    {prop:'sttElevenLabsCommitStrategy',label:'確定のしかた',
+     help:'「無音で確定」は ElevenLabs が無音を聞いて区切ります。「Duo の区切りで確定」は、Duo がカードを閉じたときに ElevenLabs にも確定させます。'},
+    {prop:'sttElevenLabsVadSilenceSecs',label:'確定までの無音',
+     help:'短くすると確定が早くなりますが、文の途中の息継ぎでも確定し、1文が複数に割れます。'},
+    {prop:'sttElevenLabsVadThreshold',label:'声とみなすしきい値',adv:true},
+    {prop:'sttElevenLabsMinSpeechMs',label:'最短の発話',adv:true},
+    {prop:'sttElevenLabsMinSilenceMs',label:'最短の無音',adv:true}]},
+  {provider:'assemblyai',rows:[
+    {prop:'sttAssemblyAiMode',label:'性能モード',
+     help:'モードの中身（ターン終了までの無音など）は AssemblyAI が決めます。最小遅延は確定が早いぶん文が割れやすく、最大精度は確定が遅くなります。'},
+    {prop:'sttAssemblyAiMinTurnSilenceMs',label:'ターン終了の最短無音',adv:true},
+    {prop:'sttAssemblyAiMaxTurnSilenceMs',label:'ターン終了の最長無音',adv:true},
+    {prop:'sttAssemblyAiInterruptionDelayMs',label:'interruption_delay',adv:true,
+     help:'「モードの既定」以外を選んだ項目だけ、モードを上書きして送ります。最短無音を短くすると、電話番号のように続く数字が途中で割れることがあります。'}]},
+  {provider:'soniox',rows:[
+    {combo:'sttSonioxPreset',label:'組み合わせ',presets:[
+      ['default','公式の既定（Level 0 ／ 0.0 ／ 2000ms）',{sttSonioxEndpointLevel:'0',sttSonioxEndpointSensitivity:'0',sttSonioxMaxEndpointDelayMs:'2000'}],
+      ['fast','公式の低遅延の出発点（Level 2 ／ +0.3 ／ 1500ms）',{sttSonioxEndpointLevel:'2',sttSonioxEndpointSensitivity:'0.3',sttSonioxMaxEndpointDelayMs:'1500'}]],
+     help:'「公式の低遅延の出発点」は Soniox の公式ドキュメントが示す出発点で、Duo が決めた最適値ではありません。下の欄を個別に変えると「個別に選ぶ」になります。'},
+    {prop:'sttSonioxEndpointLevel',label:'区切りの速さ（Endpoint Speed）',
+     help:'発話の終わりを出す速さです（認識精度の設定ではありません）。上げると区切りが早く出るぶん、1文が割れやすくなり、語の精度もわずかに下がることがあります。'},
+    {prop:'sttSonioxEndpointSensitivity',label:'区切りやすさ（endpoint_sensitivity）',adv:true},
+    {prop:'sttSonioxMaxEndpointDelayMs',label:'区切りの最大待ち',adv:true}]},
+  {provider:'common',rows:[
+    {prop:'sttCardClose',label:'カードを閉じる合図',
+     help:'「Provider の区切りだけ」は ElevenLabs（無音で確定）・AssemblyAI・Soniox で効き、文字が6秒止まるか30秒たつと安全のため閉じます。gpt-live では「早いほう」と同じです。'},
+    {prop:'sttChunkMs',label:'送る音声の1回の長さ',only:['elevenlabs','assemblyai','soniox'],
+     help:'短いほど早く届き、通信の回数が増えます。'}]}
 ];
 function sttLiveOptionsHtml(prop){
   var c=STT_LIVE_CHOICES[prop];
   return c.values.map(function(v){return '<option value="'+realtimeEscape(v[0])+'">'+realtimeEscape(v[1]+(v[0]===c.def?'（既定）':''))+'</option>';}).join('');
+}
+function sttLiveRowHtml(r){
+  var html;
+  if(r.combo)html='<label>'+realtimeEscape(r.label)+' <select id="'+r.combo+'">'
+    +r.presets.map(function(p,i){return '<option value="'+p[0]+'">'+realtimeEscape(p[1]+(i===0?'（既定）':''))+'</option>';}).join('')
+    +'<option value="custom">個別に選ぶ</option></select></label>';
+  else html='<label>'+realtimeEscape(r.label)+' <select id="'+r.prop+'">'+sttLiveOptionsHtml(r.prop)+'</select></label>';
+  if(r.help)html+='<p>'+realtimeEscape(r.help)+'</p>';
+  return '<div id="sttLiveRow_'+(r.prop||r.combo)+'">'+html+'</div>';
 }
 function sttLiveInstall(){
   var anchor=$('fourOField');if(!anchor||$('sttLivePanel'))return;
@@ -12362,16 +12979,23 @@ function sttLiveInstall(){
   var box=document.createElement('details');box.className='adv panel-form';box.id='sttLivePanel';box.style.display='none';
   var html='<summary id="sttLiveSummary">ストリーミング認識の設定</summary>';
   STT_LIVE_PANELS.forEach(function(p){
-    html+='<div id="sttLive_'+p.provider+'" data-provider="'+p.provider+'">';
-    p.rows.forEach(function(r){
-      html+='<label>'+realtimeEscape(r.label)+' <select id="'+r.prop+'">'+sttLiveOptionsHtml(r.prop)+'</select></label>';
-      if(r.help)html+='<p>'+realtimeEscape(r.help)+'</p>';
-    });
+    var main=p.rows.filter(function(r){return !r.adv;}),adv=p.rows.filter(function(r){return r.adv;});
+    html+='<div id="sttLive_'+p.provider+'" data-provider="'+p.provider+'">'+(p.provider==='common'?'<hr>':'');
+    main.forEach(function(r){html+=sttLiveRowHtml(r);});
+    if(adv.length){html+='<details class="settings-help"><summary>詳細</summary>';adv.forEach(function(r){html+=sttLiveRowHtml(r);});html+='</details>';}
     html+='</div>';
   });
   html+='<p>変更は次の「開始」から反映されます。</p>';
   box.innerHTML=html;anchor.after(box);
   STT_LIVE_PANELS.forEach(function(p){p.rows.forEach(function(r){
+    if(r.combo){
+      var combo=$(r.combo);
+      combo.addEventListener('change',function(){
+        var hit=r.presets.filter(function(x){return x[0]===combo.value;})[0];if(!hit)return;
+        Object.keys(hit[2]).forEach(function(prop){var el=$(prop);el.value=hit[2][prop];el.dispatchEvent(new Event('change'));});
+      });
+      return;
+    }
     var spec=CONFIG_BY_PROP[r.prop],el=spec&&$(spec.el);if(!el)return;
     el.value=CFG[r.prop];simple(spec);
     /* simple() の onchange が先に CFG を更新する。ここでは表示と記録だけ。 */
@@ -12385,10 +13009,20 @@ function sttLiveInstall(){
 function sttLiveSettingsUI(){
   var box=$('sttLivePanel');if(!box)return;
   var id=sttLiveProviderId();box.style.display=id?'':'none';
-  STT_LIVE_PANELS.forEach(function(p){var el=$('sttLive_'+p.provider);if(el)el.style.display=p.provider===id?'':'none';});
+  STT_LIVE_PANELS.forEach(function(p){
+    var el=$('sttLive_'+p.provider);if(el)el.style.display=(p.provider===id||(id&&p.provider==='common'))?'':'none';
+    p.rows.forEach(function(r){
+      var row=$('sttLiveRow_'+(r.prop||r.combo));if(row&&r.only)row.style.display=r.only.indexOf(id)>=0?'':'none';
+      if(r.combo&&$(r.combo)){
+        var hit=r.presets.filter(function(x){return Object.keys(x[2]).every(function(k){return String(CFG[k])===x[2][k];});})[0];
+        $(r.combo).value=hit?hit[0]:'custom';
+      }
+    });
+  });
   if(!id)return;
-  var perf=STT_LIVE_PROVIDERS[id].performance(),keys=Object.keys(perf);
-  $('sttLiveSummary').textContent='ストリーミング認識の設定（'+keys.map(function(k){return k+' '+perf[k];}).join(' / ')+'）';
+  var a=STT_LIVE_PROVIDERS[id],perf=a.performance(),keys=Object.keys(perf);
+  $('sttLiveSummary').textContent='ストリーミング認識の設定（'+(id==='openai'?'':a.label+'：')
+    +keys.slice(0,2).map(function(k){return k+' '+perf[k];}).join(' / ')+(keys.length>2?' …':'')+'）';
 }
 /* 診断の1行。件数・中央値・p90。実測した値だけを出す（§11.3）。 */
 function sttLiveStatsSummary(){
@@ -12910,7 +13544,7 @@ function startAll(){
             stopAll();
           })
       );
-    } else if (isLiveTranscribe()) {
+    } else if (isStreamingStt()) {
       jobs.push(
         ensureMic().then(function(st){
           if(!captureCurrent(st,false))return;
@@ -12918,12 +13552,12 @@ function startAll(){
           var live=new SttLiveHost(sttLiveProviderId(),seat,st,{isMic:true,ownsStream:false});
           engines.push(live);
           return live.start();
-        }).then(function(){toast('OpenAI Realtime音声認識を開始しました',true);})
+        }).then(function(){toast(sttLiveMsg('mic'),true);})
           .catch(function(err){
             if(!S.running||sessionGen!==startGen)return;
             if(err&&err.cancelled)return;
             dlog('stt','live-start-FAIL',{source:'mic',err:String(err.message||err).slice(0,200)});
-            toast('Realtime音声認識を開始できません：'+String(err.message||err));stopAll();
+            toast(sttLiveMsg('fail')+String(err.message||err));stopAll();
           })
       );
     } else {
@@ -12964,7 +13598,7 @@ function startAll(){
           engines.push(eng);eng.start();
           dlog('stt','transport-override',{selectedModel:CFG.sttModel,effective:'webspeech-track',reason:'共有音声STT経路=direct'});
           toast('共有音声Trackの直接Web Speech認識を開始しました'
-            +(isLiveTranscribe()?'<br>※ gpt-live-transcribeを使う場合は、⚙→音声→共有音声の認識経路を「外部API」にしてください。':''),true);
+            +(isStreamingStt()?'<br>※ '+(isLiveTranscribe()?'gpt-live-transcribe':STT_LIVE_PROVIDERS[sttLiveProviderId()].label)+'を使う場合は、⚙→音声→共有音声の認識経路を「選択したSTTを使う」にしてください。':''),true);
         }).catch(function(err){
             if(!S.running||sessionGen!==startGen)return;
           dlog('stt','track-FAIL',{seat:dispSeat,err:String(err.message||err),fallback:false});
@@ -12979,17 +13613,17 @@ function startAll(){
         if(!isVirtualDev(CFG.vbDevLbl))toast('選択した入力は仮想オーディオとして判定できません。経路を確認してください。');
         var eng;
         if(CFG.sttProvider==='webspeech'){eng=new WebSpeechTrackEngine(dispSeat,tr,{ownsStream:true,stream:st});engines.push(eng);eng.start();}
-        else if(isLiveTranscribe()){
+        else if(isStreamingStt()){
           eng=new SttLiveHost(sttLiveProviderId(),dispSeat,st,{isMic:false,ownsStream:true});engines.push(eng);
-          return eng.start().then(function(){renderAudioRouteWarning();toast('VB-CABLE入力の認識を開始しました（Realtime WebRTC）',true);});
+          return eng.start().then(function(){renderAudioRouteWarning();toast(sttLiveMsg('vb'),true);});
         }
         else{eng=new StreamEngine(dispSeat,st,{isMic:false,meter:false,ownsStream:true});engines.push(eng);eng.start();}
         renderAudioRouteWarning();
-        toast('VB-CABLE入力の認識を開始しました'+(isLiveTranscribe()?'（Realtime WebRTC）':''),true);
+        toast('VB-CABLE入力の認識を開始しました',true);
       }).catch(function(err){
             if(!S.running||sessionGen!==startGen)return;
         if(err&&err.cancelled)return;
-        dlog('stt',isLiveTranscribe()?'live-start-FAIL':'input-start-FAIL',{source:'vb-cable',err:String(err.message||err).slice(0,300)});
+        dlog('stt',isStreamingStt()?'live-start-FAIL':'input-start-FAIL',{source:'vb-cable',err:String(err.message||err).slice(0,300)});
         toast('VB-CABLE入力を開始できません：'+String(err.message||err));stopAll();
       }));
     }else if(CFG.sttProvider==='webspeech'){
@@ -12998,17 +13632,17 @@ function startAll(){
       jobs.push(getDisplayAudioForStt().then(function(info){
         if(!captureCurrent(info.stream,info.ownsStream))return;
         var eng;
-        if(isLiveTranscribe()){
+        if(isStreamingStt()){
           eng=new SttLiveHost(sttLiveProviderId(),dispSeat,info.stream,{isMic:false,ownsStream:info.ownsStream});
-          engines.push(eng);return eng.start().then(function(){toast('共有音声をOpenAI Realtime WebRTCで認識します',true);});
+          engines.push(eng);return eng.start().then(function(){toast(sttLiveMsg('display'),true);});
         }
         eng=new StreamEngine(dispSeat,info.stream,{isMic:false,meter:false,ownsStream:info.ownsStream});
         engines.push(eng);eng.start();toast('共有音声を外部STT APIへ送信します',true);
       }).catch(function(err){
             if(!S.running||sessionGen!==startGen)return;
         if(err&&err.cancelled)return;
-        dlog('stt',isLiveTranscribe()?'live-start-FAIL':'api-start-FAIL',{source:'display',err:String(err.message||err).slice(0,300)});
-        toast('画面／タブ音声のRealtime認識を開始できません：'+String(err.message||err));stopAll();
+        dlog('stt',isStreamingStt()?'live-start-FAIL':'api-start-FAIL',{source:'display',err:String(err.message||err).slice(0,300)});
+        toast((isStreamingStt()?sttLiveMsg('displayFail'):'画面／タブ音声のRealtime認識を開始できません：')+String(err.message||err));stopAll();
       }));
     }
   }
@@ -13030,7 +13664,7 @@ function startVU(){
   try{
     var ac = new (window.AudioContext||window.webkitAudioContext)();
     var an = ac.createAnalyser();
-    var sharedProsody = CFG.prosodyOn && (CFG.sttProvider==='webspeech' || CFG.sttProvider==='realtime' || isLiveTranscribe());
+    var sharedProsody = CFG.prosodyOn && (CFG.sttProvider==='webspeech' || CFG.sttProvider==='realtime' || isStreamingStt());
     an.fftSize = sharedProsody ? 2048 : 1024;
     ac.createMediaStreamSource(micStream).connect(an);
     if (sharedProsody) micProsody = new ProsodyAnalyzer(an,ac.sampleRate,'microphone:'+CFG.sttProvider);
@@ -14107,6 +14741,7 @@ function fetchModels(silent){
 /* 音声認識（STT）用モデル一覧の取得。翻訳プロバイダとは別プロバイダ・別キーの場合があるため専用に用意。 */
 function fetchSttModels(silent){
   var prov = CFG.sttProvider;
+  if (prov !== 'openai' && STT_LIVE_PROVIDERS[prov]){ if (!silent) toast(STT_LIVE_PROVIDERS[prov].label + ' はモデル一覧を取得しません。モデル名は選ぶか直接入力してください'); return; }
   if (prov === 'webspeech' || prov === 'realtime'){
     if (!silent) toast(prov === 'webspeech' ? 'ブラウザ内蔵の音声認識にはモデル一覧はありません' : 'このモードはモデル固定のため一覧取得は不要です');
     return;
@@ -14202,7 +14837,7 @@ function refreshProviderUI(){
     fourOSetModel(v);
   });
   var sttFetchable = (CFG.sttProvider !== 'webspeech' && CFG.sttProvider !== 'realtime'
-                      && CFG.sttProvider !== 'xai');
+                      && CFG.sttProvider !== 'xai' && !(CFG.sttProvider !== 'openai' && STT_LIVE_PROVIDERS[CFG.sttProvider]));
   $('fetchSttModels').style.display = sttFetchable ? '' : 'none';
   $('sttModelPick').style.display = hubProviderOk(CFG.sttProvider) ? '' : 'none';
 
@@ -14213,6 +14848,10 @@ function refreshProviderUI(){
 
   fourOSettingsUI();sttLiveSettingsUI();
   $('sttKey').value = KEYS['stt:'+CFG.sttProvider] || '';
+  /* 新しい Provider は翻訳のキーを借りない（開発仕様書 §8.5）。欄の説明もそれに合わせる。 */
+  $('sttKey').placeholder = CFG.sttProvider==='elevenlabs' ? '空欄なら読み上げ欄の ElevenLabs のキーを使用（音声認識の権限が要ります）'
+    : (CFG.sttProvider==='assemblyai'||CFG.sttProvider==='soniox') ? STT_LIVE_PROVIDERS[CFG.sttProvider].label+' のAPIキー（翻訳欄のキーは使いません）'
+    : '空欄なら翻訳プロバイダのキーを使用';
   keyChkShow('chkSttMsg','','');
   refreshTtsBtn();
   $('camBtn').disabled=noTranslation;
@@ -14771,6 +15410,7 @@ var sttKeyTimer = null;
 function autoFetchSttModels(){
   var prov = CFG.sttProvider;
   if (prov === 'webspeech' || prov === 'realtime') return;
+  if (prov !== 'openai' && STT_LIVE_PROVIDERS[prov]) return;   // ストリーミング型はモデル一覧を取らない
   if (prov === 'xai') return;                           // モデルを選ばないので一覧は不要
   if (prov === 'openrouter'){ orSttEnsure(); return; }   // 一覧はキー無しで取れる
 
@@ -15229,11 +15869,12 @@ $('loadEmbedded').onclick = function(){
 function diagSttTransport(){
     if(CFG.sttProvider==='realtime')return 'OpenAI Realtime WebRTC（同時通訳）';
     var routes=[];
-    if(CFG.srcA==='mic'||CFG.srcB==='mic')routes.push(isLiveTranscribe()?'マイク=Realtime WebRTC':(CFG.sttProvider==='webspeech'?'マイク=Web Speech':'マイク=録音分割REST'));
+    var live=isLiveTranscribe()?'Realtime WebRTC':isStreamingStt()?STT_LIVE_PROVIDERS[sttLiveProviderId()].label+' WebSocket PCM16':'';
+    if(CFG.srcA==='mic'||CFG.srcB==='mic')routes.push(live?'マイク='+live:(CFG.sttProvider==='webspeech'?'マイク=Web Speech':'マイク=録音分割REST'));
     if(CFG.srcA==='display'||CFG.srcB==='display'){
       if(effectiveDisplaySttRoute()==='direct')routes.push('共有音声=Web Speech Track（選択モデルは未使用）');
-      else if(effectiveDisplaySttRoute()==='vb')routes.push('共有音声=VB-CABLE '+(isLiveTranscribe()?'Realtime WebRTC':(CFG.sttProvider==='webspeech'?'Web Speech Track':'録音分割REST')));
-      else routes.push('共有音声='+(isLiveTranscribe()?'Realtime WebRTC':'録音分割REST'));
+      else if(effectiveDisplaySttRoute()==='vb')routes.push('共有音声=VB-CABLE '+(live||(CFG.sttProvider==='webspeech'?'Web Speech Track':'録音分割REST')));
+      else routes.push('共有音声='+(live||'録音分割REST'));
     }
     return routes.join(' / ')||'(入力なし)';
   }
@@ -15263,7 +15904,7 @@ var DIAG_ROWS = [
   {section:"settings",order:4,label:'4o系の録音上限',value:function(ctx){ return fourOFileModel()?fourOSeconds(CFG.fourOSeconds)+'秒／末尾繰越 '+(CFG.fourOCarry!==false?'ON':'OFF')+'／無音待ち '+sttSilenceHoldMs()+'ms／録音ファイルAPI'+
     '／カード '+(segEnabled()?'話し続けるあいだ1枚（間 '+(FOURO_CARD_GAP_MS/1000)+'秒・'+(FOURO_CARD_MAX_MS/1000)+'秒か'+FOURO_CARD_MAX_CHARS+'字で文の切れ目）・訳と読み上げは文ごと':'録音ごと（逐次読み上げOFF）'):'(未使用)'; }},
   {section:"settings",order:5,label:'有効なSTT通信方式',value:function(ctx){ return diagSttTransport(); }},
-  {section:"settings",order:6,label:'gpt-live発話確定',value:function(ctx){ return isLiveTranscribe() ? (segEnabled()?'逐次部分翻訳＋文脈・無音・文字停止でカード確定／TTS待ちとは独立':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）') : '(未使用)'; }},
+  {section:"settings",order:6,label:'gpt-live発話確定',value:function(ctx){ return isStreamingStt() ? 'カードを閉じる合図 '+sttLiveCardClose(sttLiveProviderId())+' / '+ (segEnabled()?'逐次部分翻訳＋文脈・無音・文字停止でカード確定／TTS待ちとは独立':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）') : '(未使用)'; }},
   {section:"settings",order:6.1,label:'ストリーミング認識の設定',value:function(ctx){ var o=sttLiveOptions();return o?o.provider+' / '+o.model+' / '+JSON.stringify(o.performance):'(未使用)'; }},
   {section:"settings",order:6.2,label:'ストリーミング認識の計測',value:function(ctx){ return (STT_LIVE_STATS.counts.cards||isStreamingStt())?sttLiveStatsSummary():'(未使用)'; }},
   {section:"settings",order:7,label:'共有音声STT経路',value:function(ctx){ return CFG.displaySttRoute+' → '+effectiveDisplaySttRoute(); }},
@@ -15332,7 +15973,7 @@ var DIAG_ROWS = [
   }},
   /* INV-13 の効果。shadow では「従っていれば」、on では実際に早めた分。 */
   {section:"settings",order:29.45,label:'gpt-live の区切り（判断層）',value:function(ctx){
-    if(!isLiveTranscribe())return '(未使用)';
+    if(!isStreamingStt())return '(未使用)';
     var s=TurnDecision.stats||{},m=String(CFG.turnDecisionLiveClose||'shadow'),on=m==='on';
     if(m==='off')return '使わない';
     var n=on?(s.liveCloseEarly||0):(s.liveCloseWould||0),k=s.liveCloseSavedN||0;
@@ -18007,6 +18648,7 @@ function segLiveClose(engine,id,x,reason,meta){
   e.audioEndedAt=e.audioEndedAt||Date.now();x.nextCardStartedAt=e.audioEndedAt;duoSpeakerUpdate(e);duoSpeakerPaint(e);x.segmentRanges.push({entry:e,end:x.text.length});x.cardOffset=x.text.length;x.entry=null;
   dlog('stt','live-card-final',engine.tag({item:id,cardId:e.id,reason:reason,chars:e.srcText.length,meta:meta||{}}));
   sttLiveMetricsClose(engine,e,reason,false);
+  if(STT_LIVE_PROVIDER_REASONS.indexOf(reason)<0)engine.duoClosed();
 }
 function segLiveBoundaries(engine){
   var now=Date.now();
@@ -18018,6 +18660,7 @@ function segLiveBoundaries(engine){
     else if(idle>=p.idle&&silence!==null&&silence>=p.silence)reason='audio-pause';
     else if(now-e.startedAt>=30000&&idle>=650)reason='max-duration';
     if(!reason&&TurnDecision.liveClose(e,idle,silence,now))reason='turn-complete';
+    if(engine.cardClose==='provider')reason=idle>=STT_LIVE_PROVIDER_IDLE_MS?'delta-timeout':(now-e.startedAt>=30000&&idle>=650?'max-duration':'');
     if(reason){TurnDecision.liveClosed(e,x,reason,p,idle,now);
       segLiveClose(engine,id,x,reason,{context:kind,idleMs:idle,silenceMs:silence});}
   });
@@ -18025,6 +18668,9 @@ function segLiveBoundaries(engine){
 function segLiveReconcile(engine,x,text,reason){
   // Map all closed-card boundaries through the final transcript correction.
   var old=x.text||'',ranges=x.segmentRanges||[],ends=segMapCardEnds(old,text,ranges.map(function(r){return r.end;})),at=0;
+  /* 新しい Provider では、確定本文の末尾が句読点だけなら最後に閉じたカードへ含める。
+     「.」だけのカードを作らない（gpt-live は v1.49.39 のまま）。 */
+  if(engine.provider!=='openai'&&!x.entry&&ranges.length&&ends[ends.length-1]<text.length&&!hasSpeechContent(text.slice(ends[ends.length-1])))ends[ends.length-1]=text.length;
   ranges.forEach(function(r,i){
     var end=Math.max(at,Math.min(text.length,ends[i]));
     if(!r.entry.segment.cancelled){duoLiveAssignSeat(engine,r.entry,text.slice(at,end));segUpdate(r.entry,text.slice(at,end),true);}
@@ -18093,6 +18739,15 @@ function segLiveEvent(engine,ev){
   x.text=text;x.lastDeltaAt=now;
   var local=x.text.slice(x.cardOffset||0);
   if(rewrite&&!x.entry&&!local.trim())return true;
+  /* つないだ本文（sttCardClose=duo）の確定で、閉じたカードの後ろに句読点だけが残ったら、そのカードに含める。 */
+  if(ev.finalized&&!x.entry&&!hasSpeechContent(local)&&(x.segmentRanges||[]).length){
+    x.segmentRanges[x.segmentRanges.length-1].end=x.text.length;x.cardOffset=x.text.length;return true;
+  }
+  /* 仮の文字がすべて取り消された（Soniox の非確定 token が消えたなど）。まだ何も確定していない
+     カードなら空のまま残さず消す。 */
+  if(rewrite&&x.entry&&!local.trim()&&!(x.entry.segments||[]).some(function(s){return !!s.committedAt;})){
+    removeEntry(x.entry);x.entry=null;return true;
+  }
   var entry=engine.ensureEntry(x),prev=entry.segment?entry.segment.text:'';
   TurnDecision.liveResumed(entry,x,now,delta);
   if(!x.segmentLogAt||now-x.segmentLogAt>=1000){

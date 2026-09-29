@@ -343,10 +343,19 @@
     "v1.50.0": {
       "build": "20260929-v1500-stt-live-host",
       "extension": "1.4.51",
+      "commit": "e40f42e",
       "indexHtmlSha256": "a2372d01e826eca19b75c97919fb0f365695368fdd6f88eca5365f9d5a072064",
       "extensionAppJsSha256": "344a9a8611db5c0627b9c03d0935f43aab5681d443fbad1e37583d106fb0c613",
       "extensionZipSha256": "35ccb27f0f4581c6398e2b4873ce865cc6a54df5da55711560d6cc90dd973834",
       "summary": "gpt-live-transcribe の経路を SttLiveHost（カード・区切り・計測・停止）と Adapter（接続と受信の読み替え）に分けた（STTマルチプロバイダ開発仕様書 Phase 1）。delay=low のとき session 設定と挙動は v1.49.39 と同じ（受信列を新旧に流して一致を検査）。⚙→音声 で delay を minimal／low（既定）／medium／high／xhigh から選べる。カードごとに TTFP・TTTR・PRR を本文なしで記録し、診断ログに中央値と p90 を出す"
+    },
+    "v1.51.0": {
+      "build": "20260929-v1510-stt-multi-provider",
+      "extension": "1.4.52",
+      "indexHtmlSha256": "6142bdc1060c3fcc8058b6d163efd0e4068ee5ea9c92c86fb4ea0e17b4e6203a",
+      "extensionAppJsSha256": "1e84a9d86c075073a38d0adb32f7917773e780eba76fa86e9c564beb7b098703",
+      "extensionZipSha256": "017f87da9f6befa5781ea852f353634a20799007b89fc07c2d1aa8d176b9e699",
+      "summary": "ElevenLabs Scribe v2 Realtime・AssemblyAI Universal-3.5 Pro Realtime・Soniox v5 Realtime のストリーミング認識を足した（STTマルチプロバイダ開発仕様書 Phase 2〜4 と Phase 5 の一部）。受け取った音を AudioWorklet で PCM16・16kHz にして WebSocket で送り、接続ごとに各社の一時資格情報を作る（翻訳のキーは借りない）。性能設定はすべてプルダウン（既定は公式の既定値）。カードを閉じる合図（早いほう／Provider だけ／Duo だけ）、会社ごとのエラー分類と1分3回までの再接続。gpt-live の挙動は v1.49.39 と同じまま"
     }
   }
 }

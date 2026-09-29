@@ -1,7 +1,9 @@
 # Realtime STT マルチプロバイダ 開発仕様書
 
 起点：HTML v1.49.39 / Chrome・Edge 拡張 1.4.50（2026-09-29 時点）
-状態：§18 の決定（2026-09-29）を反映済み。**Phase 0（SDK での照合、付録A2）と Phase 1（HTML v1.50.0 / 拡張 1.4.51）を実装済み。**
+状態：§18 の決定（2026-09-29）を反映済み。**Phase 0（SDK での照合、付録A2）、Phase 1（HTML v1.50.0 / 拡張 1.4.51）、
+Phase 2〜4 と Phase 5 の一部（再接続・カードを閉じる合図）（HTML v1.51.0 / 拡張 1.4.52）を実装済み。**
+Phase 5 の残り（relay・broker の発行経路、自動フォールバック）と Phase 6 以降は未着手です。
 実装の進み具合は `次期仕様実装状況.md` の「Realtime STT マルチプロバイダ」に書きます。
 元資料：起草された「Duo Interpreter Realtime STT Multi-Provider 実装計画書」（以下「計画書」。`計画書§n` は計画書の節番号）
 
@@ -256,10 +258,10 @@ completed は長く来ないことがあるため、`sttCardClose=provider`（§
 |`partial_transcript`|`partial`（**全文置換**。`key`＝Adapter の連番）|
 |`committed_transcript`|`committed` ＋ `endpoint`（`commit_strategy` が vad なら `vad`、manual なら `manual`）。連番を進める|
 |`committed_transcript_with_timestamps`（`include_timestamps` のとき）|直前の committed の付帯情報（言語・語の時刻）。本文は `committed_transcript` を正とする|
-|エラー（種別名は要原典確認）|`error`|
+|エラー（`auth_error`・`quota_exceeded`・`rate_limited` など13種。付録A2）|`error`。§14.1 の分類へ対応させる|
 
-送信は JSON：`{"message_type":"input_audio_chunk","audio_base_64":"…","sample_rate":16000}`（形は要原典確認）。
-手動確定の送り方も要原典確認。
+送信は JSON：`{"message_type":"input_audio_chunk","audio_base_64":"…","commit":false,"sample_rate":16000}`。
+手動確定は同じ形で `audio_base_64:""`・`commit:true`（付録A2 で確定）。
 
 #### AssemblyAI `universal-3-5-pro`（`caps.endpoint='turn'`、`caps.stable='words'`）
 
@@ -273,8 +275,10 @@ completed は長く来ないことがあるため、`sttCardClose=provider`（§
 |エラー（close code と本文）|`error`|
 
 **区間の同一性は `turn_order` で判定し、本文で判定しません。** 本文で判定して、同じ言葉の繰り返しを
-落としたり整形済みターンを二重にしたりした外部の事例があります。日本語で `words` がどう区切られるかは要原典確認で、
-区切りが得られないなら `stableChars=null` にします。
+落としたり整形済みターンを二重にしたりした外部の事例があります。日本語で `words` がどう区切られるかは
+SDK からは分からないので、実装では `stableChars=null` にしています。
+同じ `turn_order` の `end_of_turn` が2回来たとき（整形済みの送り直し）は最初の1回を採り、2回目は記録だけにします
+（`format_turns` は送らない。2回来るかは実機で確かめる）。
 
 #### Soniox `stt-rt-v5`（`caps.endpoint='turn'`、`caps.stable='tokens'`）
 
@@ -302,8 +306,8 @@ AUTO で2人の言語が違うとき（`sttAutoDetect()` と同じ条件）は�
 |---|---|
 |OpenAI|今の `config()` のまま。`delay` だけ `sttLiveDelay` にする。**`low` のときは v1.49.39 とバイト単位で同じ設定を送る**（INV-STT-01）|
 |ElevenLabs（URL のクエリ）|`model_id`、`token`、`audio_format=pcm_16000`、`commit_strategy`、`vad_silence_threshold_secs`、`vad_threshold`、`min_speech_duration_ms`、`min_silence_duration_ms`（4つとも毎回明示）、`language_code`（言語を固定するときだけ）|
-|AssemblyAI（URL のクエリ）|`token`、`speech_model=universal-3-5-pro`、`sample_rate=16000`、`encoding=pcm_s16le`、`mode`、`continuous_partials=true`（固定）。`min_turn_silence`・`max_turn_silence`・`interruption_delay` は**利用者が上書きしたときだけ**。用語集を送る項目名（`keyterms_prompt` など）、整形（`format_turns`）の扱い、言語の指定の有無は要原典確認|
-|Soniox（接続直後の JSON）|`api_key`（**一時キー**）、`model`、`audio_format=pcm_s16le`、`sample_rate=16000`、`num_channels=1`、`language_hints`（`langA`・`langB`）、`enable_language_identification=true`、`enable_endpoint_detection=true`（固定）、`endpoint_latency_adjustment_level`、`endpoint_sensitivity`、`max_endpoint_delay_ms`。用語集とコンテキストを渡す `context` の形は要原典確認|
+|AssemblyAI（URL のクエリ）|`token`、`speech_model=universal-3-5-pro`、`sample_rate=16000`、`encoding=pcm_s16le`、`mode`、`continuous_partials=true`（固定）。`min_turn_silence`・`max_turn_silence`・`interruption_delay` は**利用者が上書きしたときだけ**。用語集は `keyterms_prompt`（JSON 配列）、2言語は `language_codes`（JSON 配列。Universal-3.5 Pro のときだけ）。`format_turns` は送らない。コンテキスト（`prompt`）は、振る舞いが変わるおそれがあるので送らない|
+|Soniox（接続直後の JSON）|`api_key`（**一時キー**）、`model`、`audio_format=pcm_s16le`、`sample_rate=16000`、`num_channels=1`、`language_hints`（`langA`・`langB`）、`enable_language_identification=true`、`enable_endpoint_detection=true`（固定）、`endpoint_latency_adjustment_level`、`endpoint_sensitivity`、`max_endpoint_delay_ms`。用語集とコンテキストは `context` の `terms` と `text`（付録A2 で確定）。3つの区切りの設定は `stt-rt-v5` のときだけ送る|
 
 用語集とコンテキストは、今の gpt-live と同じ出どころ（`CFG.glossary` の先頭60語、`CFG.ctx` の先頭600字）から
 各 Adapter の `options` が Provider の形へ変えます。Provider ごとに別の語彙を持ちません（計画書§11 の STT Context Manager は、
@@ -354,7 +358,8 @@ Provider の確定を Duo の区切りに合わせます。
 
 ### 6.4 停止
 
-`adapter.close()` を送り、最後の `committed` を最大1秒待ってから接続を閉じます。区間を持たない未確定のカードは
+`adapter.close()` の終わりのメッセージ（AssemblyAI は `Terminate`、Soniox は空の文字列）を送り、**すぐに**接続を閉じます。
+最後の `committed` は待ちません（実装で変えた点。gpt-live も待たずに閉じており、それに合わせた）。区間を持たない未確定のカードは
 今と同じく消します。`SttPcmTap` と `AudioContext` を閉じ、Host が自分で取った Stream だけを止めます（`ownsStream`）。
 
 ---
@@ -377,7 +382,7 @@ Provider の確定を Duo の区切りに合わせます。
 - `AudioContext` が suspended なら `resume()` します（iOS。`StreamEngine` と同じ）。
 - AudioWorklet が無いブラウザでは開始せず、理由をトーストで出します。ScriptProcessor の代替は作りません。
 - 5秒ごとに、送った秒数・バイト数・入力レートを記録します（今の `live-audio-transport` と同じ形）。
-- AssemblyAI の1回の送信の長さの制約（50〜1000ms と言われる）は要原典確認。既定の100ms はその範囲に入ります。
+- AssemblyAI の1回の送信の長さは 50〜1000ms（付録A2 で確定。外れると 3007 で切られる）。既定の100ms と選択肢はその範囲に入ります。
 
 ---
 
@@ -400,7 +405,7 @@ Provider の確定を Duo の区切りに合わせます。
 |AssemblyAI|`GET https://streaming.assemblyai.com/v3/token?expires_in_seconds=60`（1〜600）。`max_session_duration_seconds`（60〜10800、既定10800）|`Authorization: <key>`|指定した秒数|`wss://streaming.assemblyai.com/v3/ws?token=…&…`|
 |Soniox|`POST https://api.soniox.com/v1/auth/temporary-api-key` `{"usage_type":"transcribe_websocket","expires_in_seconds":60,"single_use":true}`（`max_session_duration_seconds` は任意）|`Authorization: Bearer <key>`|1〜3600秒|`wss://stt-rt.soniox.com/transcribe-websocket` の最初の JSON の `api_key`|
 
-認証ヘッダの正確な形と応答のフィールド名は要原典確認です。
+認証ヘッダの形と応答のフィールド名は付録A2 で確定しました（AssemblyAI は `Bearer` を付けない）。
 
 ### 8.3 発行経路（`sttCredentialRoute`）
 
@@ -482,14 +487,14 @@ Content-Type: application/json
 |`sttLiveDelay`|`di.sttLiveDelay`|**`low`**|`minimal`・`low`・`medium`・`high`・`xhigh`|
 |`sttElevenLabsCommitStrategy`|`di.sttElevenLabsCommitStrategy`|`vad`|`vad`・`manual`|
 |`sttElevenLabsVadSilenceSecs`|`di.sttElevenLabsVadSilenceSecs`|`1.5`|0.3・0.5・0.7・1.0・1.5・2.0・3.0 秒|
-|`sttElevenLabsVadThreshold`|`di.sttElevenLabsVadThreshold`|`0.4`|0.2・0.3・0.4・0.5・0.6（範囲は要原典確認）|
-|`sttElevenLabsMinSpeechMs`|`di.sttElevenLabsMinSpeechMs`|`100`|50・100・250・500 ms（要原典確認）|
-|`sttElevenLabsMinSilenceMs`|`di.sttElevenLabsMinSilenceMs`|`100`|50・100・250・500 ms（要原典確認）|
+|`sttElevenLabsVadThreshold`|`di.sttElevenLabsVadThreshold`|`0.4`|0.2・0.3・0.4・0.5・0.6（範囲 0.1〜0.9 の内側）|
+|`sttElevenLabsMinSpeechMs`|`di.sttElevenLabsMinSpeechMs`|`100`|50・100・250・500 ms（範囲 50〜2000 の内側）|
+|`sttElevenLabsMinSilenceMs`|`di.sttElevenLabsMinSilenceMs`|`100`|50・100・250・500 ms（範囲 50〜2000 の内側）|
 |`sttAssemblyAiMode`|`di.sttAssemblyAiMode`|`balanced`|`min_latency`・`balanced`・`max_accuracy`|
 |`sttAssemblyAiMinTurnSilenceMs`|`di.sttAssemblyAiMinTurnSilenceMs`|モードの既定（空）|モードの既定・100・128・160・256・400・512 ms|
 |`sttAssemblyAiMaxTurnSilenceMs`|`di.sttAssemblyAiMaxTurnSilenceMs`|モードの既定（空）|モードの既定・640・900・1280・1600・2000・2560 ms|
 |`sttAssemblyAiInterruptionDelayMs`|`di.sttAssemblyAiInterruptionDelayMs`|モードの既定（空）|モードの既定・0・250・500 ms（意味は要原典確認）|
-|`sttSonioxEndpointLevel`|`di.sttSonioxEndpointLevel`|`0`|0・1・2・3（上限は要原典確認）|
+|`sttSonioxEndpointLevel`|`di.sttSonioxEndpointLevel`|`0`|0・1・2・3（上限3は付録A2 で確定）|
 |`sttSonioxEndpointSensitivity`|`di.sttSonioxEndpointSensitivity`|`0.0`|−1.0・−0.5・−0.3・0.0・+0.3・+0.5・+1.0|
 |`sttSonioxMaxEndpointDelayMs`|`di.sttSonioxMaxEndpointDelayMs`|`2000`|500・1000・1500・2000・2500・3000 ms|
 |`sttCardClose`|`di.sttCardClose`|`first`|`first`・`provider`・`duo`|
@@ -709,7 +714,8 @@ AssemblyAI の選択肢に並べた 128・512・640・1280・2560 ms などは�
 |`transient`|異常切断（1006 など）、通信断、5xx、接続前の期限切れ、セッション上限による切断|0.5秒・1秒・2秒で、60秒あたり最大3回|
 |`closed`|こちらから閉じた（1000）|何もしない|
 
-Provider ごとのエラーコードとの対応は要原典確認です。
+Provider ごとのエラーコードとの対応は付録A2 の SDK の表から作りました（`STT_EL_ERRORS`・`STT_AAI_CLOSE`・`STT_SONIOX_ERRORS`）。
+OpenAI（gpt-live）は今までどおり、エラーを受けたら文言を出すだけで分類しません。
 
 ### 14.2 再接続
 
@@ -737,7 +743,7 @@ Provider ごとのエラーコードとの対応は要原典確認です。
 |INV-STT-04|下流は Provider 固有の種別名を見ない。`raw` は診断だけ|同上|
 |INV-STT-05|正規化した partial は全文。ElevenLabs の partial を連結しない|同上|
 |INV-STT-06|Provider の endpoint から直接翻訳を始めない。カードを閉じる → `segUpdate(final)` → `segCheck` の順を通る|`test-stt-live-host.cjs`|
-|INV-STT-07|長期のキーを WebSocket の URL・最初のメッセージ・診断に入れない。別の会社のキーへ落ちない|`test-stt-credentials.cjs`|
+|INV-STT-07|長期のキーを WebSocket の URL・最初のメッセージ・診断に入れない。別の会社のキーへ落ちない|`test-stt-keys.cjs`|
 |INV-STT-08|利用者が ON にしない限り、音声の送り先の会社を変えない|`test-stt-live-host.cjs`|
 |INV-STT-09|判断層の質問文・`state`・閾値は変えない（`questionSetHash` が変わらない）|既存の `test-turn-providers.cjs`|
 |INV-STT-10|計測の画面は実測値だけを出す|`test-stt-metrics.cjs`|
@@ -768,7 +774,7 @@ Provider ごとのエラーコードとの対応は要原典確認です。
 |`test-stt-live-adapters.cjs`|gate|受信列 → 正規化イベント列。特殊 token を除く、全文置換、`turn_order` で同一性を判定、Soniox の final／非 final、ElevenLabs の partial を連結しない|
 |`test-stt-live-parity.cjs`|gate|gpt-live の session 設定がバイト一致。記録した DataChannel の受信列を旧実装と新実装に流し、カードの本文・閉じた理由・記録の種類と順が一致|
 |`test-stt-pcm.cjs`|gate|モノラル化・16kHz への間引き（正弦波で振幅と周波数）・Int16 変換と切り捨て・フレーム長|
-|`test-stt-credentials.cjs`|gate|別の会社のキーへ落ちない、WebSocket の URL と Soniox の設定メッセージが伏せ字になる、Broker の URL の検査|
+|`test-stt-keys.cjs`|gate|別の会社のキーへ落ちない、WebSocket の URL と Soniox の設定メッセージが伏せ字になる、Broker の URL の検査|
 |`test-stt-live-host.cjs`|gate|`sttCardClose` の3値、Duo が先に閉じたあとの committed の写像、止めたあとの結果を捨てる、再接続でカードを閉じる、フォールバックの条件|
 |`test-stt-metrics.cjs`|gate|TTFP・TTTR・PRR の計算|
 |`test-stt-bench-tool.cjs`|gate|CER／WER|

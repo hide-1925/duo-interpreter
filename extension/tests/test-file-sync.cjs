@@ -41,7 +41,11 @@ const SHARED=[
   'var STT_LIVE_PROVIDERS={',
   'function SttLiveHost(provider,seat,stream,opts){',
   'SttLiveHost.prototype.handle=function(ev){',
-  'function segLiveEvent(engine,ev){'
+  'function segLiveEvent(engine,ev){',
+  'function sttPcmDownsample(input,inRate,outRate,st){',
+  'SttLiveHost.prototype.openSocket=function(url,hello){',
+  'SttLiveHost.prototype.onSocketClose=function(ev){',
+  'function segLiveReconcile(engine,x,text,reason){'
 ];
 
 const tests=[];

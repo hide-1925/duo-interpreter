@@ -67,6 +67,59 @@ const tests=[];
       shown:document.getElementById('sttLivePanel').style.display===''}));
     assert.deepEqual(again,{value:'high',shown:true});
     tests.push('the choice survives a reload');
+
+    /* ElevenLabs・AssemblyAI・Soniox（Phase 2〜4）。 */
+    const p=await page.evaluate(()=>{
+      const out={},prov=document.getElementById('sttProvider');
+      const vis=(id)=>{let el=document.getElementById(id);while(el){if(el.style&&el.style.display==='none')return false;el=el.parentElement;}return true;};
+      const choice=(prop)=>STT_LIVE_CHOICES[prop];
+      for(const id of ['elevenlabs','assemblyai','soniox']){
+        prov.value=id;prov.onchange.call(prov);
+        const rows=STT_LIVE_PANELS.filter(x=>x.provider===id||x.provider==='common').flatMap(x=>x.rows).filter(r=>r.prop);
+        out[id]={panel:vis('sttLivePanel'),own:vis('sttLive_'+id),others:['openai','elevenlabs','assemblyai','soniox'].filter(x=>x!==id).map(x=>vis('sttLive_'+x)),
+          chunk:vis('sttLiveRow_sttChunkMs'),model:document.getElementById('sttModel').value,
+          fetchHidden:document.getElementById('fetchSttModels').style.display==='none',placeholder:document.getElementById('sttKey').placeholder,
+          selects:rows.map(r=>{const el=document.getElementById(r.prop);return {prop:r.prop,tag:el.tagName,
+            values:[...el.options].map(o=>o.value),marked:[...el.options].filter(o=>o.textContent.includes('（既定）')).map(o=>o.value),
+            expected:choice(r.prop).values.map(v=>v[0]),def:choice(r.prop).def,value:el.value};}),
+          summary:document.getElementById('sttLiveSummary').textContent};
+      }
+      /* Soniox の「組み合わせ」は3つの欄をまとめて変え、個別に変えると「個別に選ぶ」に戻る。 */
+      const combo=document.getElementById('sttSonioxPreset');out.comboStart=combo.value;
+      combo.value='fast';combo.dispatchEvent(new Event('change'));
+      out.fast=[CFG.sttSonioxEndpointLevel,CFG.sttSonioxEndpointSensitivity,CFG.sttSonioxMaxEndpointDelayMs,
+        localStorage.getItem('di.sttSonioxEndpointLevel'),document.getElementById('sttSonioxEndpointLevel').value,combo.value];
+      out.helloAfterFast=STT_LIVE_PROVIDERS.soniox.performance();
+      const lv=document.getElementById('sttSonioxEndpointLevel');lv.value='1';lv.dispatchEvent(new Event('change'));
+      out.custom=combo.value;
+      combo.value='default';combo.dispatchEvent(new Event('change'));out.backToDefault=[CFG.sttSonioxEndpointLevel,combo.value];
+      prov.value='openai';prov.onchange.call(prov);fourOSetModel('gpt-live-transcribe');
+      out.openaiChunk=vis('sttLiveRow_sttChunkMs');out.openaiCommon=vis('sttLive_common');
+      return out;
+    });
+    for(const id of ['elevenlabs','assemblyai','soniox']){
+      const x=p[id];
+      assert.ok(x.panel&&x.own,id+': its own rows are shown');assert.deepEqual(x.others,[false,false,false],id+': no other provider rows');
+      assert.ok(x.chunk,id+': the chunk length row is shown for WebSocket providers');
+      assert.ok(x.fetchHidden,id+': no model-list fetch button');
+      for(const s of x.selects){
+        assert.equal(s.tag,'SELECT',s.prop+' must be a pull-down (D-5)');
+        assert.deepEqual(s.values,s.expected,s.prop+' options');
+        assert.deepEqual(s.marked,[s.def],s.prop+': only the default carries （既定）');
+      }
+    }
+    tests.push('every ElevenLabs, AssemblyAI and Soniox setting is a pull-down with only its default marked');
+    assert.equal(p.elevenlabs.model,'scribe_v2_realtime');assert.equal(p.assemblyai.model,'universal-3-5-pro');assert.equal(p.soniox.model,'stt-rt-v5');
+    assert.match(p.assemblyai.placeholder,/翻訳欄のキーは使いません/);assert.match(p.elevenlabs.placeholder,/ElevenLabs/);
+    assert.match(p.soniox.summary,/Soniox：endpoint_latency_adjustment_level 0/);
+    tests.push('choosing a provider selects its default model and explains which key it uses');
+    assert.equal(p.comboStart,'default');
+    assert.deepEqual(p.fast,['2','0.3','1500','2','2','fast']);
+    assert.deepEqual(p.helloAfterFast,{endpoint_latency_adjustment_level:2,endpoint_sensitivity:0.3,max_endpoint_delay_ms:1500});
+    assert.equal(p.custom,'custom');assert.deepEqual(p.backToDefault,['0','default']);
+    tests.push('the Soniox combination sets its three fields, and an individual change shows 個別に選ぶ');
+    assert.equal(p.openaiChunk,false,'gpt-live sends a WebRTC track, not chunks');assert.equal(p.openaiCommon,true);
+    tests.push('gpt-live shows the common card-close row but not the chunk length');
     assert.deepEqual(pageErrors,[],'no page errors');tests.push('no page errors');
     console.log(JSON.stringify({passed:tests.length,tests},null,2));
   }finally{
