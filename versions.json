@@ -339,6 +339,14 @@
       "extensionAppJsSha256": "a826585557b84a1207b89497c7ea5c96352734d1be5bde94c72ce50de6e7d50d",
       "extensionZipSha256": "3dcf8e537567be483ebbd3e98b1dc6f1f631f5a2dc755031f162ec945fa990bf",
       "summary": "書き出しから APIキーと会話の本文が漏れないようにした（公開リポジトリの監査 audit/findings.md の F-10〜F-12）。設定埋め込みHTMLは、APIキーを埋め込むときだけ確認を出して duo-interpreter-PRIVATE-WITH-KEYS-… という名前にし、書き出したらOFFに戻す。OFFの書き出しに手元のキーと同じ文字列があれば止める。診断ログは既定を共有用（会話の本文・参加者名・デバイス名を省く）にし、完全版は確認してから。伏せ字は手元のキーの実値で完全一致させてから形式で伏せ、診断ログ全体に掛ける（前は Aivis・VOICEVOX のような形式の決まっていないキー、sk_・hf_・ghp_・JWT、Cookie、client_secret、?key=、user:pass@ を素通りしていた）。翻訳・認識・読み上げの動きは変えていない"
+    },
+    "v1.50.0": {
+      "build": "20260929-v1500-stt-live-host",
+      "extension": "1.4.51",
+      "indexHtmlSha256": "a2372d01e826eca19b75c97919fb0f365695368fdd6f88eca5365f9d5a072064",
+      "extensionAppJsSha256": "344a9a8611db5c0627b9c03d0935f43aab5681d443fbad1e37583d106fb0c613",
+      "extensionZipSha256": "35ccb27f0f4581c6398e2b4873ce865cc6a54df5da55711560d6cc90dd973834",
+      "summary": "gpt-live-transcribe の経路を SttLiveHost（カード・区切り・計測・停止）と Adapter（接続と受信の読み替え）に分けた（STTマルチプロバイダ開発仕様書 Phase 1）。delay=low のとき session 設定と挙動は v1.49.39 と同じ（受信列を新旧に流して一致を検査）。⚙→音声 で delay を minimal／low（既定）／medium／high／xhigh から選べる。カードごとに TTFP・TTTR・PRR を本文なしで記録し、診断ログに中央値と p90 を出す"
     }
   }
 }

@@ -797,8 +797,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.49.39';
-var APP_BUILD = '20260928-v14939-secret-guard';
+var APP_VERSION = 'v1.50.0';
+var APP_BUILD = '20260929-v1500-stt-live-host';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -900,6 +900,13 @@ var STT_MODELS = {
   webspeech:[{id:'(ブラウザ内蔵)'}],
   realtime:[{id:'gpt-realtime-translate', note:'音声→訳した音声＋字幕を同時生成'}]
 };
+/* ストリーミング型 STT の性能設定の選択肢（STTマルチプロバイダ開発仕様書 §9・D-5）。
+   すべてプルダウンで選び、数値を打ち込む欄は作らない。def は公式の既定値。
+   ただし gpt-live-transcribe の delay は、今まで固定で送っていた low を既定にする。 */
+var STT_LIVE_CHOICES={
+  sttLiveDelay:{def:'low',values:[['minimal','最小（minimal）— いちばん早く出る'],['low','低（low）— 字幕向け'],['medium','中（medium）'],
+    ['high','高（high）— 音声を多めに聞いてから出す'],['xhigh','最高（xhigh）— 遅れを最大まで許す']]}
+};
 var TTS_MODELS = [
   {id:'gpt-4o-mini-tts', note:'自然・安価（おすすめ）'},
   {id:'tts-1',           note:'低遅延'},
@@ -997,6 +1004,8 @@ var CONFIG_SCHEMA = [
   { prop:"fourOCarry", key:'di.fourOCarry', embed:'fourOCarry', def:'1', type:'bool', portable:true, el:"fourOCarry", bind:'custom' },
   /* 録音を切って送るまでの無音待ち。遅延に直接効く唯一の固定値だった。 */
   { prop:"sttSilenceHoldMs", key:'di.sttSilenceHold', embed:'sttSilenceHoldMs', def:'900', portable:true, el:"sttSilenceHoldMs" },
+  /* gpt-live-transcribe の delay（STTマルチプロバイダ開発仕様書 §9）。既定は今まで固定で送っていた low。 */
+  { prop:"sttLiveDelay", key:'di.sttLiveDelay', embed:'sttLiveDelay', def:'low', coerce:function(raw){ return sttLiveChoice('sttLiveDelay',raw); }, portable:true, el:"sttLiveDelay" },
   { prop:"segmentMode", key:'di.segmentMode', embed:'segmentMode', def:'balanced', portable:true, el:"segmentMode", bind:'custom' },
   { prop:"segmentBoundary", key:'di.segmentBoundary', embed:'segmentBoundary', def:'semantic', portable:true, el:"segmentBoundary", bind:'custom' },
   { prop:"segmentOverlap", key:'di.segmentOverlap', embed:'segmentOverlap', def:'allow', portable:true, el:"segmentOverlap", bind:'custom' },
@@ -3233,10 +3242,10 @@ function verifySttKey(){
         return r.text().then(function(t){ throw new Error('HTTP ' + r.status + ' ' + t.slice(0,160)); });
       });
     if (isLiveTranscribe()){
-      var probe=new RealtimeTranscriptionEngine(S.listenSeat||'A',null,{});
+      var probe=new SttLiveHost('openai',S.listenSeat||'A',null,{});
       return fetch('https://api.openai.com/v1/realtime/client_secrets',{
         method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-        body:JSON.stringify({session:probe.config()})
+        body:JSON.stringify({session:STT_LIVE_PROVIDERS.openai.session(probe)})
       }).then(function(r){
         if(r.ok)return 'このキーでgpt-live-transcribeのRealtime WebRTC接続を開始できます。';
         return r.text().then(function(t){throw new Error('HTTP '+r.status+' '+t.slice(0,180));});
@@ -9352,7 +9361,7 @@ function fourOSetSeconds(value){
 }
 function fourOSetModel(value){
   if(CFG.sttModel===value)return;var was=S.running;if(was)stopAll();
-  CFG.sttModel=value;persistSetting("sttModel", value);fourOSettingsUI();renderAudioRouteWarning();
+  CFG.sttModel=value;persistSetting("sttModel", value);fourOSettingsUI();sttLiveSettingsUI();renderAudioRouteWarning();
   if(was)toast('認識モデルを変更しました。「開始」で再開してください。',true);
 }
 function fourOSentenceEnds(text){
@@ -9872,183 +9881,264 @@ function blobToB64(b){
 function isLiveTranscribe(){
   return CFG.sttProvider==='openai'&&/^gpt-live-transcribe(?:$|-)/.test(String(CFG.sttModel||'').trim());
 }
-
-/* OpenAI gpt-live-transcribe専用のRealtime WebRTC経路。
-   録音Blobを/audio/transcriptionsへ送るモデルではないため、入力Trackをそのまま接続する。 */
-function RealtimeTranscriptionEngine(seat,stream,opts){
+/* =========================================================================
+   ストリーミング型の音声認識（STTマルチプロバイダ開発仕様書.md）
+   ------------------------------------------------------------------
+   SttLiveHost がカード・区切り・計測・停止を持ち、接続と受信の正規化は
+   STT_LIVE_PROVIDERS の Adapter が持つ。Adapter は DOM・翻訳・読み上げ・
+   判断層・カードに触れない（§5.2）。受信は map() で正規化イベントにしてから
+   Host へ渡し、partial は常に「その区間の全文」にする（§5.3）。
+   gpt-live-transcribe は今までどおり OpenAI を選んでモデル名で決まる。
+   ========================================================================= */
+function sttLiveProviderId(){
+  if(isLiveTranscribe())return 'openai';
+  return CFG.sttProvider!=='openai'&&STT_LIVE_PROVIDERS[CFG.sttProvider]?CFG.sttProvider:'';
+}
+function isStreamingStt(){return !!sttLiveProviderId();}
+/* 開始時の記録と診断に出す設定。performance は Provider 自身のパラメータ名で書く（§9・計画書§37）。 */
+function sttLiveOptions(){
+  var id=sttLiveProviderId();if(!id)return null;
+  var a=STT_LIVE_PROVIDERS[id];
+  return {provider:id,model:a.model(),transport:a.transport,performance:a.performance()};
+}
+/* 性能設定の値。選択肢に無い値は既定へ戻す（§9）。 */
+function sttLiveChoice(prop,raw){
+  var c=STT_LIVE_CHOICES[prop],v=String(raw==null?'':raw),i;
+  if(!c)return v;
+  for(i=0;i<c.values.length;i++)if(c.values[i][0]===v)return v;
+  return c.def;
+}
+/* 新しい Provider は自分のキーだけを使い、翻訳のキーを借りない（§8.5）。
+   OpenAI は今までの sttKey() のまま。 */
+function sttLiveKey(provider){
+  if(provider==='openai')return sttKey();
+  if(provider==='elevenlabs')return (KEYS['stt:elevenlabs']||'').trim()||(KEYS['eleven']||'').trim();
+  return (KEYS['stt:'+provider]||'').trim();
+}
+var STT_LIVE_PROVIDERS={
+  /* OpenAI gpt-live-transcribe 専用の Realtime WebRTC 経路。録音Blobを
+     /audio/transcriptions へ送るモデルではないため、入力Trackをそのまま接続する。 */
+  openai:{
+    id:'openai',label:'OpenAI',defaultModel:'gpt-live-transcribe',transport:'webrtc',
+    caps:{endpoint:'completed',stable:'none'},
+    model:function(){return 'gpt-live-transcribe';},
+    performance:function(){return {delay:sttLiveChoice('sttLiveDelay',CFG.sttLiveDelay)};},
+    /* gpt-live-transcribeは連続ストリーミング型。専用仕様に合わせて
+       languageではなくlanguagesを使い、delayで部分結果の遅延を指定する。
+       Turn Detectionは非対応なので下のsession設定でnull固定とする。 */
+    session:function(host){
+      var langs=[];
+      if((S.autoMode&&micSeats().length>1)||duoShouldAutoDetectInput(host.seat))langs=[CFG.langA,CFG.langB];
+      else langs=[langOf(host.seat||S.listenSeat||'A')];
+      langs=langs.map(function(x){return String(x||'').toLowerCase().split('-')[0];});
+      langs=langs.filter(function(x,i,a){return x&&a.indexOf(x)===i;});
+      var tr={model:'gpt-live-transcribe',delay:sttLiveChoice('sttLiveDelay',CFG.sttLiveDelay)};
+      if(langs.length)tr.languages=langs;
+      var hints=[];
+      hints.push('Transcribe verbatim with natural punctuation. Do not add, omit, paraphrase, or translate words.');
+      if(CFG.ctx)hints.push(String(CFG.ctx).slice(0,600));
+      if(hints.length)tr.prompt=hints.join('\n');
+      var kw=CFG.glossary.slice(0,60).map(function(r){return String(r.s||'').trim();})
+        .filter(function(x){return x&&x.length<=50&&!/[<>\r\n]/.test(x);});
+      if(kw.length)tr.keywords=kw;
+      return {type:'transcription',audio:{input:{transcription:tr,turn_detection:null}}};
+    },
+    connect:function(host,key,track){
+      var self=this,sessionCfg=this.session(host),tr=sessionCfg.audio.input.transcription;
+      dlog('stt','live-connect',{model:'gpt-live-transcribe',seat:host.seat||'auto',transport:'webrtc',languages:tr.languages||(tr.language?[tr.language]:[]),trackState:track.readyState,trackMuted:!!track.muted});
+      return host.request('secret','https://api.openai.com/v1/realtime/client_secrets',{
+        method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({session:sessionCfg})
+      },12000,true).then(function(j){
+        var secret=j.value||(j.client_secret&&j.client_secret.value);if(!secret)throw new Error('Realtimeクライアントシークレットを取得できませんでした');
+        dlog('stt','live-secret-ok',{ms:Date.now()-host.startedAt,sessionType:(j.session&&j.session.type)||'transcription'});
+        return self.peer(host,secret,track);
+      });
+    },
+    peer:function(host,secret,track){
+      var pc=new RTCPeerConnection(),opened=false,openResolve,openReject;
+      host.connectStage='peer';host.pc=pc;host.closing=false;
+      var audioOnly=(typeof MediaStream!=='undefined')?new MediaStream([track]):host.stream;
+      pc.addTrack(track,audioOnly);
+      var dc=pc.createDataChannel('oai-events');host.dc=dc;
+      var openPromise=new Promise(function(resolve,reject){openResolve=resolve;openReject=reject;});
+      /* SDP交換より前にDataChannelエラーが起きても未処理Promiseにしない。
+         start()へ返した時点では元Promiseのrejectをそのまま伝播する。 */
+      openPromise.catch(function(){});
+      dc.onmessage=function(ev){host.onMessage(ev.data);};
+      dc.onopen=function(){
+        if(host.dead||host.closing)return;opened=true;if(host.openTimer){clearTimeout(host.openTimer);host.openTimer=null;}
+        host.connectStage='open';host.startBoundaryMonitor();host.startStats();
+        dlog('stt','live-open',{model:'gpt-live-transcribe',ms:Date.now()-host.startedAt,transport:'webrtc'});openResolve();
+      };
+      dc.onerror=function(){
+        if(host.dead||host.closing||opened)return;var e=new Error('Realtime DataChannelを開けませんでした');e.liveStage='datachannel';openReject(e);
+      };
+      dc.onclose=function(){if(!host.dead&&!host.closing)dlog('stt','live-channel-close',{state:dc.readyState});};
+      pc.onconnectionstatechange=function(){
+        if(host.dead||host.closing)return;dlog('stt','live-state',{state:pc.connectionState});
+        if(pc.connectionState==='failed'){
+          var e=new Error('Realtime WebRTC接続がfailedになりました');e.liveStage='peer';if(!opened)openReject(e);
+          else{dlog('stt','live-FAIL',{model:'gpt-live-transcribe',stage:'peer',err:e.message});toast('Realtime音声認識の接続が切れました。停止して開始し直してください。');}
+        }else if(pc.connectionState==='disconnected')toast('Realtime音声認識の接続が一時的に切れています。再接続を待っています。');
+      };
+      pc.oniceconnectionstatechange=function(){if(!host.dead&&!host.closing)dlog('stt','live-ice',{state:pc.iceConnectionState});};
+      pc.onicegatheringstatechange=function(){if(!host.dead&&!host.closing)dlog('stt','live-gather',{state:pc.iceGatheringState});};
+      pc.onsignalingstatechange=function(){if(!host.dead&&!host.closing)dlog('stt','live-signal',{state:pc.signalingState});};
+      pc.onicecandidateerror=function(ev){if(!host.dead&&!host.closing)dlog('stt','live-ice-error',{code:ev.errorCode||0,err:String(ev.errorText||'').slice(0,160)});};
+      dlog('stt','live-offer-start',{trackId:String(track.id||'').slice(0,8)});
+      return pc.createOffer().then(function(o){
+        host.connectStage='local-sdp';dlog('stt','live-offer-ok',{ms:Date.now()-host.startedAt,sdpBytes:(o.sdp||'').length});
+        return pc.setLocalDescription(o).then(function(){dlog('stt','live-local-sdp',{ms:Date.now()-host.startedAt});return o;});
+      }).then(function(o){
+        return host.request('sdp','https://api.openai.com/v1/realtime/calls',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/sdp'},body:o.sdp},12000,false);
+      }).then(function(sdp){
+        host.connectStage='remote-sdp';dlog('stt','live-sdp-ok',{ms:Date.now()-host.startedAt,sdpBytes:String(sdp||'').length});
+        return pc.setRemoteDescription({type:'answer',sdp:sdp});
+      }).then(function(){
+        dlog('stt','live-remote-sdp',{ms:Date.now()-host.startedAt});
+        if(opened)return;
+        host.connectStage='datachannel';host.openTimer=setTimeout(function(){
+          host.openTimer=null;var e=new Error('Realtime DataChannelが10秒以内に開きませんでした');e.liveStage='datachannel';openReject(e);
+        },10000);
+        return openPromise;
+      });
+    },
+    close:function(host){
+      try{if(host.dc)host.dc.close();}catch(e){}try{if(host.pc)host.pc.close();}catch(e){}
+      host.dc=null;host.pc=null;
+    },
+    /* 送信側のRTPを定期的に残す。v1.49.21 の Teams 実測では gpt-live の部分結果が
+       7〜65秒遅れて届いたのに、音声がこちらから出ていたのかどうかを示す記録が
+       どこにも無かった（この経路だけ統計を取っていなかった）。bytesSinceLast が
+       伸びていれば音は出ている＝遅れは相手側、0のままなら出ていない。 */
+    stats:function(host){
+      var pc=host.pc;
+      if(host.dead||host.closing||!pc||!pc.getStats||host.statsBusy)return;
+      host.statsBusy=true;
+      Promise.resolve().then(function(){return pc.getStats();}).then(function(stats){
+        if(host.dead||host.closing)return;
+        var bytes=0,packets=0;
+        stats.forEach(function(r){if(r.type==='outbound-rtp'&&(r.kind==='audio'||r.mediaType==='audio')){bytes+=r.bytesSent||0;packets+=r.packetsSent||0;}});
+        var track=host.stream&&host.stream.getAudioTracks?host.stream.getAudioTracks()[0]:null;
+        dlog('stt','live-audio-transport',{seat:host.seat,connection:pc.connectionState,
+          trackState:track?track.readyState:null,trackEnabled:track?!!track.enabled:null,trackMuted:track?!!track.muted:null,
+          rms:host.lastRms==null?null:+Number(host.lastRms).toFixed(5),
+          bytesSent:bytes,packetsSent:packets,
+          bytesSinceLast:host.lastBytes==null?null:bytes-host.lastBytes});
+        host.lastBytes=bytes;
+      }).catch(function(){}).then(function(){host.statsBusy=false;});
+    },
+    /* DataChannel の受信1件 → 正規化イベント。delta はここで item ごとに連結し、
+       Host には全文を渡す。completed は区間の確定（committed）。 */
+    map:function(st,raw){
+      var e;try{e=JSON.parse(raw);}catch(_){return [];}
+      var t=e.type||'',id=e.item_id||e.id||'live-active',text=st.text||(st.text={});
+      if(t==='input_audio_buffer.speech_started')return [{type:'status',reason:'speech-started',key:id,audioStartMs:e.audio_start_ms}];
+      if(t==='input_audio_buffer.speech_stopped')return [{type:'status',reason:'speech-stopped',key:id}];
+      if(t==='conversation.item.input_audio_transcription.delta'||t==='input_audio_transcription.delta'){
+        var delta=String(e.delta||'');if(!delta)return [];
+        text[id]=(text[id]||'')+delta;
+        return [{type:'partial',key:id,text:text[id],stableChars:null}];
+      }
+      if(t==='conversation.item.input_audio_transcription.completed'||t==='input_audio_transcription.completed'){
+        delete text[id];
+        return [{type:'committed',key:id,text:String(e.transcript||'')},{type:'endpoint',key:id,reason:'server-completed'}];
+      }
+      if(t==='error'||e.error)return [{type:'error',key:id,message:(e.error&&e.error.message)||e.message||'Realtime音声認識エラー'}];
+      return [];
+    }
+  }
+};
+/* ストリーミング型 STT のカード・区切り・計測・停止（開発仕様書 §6）。
+   gpt-live-transcribe は1つの item_id を長時間更新し続けることがある。
+   サーバーの completed だけに依存せず、端末側で発話境界を判断する。 */
+function SttLiveHost(provider,seat,stream,opts){
+  this.provider=STT_LIVE_PROVIDERS[provider]?provider:'openai';this.adapter=STT_LIVE_PROVIDERS[this.provider];this.st={};
   this.seat=seat||null;this.stream=stream;this.opts=opts||{};this.pc=null;this.dc=null;
   this.dead=false;this.closing=false;this.items={};this.startedAt=0;this.session=sessionGen;
   this.aborters=[];this.openTimer=null;this.connectStage='idle';
-  /* gpt-live-transcribe は1つの item_id を長時間更新し続けることがある。
-     サーバーの completed だけに依存せず、端末側で発話境界を判断する。 */
   this.boundaryTimer=null;this.boundaryAc=null;this.boundaryAn=null;this.boundaryBuf=null;
   this.lastVoiceAt=0;this.lastRms=0;this.fallbackItemId='live-active';
   this.statsTimer=null;this.statsBusy=false;this.lastBytes=null;
+  /* 計測（§11）。発話開始は Provider によらず端末側の同じ音量判定で取る。 */
+  this.speechAt=0;this.lastCardClosedAt=0;this.metricsPending=[];
 }
-RealtimeTranscriptionEngine.prototype.config=function(){
-  var langs=[];
-  if((S.autoMode&&micSeats().length>1)||duoShouldAutoDetectInput(this.seat))langs=[CFG.langA,CFG.langB];
-  else langs=[langOf(this.seat||S.listenSeat||'A')];
-  langs=langs.map(function(x){return String(x||'').toLowerCase().split('-')[0];});
-  langs=langs.filter(function(x,i,a){return x&&a.indexOf(x)===i;});
-  /* gpt-live-transcribeは連続ストリーミング型。専用仕様に合わせて
-     languageではなくlanguagesを使い、delayで部分結果の遅延を指定する。
-     Turn Detectionは非対応なので下のsession設定でnull固定とする。 */
-  var tr={model:'gpt-live-transcribe',delay:'low'};
-  if(langs.length)tr.languages=langs;
-  var hints=[];
-  hints.push('Transcribe verbatim with natural punctuation. Do not add, omit, paraphrase, or translate words.');
-  if(CFG.ctx)hints.push(String(CFG.ctx).slice(0,600));
-  if(hints.length)tr.prompt=hints.join('\n');
-  var kw=CFG.glossary.slice(0,60).map(function(r){return String(r.s||'').trim();})
-    .filter(function(x){return x&&x.length<=50&&!/[<>\r\n]/.test(x);});
-  if(kw.length)tr.keywords=kw;
-  return {type:'transcription',audio:{input:{transcription:tr,turn_detection:null}}};
+SttLiveHost.prototype.model=function(){return this.adapter.model();};
+/* 診断の記録に Provider を足す。OpenAI は v1.49.39 と同じ形のまま残す。 */
+SttLiveHost.prototype.tag=function(o){
+  if(this.provider==='openai')return o;
+  var r={provider:this.provider,model:this.model()},k;for(k in o)if(k!=='model')r[k]=o[k];return r;
 };
-RealtimeTranscriptionEngine.prototype.cancelError=function(){
-  var e=new Error('Realtime音声認識の接続を停止しました');e.cancelled=true;e.liveStage=this.connectStage;return e;
+SttLiveHost.prototype.label=function(){return this.provider==='openai'?'Realtime':this.adapter.label;};
+SttLiveHost.prototype.cancelError=function(){
+  var e=new Error(this.label()+'音声認識の接続を停止しました');e.cancelled=true;e.liveStage=this.connectStage;return e;
 };
-RealtimeTranscriptionEngine.prototype.clearAborter=function(ctl){
+SttLiveHost.prototype.clearAborter=function(ctl){
   var i=this.aborters.indexOf(ctl);if(i>=0)this.aborters.splice(i,1);
 };
-RealtimeTranscriptionEngine.prototype.request=function(stage,url,opts,timeoutMs,asJson){
-  var self=this,ctl=(typeof AbortController!=='undefined')?new AbortController():null,timer=null;
+SttLiveHost.prototype.request=function(stage,url,opts,timeoutMs,asJson){
+  var self=this,ctl=(typeof AbortController!=='undefined')?new AbortController():null,timer=null,label=this.label();
   this.connectStage=stage;if(ctl){opts.signal=ctl.signal;this.aborters.push(ctl);}
   if(ctl)timer=setTimeout(function(){try{ctl.abort();}catch(e){}},timeoutMs);
-  dlog('stt','live-'+stage+'-request',{timeoutMs:timeoutMs});
+  dlog('stt','live-'+stage+'-request',this.tag({timeoutMs:timeoutMs}));
   return fetch(url,opts).then(function(r){
     if(timer)clearTimeout(timer);if(ctl)self.clearAborter(ctl);
     var requestId='';try{requestId=r.headers.get('x-request-id')||'';}catch(e){}
-    dlog('stt','live-'+stage+'-response',{status:r.status,ok:r.ok,ms:Date.now()-self.startedAt,requestId:requestId});
+    dlog('stt','live-'+stage+'-response',self.tag({status:r.status,ok:r.ok,ms:Date.now()-self.startedAt,requestId:requestId}));
     if(!r.ok)return r.text().then(function(t){
-      var e=new Error('Realtime '+stage+'失敗 '+r.status+': '+String(t||'').slice(0,300));e.liveStage=stage;throw e;
+      var e=new Error(label+' '+stage+'失敗 '+r.status+': '+String(t||'').slice(0,300));e.liveStage=stage;e.status=r.status;throw e;
     });
     return asJson?r.json():r.text();
   }).catch(function(err){
     if(timer)clearTimeout(timer);if(ctl)self.clearAborter(ctl);
     if(self.dead)throw self.cancelError();
     if(err&&err.name==='AbortError'){
-      var te=new Error('Realtime '+stage+'が'+Math.round(timeoutMs/1000)+'秒でタイムアウトしました');te.liveStage=stage;throw te;
+      var te=new Error(label+' '+stage+'が'+Math.round(timeoutMs/1000)+'秒でタイムアウトしました');te.liveStage=stage;throw te;
     }
     if(err&&!err.liveStage)err.liveStage=stage;throw err;
   });
 };
-/* 送信側のRTPを定期的に残す。v1.49.21 の Teams 実測では gpt-live の部分結果が
-   7〜65秒遅れて届いたのに、音声がこちらから出ていたのかどうかを示す記録が
-   どこにも無かった（この経路だけ統計を取っていなかった）。bytesSinceLast が
-   伸びていれば音は出ている＝遅れは相手側、0のままなら出ていない。 */
-RealtimeTranscriptionEngine.prototype.startStats=function(){
+SttLiveHost.prototype.startStats=function(){
   var self=this;if(this.statsTimer)return;
   this.lastBytes=null;this.statsBusy=false;
   this.statsTimer=setInterval(function(){self.logStats();},5000);
 };
-RealtimeTranscriptionEngine.prototype.logStats=function(){
-  var self=this,pc=this.pc;
-  if(this.dead||this.closing||!pc||!pc.getStats||this.statsBusy)return;
-  this.statsBusy=true;
-  Promise.resolve().then(function(){return pc.getStats();}).then(function(stats){
-    if(self.dead||self.closing)return;
-    var bytes=0,packets=0;
-    stats.forEach(function(r){if(r.type==='outbound-rtp'&&(r.kind==='audio'||r.mediaType==='audio')){bytes+=r.bytesSent||0;packets+=r.packetsSent||0;}});
-    var track=self.stream&&self.stream.getAudioTracks?self.stream.getAudioTracks()[0]:null;
-    dlog('stt','live-audio-transport',{seat:self.seat,connection:pc.connectionState,
-      trackState:track?track.readyState:null,trackEnabled:track?!!track.enabled:null,trackMuted:track?!!track.muted:null,
-      rms:self.lastRms==null?null:+Number(self.lastRms).toFixed(5),
-      bytesSent:bytes,packetsSent:packets,
-      bytesSinceLast:self.lastBytes==null?null:bytes-self.lastBytes});
-    self.lastBytes=bytes;
-  }).catch(function(){}).then(function(){self.statsBusy=false;});
-};
-RealtimeTranscriptionEngine.prototype.closeConnection=function(){
+SttLiveHost.prototype.logStats=function(){if(this.adapter.stats)this.adapter.stats(this);};
+SttLiveHost.prototype.closeConnection=function(){
   this.closing=true;if(this.openTimer){clearTimeout(this.openTimer);this.openTimer=null;}
   if(this.statsTimer){clearInterval(this.statsTimer);this.statsTimer=null;}
   this.stopBoundaryMonitor();
   this.aborters.splice(0).forEach(function(ctl){try{ctl.abort();}catch(e){}});
-  try{if(this.dc)this.dc.close();}catch(e){}try{if(this.pc)this.pc.close();}catch(e){}
-  this.dc=null;this.pc=null;
+  if(this.adapter.close)this.adapter.close(this);
 };
-RealtimeTranscriptionEngine.prototype.start=function(){
-  var self=this,key=sttKey();if(!key)return Promise.reject(new Error('OpenAIの音声認識用APIキーが未設定です'));
+SttLiveHost.prototype.start=function(){
+  var self=this,a=this.adapter,key=sttLiveKey(this.provider);
+  if(!key)return Promise.reject(new Error(a.label+'の音声認識用APIキーが未設定です'));
   var track=this.stream&&this.stream.getAudioTracks&&this.stream.getAudioTracks()[0];
   if(!track||track.readyState!=='live')return Promise.reject(new Error('有効な音声Trackがありません'));
-  this.startedAt=Date.now();this.dead=false;this.closing=false;var sessionCfg=this.config(),tr=sessionCfg.audio.input.transcription;
-  dlog('stt','live-connect',{model:'gpt-live-transcribe',seat:this.seat||'auto',transport:'webrtc',languages:tr.languages||(tr.language?[tr.language]:[]),trackState:track.readyState,trackMuted:!!track.muted});
-  return this.request('secret','https://api.openai.com/v1/realtime/client_secrets',{
-    method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({session:sessionCfg})
-  },12000,true).then(function(j){
-    var secret=j.value||(j.client_secret&&j.client_secret.value);if(!secret)throw new Error('Realtimeクライアントシークレットを取得できませんでした');
-    dlog('stt','live-secret-ok',{ms:Date.now()-self.startedAt,sessionType:(j.session&&j.session.type)||'transcription'});
-    return self.connect(secret,track);
-  }).catch(function(err){
+  this.startedAt=Date.now();this.dead=false;this.closing=false;
+  return a.connect(this,key,track).catch(function(err){
     if(err&&err.cancelled)throw err;
-    dlog('stt','live-FAIL',{model:'gpt-live-transcribe',stage:(err&&err.liveStage)||self.connectStage,ms:Date.now()-self.startedAt,err:String((err&&err.message)||err).slice(0,300)});
+    dlog('stt','live-FAIL',self.tag({model:self.model(),stage:(err&&err.liveStage)||self.connectStage,ms:Date.now()-self.startedAt,err:String((err&&err.message)||err).slice(0,300)}));
     self.closeConnection();throw err;
   });
 };
-RealtimeTranscriptionEngine.prototype.connect=function(secret,track){
-  var self=this,pc=new RTCPeerConnection(),opened=false,openResolve,openReject;
-  this.connectStage='peer';this.pc=pc;this.closing=false;
-  var audioOnly=(typeof MediaStream!=='undefined')?new MediaStream([track]):this.stream;
-  pc.addTrack(track,audioOnly);
-  var dc=pc.createDataChannel('oai-events');this.dc=dc;
-  var openPromise=new Promise(function(resolve,reject){openResolve=resolve;openReject=reject;});
-  /* SDP交換より前にDataChannelエラーが起きても未処理Promiseにしない。
-     start()へ返した時点では元Promiseのrejectをそのまま伝播する。 */
-  openPromise.catch(function(){});
-  dc.onmessage=function(ev){self.onEvent(ev);};
-  dc.onopen=function(){
-    if(self.dead||self.closing)return;opened=true;if(self.openTimer){clearTimeout(self.openTimer);self.openTimer=null;}
-    self.connectStage='open';self.startBoundaryMonitor();self.startStats();
-    dlog('stt','live-open',{model:'gpt-live-transcribe',ms:Date.now()-self.startedAt,transport:'webrtc'});openResolve();
-  };
-  dc.onerror=function(){
-    if(self.dead||self.closing||opened)return;var e=new Error('Realtime DataChannelを開けませんでした');e.liveStage='datachannel';openReject(e);
-  };
-  dc.onclose=function(){if(!self.dead&&!self.closing)dlog('stt','live-channel-close',{state:dc.readyState});};
-  pc.onconnectionstatechange=function(){
-    if(self.dead||self.closing)return;dlog('stt','live-state',{state:pc.connectionState});
-    if(pc.connectionState==='failed'){
-      var e=new Error('Realtime WebRTC接続がfailedになりました');e.liveStage='peer';if(!opened)openReject(e);
-      else{dlog('stt','live-FAIL',{model:'gpt-live-transcribe',stage:'peer',err:e.message});toast('Realtime音声認識の接続が切れました。停止して開始し直してください。');}
-    }else if(pc.connectionState==='disconnected')toast('Realtime音声認識の接続が一時的に切れています。再接続を待っています。');
-  };
-  pc.oniceconnectionstatechange=function(){if(!self.dead&&!self.closing)dlog('stt','live-ice',{state:pc.iceConnectionState});};
-  pc.onicegatheringstatechange=function(){if(!self.dead&&!self.closing)dlog('stt','live-gather',{state:pc.iceGatheringState});};
-  pc.onsignalingstatechange=function(){if(!self.dead&&!self.closing)dlog('stt','live-signal',{state:pc.signalingState});};
-  pc.onicecandidateerror=function(ev){if(!self.dead&&!self.closing)dlog('stt','live-ice-error',{code:ev.errorCode||0,err:String(ev.errorText||'').slice(0,160)});};
-  dlog('stt','live-offer-start',{trackId:String(track.id||'').slice(0,8)});
-  return pc.createOffer().then(function(o){
-    self.connectStage='local-sdp';dlog('stt','live-offer-ok',{ms:Date.now()-self.startedAt,sdpBytes:(o.sdp||'').length});
-    return pc.setLocalDescription(o).then(function(){dlog('stt','live-local-sdp',{ms:Date.now()-self.startedAt});return o;});
-  }).then(function(o){
-    return self.request('sdp','https://api.openai.com/v1/realtime/calls',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/sdp'},body:o.sdp},12000,false);
-  }).then(function(sdp){
-    self.connectStage='remote-sdp';dlog('stt','live-sdp-ok',{ms:Date.now()-self.startedAt,sdpBytes:String(sdp||'').length});
-    return pc.setRemoteDescription({type:'answer',sdp:sdp});
-  }).then(function(){
-    dlog('stt','live-remote-sdp',{ms:Date.now()-self.startedAt});
-    if(opened)return;
-    self.connectStage='datachannel';self.openTimer=setTimeout(function(){
-      self.openTimer=null;var e=new Error('Realtime DataChannelが10秒以内に開きませんでした');e.liveStage='datachannel';openReject(e);
-    },10000);
-    return openPromise;
-  });
-};
-RealtimeTranscriptionEngine.prototype.item=function(id){
+SttLiveHost.prototype.item=function(id){
   id=id||this.fallbackItemId;var x=this.items[id];if(x)return x;
   x=this.items[id]={id:id,entry:null,text:'',allText:'',committedText:'',created:Date.now(),
     segmentStarted:0,lastDeltaAt:0,deltaCount:0,segmentNo:0};
   return x;
 };
-RealtimeTranscriptionEngine.prototype.ensureEntry=function(x){
+SttLiveHost.prototype.ensureEntry=function(x){
   if(x.entry)return x.entry;
   var seat=this.seat||S.listenSeat||'A';x.entry=addEntry(seat,'',true);x.entry.startedAt=x.nextCardStartedAt||x.audioStartedAt||x.created||Date.now();if(x.audioEndedAt)x.entry.audioEndedAt=x.audioEndedAt;x.segmentStarted=Date.now();x.deltaCount=0;
+  sttLiveMetricsOpen(this,x.entry);
   return x.entry;
 };
 /* 文章末尾だけを見る軽量な文脈境界判定。
    strong: 文末記号、likely: 終止表現、continuing: 接続表現、neutral: 判定不能。
    STT本文は変更せず、確定を早めるか待つかだけに使う。 */
-RealtimeTranscriptionEngine.prototype.boundaryContext=function(text,lang){
+SttLiveHost.prototype.boundaryContext=function(text,lang){
   var s=String(text||'').trim(),tail=s.replace(/[\"'」』）】〕〉》\]]+$/,'').trim();
   if(!tail)return 'neutral';
   // "U.S." or "1." at the end may continue ("U.S. stock", "1.5"); give it the ordinary wait.
@@ -10062,12 +10152,12 @@ RealtimeTranscriptionEngine.prototype.boundaryContext=function(text,lang){
   }
   return 'neutral';
 };
-RealtimeTranscriptionEngine.prototype.boundaryPolicy=function(kind){
+SttLiveHost.prototype.boundaryPolicy=function(kind){
   if(kind==='strong'||kind==='likely')return {idle:650,silence:650,hard:1250};
   if(kind==='continuing')return {idle:1500,silence:1500,hard:3000};
   return {idle:950,silence:1000,hard:1900};
 };
-RealtimeTranscriptionEngine.prototype.startBoundaryMonitor=function(){
+SttLiveHost.prototype.startBoundaryMonitor=function(){
   var self=this;if(this.boundaryTimer)return;
   this.lastVoiceAt=Date.now();
   try{
@@ -10090,28 +10180,29 @@ RealtimeTranscriptionEngine.prototype.startBoundaryMonitor=function(){
   }catch(err){
     this.boundaryAc=null;this.boundaryAn=null;this.boundaryBuf=null;
     if(this.prosody){try{this.prosody.stop();}catch(e2){}this.prosody=null;}
-    dlog('stt','live-boundary-audio-FAIL',{err:String((err&&err.message)||err).slice(0,120)});
+    dlog('stt','live-boundary-audio-FAIL',this.tag({err:String((err&&err.message)||err).slice(0,120)}));
   }
-  dlog('stt','live-boundary-start',{mode:this.boundaryAn?'context+audio+delta':'context+delta',
-    threshold:+(CFG.vad/1000).toFixed(4),prosody:this.prosody?this.prosody.source:'off'});
+  dlog('stt','live-boundary-start',this.tag({mode:this.boundaryAn?'context+audio+delta':'context+delta',
+    threshold:+(CFG.vad/1000).toFixed(4),prosody:this.prosody?this.prosody.source:'off'}));
   this.boundaryTimer=setInterval(function(){self.checkBoundaries();},80);
 };
-RealtimeTranscriptionEngine.prototype.stopBoundaryMonitor=function(){
+SttLiveHost.prototype.stopBoundaryMonitor=function(){
   if(this.boundaryTimer){clearInterval(this.boundaryTimer);this.boundaryTimer=null;}
   if(this.prosody){try{this.prosody.stop();}catch(e){}this.prosody=null;}
   if(this.boundaryAc){try{this.boundaryAc.close();}catch(e){}}
   this.boundaryAc=null;this.boundaryAn=null;this.boundaryBuf=null;
 };
-RealtimeTranscriptionEngine.prototype.checkBoundaries=function(){
+SttLiveHost.prototype.checkBoundaries=function(){
   if(this.dead||this.closing||!S.running)return;var now=Date.now(),rms=0;
   if(this.boundaryAn&&this.boundaryBuf){
     this.boundaryAn.getByteTimeDomainData(this.boundaryBuf);var sum=0;
     for(var i=0;i<this.boundaryBuf.length;i++){var v=(this.boundaryBuf[i]-128)/128;sum+=v*v;}
     rms=Math.sqrt(sum/this.boundaryBuf.length);this.lastRms=rms;
-    if(rms>CFG.vad/1000)this.lastVoiceAt=now;
+    if(rms>CFG.vad/1000){sttLiveVoice(this,now);this.lastVoiceAt=now;}
   }
   /* rmsHint は渡さない。解析器は自分の2048点窓から改めて実効値を出す。 */
   if(this.prosody)this.prosody.sample(now);
+  if(this.metricsPending.length)sttLiveMetricsFlush(this,now,false);
   if(segEnabled()){
     if(this.boundaryAn)segVoice(this.seat||S.listenSeat||'A',rms);
     segLiveBoundaries(this);return;
@@ -10128,64 +10219,209 @@ RealtimeTranscriptionEngine.prototype.checkBoundaries=function(){
     if(reason)self.finalizeSegment(id,x,reason,{context:kind,idleMs:idle,silenceMs:self.boundaryAn?silence:null,rms:rms});
   });
 };
-RealtimeTranscriptionEngine.prototype.finalizeSegment=function(id,x,reason,meta){
+SttLiveHost.prototype.finalizeSegment=function(id,x,reason,meta){
   if(!x||!x.entry)return false;var text=String(x.text||'').trim(),holder=x.entry;
   x.entry=null;x.text='';x.segmentStarted=0;x.segmentNo++;x.committedText+=text;
-  if(this.dead||!S.running||this.session!==sessionGen){removeEntry(holder);dlog('stt','stale-result-drop',{provider:'openai-live',item:id});return false;}
+  if(this.dead||!S.running||this.session!==sessionGen){removeEntry(holder);dlog('stt','stale-result-drop',{provider:this.provider+'-live',item:id});return false;}
   var lang=langOf(holder.seat),raw=text;text=punctuateTranscript(text,lang);
-  if(!text||!hasSpeechContent(text)||isEcho(text)){removeEntry(holder);dlog('stt','live-drop',{item:id,chars:text.length,reason:reason});return false;}
+  if(!text||!hasSpeechContent(text)||isEcho(text)){removeEntry(holder);dlog('stt','live-drop',this.tag({item:id,chars:text.length,reason:reason}));return false;}
   if((S.autoMode&&micSeats().length>1)||!this.seat){
     var g=guessSeatFromText(text);holder.seat=g;holder.srcLang=langOf(g);holder.dstLang=langOf(g==='A'?'B':'A');S.listenSeat=g;updateStatus();lang=holder.srcLang;
   }
   holder.srcText=text;holder.interim=false;render(holder);
   if(CFG.prosodyOn)attachProsody(holder,micProsodySnapshot(text,true,holder.seat));
   meta=meta||{};
-  dlog('stt','live-boundary',{item:id,segment:x.segmentNo,reason:reason,context:meta.context||this.boundaryContext(raw,lang),chars:text.length,
-    idleMs:meta.idleMs==null?null:Math.round(meta.idleMs),silenceMs:meta.silenceMs==null?null:Math.round(meta.silenceMs)});
-  dlog('stt','live-result',{provider:'openai',model:'gpt-live-transcribe',transport:'webrtc',seat:holder.seat,lang:lang,item:id,segment:x.segmentNo,chars:text.length,punctuated:text!==raw,boundary:reason});
-  speakSrcNow(holder);translate(holder);return true;
+  dlog('stt','live-boundary',this.tag({item:id,segment:x.segmentNo,reason:reason,context:meta.context||this.boundaryContext(raw,lang),chars:text.length,
+    idleMs:meta.idleMs==null?null:Math.round(meta.idleMs),silenceMs:meta.silenceMs==null?null:Math.round(meta.silenceMs)}));
+  dlog('stt','live-result',{provider:this.provider,model:this.model(),transport:this.adapter.transport,seat:holder.seat,lang:lang,item:id,segment:x.segmentNo,chars:text.length,punctuated:text!==raw,boundary:reason});
+  speakSrcNow(holder);translate(holder);sttLiveMetricsClose(this,holder,reason,true);return true;
 };
-RealtimeTranscriptionEngine.prototype.onEvent=function(ev){
+/* 受信1件。止めたあとに届いたものは Adapter へも渡さない（状態を進めない）。 */
+SttLiveHost.prototype.onMessage=function(data){
   if(this.dead||this.closing||!S.running||this.session!==sessionGen)return;
-  var e;try{e=JSON.parse(ev.data);}catch(_){return;}var t=e.type||'',id=e.item_id||e.id||this.fallbackItemId;
-  if(t==='input_audio_buffer.speech_started'){var timed=this.item(id);timed.audioStartedAt=Date.now();if(timed.entry)timed.entry.startedAt=timed.audioStartedAt;dlog('speaker','stt-started',{item:id,at:timed.audioStartedAt,serverAudioStartMs:e.audio_start_ms});return;}
-  if(t==='input_audio_buffer.speech_stopped'){var timedEnd=this.item(id);timedEnd.audioEndedAt=Date.now();if(timedEnd.entry)timedEnd.entry.audioEndedAt=timedEnd.audioEndedAt;return;}
-  if(segLiveEvent(this,e,id))return;
-  if(t==='conversation.item.input_audio_transcription.delta'||t==='input_audio_transcription.delta'){
-    var delta=String(e.delta||'');if(!delta)return;
-    var x=this.item(id),entry=this.ensureEntry(x);x.text+=delta;x.allText+=delta;x.lastDeltaAt=Date.now();x.deltaCount++;
-    entry.srcText=x.text;render(entry);
-    if(x.deltaCount===1)dlog('stt','live-delta',{item:id,segment:x.segmentNo+1,chars:delta.length,context:this.boundaryContext(x.text,langOf(entry.seat))});
-    return;
-  }
-  if(t==='conversation.item.input_audio_transcription.completed'||t==='input_audio_transcription.completed'){
-    var y=this.item(id),serverText=String(e.transcript||'');
-    /* completed が全履歴を返す場合、すでにローカル確定した部分を再翻訳しない。
-       delta未受信でcompletedだけ来た場合と、末尾だけ増えた場合のみ補完する。 */
-    if(serverText&&serverText.indexOf(y.allText)===0&&serverText.length>y.allText.length){
-      var tail=serverText.slice(y.allText.length);y.text+=tail;y.allText=serverText;y.lastDeltaAt=Date.now();
-      var completedEntry=this.ensureEntry(y);completedEntry.srcText=y.text;render(completedEntry);
-    }else if(serverText&&!y.allText&&!y.text){
-      y.text=serverText;y.allText=serverText;y.lastDeltaAt=Date.now();
-      var onlyEntry=this.ensureEntry(y);onlyEntry.srcText=y.text;render(onlyEntry);
-    }else if(serverText&&serverText!==y.allText){
-      dlog('stt','live-reconcile',{item:id,serverChars:serverText.length,deltaChars:y.allText.length,action:'keep-local-segments'});
-    }
-    if(y.entry)this.finalizeSegment(id,y,'server-completed',{context:this.boundaryContext(y.text,langOf(y.entry.seat)),idleMs:0,silenceMs:null});
-    else dlog('stt','live-completed',{item:id,chars:serverText.length,pending:0});
-    delete this.items[id];return;
-  }
-  if(t==='error'||e.error){
-    var msg=(e.error&&e.error.message)||e.message||'Realtime音声認識エラー';
-    dlog('stt','live-FAIL',{model:'gpt-live-transcribe',err:String(msg).slice(0,200)});toast('Realtime音声認識失敗: '+msg);
-  }
+  var evs=this.adapter.map(this.st,data)||[],now=Date.now(),i;
+  for(i=0;i<evs.length;i++){evs[i].receivedAt=now;this.handle(evs[i]);}
 };
-RealtimeTranscriptionEngine.prototype.stop=function(){
+SttLiveHost.prototype.handle=function(ev){
+  var id=ev.key||this.fallbackItemId,t=ev.type;
+  if(t==='status'){
+    if(ev.reason==='speech-started'){var timed=this.item(id);timed.audioStartedAt=Date.now();if(timed.entry)timed.entry.startedAt=timed.audioStartedAt;dlog('speaker','stt-started',{item:id,at:timed.audioStartedAt,serverAudioStartMs:ev.audioStartMs});return;}
+    if(ev.reason==='speech-stopped'){var timedEnd=this.item(id);timedEnd.audioEndedAt=Date.now();if(timedEnd.entry)timedEnd.entry.audioEndedAt=timedEnd.audioEndedAt;return;}
+    dlog('stt','live-status',this.tag({reason:ev.reason,item:id}));return;
+  }
+  if(t==='error'){
+    var msg=ev.message||this.label()+'音声認識エラー';
+    dlog('stt','live-FAIL',this.tag({model:this.model(),err:String(msg).slice(0,200)}));toast(this.label()+'音声認識失敗: '+msg);return;
+  }
+  if(t==='endpoint'){sttLiveMetricsProvider(this,'endpoint',id,ev);return;}
+  if(t==='committed')sttLiveMetricsProvider(this,'commit',id,ev);
+  if(segLiveEvent(this,ev))return;
+  if(t==='partial')this.partial(id,ev);
+  else if(t==='committed')this.committed(id,ev);
+};
+/* segment 層が無効のときの partial。追記だけの Provider（gpt-live）では
+   差分を今までの delta と同じに扱う。書き換えのときは、閉じた部分の終わりを
+   新しい本文へ写してから残りを出す。 */
+SttLiveHost.prototype.partial=function(id,ev){
+  var text=String(ev.text||''),had=this.items[id],old=had?had.allText:'';
+  if(text===old)return;
+  var x=this.item(id),entry=this.ensureEntry(x),delta,prev=x.text;
+  if(text.indexOf(old)===0){delta=text.slice(old.length);x.text+=delta;x.allText=text;}
+  else{
+    var base=old.length-x.text.length,at=segMapCardEnds(old,text,[base])[0];
+    delta=text.slice(sttLiveCommonPrefix(old,text));x.allText=text;x.text=text.slice(at);
+  }
+  x.lastDeltaAt=Date.now();x.deltaCount++;
+  entry.srcText=x.text;render(entry);sttLiveMetricsPartial(entry,prev,x.text);
+  if(x.deltaCount===1)dlog('stt','live-delta',this.tag({item:id,segment:x.segmentNo+1,chars:delta.length,context:this.boundaryContext(x.text,langOf(entry.seat))}));
+};
+SttLiveHost.prototype.committed=function(id,ev){
+  var y=this.item(id),serverText=String(ev.text||'');
+  /* completed が全履歴を返す場合、すでにローカル確定した部分を再翻訳しない。
+     delta未受信でcompletedだけ来た場合と、末尾だけ増えた場合のみ補完する。 */
+  if(serverText&&serverText.indexOf(y.allText)===0&&serverText.length>y.allText.length){
+    var tail=serverText.slice(y.allText.length);y.text+=tail;y.allText=serverText;y.lastDeltaAt=Date.now();
+    var completedEntry=this.ensureEntry(y);completedEntry.srcText=y.text;render(completedEntry);
+  }else if(serverText&&!y.allText&&!y.text){
+    y.text=serverText;y.allText=serverText;y.lastDeltaAt=Date.now();
+    var onlyEntry=this.ensureEntry(y);onlyEntry.srcText=y.text;render(onlyEntry);
+  }else if(serverText&&serverText!==y.allText){
+    dlog('stt','live-reconcile',this.tag({item:id,serverChars:serverText.length,deltaChars:y.allText.length,action:'keep-local-segments'}));
+  }
+  if(y.entry)this.finalizeSegment(id,y,'server-completed',{context:this.boundaryContext(y.text,langOf(y.entry.seat)),idleMs:0,silenceMs:null});
+  else dlog('stt','live-completed',this.tag({item:id,chars:serverText.length,pending:0}));
+  delete this.items[id];
+};
+SttLiveHost.prototype.stop=function(){
   this.dead=true;this.stopBoundaryMonitor();this.closeConnection();
+  sttLiveMetricsFlush(this,Date.now(),true);
   Object.keys(this.items).forEach(function(k){var e=this.items[k].entry;if(e&&!e.segment)removeEntry(e);},this);this.items={};
   if(this.opts.ownsStream&&this.stream)try{this.stream.getTracks().forEach(function(t){t.stop();});}catch(e){}
-  dlog('stt','live-stop',{model:'gpt-live-transcribe',stage:this.connectStage});
+  dlog('stt','live-stop',this.tag({model:this.model(),stage:this.connectStage}));
 };
+function sttLiveCommonPrefix(a,b){var n=0;while(n<a.length&&n<b.length&&a[n]===b[n])n++;return n;}
+/* ── 計測（開発仕様書 §11）─────────────────────────────────────────────
+   本文は記録しない。時刻と字数と回数だけ。発話開始は端末側の音量判定で、
+   STT_LIVE_SPEECH_GAP_MS 以上の無音のあとに初めて声を検出した時刻。
+   話し続けているあいだに次のカードが開いたときは、前のカードを閉じた時刻を
+   そのカードの発話開始とする。 */
+var STT_LIVE_SPEECH_GAP_MS=400;
+var STT_LIVE_STATS={samples:{},counts:{}};
+function sttLiveStatsReset(){STT_LIVE_STATS={samples:{},counts:{}};}
+function sttLiveSample(name,ms){
+  if(typeof ms!=='number'||!isFinite(ms)||ms<0)return;
+  var a=STT_LIVE_STATS.samples[name]||(STT_LIVE_STATS.samples[name]=[]);a.push(Math.round(ms));if(a.length>2000)a.shift();
+}
+function sttLiveCount(name,n){STT_LIVE_STATS.counts[name]=(STT_LIVE_STATS.counts[name]||0)+(n==null?1:n);}
+function sttLiveVoice(host,now){
+  if(!host.speechAt||now-host.lastVoiceAt>=STT_LIVE_SPEECH_GAP_MS)host.speechAt=now;
+}
+function sttLiveMetricsOpen(host,entry){
+  var at=Math.max(host.speechAt||0,host.lastCardClosedAt||0);
+  entry.sttLive={provider:host.provider,model:host.model(),speechAt:at||null,partials:0,revisions:0,rewrittenChars:0};
+}
+/* partial ごとに、すでに表示していた文字が書き換わったかを数える（PRR の分子）。 */
+function sttLiveMetricsPartial(entry,prev,text){
+  var m=entry&&entry.sttLive;if(!m)return;
+  m.partials++;prev=String(prev||'');text=String(text||'');
+  if(text.indexOf(prev)===0)return;
+  var gone=prev.length-sttLiveCommonPrefix(prev,text);
+  if(gone>0){m.revisions++;m.rewrittenChars+=gone;}
+}
+/* Provider の確定（commit）と区切り（endpoint）が届いた時刻。発話終了（端末側で
+   最後に声を検出した時刻）から測る。まだ話している最中なら 0 に近くなる。 */
+function sttLiveMetricsProvider(host,kind,id,ev){
+  var now=ev.receivedAt||Date.now(),end=host.boundaryAn?host.lastVoiceAt:null;
+  if(end)sttLiveSample(kind==='commit'?'ttcommit':'ttendpoint',now-end);
+  sttLiveCount(kind==='commit'?'commits':'endpoints');
+}
+/* カードを閉じたとき。TTTR は最初の区間が翻訳へ出た時刻で決まるので、
+   segment 層ではそれを待ってから記録する（metricsPending）。 */
+function sttLiveMetricsClose(host,entry,reason,translated){
+  var m=entry&&entry.sttLive;if(!m||m.closedAt)return;
+  var now=Date.now();m.closedAt=now;m.closeReason=reason;host.lastCardClosedAt=now;
+  m.voiceEndAt=host.boundaryAn?host.lastVoiceAt:null;
+  if(translated)m.readyAt=now;
+  host.metricsPending.push(entry);
+  sttLiveMetricsFlush(host,now,false);
+}
+function sttLiveFirstCommit(entry){
+  var t=0;(entry.segments||[]).forEach(function(s){if(s.committedAt&&(!t||s.committedAt<t.at))t={at:s.committedAt,source:s.decisionSource||'rules'};});
+  return t||null;
+}
+function sttLiveMetricsFlush(host,now,force){
+  host.metricsPending=host.metricsPending.filter(function(entry){
+    var m=entry.sttLive;if(!m)return false;
+    if(!m.readyAt&&entry.segment){var c=sttLiveFirstCommit(entry);if(c){m.readyAt=c.at;m.decisionSource=c.source;}}
+    if(!m.readyAt&&!force&&now-m.closedAt<10000&&!(entry.segment&&entry.segment.cancelled))return true;
+    var chars=String(entry.srcText||'').length,d=function(a){return m.speechAt&&a?a-m.speechAt:null;};
+    var row={cardId:entry.id,provider:m.provider,model:m.model,ttfp:d(entry.firstPartialAt),tttr:d(m.readyAt),
+      decisionSource:m.decisionSource||(m.readyAt?'close':null),ttclose:m.voiceEndAt?Math.max(0,m.closedAt-m.voiceEndAt):null,
+      closeReason:m.closeReason,partials:m.partials,revisions:m.revisions,prr:chars?+(m.rewrittenChars/chars).toFixed(3):null,chars:chars};
+    dlog('stt','live-metrics',row);
+    sttLiveSample('ttfp',row.ttfp);sttLiveSample('tttr',row.tttr);sttLiveSample('ttclose',row.ttclose);
+    sttLiveCount('cards');sttLiveCount('partials',m.partials);sttLiveCount('revisions',m.revisions);
+    sttLiveCount('rewrittenChars',m.rewrittenChars);sttLiveCount('chars',chars);
+    return false;
+  });
+}
+/* ── 設定欄（開発仕様書 §10）───────────────────────────────────────────
+   Provider ごとの性能設定を1つのパネルに入れ、選んだ Provider の欄だけを出す。
+   判断層のパネルと同じく JS から注入し、simple() で既存の保存経路へ相乗りする。
+   欄はすべてプルダウン。既定の選択肢にだけ「（既定）」を付ける。 */
+var STT_LIVE_PANELS=[
+  {provider:'openai',rows:[
+    {prop:'sttLiveDelay',label:'文字が出る速さと精度（delay）',
+     help:'高いほど文字が出るのが遅れ、難しい音声で精度が上がることがあります。段ごとのミリ秒は公式に決まっていないので、実測で比べてください。'}]}
+];
+function sttLiveOptionsHtml(prop){
+  var c=STT_LIVE_CHOICES[prop];
+  return c.values.map(function(v){return '<option value="'+realtimeEscape(v[0])+'">'+realtimeEscape(v[1]+(v[0]===c.def?'（既定）':''))+'</option>';}).join('');
+}
+function sttLiveInstall(){
+  var anchor=$('fourOField');if(!anchor||$('sttLivePanel'))return;
+  /* panel-form は 設定UI設計指針.md §4。素の <p> と <label> を本文11.5pxで出すために要る。 */
+  var box=document.createElement('details');box.className='adv panel-form';box.id='sttLivePanel';box.style.display='none';
+  var html='<summary id="sttLiveSummary">ストリーミング認識の設定</summary>';
+  STT_LIVE_PANELS.forEach(function(p){
+    html+='<div id="sttLive_'+p.provider+'" data-provider="'+p.provider+'">';
+    p.rows.forEach(function(r){
+      html+='<label>'+realtimeEscape(r.label)+' <select id="'+r.prop+'">'+sttLiveOptionsHtml(r.prop)+'</select></label>';
+      if(r.help)html+='<p>'+realtimeEscape(r.help)+'</p>';
+    });
+    html+='</div>';
+  });
+  html+='<p>変更は次の「開始」から反映されます。</p>';
+  box.innerHTML=html;anchor.after(box);
+  STT_LIVE_PANELS.forEach(function(p){p.rows.forEach(function(r){
+    var spec=CONFIG_BY_PROP[r.prop],el=spec&&$(spec.el);if(!el)return;
+    el.value=CFG[r.prop];simple(spec);
+    /* simple() の onchange が先に CFG を更新する。ここでは表示と記録だけ。 */
+    el.addEventListener('change',function(){
+      dlog('stt','live-setting',{provider:p.provider,prop:r.prop,value:CFG[r.prop]});sttLiveSettingsUI();
+      if(S.running&&isStreamingStt())toast('認識の設定は、次の「開始」から反映されます。',true);
+    });
+  });});
+  sttLiveSettingsUI();
+}
+function sttLiveSettingsUI(){
+  var box=$('sttLivePanel');if(!box)return;
+  var id=sttLiveProviderId();box.style.display=id?'':'none';
+  STT_LIVE_PANELS.forEach(function(p){var el=$('sttLive_'+p.provider);if(el)el.style.display=p.provider===id?'':'none';});
+  if(!id)return;
+  var perf=STT_LIVE_PROVIDERS[id].performance(),keys=Object.keys(perf);
+  $('sttLiveSummary').textContent='ストリーミング認識の設定（'+keys.map(function(k){return k+' '+perf[k];}).join(' / ')+'）';
+}
+/* 診断の1行。件数・中央値・p90。実測した値だけを出す（§11.3）。 */
+function sttLiveStatsSummary(){
+  var s=STT_LIVE_STATS,c=s.counts,parts=[],q=function(a,p){var b=a.slice().sort(function(x,y){return x-y;});return b[Math.min(b.length-1,Math.floor(p*(b.length-1)+0.5))];};
+  ['ttfp','tttr','ttendpoint','ttcommit','ttclose'].forEach(function(k){
+    var a=s.samples[k]||[];parts.push(k.toUpperCase()+' '+(a.length?'n='+a.length+' 中央値'+q(a,0.5)+'ms p90 '+q(a,0.9)+'ms':'—'));
+  });
+  parts.push('カード '+(c.cards||0)+' / partial '+(c.partials||0)+' / 改訂 '+(c.revisions||0)
+    +' / PRR '+(c.chars?(((c.rewrittenChars||0)/c.chars)*100).toFixed(1)+'%':'—'));
+  return parts.join('　');
+}
 
 /* =========================================================================
    C) リアルタイム同時通訳エンジン（gpt-realtime-translate / WebRTC）
@@ -10650,6 +10886,8 @@ function startAll(){
     auto: S.autoMode, tts: CFG.sttProvider === 'realtime' ? 'realtime-native-audio' : CFG.ttsMode,
     rtDirection: CFG.sttProvider === 'realtime' ? CFG.rtDirection : '(unused)',
     prosody:CFG.prosodyOn, listenSeat: S.listenSeat });
+  sttLiveStatsReset();
+  if(isStreamingStt())dlog('stt','live-config',sttLiveOptions());
 
   var jobs = [],startGen=sessionGen;
   function captureCurrent(stream,owned){
@@ -10699,7 +10937,7 @@ function startAll(){
         ensureMic().then(function(st){
           if(!captureCurrent(st,false))return;
           var seat=ms.length>1?null:ms[0];
-          var live=new RealtimeTranscriptionEngine(seat,st,{isMic:true,ownsStream:false});
+          var live=new SttLiveHost(sttLiveProviderId(),seat,st,{isMic:true,ownsStream:false});
           engines.push(live);
           return live.start();
         }).then(function(){toast('OpenAI Realtime音声認識を開始しました',true);})
@@ -10764,7 +11002,7 @@ function startAll(){
         var eng;
         if(CFG.sttProvider==='webspeech'){eng=new WebSpeechTrackEngine(dispSeat,tr,{ownsStream:true,stream:st});engines.push(eng);eng.start();}
         else if(isLiveTranscribe()){
-          eng=new RealtimeTranscriptionEngine(dispSeat,st,{isMic:false,ownsStream:true});engines.push(eng);
+          eng=new SttLiveHost(sttLiveProviderId(),dispSeat,st,{isMic:false,ownsStream:true});engines.push(eng);
           return eng.start().then(function(){renderAudioRouteWarning();toast('VB-CABLE入力の認識を開始しました（Realtime WebRTC）',true);});
         }
         else{eng=new StreamEngine(dispSeat,st,{isMic:false,meter:false,ownsStream:true});engines.push(eng);eng.start();}
@@ -10783,7 +11021,7 @@ function startAll(){
         if(!captureCurrent(info.stream,info.ownsStream))return;
         var eng;
         if(isLiveTranscribe()){
-          eng=new RealtimeTranscriptionEngine(dispSeat,info.stream,{isMic:false,ownsStream:info.ownsStream});
+          eng=new SttLiveHost(sttLiveProviderId(),dispSeat,info.stream,{isMic:false,ownsStream:info.ownsStream});
           engines.push(eng);return eng.start().then(function(){toast('共有音声をOpenAI Realtime WebRTCで認識します',true);});
         }
         eng=new StreamEngine(dispSeat,info.stream,{isMic:false,meter:false,ownsStream:info.ownsStream});
@@ -11995,7 +12233,7 @@ function refreshProviderUI(){
     refreshVvUI();
   });
 
-  fourOSettingsUI();
+  fourOSettingsUI();sttLiveSettingsUI();
   $('sttKey').value = KEYS['stt:'+CFG.sttProvider] || '';
   keyChkShow('chkSttMsg','','');
   refreshTtsBtn();
@@ -13048,6 +13286,8 @@ var DIAG_ROWS = [
     '／カード '+(segEnabled()?'話し続けるあいだ1枚（間 '+(FOURO_CARD_GAP_MS/1000)+'秒・'+(FOURO_CARD_MAX_MS/1000)+'秒か'+FOURO_CARD_MAX_CHARS+'字で文の切れ目）・訳と読み上げは文ごと':'録音ごと（逐次読み上げOFF）'):'(未使用)'; }},
   {section:"settings",order:5,label:'有効なSTT通信方式',value:function(ctx){ return diagSttTransport(); }},
   {section:"settings",order:6,label:'gpt-live発話確定',value:function(ctx){ return isLiveTranscribe() ? (segEnabled()?'逐次部分翻訳＋文脈・無音・文字停止でカード確定／TTS待ちとは独立':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）') : '(未使用)'; }},
+  {section:"settings",order:6.1,label:'ストリーミング認識の設定',value:function(ctx){ var o=sttLiveOptions();return o?o.provider+' / '+o.model+' / '+JSON.stringify(o.performance):'(未使用)'; }},
+  {section:"settings",order:6.2,label:'ストリーミング認識の計測',value:function(ctx){ return (STT_LIVE_STATS.counts.cards||isStreamingStt())?sttLiveStatsSummary():'(未使用)'; }},
   {section:"settings",order:7,label:'共有音声STT経路',value:function(ctx){ return CFG.displaySttRoute+' → '+effectiveDisplaySttRoute(); }},
   {section:"settings",order:8,label:'共有Track直接Web Speech候補',value:function(ctx){ return overlayCapabilities().speechTrackInput; }},
   {section:"settings",order:9,label:'通常マイク入力',value:function(ctx){ return CFG.micDevLbl || (CFG.micDev ? '(名称不明)' : '既定'); }},
@@ -15787,7 +16027,8 @@ function segLiveClose(engine,id,x,reason,meta){
   segUpdate(e,e.srcText,true);e.segment.finalReason=reason;
   x.segmentRanges=x.segmentRanges||[];
   e.audioEndedAt=e.audioEndedAt||Date.now();x.nextCardStartedAt=e.audioEndedAt;duoSpeakerUpdate(e);duoSpeakerPaint(e);x.segmentRanges.push({entry:e,end:x.text.length});x.cardOffset=x.text.length;x.entry=null;
-  dlog('stt','live-card-final',{item:id,cardId:e.id,reason:reason,chars:e.srcText.length,meta:meta||{}});
+  dlog('stt','live-card-final',engine.tag({item:id,cardId:e.id,reason:reason,chars:e.srcText.length,meta:meta||{}}));
+  sttLiveMetricsClose(engine,e,reason,false);
 }
 function segLiveBoundaries(engine){
   var now=Date.now();
@@ -15803,7 +16044,7 @@ function segLiveBoundaries(engine){
       segLiveClose(engine,id,x,reason,{context:kind,idleMs:idle,silenceMs:silence});}
   });
 }
-function segLiveReconcile(engine,x,text){
+function segLiveReconcile(engine,x,text,reason){
   // Map all closed-card boundaries through the final transcript correction.
   var old=x.text||'',ranges=x.segmentRanges||[],ends=segMapCardEnds(old,text,ranges.map(function(r){return r.end;})),at=0;
   ranges.forEach(function(r,i){
@@ -15812,7 +16053,8 @@ function segLiveReconcile(engine,x,text){
     r.end=end;at=end;
   });
   x.cardOffset=at;x.text=text;
-  if(x.entry||at<text.length){var e=engine.ensureEntry(x);duoLiveAssignSeat(engine,e,text.slice(at));segUpdate(e,text.slice(at),true);}
+  if(x.entry||at<text.length){var e=engine.ensureEntry(x);duoLiveAssignSeat(engine,e,text.slice(at));segUpdate(e,text.slice(at),true);
+    sttLiveMetricsClose(engine,e,reason||'server-completed',false);}
 }
 function segMapCardEnds(old,text,ends){
   var prefix=0,suffix=0;
@@ -15843,29 +16085,43 @@ function segMapCardEnds(old,text,ends){
     previous=Math.max(previous,mapped);return previous;
   });
 }
-function segLiveEvent(engine,event,id){
+/* ストリーミング型 STT の正規化イベントを segment 層へ渡す（開発仕様書 §6.2）。
+   partial は区間の全文。追記だけの Provider（gpt-live）では、差分が今までの delta と
+   同じになる。書き換えのときは、閉じたカードの終わりと開いているカードの始まりを
+   新しい本文へ写してから、残りを開いているカードへ渡す。 */
+function segLiveEvent(engine,ev){
   if(!segEnabled())return false;
-  var t=event.type||'',isDelta=/transcription\.delta$/.test(t),isFinal=/transcription\.completed$/.test(t);
-  if(!isDelta&&!isFinal)return false;
+  var t=ev.type,id=ev.key||engine.fallbackItemId;
+  if(t!=='partial'&&t!=='committed')return false;
   engine.segmentCompleted=engine.segmentCompleted||{};
   if(engine.segmentCompleted[id])return true;
-  if(isDelta&&!event.delta)return true;
+  var had=engine.items[id],old=had?had.text:'',text=String(ev.text||'');
+  if(t==='partial'&&text===old)return true;
   var x=engine.item(id),now=Date.now(),previousDeltaAt=x.lastDeltaAt;
-  if(isFinal){
-    segLiveReconcile(engine,x,String(event.transcript||x.text));
-    dlog('stt','live-segment-final',{item:id,chars:x.text.length,cards:(x.segmentRanges||[]).length+(x.entry?1:0)});
+  if(t==='committed'){
+    segLiveReconcile(engine,x,String(ev.text||x.text),ev.closeReason);
+    dlog('stt','live-segment-final',engine.tag({item:id,chars:x.text.length,cards:(x.segmentRanges||[]).length+(x.entry?1:0)}));
     engine.segmentCompleted[id]=now;
     Object.keys(engine.segmentCompleted).forEach(function(k){if(now-engine.segmentCompleted[k]>300000)delete engine.segmentCompleted[k];});
     delete engine.items[id];return true;
   }
-  x.text+=String(event.delta||'');x.lastDeltaAt=now;
-  var entry=engine.ensureEntry(x),local=x.text.slice(x.cardOffset||0);
-  TurnDecision.liveResumed(entry,x,now,String(event.delta||''));
+  var delta,rewrite=text.indexOf(old)!==0;
+  if(!rewrite)delta=text.slice(old.length);
+  else{
+    var ranges=x.segmentRanges||[],ends=segMapCardEnds(old,text,ranges.map(function(r){return r.end;}).concat([x.cardOffset||0]));
+    ranges.forEach(function(r,i){r.end=ends[i];});x.cardOffset=ends[ends.length-1];
+    delta=text.slice(sttLiveCommonPrefix(old,text));
+  }
+  x.text=text;x.lastDeltaAt=now;
+  var local=x.text.slice(x.cardOffset||0);
+  if(rewrite&&!x.entry&&!local.trim())return true;
+  var entry=engine.ensureEntry(x),prev=entry.segment?entry.segment.text:'';
+  TurnDecision.liveResumed(entry,x,now,delta);
   if(!x.segmentLogAt||now-x.segmentLogAt>=1000){
-    dlog('stt','live-segment-delta',{item:id,cardId:entry.id,chars:local.length,deltaChars:String(event.delta||'').length,arrivalGapMs:previousDeltaAt?now-previousDeltaAt:null});x.segmentLogAt=now;
+    dlog('stt','live-segment-delta',engine.tag({item:id,cardId:entry.id,chars:local.length,deltaChars:delta.length,arrivalGapMs:previousDeltaAt?now-previousDeltaAt:null}));x.segmentLogAt=now;
   }
   duoLiveAssignSeat(engine,entry,local);
-  segUpdate(entry,local,false);return true;
+  segUpdate(entry,local,false);sttLiveMetricsPartial(entry,prev,local);return true;
 }
 function segFinalizeEntry(e){
   if(!segEnabled())return false;
@@ -16399,6 +16655,7 @@ unlockAudioOnce();
 duoInstallUI();
 duoNextInstall();
 turnDecisionInstall();
+sttLiveInstall();
 
 /* 音声リストは遅れて読み込まれるので、先に一度読ませておく
    （最初の読み上げで声が選べずに失敗するのを防ぐ） */

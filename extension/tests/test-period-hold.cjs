@@ -18,7 +18,7 @@ const ctx={console,String,Object,JSON,Math,Array,RegExp,hasSpeechContent:t=>/[\p
 vm.createContext(ctx);
 vm.runInContext([line('var SEG_PERIOD_WAIT_MS'),block('function segPeriodHold('),block('function segSemanticTail(text,lang){'),
   block('function segSemanticDecision(input){'),block('function segDecision(input){'),block('function fourOSentenceEnds('),block('function fourOSplit('),
-  'function RealtimeTranscriptionEngine(){}',block('RealtimeTranscriptionEngine.prototype.boundaryContext=')].join('\n'),ctx);
+  'function SttLiveHost(){}',block('SttLiveHost.prototype.boundaryContext=')].join('\n'),ctx);
 const tests=[];const test=(n,f)=>{f();tests.push(n);};
 const P={min:12,max:48,stability:400,silence:700,debt:8};
 const sem=(text,o={})=>ctx.segSemanticDecision(Object.assign({text,stableLength:text.length,policy:P,lang:'en-US',idleMs:354,silenceMs:-1,final:false},o));
@@ -73,7 +73,7 @@ test('gpt-4o results: an initialism is not a sentence end, and a trailing number
   assert.equal(ctx.fourOSplit('日本語はそのままです。',true,true).ready,'日本語はそのままです。');
 });
 test('gpt-live cards: an ambiguous period at the end gets the ordinary wait, a real one the short wait',()=>{
-  const b=ctx.RealtimeTranscriptionEngine.prototype.boundaryContext;
+  const b=ctx.SttLiveHost.prototype.boundaryContext;
   assert.equal(b(' in Washington, D.C.','en'),'neutral');
   assert.equal(b(" it'll be 1.",'en'),'neutral');
   assert.equal(b(' crime went down.','en'),'strong');

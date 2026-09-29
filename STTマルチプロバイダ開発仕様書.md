@@ -1,7 +1,8 @@
 # Realtime STT マルチプロバイダ 開発仕様書
 
 起点：HTML v1.49.39 / Chrome・Edge 拡張 1.4.50（2026-09-29 時点）
-状態：**仕様（未実装）**。この文書を足しただけでは挙動は変わりません。§18 の決定（2026-09-29）を反映済みです。
+状態：§18 の決定（2026-09-29）を反映済み。**Phase 0（SDK での照合、付録A2）と Phase 1（HTML v1.50.0 / 拡張 1.4.51）を実装済み。**
+実装の進み具合は `次期仕様実装状況.md` の「Realtime STT マルチプロバイダ」に書きます。
 元資料：起草された「Duo Interpreter Realtime STT Multi-Provider 実装計画書」（以下「計画書」。`計画書§n` は計画書の節番号）
 
 ---
@@ -906,6 +907,39 @@ owner の回答で決まったことと、本書のどこへ反映したかで�
 [Soniox WebSocket API](https://soniox.com/docs/api-reference/stt/websocket-api)、
 [Soniox Endpoint detection](https://soniox.com/docs/stt/rt/endpoint-detection)、
 [Soniox Temporary API keys](https://soniox.com/docs/guides/temporary-api-keys)
+
+---
+
+## 付録A2 Phase 0 の照合結果（公式 SDK のソース、2026-09-29）
+
+各社の公式ドキュメントのサイトはこの環境から読めませんでしたが、**npm で配布されている各社の公式 SDK は取得できました。**
+SDK は API を呼ぶ側の実装そのものなので、パラメータ名・範囲の検査・送受信のメッセージの形については、検索の要約より強い根拠です。
+付録A の表は検索の要約による照合のまま残し、SDK で確かめた結果をここに書きます。**実装はこちらに従います。**
+
+使った版：`openai` 7.25.0、`@elevenlabs/client` 1.26.0・`@elevenlabs/types` 0.24.0・`@elevenlabs/elevenlabs-js` 2.70.0、
+`assemblyai` 4.41.5、`@soniox/node` 2.3.0・`@soniox/speech-to-text-web` 1.4.0。
+
+|Provider|項目|SDK で確かめた内容|本書・実装への影響|
+|---|---|---|---|
+|OpenAI|`delay`|型は `'minimal' \| 'low' \| 'medium' \| 'high' \| 'xhigh'`。ただし型の注記は「GA Realtime セッションでは `gpt-realtime-whisper` でだけ使える」と書いている|ガイド（検索の要約）と今の出荷コードは gpt-live-transcribe で `delay` を送っている。**5段それぞれで接続できるかは実機で確かめる**（Phase 1 の完了条件）|
+|OpenAI|`keywords`・`languages`|「`gpt-transcribe` と `gpt-live-transcribe` が対応」|今の送り方のまま|
+|ElevenLabs|接続先とクエリ|`wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id=…&token=…`。`commit_strategy`、`audio_format`、`vad_silence_threshold_secs`（0.3〜3.0）、`vad_threshold`（**0.1〜0.9**）、`min_speech_duration_ms`（**50〜2000**）、`min_silence_duration_ms`（**50〜2000**）、`language_code`、`secondary_languages`（繰り返し）、`include_timestamps`、`include_language_detection`、`keyterms`（繰り返し、最大50語・各20字まで）|§9 の選択肢はすべてこの範囲に入る。**要原典確認を解消**|
+|ElevenLabs|送信|`{"message_type":"input_audio_chunk","audio_base_64":"…","commit":false,"sample_rate":16000}`。手動確定は同じ形で `audio_base_64:""`・`commit:true`|§5.4 の「形は要原典確認」を解消|
+|ElevenLabs|受信|`session_started`（`session_id`・`config`）、`partial_transcript`（**`text`**）、`final_transcript`、`committed_transcript`（`text`）、`committed_transcript_with_timestamps`（`text`・`language_code`・`words`）。エラーは `auth_error`・`quota_exceeded`・`commit_throttled`・`transcriber_error`・`unaccepted_terms`・`rate_limited`・`input_error`・`invalid_request`・`queue_overflow`・`resource_exhausted`・`session_time_limit_exceeded`・`chunk_size_exceeded`・`insufficient_audio_activity`（本文は `error`）|本文のフィールドは `text`。エラー種別を §14 の分類へ対応させる|
+|ElevenLabs|一時トークン|`POST /v1/single-use-token/realtime_scribe`、ヘッダ `xi-api-key`、応答 `{token}`。「15分で期限切れ、使うと消費される」|§8.2 のとおり|
+|ElevenLabs|VAD の既定値|SDK は範囲を検査するだけで、既定値を持たない|既定値は未確認のまま。**毎回明示して送る**方針のまま|
+|AssemblyAI|接続先と認証|`wss://streaming.assemblyai.com/v3/ws`。ブラウザでは API キーでの接続を受け付けず、一時トークン（`?token=`）が必要。トークンは `GET https://streaming.assemblyai.com/v3/token?expires_in_seconds=…`（`max_session_duration_seconds` 任意）、ヘッダ `Authorization: <API キー>`（`Bearer` なし）、応答 `{token}`|§8.2 のとおり。認証ヘッダの形を確定|
+|AssemblyAI|`speech_model`|`universal-3-5-pro` のほか `universal-3-6`・`universal-3-6-pro`・`u3-rt-pro` などがある|既定は計画書どおり `universal-3-5-pro`。モデル名は直接入力でも変えられる|
+|AssemblyAI|クエリ|`sample_rate`、`encoding`、`mode`（`min_latency`・`balanced`・`max_accuracy`）、`continuous_partials`、`min_turn_silence`、`max_turn_silence`、`interruption_delay`、`format_turns`、**`keyterms_prompt`（JSON 配列）**、`prompt`、`agent_context`、**`language_codes`（JSON 配列。3.5 Pro だけ。言語を寄せつつ切替に対応）**、`language_detection`|用語集は `keyterms_prompt`、2言語は `language_codes` で渡す|
+|AssemblyAI|受信|`Begin`（`id`・`expires_at`）、`Turn`（`turn_order`・`turn_is_formatted`・`end_of_turn`・`transcript`・`end_of_turn_confidence`・`words[]`（`word_is_final`）・`language_code`・`language_confidence`）、`SpeechStarted`、`Termination`、`Error`（`error_code`・`error`）、`Warning`、`Heartbeat`、`Silence`。送信は `Terminate`・`ForceEndpoint`・`KeepAlive`・`UpdateConfiguration`|§5.4 のとおり。`language_code` を言語として使える|
+|AssemblyAI|音声の長さ|1回の送信は **50〜1000ms**。短すぎても長すぎても拒否（3007）|`sttChunkMs` の選択肢（50・100・200）は範囲内|
+|AssemblyAI|切断コード|4001 認証、4002 残高不足、4003 無料枠、4029 レート制限、3005 サーバー、3006 入力、3007 チャンク長、3008 セッション上限、3009 同時接続。SDK は 4000・4001・4002・4003・4101 を再試行しない|§14.1 の分類に使う|
+|AssemblyAI|モードごとの値|SDK には無い|Duo は値を持たない方針のまま（§0.1 #6）|
+|Soniox|接続先と設定|`wss://stt-rt.soniox.com/transcribe-websocket`。最初の JSON に `api_key`・`model`・`audio_format`・`sample_rate`・`num_channels`・`language_hints`・`language_hints_strict`・`enable_language_identification`・`enable_endpoint_detection`・`max_endpoint_delay_ms`（500〜3000、既定2000）・`endpoint_sensitivity`（−1.0〜1.0、既定0.0）・**`endpoint_latency_adjustment_level`（0・1・2・3、既定0）**・`context`（`general`・`text`・`terms`・`translation_terms`）|**上限は3で確定**。用語集は `context.terms`、コンテキストは `context.text`|
+|Soniox|受信・送信|応答は `tokens[]`（`text`・`start_ms`・`end_ms`・`confidence`・`is_final`・`language`）、`finished`、`error_code`・`error_message`。特殊 token `<end>`・`<fin>`。送信は `{"type":"finalize"}`・`{"type":"keepalive"}`、終わりは空の文字列|§5.4 のとおり|
+|Soniox|一時キー|`POST https://api.soniox.com/v1/auth/temporary-api-key`、`Authorization: Bearer <キー>`、`usage_type`（`transcribe_websocket`）・`expires_in_seconds`（1〜3600）・`single_use`・`max_session_duration_seconds`（1〜18000）→ `{api_key, expires_at}`|§8.2 のとおり|
+|Soniox|エラー|401 認証、400 要求、429 上限、503 通信|§14.1 の分類に使う|
+|全社|ブラウザからの発行（CORS）|SDK からは分からない|**実機で測る**（D-2）|
 
 ---
 

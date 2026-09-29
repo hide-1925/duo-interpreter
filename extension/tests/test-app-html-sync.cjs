@@ -54,9 +54,14 @@ test('every element the config schema binds to actually exists somewhere',()=>{
   const appJs=read('extension/app.js');
   const els=[...appJs.matchAll(/\bel:\s*"([A-Za-z0-9_]+)"/g)].map(m=>m[1]);
   assert.ok(els.length>30,'expected the config schema to bind many elements, got '+els.length);
+  /* ストリーミング認識の設定欄は STT_LIVE_PANELS の行から id を作って注入する
+     （sttLiveInstall）。その行に prop が書かれていれば要素はある。 */
+  const panelBlock=(appJs.match(/\nvar STT_LIVE_PANELS=\[[\s\S]*?\n\];/)||[''])[0];
+  const panelIds=[...panelBlock.matchAll(/\{prop:'([A-Za-z0-9_]+)'/g)].map(m=>m[1]);
+  assert.ok(/<select id="'\+r\.prop\+'">/.test(appJs),'sttLiveInstall must build each select from its prop');
   const missing=els.filter(id=>{
     const has=new RegExp('id=\\\\?"'+id+'\\\\?"');
-    return !has.test(appHtml)&&!has.test(appJs);
+    return !has.test(appHtml)&&!has.test(appJs)&&panelIds.indexOf(id)<0;
   });
   assert.deepEqual(missing,[],'these settings have no element to bind to: '+missing.join(', '));
 });
