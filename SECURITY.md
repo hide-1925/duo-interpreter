@@ -24,13 +24,27 @@ Duo Interpreter はサーバーを持たず、ブラウザ（と Chrome/Edge 拡
 |---|---|---|
 | 翻訳 | OpenAI・Anthropic・Google (Gemini)・xAI・Groq・DeepSeek・OpenRouter・Mistral・Together、または独自の互換API（Base URL） | 認識した本文、用語集、コンテキスト、APIキー |
 | 無料翻訳 | Google 翻訳の非公式エンドポイント（`translate.googleapis.com`）、MyMemory | 認識した本文（APIキーなし） |
-| 音声認識 | ブラウザ内蔵（Chrome は音声を Google へ送ります）、OpenAI、Groq、OpenRouter | 音声、APIキー |
+| 音声認識 | ブラウザ内蔵（Chrome は音声を Google へ送ります）、OpenAI、Groq、OpenRouter、ElevenLabs・AssemblyAI・Soniox（ストリーミング） | 音声、APIキー（ストリーミングの3社は下の一時資格情報） |
 | 読み上げ | OpenAI・Aivis・ElevenLabs・xAI・Google Cloud TTS・OpenRouter・Groq・VOICEVOX（tts.quest またはローカル）・ブラウザ内蔵 | 訳文、APIキー |
 | 判断層（既定OFF） | TypeSafe（Jev）など、利用者が選んだ経路 | 未確定の本文の末尾、音響特徴の要約、APIキー |
 | 議事録生成 | 翻訳に選んだプロバイダ | 会話の本文 |
 
 APIキーは、そのキーの発行元の API にだけ `Authorization` などのヘッダで送ります。
+
+ストリーミング認識（gpt-live-transcribe・ElevenLabs・AssemblyAI・Soniox）は、接続のたびに**その会社の発行元で有効期間の短い一時資格情報を作り**、音声の接続（WebRTC／WebSocket）にはその一時資格情報だけを使います。長期のキーは WebSocket の URL や最初のメッセージに入りません。一時資格情報は接続ごとに作り直し、使い回しません。ElevenLabs・AssemblyAI・Soniox のキーは、欄が空でも翻訳のキーを借りません（ElevenLabs だけは、同じ会社の読み上げ用キーを使います）。
+
+ストリーミング認識の**自動フォールバックは既定で OFF** です。OFF のあいだ、音声は選んだ会社にだけ送られます。利用者が ON にし、
+予備の会社と順（予備1〜3）を選んだときだけ、選んだ会社へつながらないときに**音声の送り先がその予備の会社へ変わります**
+（その会社の料金がかかります）。キーや設定の誤りでは切り替えません。切り替えた先でも、その会社のキーだけを使います
+（予備の OpenAI は OpenAI のキーだけで、ほかの会社の欄のキーを送りません）。切り替えたときはトーストで知らせ、診断ログに残します。
 拡張の判断層の中継（`turn-proxy.js`）は、利用者がポップアップで許可した **1つのオリジン** にだけ転送し、ヘッダは既知のものだけを通し、記録しません。
+
+ストリーミング認識の一時キーの発行経路は3つから選べます（既定は「直接」）。
+- **拡張が中継**（`stt-relay.js`）：拡張が ElevenLabs・AssemblyAI・Soniox の**固定の発行元にだけ**、一時キーの発行を中継します。
+  ページが渡せるのは会社名とキーだけで、URL・ヘッダ・本文はページから変えられません。頼めるのは拡張の画面と登録済みの HTML本体のタブだけで、
+  Cookie は送らず、キーも応答も記録しません。音声は中継しません（音声はページから各社へ直接送ります）。新しい権限は要りません。
+- **Token Broker**：利用者が指定した HTTPS のサーバーが一時キーを発行し、ページは各社のキーを持ちません。URL は HTTPS で、認証情報・クエリを
+  含むものは使えません。Cookie は送らず、Broker の応答の本文は記録しません。診断にはオリジンだけを出します。
 
 ## 3. 書き出したファイルに入るもの
 
@@ -45,6 +59,7 @@ APIキーは、そのキーの発行元の API にだけ `Authorization` など�
 
 診断ログの伏せ字は2段です。
 1. **いま手元にあるキーの実値**（翻訳・音声認識・読み上げ・判断層・埋め込みHTMLから読んだキー）を完全一致で `***REDACTED***` にする。形式の決まっていないキーもここで消えます。
+   接続中のストリーミング認識の一時資格情報も、ここで伏せます。
 2. そのあと形式で伏せる：`Authorization` / `Bearer`、`Cookie` / `Set-Cookie`、`client_secret`、`credential`、URL の `?key=` `token=` `secret=` `auth=`、URL の `user:pass@`、各社のキー形式（`sk-` `sk_` `gsk_` `xai-` `AIza` `hf_` `ghp_` `ek_` JWT など）。
 
 それでも、**共有する前に中身を目で確認してください。**
@@ -64,7 +79,7 @@ APIキーは、そのキーの発行元の API にだけ `Authorization` など�
 | `storage` | 字幕の対象タブ・HTML本体のURL・判断層の中継先を覚える |
 | `tabCapture` | HTML本体のタブの音声を認識に回す |
 | `webNavigation` | 字幕を重ねるフレームを見つける |
-| `host_permissions`（各社の API） | 拡張のページから翻訳・音声認識・読み上げの API を呼ぶ |
+| `host_permissions`（各社の API） | 拡張のページから翻訳・音声認識・読み上げの API を呼ぶ。`streaming.assemblyai.com` と `api.soniox.com` は、ストリーミング認識の一時資格情報を作るため |
 | `host_permissions`（`127.0.0.1` / `localhost`） | ローカルの読み上げエンジン（VOICEVOX 等） |
 | `host_permissions`（`hide-1925.github.io`） | 既定の HTML本体（GitHub Pages）との接続 |
 | `host_permissions`（Teams） | 会議のマイク送出と話者の検出。**content script は Teams のドメインにだけ入ります** |

@@ -35,7 +35,18 @@ const SHARED=[
   'var TurnProviders={',
   'var TurnDecision={',
   'var TurnTrace={',
-  'ProsodyAnalyzer.prototype.peek=function(windowMs){'
+  'ProsodyAnalyzer.prototype.peek=function(windowMs){',
+  /* ストリーミング型 STT（STTマルチプロバイダ開発仕様書 §4.1） */
+  'var STT_LIVE_CHOICES={',
+  'var STT_LIVE_PROVIDERS={',
+  'function SttLiveHost(provider,seat,stream,opts){',
+  'SttLiveHost.prototype.handle=function(ev){',
+  'function segLiveEvent(engine,ev){',
+  'function sttPcmDownsample(input,inRate,outRate,st){',
+  'SttLiveHost.prototype.openSocket=function(url,hello){',
+  'SttLiveHost.prototype.onSocketClose=function(ev){',
+  'SttLiveHost.prototype.credential=function(key,opts){','SttLiveHost.prototype.brokerCredential=function(body){','function sttBrokerNormalize(raw){',
+  'function segLiveReconcile(engine,x,text,reason){'
 ];
 
 const tests=[];
