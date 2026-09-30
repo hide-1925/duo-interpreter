@@ -120,6 +120,35 @@ const tests=[];
     tests.push('the Soniox combination sets its three fields, and an individual change shows 個別に選ぶ');
     assert.equal(p.openaiChunk,false,'gpt-live sends a WebRTC track, not chunks');assert.equal(p.openaiCommon,true);
     tests.push('gpt-live shows the common card-close row but not the chunk length');
+
+    /* 自動フォールバック（§14.3）。OFF が既定で予備の欄は隠れ、ON で予備1〜3と切り替えの順が出る。 */
+    const fb=await page.evaluate(()=>{
+      const vis=(id)=>{let el=document.getElementById(id);while(el){if(el.style&&el.style.display==='none')return false;el=el.parentElement;}return true;};
+      const prov=document.getElementById('sttProvider');prov.value='soniox';prov.onchange.call(prov);
+      KEYS['stt:soniox']='k-soniox-1234567890';KEYS['stt:assemblyai']='k-aai-1234567890';delete KEYS['stt:openai'];delete KEYS.openai;
+      const out={def:CFG.sttAutoFallback,offRows:['sttFallback1','sttFallback2','sttFallback3'].map(x=>vis('sttLiveRow_'+x)),offOrder:vis('sttFallbackOrder')};
+      const sw=document.getElementById('sttAutoFallback');sw.value='on';sw.dispatchEvent(new Event('change'));
+      const s1=document.getElementById('sttFallback1');s1.value='assemblyai';s1.dispatchEvent(new Event('change'));
+      const s2=document.getElementById('sttFallback2');s2.value='openai';s2.dispatchEvent(new Event('change'));
+      out.onRows=['sttFallback1','sttFallback2','sttFallback3'].map(x=>vis('sttLiveRow_'+x));
+      out.order=document.getElementById('sttFallbackOrder').textContent;
+      out.stored=[localStorage.getItem('di.sttAutoFallback'),localStorage.getItem('di.sttFallback1'),localStorage.getItem('di.sttFallback2')];
+      out.options=[...s1.options].map(o=>o.value);
+      out.diag=sttLiveFallbackSummary();
+      sw.value='off';sw.dispatchEvent(new Event('change'));
+      out.backOff=vis('sttLiveRow_sttFallback1');
+      prov.value='openai';prov.onchange.call(prov);fourOSetModel('gpt-live-transcribe');
+      return out;
+    });
+    assert.equal(fb.def,'off');assert.deepEqual(fb.offRows,[false,false,false]);assert.equal(fb.offOrder,false);
+    tests.push('auto fallback is OFF by default and its backup rows stay hidden');
+    assert.deepEqual(fb.onRows,[true,true,true]);
+    assert.deepEqual(fb.options,['','openai','elevenlabs','assemblyai','soniox']);
+    assert.equal(fb.order,'切り替えの順：Soniox（選択中） → AssemblyAI → OpenAI gpt-live（キーが無いので飛ばす）');
+    assert.deepEqual(fb.stored,['on','assemblyai','openai']);
+    assert.equal(fb.diag,'ON / 順 soniox → assemblyai → openai(キーなし) / 切替 なし');
+    assert.equal(fb.backOff,false);
+    tests.push('ON shows three backup pull-downs and the resulting order, with backups lacking a key marked');
     assert.deepEqual(pageErrors,[],'no page errors');tests.push('no page errors');
     console.log(JSON.stringify({passed:tests.length,tests},null,2));
   }finally{

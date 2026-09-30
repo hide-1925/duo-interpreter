@@ -31,7 +31,9 @@ const tests=[];
         close(code){this.closedWith=code;this.readyState=3;}
         emit(o){if(this.onmessage)this.onmessage({data:typeof o==='string'?o:JSON.stringify(o)});}
       };
+      window.__down=[];
       window.fetch=(url,opts)=>{window.__fetch.push({url:String(url),method:opts&&opts.method,headers:opts&&opts.headers});
+        if(window.__down.some(h=>String(url).includes(h)))return Promise.resolve({ok:false,status:503,headers:{get:()=>''},text:()=>Promise.resolve('unavailable')});
         return Promise.resolve({ok:true,status:200,headers:{get:()=>''},json:()=>Promise.resolve({token:'tmp-tok-123456',api_key:'tmp-key-123456'}),text:()=>Promise.resolve('')});};
       const ac=new AudioContext(),osc=ac.createOscillator(),dest=ac.createMediaStreamDestination();
       osc.frequency.value=440;osc.connect(dest);osc.start();window.__stream=dest.stream;
@@ -114,6 +116,41 @@ const tests=[];
     tests.push('elevenlabs: single-use token, VAD values in the URL, base64 PCM16, partials replace');
     assert.ok(!r.url.includes('account-key-abcdef'),'the account key never goes into the WebSocket URL');
     tests.push('the account key never reaches the WebSocket');
+
+    /* 自動フォールバック（§14.3）。Soniox の一時キー発行が 503 のとき、OFF なら止まり、ON なら予備1の AssemblyAI で続ける。 */
+    const fb=await page.evaluate(async()=>{
+      const out={};window.__down=['api.soniox.com'];
+      CFG.sttProvider='soniox';CFG.sttModel='stt-rt-v5';CFG.sttAutoFallback='off';
+      window.__ws=[];window.__fetch=[];
+      let h=new SttLiveHost('soniox','A',window.__stream,{isMic:true});
+      try{await h.start();out.off='started';}catch(e){out.off=e.message;}
+      out.offSockets=window.__ws.length;
+      CFG.sttAutoFallback='on';CFG.sttFallback1='assemblyai';CFG.sttFallback2='';CFG.sttFallback3='';
+      window.__ws=[];window.__fetch=[];sttLiveStatsReset();S.entries.slice().forEach(e=>{try{removeEntry(e);}catch(_){}} );
+      h=new SttLiveHost('soniox','A',window.__stream,{isMic:true});
+      const started=h.start();
+      await new Promise(r=>setTimeout(r,80));
+      const ws=window.__ws[0];out.url=ws&&ws.url;ws.emit({type:'Begin',id:'s2',expires_at:0});
+      await started;
+      out.fetch=window.__fetch.map(f=>f.url);out.provider=h.provider;out.msg=sttLiveMsg('mic',h);
+      await new Promise(r=>setTimeout(r,400));
+      out.frames=ws.sent.filter(x=>x instanceof ArrayBuffer).length;
+      ws.emit({type:'Turn',turn_order:0,end_of_turn:true,turn_is_formatted:true,transcript:'Backup works.',words:[]});
+      await new Promise(r=>setTimeout(r,300));
+      out.cards=S.entries.map(e=>e.segment?e.segment.text:e.srcText);
+      out.diag=sttLiveFallbackSummary();
+      h.stop();out.last=ws.sent[ws.sent.length-1];
+      window.__down=[];CFG.sttAutoFallback='off';
+      return out;
+    });
+    assert.match(fb.off,/Soniox token失敗 503/);assert.equal(fb.offSockets,0);
+    tests.push('fallback OFF: an issuer outage stops with the chosen provider\'s error');
+    assert.deepEqual(fb.fetch,['https://api.soniox.com/v1/auth/temporary-api-key','https://streaming.assemblyai.com/v3/token?expires_in_seconds=60']);
+    assert.equal(fb.provider,'assemblyai');assert.match(fb.url,/^wss:\/\/streaming\.assemblyai\.com\/v3\/ws\?/);
+    assert.ok(fb.frames>=2,'audio flows to the backup');assert.deepEqual(fb.cards,['Backup works.']);
+    assert.match(fb.msg,/Soniox につながらないため、自動フォールバックで AssemblyAI に切り替えました/);
+    assert.match(fb.diag,/切替 soniox→assemblyai$/);assert.equal(fb.last,'{"type":"Terminate"}');
+    tests.push('fallback ON: the same audio moves to the first backup, cards come from it, and stop ends it');
     assert.deepEqual(pageErrors,[],'no page errors');tests.push('no page errors');
     console.log(JSON.stringify({passed:tests.length,tests},null,2));
   }finally{

@@ -25,7 +25,7 @@ const CODE=[line('var SEG_PERIOD_WAIT_MS'),block('function segPeriodHold('),bloc
   block('function segSemanticTail(text,lang){'),block('function segSemanticDecision(input){'),
   block('function segInit('),block('function segJoin('),block('function segReceiveDisplay('),
   block('function segUpdate('),block('function segDraft('),block('function segCheck('),
-  block('var STT_LIVE_CHOICES={'),region('function isLiveTranscribe(){','/* ── 設定欄（開発仕様書 §10）'),
+  lines.find(l=>l.startsWith('var STT_FALLBACK_TARGETS=')),block('var STT_LIVE_CHOICES={'),region('function isLiveTranscribe(){','/* ── 設定欄（開発仕様書 §10）'),
   region('function segLiveClose(','function segFinalizeEntry(')].join('\n');
 
 function world(segmentMode){
@@ -68,7 +68,9 @@ function world(segmentMode){
 }
 const J=(x)=>JSON.parse(JSON.stringify(x));
 const tests=[];
-const test=(name,fn)=>{fn();tests.push(name);};
+/* 自動フォールバックの検査は Promise を待つので、すべての検査を順に鎖でつなぐ。 */
+let chain=Promise.resolve();
+const test=(name,fn)=>{chain=chain.then(()=>fn()).then(()=>{tests.push(name);});};
 
 test('a partial that rewrites shown text replaces it instead of appending (segment layer on)',()=>{
   const r=world('balanced'),h=r.host();
@@ -265,4 +267,111 @@ test('joining provider segments puts a space only between words of space-separat
   assert.equal(j('control valve','の stroke'),'control valveの stroke');
   assert.equal(j('Hello ','world'),'Hello world');assert.equal(j('','x'),'x');assert.equal(j('x',''),'x');
 });
-console.log(JSON.stringify({passed:tests.length,tests},null,2));
+/* ── 自動フォールバック（§14.3・D-3）─────────────────────────────────
+   本物の Adapter の connect と close だけを差し替え、つながる・つながらないを決める。 */
+function fbWorld(opts){
+  const r=world('balanced'),c=r.ctx,calls=[],toasts=[];
+  c.toast=(m)=>toasts.push(m);
+  c.CFG.sttProvider=opts.primary||'soniox';c.CFG.sttModel='';
+  Object.assign(c.CFG,opts.cfg||{});
+  Object.assign(c.KEYS,opts.keys||{'stt:soniox':'soniox-account-key','stt:assemblyai':'aai-account-key','stt:elevenlabs':'el-account-key','stt:openai':'openai-account-key'});
+  for(const id of ['openai','elevenlabs','assemblyai','soniox']){
+    const a=c.STT_LIVE_PROVIDERS[id];
+    a.connect=function(host,key){calls.push([id,key]);const o=(opts.result||{})[id];
+      if(!o)return Promise.resolve();
+      const e=new Error(id+' failed');Object.assign(e,o);return Promise.reject(e);};
+    a.close=function(){calls.push([id,'close']);};
+  }
+  const track={readyState:'live',muted:false};
+  const host=(h)=>vm.runInContext('new SttLiveHost('+JSON.stringify(opts.primary||'soniox')+',"A",{getAudioTracks:function(){return [__track];}},'+JSON.stringify(h||{})+')',Object.assign(c,{__track:track}));
+  return {r,c,calls,toasts,host,logs:()=>r.w.logs.filter(l=>/live-fallback/.test(l.m))};
+}
+const ON={sttAutoFallback:'on',sttFallback1:'assemblyai',sttFallback2:'openai',sttFallback3:'elevenlabs'};
+test('fallback OFF (the default): a failed start stops with the chosen provider\'s error',async()=>{
+  const f=fbWorld({result:{soniox:{status:503}}}),h=f.host();
+  assert.deepEqual(J(h.plan),['soniox']);
+  await assert.rejects(h.start(),/soniox failed/);
+  assert.deepEqual(J(f.calls.filter(x=>x[1]!=='close')),[['soniox','soniox-account-key']]);
+  assert.equal(h.provider,'soniox');assert.equal(f.logs().length,0);
+});
+test('fallback ON: a transient failure moves to the first backup, which then carries the session',async()=>{
+  const f=fbWorld({cfg:ON,result:{soniox:{status:503}}}),h=f.host();
+  assert.deepEqual(J(h.plan),['soniox','assemblyai','openai','elevenlabs']);
+  await h.start();
+  assert.equal(h.provider,'assemblyai');assert.equal(h.adapter,f.c.STT_LIVE_PROVIDERS.assemblyai);
+  assert.deepEqual(J(f.calls),[['soniox','soniox-account-key'],['soniox','close'],['soniox','close'],['assemblyai','aai-account-key']]);
+  const l=f.logs()[0].d;assert.equal(l.from,'soniox');assert.equal(l.to,'assemblyai');assert.equal(l.errorClass,'transient');
+  assert.equal(l.model,'universal-3-5-pro','a backup uses its own default model, not the model field of the chosen provider');
+  assert.deepEqual(J(f.c.STT_LIVE_STATS.switches),['soniox→assemblyai']);
+  assert.match(f.c.sttLiveMsg('mic',h),/^Soniox につながらないため、自動フォールバックで AssemblyAI に切り替えました。<br>AssemblyAI のストリーミング認識を開始しました$/);
+  assert.equal(f.c.CFG.sttProvider,'soniox','the setting is not rewritten: the next start begins with the chosen provider');
+});
+test('fallback ON: rate limits and an unreachable issuer (CORS or network) also move on',async()=>{
+  let f=fbWorld({cfg:ON,result:{soniox:{status:429}}}),h=f.host();await h.start();assert.equal(h.provider,'assemblyai');
+  f=fbWorld({cfg:ON,result:{soniox:{unreachable:true}}});h=f.host();await h.start();assert.equal(h.provider,'assemblyai');
+});
+test('fallback ON: auth and config errors of the chosen provider never switch (D-3)',async()=>{
+  for(const o of [{status:401},{status:403},{status:400},{errorClass:'config'}]){
+    const f=fbWorld({cfg:ON,result:{soniox:o}}),h=f.host();
+    await assert.rejects(h.start(),/soniox failed/);assert.equal(h.provider,'soniox');assert.equal(f.logs().length,0);
+  }
+  const f=fbWorld({cfg:ON,keys:{'stt:assemblyai':'aai-account-key'}}),h=f.host();
+  await assert.rejects(h.start(),/キーが未設定/);assert.equal(h.provider,'soniox','a missing key of the chosen provider is a setting error');
+});
+test('fallback ON: backups without a key are skipped, and OpenAI never receives another provider\'s key',async()=>{
+  const f=fbWorld({cfg:ON,keys:{'stt:soniox':'soniox-account-key','stt:elevenlabs':'el-account-key'},result:{soniox:{status:503}}}),h=f.host();
+  assert.equal(f.c.sttKey(),'soniox-account-key','sttKey() reads the chosen provider\'s field');
+  assert.equal(f.c.sttLiveKey('openai'),'','so OpenAI as a backup must not use it');
+  await h.start();
+  assert.equal(h.provider,'elevenlabs');
+  assert.deepEqual(J(f.calls.filter(x=>x[1]!=='close')),[['soniox','soniox-account-key'],['elevenlabs','el-account-key']]);
+  assert.deepEqual(f.logs().filter(l=>l.m==='live-fallback-skip').map(l=>l.d.provider),['assemblyai','openai']);
+  f.c.KEYS.openai='openai-translation-key';assert.equal(f.c.sttLiveKey('openai'),'openai-translation-key','the OpenAI translation key may be used');
+  assert.match(f.c.sttFallbackNotice(),/assemblyai|AssemblyAI/);
+});
+test('fallback ON: a backup that fails for any reason hands over to the next; the last error names the chain',async()=>{
+  let f=fbWorld({cfg:ON,result:{soniox:{status:503},assemblyai:{status:401}}}),h=f.host();
+  await h.start();assert.equal(h.provider,'openai');assert.deepEqual(J(h.tried),['soniox','assemblyai','openai']);
+  f=fbWorld({cfg:ON,result:{soniox:{status:503},assemblyai:{status:503},openai:{status:500},elevenlabs:{status:429}}});h=f.host();
+  await assert.rejects(h.start(),/自動フォールバックで Soniox→AssemblyAI→OpenAI gpt-live→ElevenLabs を試しましたが、つながりませんでした（最後：elevenlabs failed）/);
+});
+test('fallback ON: "none", duplicates and the chosen provider are dropped from the order',()=>{
+  const f=fbWorld({cfg:{sttAutoFallback:'on',sttFallback1:'soniox',sttFallback2:'',sttFallback3:'assemblyai'}});
+  assert.deepEqual(J(f.host().plan),['soniox','assemblyai']);
+  f.c.CFG.sttFallback2='bogus';assert.deepEqual(J(f.host().plan),['soniox','assemblyai'],'values outside the list are ignored');
+  f.c.CFG.sttAutoFallback='off';assert.deepEqual(J(f.host().plan),['soniox']);
+});
+test('fallback ON: after 3 reconnects in a minute the session moves to the backup instead of stopping',async()=>{
+  const f=fbWorld({cfg:ON}),h=f.host(),timers=[];f.c.setTimeout=(fn,ms)=>{timers.push(ms);return timers.length;};
+  await h.start();assert.equal(h.provider,'soniox');
+  f.c.STT_LIVE_PROVIDERS.soniox.map=(st,raw)=>raw;      /* 受信は正規化イベントのまま流す */
+  h.onMessage([{type:'partial',key:'s1',text:'half a sentence'}]);
+  for(let k=0;k<3;k++)h.onSocketClose({code:1006,reason:''});
+  assert.deepEqual(timers,[500,1000,2000]);assert.equal(f.r.w.entries[0].segment.finalReason,'reconnect');
+  h.onSocketClose({code:1006,reason:''});
+  assert.equal(h.provider,'assemblyai');assert.match(f.toasts[f.toasts.length-1],/Soniox から AssemblyAI へ切り替えます/);
+  assert.deepEqual(J(h.reconnects),[],'the backup gets its own reconnect budget');
+  await Promise.resolve();await Promise.resolve();await Promise.resolve();
+  assert.match(f.toasts[f.toasts.length-1],/自動フォールバックで AssemblyAI に切り替えました/);
+});
+test('fallback ON: an auth close of the chosen provider still stops; a bench (fallback:false) never switches',async()=>{
+  let f=fbWorld({cfg:ON}),h=f.host();await h.start();
+  h.lastErrorClass='auth';h.onSocketClose({code:1008,reason:''});
+  assert.equal(h.provider,'soniox');assert.match(f.toasts[f.toasts.length-1],/キーか権限/);
+  f=fbWorld({cfg:ON,result:{soniox:{status:503}}});h=f.host({fallback:false});
+  await assert.rejects(h.start(),/soniox failed/);assert.equal(h.provider,'soniox');
+});
+test('fallback ON: gpt-live whose WebRTC connection fails mid-session moves on; OFF keeps the old message',async()=>{
+  let f=fbWorld({primary:'openai',cfg:ON}),h=f.host();await h.start();
+  assert.equal(h.lost('transient',{liveStage:'peer'}),true);assert.equal(h.provider,'assemblyai');
+  f=fbWorld({primary:'openai'});h=f.host();await h.start();
+  assert.equal(h.lost('transient',{liveStage:'peer'}),false);assert.equal(h.provider,'openai');
+});
+test('diagnostics: the order, missing keys and the switches of this session',async()=>{
+  const f=fbWorld({cfg:ON,keys:{'stt:soniox':'soniox-account-key','stt:assemblyai':'aai-account-key'},result:{soniox:{status:503}}});
+  f.c.isLiveTranscribe=()=>false;
+  await f.host().start();
+  assert.equal(f.c.sttLiveFallbackSummary(),'ON / 順 soniox → assemblyai → openai(キーなし) → elevenlabs(キーなし) / 切替 soniox→assemblyai');
+  f.c.CFG.sttAutoFallback='off';assert.equal(f.c.sttLiveFallbackSummary(),'OFF');
+});
+chain.then(()=>console.log(JSON.stringify({passed:tests.length,tests},null,2))).catch(err=>{console.error(err);process.exit(1);});

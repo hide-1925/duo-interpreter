@@ -801,8 +801,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.51.0';
-var APP_BUILD = '20260929-v1510-stt-multi-provider';
+var APP_VERSION = 'v1.52.0';
+var APP_BUILD = '20260930-v1520-stt-auto-fallback';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -911,6 +911,8 @@ var STT_MODELS = {
 /* ストリーミング型 STT の性能設定の選択肢（STTマルチプロバイダ開発仕様書 §9・D-5）。
    すべてプルダウンで選び、数値を打ち込む欄は作らない。def は公式の既定値。
    ただし gpt-live-transcribe の delay は、今まで固定で送っていた low を既定にする。 */
+/* 自動フォールバックの予備に選べる会社。同じ Host の Adapter で動くもの（ストリーミング型）だけ。 */
+var STT_FALLBACK_TARGETS=[['','なし'],['openai','OpenAI gpt-live-transcribe'],['elevenlabs','ElevenLabs Scribe v2 Realtime'],['assemblyai','AssemblyAI Universal-3.5 Pro Realtime'],['soniox','Soniox v5 Realtime']];
 var STT_LIVE_CHOICES={
   sttLiveDelay:{def:'low',values:[['minimal','最小（minimal）— いちばん早く出る'],['low','低（low）— 字幕向け'],['medium','中（medium）'],
     ['high','高（high）— 音声を多めに聞いてから出す'],['xhigh','最高（xhigh）— 遅れを最大まで許す']]},
@@ -931,7 +933,12 @@ var STT_LIVE_CHOICES={
   sttSonioxMaxEndpointDelayMs:{def:'2000',values:[['500','500ms'],['1000','1000ms'],['1500','1500ms'],['2000','2000ms'],['2500','2500ms'],['3000','3000ms']]},
   /* 共通。カードを閉じる合図（§6.3・D-6 で first）と、送る音声の1回の長さ（AssemblyAI は 50〜1000ms）。 */
   sttCardClose:{def:'first',values:[['first','Provider と Duo の早いほう'],['provider','Provider の区切りだけ'],['duo','Duo の区切りだけ']]},
-  sttChunkMs:{def:'100',values:[['50','50ms'],['100','100ms'],['200','200ms']]}
+  sttChunkMs:{def:'100',values:[['50','50ms'],['100','100ms'],['200','200ms']]},
+  /* 自動フォールバック（§14.3・D-3）。既定 OFF。ON のときは、選んだ会社の次に予備1→2→3 の順で切り替える。 */
+  sttAutoFallback:{def:'off',values:[['off','OFF — 止めて知らせる'],['on','ON — 予備の順に切り替える']]},
+  sttFallback1:{def:'',values:STT_FALLBACK_TARGETS},
+  sttFallback2:{def:'',values:STT_FALLBACK_TARGETS},
+  sttFallback3:{def:'',values:STT_FALLBACK_TARGETS}
 };
 var TTS_MODELS = [
   {id:'gpt-4o-mini-tts', note:'自然・安価（おすすめ）'},
@@ -1047,6 +1054,10 @@ var CONFIG_SCHEMA = [
   { prop:"sttSonioxMaxEndpointDelayMs", key:'di.sttSonioxMaxEndpointDelayMs', embed:'sttSonioxMaxEndpointDelayMs', def:STT_LIVE_CHOICES.sttSonioxMaxEndpointDelayMs.def, coerce:function(raw){ return sttLiveChoice('sttSonioxMaxEndpointDelayMs',raw); }, portable:true, el:"sttSonioxMaxEndpointDelayMs" },
   { prop:"sttCardClose", key:'di.sttCardClose', embed:'sttCardClose', def:STT_LIVE_CHOICES.sttCardClose.def, coerce:function(raw){ return sttLiveChoice('sttCardClose',raw); }, portable:true, el:"sttCardClose" },
   { prop:"sttChunkMs", key:'di.sttChunkMs', embed:'sttChunkMs', def:STT_LIVE_CHOICES.sttChunkMs.def, coerce:function(raw){ return sttLiveChoice('sttChunkMs',raw); }, portable:true, el:"sttChunkMs" },
+  { prop:"sttAutoFallback", key:'di.sttAutoFallback', embed:'sttAutoFallback', def:STT_LIVE_CHOICES.sttAutoFallback.def, coerce:function(raw){ return sttLiveChoice('sttAutoFallback',raw); }, portable:true, el:"sttAutoFallback" },
+  { prop:"sttFallback1", key:'di.sttFallback1', embed:'sttFallback1', def:STT_LIVE_CHOICES.sttFallback1.def, coerce:function(raw){ return sttLiveChoice('sttFallback1',raw); }, portable:true, el:"sttFallback1" },
+  { prop:"sttFallback2", key:'di.sttFallback2', embed:'sttFallback2', def:STT_LIVE_CHOICES.sttFallback2.def, coerce:function(raw){ return sttLiveChoice('sttFallback2',raw); }, portable:true, el:"sttFallback2" },
+  { prop:"sttFallback3", key:'di.sttFallback3', embed:'sttFallback3', def:STT_LIVE_CHOICES.sttFallback3.def, coerce:function(raw){ return sttLiveChoice('sttFallback3',raw); }, portable:true, el:"sttFallback3" },
   { prop:"segmentMode", key:'di.segmentMode', embed:'segmentMode', def:'balanced', portable:true, el:"segmentMode", bind:'custom' },
   { prop:"segmentBoundary", key:'di.segmentBoundary', embed:'segmentBoundary', def:'semantic', portable:true, el:"segmentBoundary", bind:'custom' },
   { prop:"segmentOverlap", key:'di.segmentOverlap', embed:'segmentOverlap', def:'allow', portable:true, el:"segmentOverlap", bind:'custom' },
@@ -9949,13 +9960,16 @@ function sttLiveProviderId(){
 }
 function isStreamingStt(){return !!sttLiveProviderId();}
 /* 開始時の記録と診断に出す設定。performance は Provider 自身のパラメータ名で書く（§9・計画書§37）。 */
-/* 開始・失敗のトースト。gpt-live は今までの文言のまま。 */
-function sttLiveMsg(kind,err){
-  var id=sttLiveProviderId(),label=id?STT_LIVE_PROVIDERS[id].label:'';
-  if(id==='openai')return {mic:'OpenAI Realtime音声認識を開始しました',vb:'VB-CABLE入力の認識を開始しました（Realtime WebRTC）',
+/* 開始・失敗のトースト。gpt-live は今までの文言のまま。host を渡すと、自動フォールバックで
+   切り替えた先の会社で書き、切り替えたことを先頭に書く（§14.3）。 */
+function sttLiveMsg(kind,host){
+  var id=host?host.provider:sttLiveProviderId(),label=id?STT_LIVE_PROVIDERS[id].label:'',m;
+  if(id==='openai')m={mic:'OpenAI Realtime音声認識を開始しました',vb:'VB-CABLE入力の認識を開始しました（Realtime WebRTC）',
     display:'共有音声をOpenAI Realtime WebRTCで認識します',fail:'Realtime音声認識を開始できません：',displayFail:'画面／タブ音声のRealtime認識を開始できません：'}[kind];
-  return {mic:label+' のストリーミング認識を開始しました',vb:'VB-CABLE入力を '+label+' で認識します',
+  else m={mic:label+' のストリーミング認識を開始しました',vb:'VB-CABLE入力を '+label+' で認識します',
     display:'共有音声を '+label+' で認識します',fail:label+' の音声認識を開始できません：',displayFail:'画面／タブ音声を '+label+' で認識できません：'}[kind];
+  if(host&&host.tried&&host.tried.length>1)m=host.tried.slice(0,-1).map(sttLiveName).join('・')+' につながらないため、自動フォールバックで '+sttLiveName(id)+' に切り替えました。<br>'+m;
+  return m;
 }
 function sttLiveOptions(){
   var id=sttLiveProviderId();if(!id)return null;
@@ -9972,9 +9986,54 @@ function sttLiveChoice(prop,raw){
 /* 新しい Provider は自分のキーだけを使い、翻訳のキーを借りない（§8.5）。
    OpenAI は今までの sttKey() のまま。 */
 function sttLiveKey(provider){
-  if(provider==='openai')return sttKey();
+  /* 予備として使う OpenAI（§14.3）は、OpenAI の音声認識のキーか OpenAI の翻訳のキーだけ。
+     sttKey() は選んでいる会社の欄を読むので、別の会社のキーを OpenAI へ送らないよう使わない。 */
+  if(provider==='openai')return CFG.sttProvider==='openai'?sttKey():((KEYS['stt:openai']||'').trim()||keyOf('openai'));
   if(provider==='elevenlabs')return (KEYS['stt:elevenlabs']||'').trim()||(KEYS['eleven']||'').trim();
   return (KEYS['stt:'+provider]||'').trim();
+}
+/* モデル名の欄は選んでいる会社のもの。予備として使う会社は、その会社の既定のモデルにする。 */
+function sttLiveModel(id,def){
+  var m=CFG.sttProvider===id?String(CFG.sttModel||'').trim():'';
+  return m&&m.charAt(0)!=='('?m:def;
+}
+/* トーストに出す名前。OpenAI はモデルまで書く（OpenAI には録音ファイル型の音声認識もあるため）。 */
+function sttLiveName(id){return id==='openai'?'OpenAI gpt-live':(STT_LIVE_PROVIDERS[id]?STT_LIVE_PROVIDERS[id].label:String(id));}
+/* ── 自動フォールバック（§14.3・D-3）────────────────────────────────
+   既定 OFF。ON のときは、選んだ会社の次に、予備1→2→3 の順で切り替える。順は利用者が先に決めておく。 */
+var STT_FALLBACK_SLOTS=['sttFallback1','sttFallback2','sttFallback3'];
+function sttFallbackOn(){return sttLiveChoice('sttAutoFallback',CFG.sttAutoFallback)==='on';}
+/* 切り替えの順。先頭は選んでいる会社。「なし」と重複は除く。OFF なら先頭だけ。 */
+function sttFallbackPlan(primary){
+  var order=[primary];if(!sttFallbackOn())return order;
+  STT_FALLBACK_SLOTS.forEach(function(p){var v=sttLiveChoice(p,CFG[p]);if(v&&STT_LIVE_PROVIDERS[v]&&order.indexOf(v)<0)order.push(v);});
+  return order;
+}
+/* 失敗の分類（§14.1）。Adapter が分類したものはそのまま、無ければ HTTP の状態から決める。
+   応答の無い失敗（通信断・CORS・タイムアウト・WebRTC の failed）は transient。 */
+function sttLiveErrorClass(err){
+  if(!err)return 'transient';
+  if(err.errorClass)return err.errorClass;
+  var s=+err.status||0;
+  if(s===401||s===403)return 'auth';
+  if(s===429)return 'rate';
+  if(s>=400&&s<500)return 'config';
+  return 'transient';
+}
+/* 開始のトーストに足す注意。ON なのに使える予備が無いこと、キーの無い予備を飛ばすことを知らせる。 */
+function sttFallbackNotice(){
+  var id=sttLiveProviderId();if(!id||!sttFallbackOn())return '';
+  var rest=sttFallbackPlan(id).slice(1),miss=rest.filter(function(p){return !sttLiveKey(p);});
+  if(!rest.length)return '<br>自動フォールバックは ON ですが、予備が選ばれていません。';
+  if(miss.length)return '<br>自動フォールバックの予備のうち '+miss.map(sttLiveName).join('・')+' はキーが無いので飛ばします。';
+  return '';
+}
+/* 診断の1行。順（キーの無いものに印）と、この回に切り替えた記録。 */
+function sttLiveFallbackSummary(){
+  var id=sttLiveProviderId();if(!id)return '(未使用)';
+  if(!sttFallbackOn())return 'OFF';
+  return 'ON / 順 '+sttFallbackPlan(id).map(function(p){return p+(sttLiveKey(p)?'':'(キーなし)');}).join(' → ')
+    +' / 切替 '+(STT_LIVE_STATS.switches.length?STT_LIVE_STATS.switches.join(', '):'なし');
 }
 /* カードを閉じる合図（§6.3）。provider は Provider が発話ごとに区切りを出すときだけ選べる。
    gpt-live（completed は遅れることがある）と、ElevenLabs の手動確定（区切りは Duo が出す）は first にする。 */
@@ -10179,7 +10238,8 @@ var STT_LIVE_PROVIDERS={
         if(host.dead||host.closing)return;dlog('stt','live-state',{state:pc.connectionState});
         if(pc.connectionState==='failed'){
           var e=new Error('Realtime WebRTC接続がfailedになりました');e.liveStage='peer';if(!opened)openReject(e);
-          else{dlog('stt','live-FAIL',{model:'gpt-live-transcribe',stage:'peer',err:e.message});toast('Realtime音声認識の接続が切れました。停止して開始し直してください。');}
+          else{dlog('stt','live-FAIL',{model:'gpt-live-transcribe',stage:'peer',err:e.message});
+            if(!host.lost('transient',e))toast('Realtime音声認識の接続が切れました。停止して開始し直してください。');}
         }else if(pc.connectionState==='disconnected')toast('Realtime音声認識の接続が一時的に切れています。再接続を待っています。');
       };
       pc.oniceconnectionstatechange=function(){if(!host.dead&&!host.closing)dlog('stt','live-ice',{state:pc.iceConnectionState});};
@@ -10254,7 +10314,7 @@ var STT_LIVE_PROVIDERS={
   elevenlabs:sttLiveWs({
     id:'elevenlabs',label:'ElevenLabs',defaultModel:'scribe_v2_realtime',
     caps:{endpoint:'turn',stable:'none'},
-    model:function(){var m=String(CFG.sttModel||'').trim();return m&&m.charAt(0)!=='('?m:'scribe_v2_realtime';},
+    model:function(){return sttLiveModel('elevenlabs','scribe_v2_realtime');},
     performance:function(){return {
       commit_strategy:sttLiveChoice('sttElevenLabsCommitStrategy',CFG.sttElevenLabsCommitStrategy),
       vad_silence_threshold_secs:+sttLiveChoice('sttElevenLabsVadSilenceSecs',CFG.sttElevenLabsVadSilenceSecs),
@@ -10311,7 +10371,7 @@ var STT_LIVE_PROVIDERS={
   assemblyai:sttLiveWs({
     id:'assemblyai',label:'AssemblyAI',defaultModel:'universal-3-5-pro',
     caps:{endpoint:'turn',stable:'words'},
-    model:function(){var m=String(CFG.sttModel||'').trim();return m&&m.charAt(0)!=='('?m:'universal-3-5-pro';},
+    model:function(){return sttLiveModel('assemblyai','universal-3-5-pro');},
     /* モードの中身（ターン終了の無音など）は Duo が持たない。上書きした項目だけ送る（仕様書 §0.1 #6）。 */
     performance:function(){
       var o={mode:sttLiveChoice('sttAssemblyAiMode',CFG.sttAssemblyAiMode)};
@@ -10372,7 +10432,7 @@ var STT_LIVE_PROVIDERS={
   soniox:sttLiveWs({
     id:'soniox',label:'Soniox',defaultModel:'stt-rt-v5',
     caps:{endpoint:'turn',stable:'tokens'},
-    model:function(){var m=String(CFG.sttModel||'').trim();return m&&m.charAt(0)!=='('?m:'stt-rt-v5';},
+    model:function(){return sttLiveModel('soniox','stt-rt-v5');},
     performance:function(){return {
       endpoint_latency_adjustment_level:+sttLiveChoice('sttSonioxEndpointLevel',CFG.sttSonioxEndpointLevel),
       endpoint_sensitivity:+sttLiveChoice('sttSonioxEndpointSensitivity',CFG.sttSonioxEndpointSensitivity),
@@ -10441,6 +10501,8 @@ function SttLiveHost(provider,seat,stream,opts){
   /* WebSocket 系（§7・§14）とカードを閉じる合図（§6.3）。 */
   this.ws=null;this.wsReady=false;this.pcm=null;this.reconnects=[];this.lastErrorClass='';this.stitched=null;
   this.cardClose=sttLiveCardClose(this.provider);
+  /* 自動フォールバック（§14.3）。順は開始時に決め、途中で設定を変えても次の「開始」まで変えない。 */
+  this.plan=sttFallbackPlan(this.provider);this.tried=[this.provider];this.skipped=[];
 }
 SttLiveHost.prototype.model=function(){return this.adapter.model();};
 /* 診断の記録に Provider を足す。OpenAI は v1.49.39 と同じ形のまま残す。 */
@@ -10498,11 +10560,26 @@ SttLiveHost.prototype.closeConnection=function(){
   this.aborters.splice(0).forEach(function(ctl){try{ctl.abort();}catch(e){}});
   if(this.adapter.close)this.adapter.close(this);
 };
+/* 開始。つながらなければ、自動フォールバックが ON のときだけ予備の順に試す（§14.3）。 */
 SttLiveHost.prototype.start=function(){
-  var self=this,a=this.adapter,key=sttLiveKey(this.provider);
-  if(!key)return Promise.reject(new Error(a.label+'の音声認識用APIキーが未設定です'));
+  var self=this;
+  return this.open().catch(function(err){return self.recover(err);});
+};
+SttLiveHost.prototype.recover=function(err){
+  if(err&&err.cancelled)throw err;
+  var cls=sttLiveErrorClass(err),next=this.nextFallback(cls);
+  if(!next){
+    if(this.tried.length>1&&err)err.message='自動フォールバックで '+this.tried.map(sttLiveName).join('→')+' を試しましたが、つながりませんでした（最後：'+String(err.message||err)+'）';
+    throw err;
+  }
+  this.switchTo(next,cls,err);
+  return this.start();
+};
+SttLiveHost.prototype.open=function(){
+  var self=this,a=this.adapter,key=sttLiveKey(this.provider),e;
+  if(!key){e=new Error(a.label+'の音声認識用APIキーが未設定です');e.errorClass='config';return Promise.reject(e);}
   var track=this.stream&&this.stream.getAudioTracks&&this.stream.getAudioTracks()[0];
-  if(!track||track.readyState!=='live')return Promise.reject(new Error('有効な音声Trackがありません'));
+  if(!track||track.readyState!=='live'){e=new Error('有効な音声Trackがありません');e.errorClass='input';return Promise.reject(e);}
   this.startedAt=Date.now();this.dead=false;this.closing=false;
   return a.connect(this,key,track).catch(function(err){
     if(err&&err.cancelled)throw err;
@@ -10801,6 +10878,7 @@ SttLiveHost.prototype.onSocketClose=function(ev){
   dlog('stt','live-close',this.tag({code:ev.code,reason:String(ev.reason||'').slice(0,120),errorClass:cls}));
   this.closeCards('reconnect');
   if(cls==='transient'||cls==='rate'){this.reconnect(cls);return;}
+  if(this.lost(cls,{liveStage:'socket',message:'close '+ev.code}))return;
   this.connectStage='closed';
   toast(this.label()+' の接続が切れました（'+(cls==='auth'?'キーか権限の問題':'設定の問題')+'・'+ev.code+'）。停止して、キーと設定を確かめてから開始し直してください。');
 };
@@ -10809,6 +10887,7 @@ SttLiveHost.prototype.reconnect=function(cls){
   this.reconnects=(this.reconnects||[]).filter(function(t){return now-t<60000;});
   if(this.reconnects.length>=3){
     dlog('stt','live-reconnect-give-up',this.tag({attempts:this.reconnects.length,errorClass:cls}));
+    if(this.lost(cls,{liveStage:'reconnect',message:'give-up'}))return;
     toast(label+' へ1分間に3回つなぎ直しましたが続きません。停止して開始し直してください。');return;
   }
   this.reconnects.push(now);sttLiveCount('reconnects');
@@ -10824,12 +10903,52 @@ SttLiveHost.prototype.reconnect=function(cls){
       dlog('stt','live-reconnected',self.tag({attempt:self.reconnects.length}));toast(label+' につなぎ直しました。',true);
     },function(err){
       if(err&&err.cancelled)return;
-      var c=err&&err.errorClass||(err&&(err.status===401||err.status===403)?'auth':err&&err.status===429?'rate':'transient');
+      var c=sttLiveErrorClass(err);
       dlog('stt','live-FAIL',self.tag({stage:(err&&err.liveStage)||'reconnect',err:String((err&&err.message)||err).slice(0,200),errorClass:c}));
       if(c==='transient'||c==='rate')self.reconnect(c);
-      else toast(label+' へつなぎ直せませんでした：'+realtimeEscape(String((err&&err.message)||err)));
+      else if(!self.lost(c,err))toast(label+' へつなぎ直せませんでした：'+realtimeEscape(String((err&&err.message)||err)));
     });
   },wait);
+};
+/* 自動フォールバックの次の会社。無ければ ''。
+   選んだ会社の auth・config では切り替えない（設定の誤りを隠さない・D-3）。予備で起きたときは次の予備へ進む。
+   キーの無い予備は飛ばす（記録は1回）。音声の入力そのものが止まったときは、どこへ切り替えても同じなので切り替えない。 */
+SttLiveHost.prototype.nextFallback=function(cls){
+  if(this.opts.fallback===false||cls==='input'||this.dead||!S.running||this.session!==sessionGen)return '';
+  if(this.provider===this.plan[0]&&cls!=='rate'&&cls!=='transient')return '';
+  for(var i=this.plan.indexOf(this.provider)+1;i<this.plan.length;i++){
+    var p=this.plan[i];if(this.tried.indexOf(p)>=0)continue;
+    if(!sttLiveKey(p)){if(this.skipped.indexOf(p)<0){this.skipped.push(p);dlog('stt','live-fallback-skip',{provider:p,reason:'no-key'});}continue;}
+    return p;
+  }
+  return '';
+};
+/* 同じ MediaStream のまま、次の会社の Adapter へ差し替える。開いているカードはその時点の本文で閉じる。
+   設定は書き換えないので、次の「開始」は選んだ会社から始まる。 */
+SttLiveHost.prototype.switchTo=function(next,cls,err){
+  var from=this.provider;
+  this.closeCards('fallback');this.closeConnection();
+  this.provider=next;this.adapter=STT_LIVE_PROVIDERS[next];this.st={};this.tried.push(next);
+  this.reconnects=[];this.lastErrorClass='';this.stitched=null;this.segmentCompleted={};
+  this.cardClose=sttLiveCardClose(next);
+  sttLiveCount('fallbacks');STT_LIVE_STATS.switches.push(from+'→'+next);
+  dlog('stt','live-fallback',{from:from,to:next,model:this.model(),errorClass:cls,stage:(err&&err.liveStage)||null,
+    err:String((err&&err.message)||err||'').slice(0,200)});
+};
+/* 使っている途中で続けられなくなったとき。切り替えたら true。 */
+SttLiveHost.prototype.lost=function(cls,err){
+  var self=this,next=this.nextFallback(cls),from;if(!next)return false;
+  from=sttLiveName(this.provider);
+  toast('音声の送り先を '+from+' から '+sttLiveName(next)+' へ切り替えます（自動フォールバック）。');
+  this.switchTo(next,cls,err);
+  this.start().then(function(){
+    toast('自動フォールバックで '+sttLiveName(self.provider)+' に切り替えました（'+from+' は続けられませんでした）。',true);
+  },function(e){
+    if(e&&e.cancelled)return;
+    dlog('stt','live-FAIL',self.tag({stage:(e&&e.liveStage)||'fallback',err:String((e&&e.message)||e).slice(0,300)}));
+    toast(realtimeEscape(String((e&&e.message)||e))+'<br>停止して、キーと設定を確かめてから開始し直してください。');
+  });
+  return true;
 };
 /* 開いているカードをその時点の本文で閉じる。 */
 SttLiveHost.prototype.closeCards=function(reason){
@@ -10880,9 +10999,9 @@ var STT_LIVE_SPEECH_GAP_MS=400;
 /* Provider の区切りだけで閉じるとき（sttCardClose=provider）の安全弁。文字がこれだけ止まったら閉じる。 */
 var STT_LIVE_PROVIDER_IDLE_MS=6000;
 /* Provider が区間を閉じた理由。Duo の区切りと違い、Provider へ確定を送り返さない。 */
-var STT_LIVE_PROVIDER_REASONS=['server-completed','vad','manual','end-of-turn','semantic','finalize','reconnect'];
-var STT_LIVE_STATS={samples:{},counts:{}};
-function sttLiveStatsReset(){STT_LIVE_STATS={samples:{},counts:{}};}
+var STT_LIVE_PROVIDER_REASONS=['server-completed','vad','manual','end-of-turn','semantic','finalize','reconnect','fallback'];
+var STT_LIVE_STATS={samples:{},counts:{},switches:[]};
+function sttLiveStatsReset(){STT_LIVE_STATS={samples:{},counts:{},switches:[]};}
 function sttLiveSample(name,ms){
   if(typeof ms!=='number'||!isFinite(ms)||ms<0)return;
   var a=STT_LIVE_STATS.samples[name]||(STT_LIVE_STATS.samples[name]=[]);a.push(Math.round(ms));if(a.length>2000)a.shift();
@@ -10977,7 +11096,14 @@ var STT_LIVE_PANELS=[
     {prop:'sttCardClose',label:'カードを閉じる合図',
      help:'「Provider の区切りだけ」は ElevenLabs（無音で確定）・AssemblyAI・Soniox で効き、文字が6秒止まるか30秒たつと安全のため閉じます。gpt-live では「早いほう」と同じです。'},
     {prop:'sttChunkMs',label:'送る音声の1回の長さ',only:['elevenlabs','assemblyai','soniox'],
-     help:'短いほど早く届き、通信の回数が増えます。'}]}
+     help:'短いほど早く届き、通信の回数が増えます。'},
+    {prop:'sttAutoFallback',label:'自動フォールバック',
+     help:'ON にすると、選んだ会社へ開始時につながらないときや、つなぎ直しても続かないとき（1分に3回まで）に、下の予備の順で別の会社へ切り替えて認識を続けます。音声の送り先の会社が変わり、その会社の料金がかかります。キーや設定の誤りでは切り替えません。'},
+    {prop:'sttFallback1',label:'予備1',when:sttFallbackOn},
+    {prop:'sttFallback2',label:'予備2',when:sttFallbackOn},
+    {prop:'sttFallback3',label:'予備3',when:sttFallbackOn,
+     help:'今選んでいる会社と同じもの、キーの無いものは飛ばします。キーは、⚙→音声でその会社を選んで入力すると会社ごとに覚えます（OpenAI は翻訳の OpenAI のキーも使えます）。切り替えは「停止」まで続き、次の「開始」は選んだ会社から始めます。'},
+    {info:'sttFallbackOrder',when:sttFallbackOn}]}
 ];
 function sttLiveOptionsHtml(prop){
   var c=STT_LIVE_CHOICES[prop];
@@ -10985,6 +11111,7 @@ function sttLiveOptionsHtml(prop){
 }
 function sttLiveRowHtml(r){
   var html;
+  if(r.info)return '<p id="'+r.info+'"></p>';
   if(r.combo)html='<label>'+realtimeEscape(r.label)+' <select id="'+r.combo+'">'
     +r.presets.map(function(p,i){return '<option value="'+p[0]+'">'+realtimeEscape(p[1]+(i===0?'（既定）':''))+'</option>';}).join('')
     +'<option value="custom">個別に選ぶ</option></select></label>';
@@ -10996,6 +11123,8 @@ function sttLiveInstall(){
   var anchor=$('fourOField');if(!anchor||$('sttLivePanel'))return;
   /* panel-form は 設定UI設計指針.md §4。素の <p> と <label> を本文11.5pxで出すために要る。 */
   var box=document.createElement('details');box.className='adv panel-form';box.id='sttLivePanel';box.style.display='none';
+  /* キーは別の欄で変わるので、開いたときにも切り替えの順を出し直す。 */
+  box.addEventListener('toggle',function(){if(box.open)sttLiveSettingsUI();});
   var html='<summary id="sttLiveSummary">ストリーミング認識の設定</summary>';
   STT_LIVE_PANELS.forEach(function(p){
     var main=p.rows.filter(function(r){return !r.adv;}),adv=p.rows.filter(function(r){return r.adv;});
@@ -11015,6 +11144,7 @@ function sttLiveInstall(){
       });
       return;
     }
+    if(r.info)return;
     var spec=CONFIG_BY_PROP[r.prop],el=spec&&$(spec.el);if(!el)return;
     el.value=CFG[r.prop];simple(spec);
     /* simple() の onchange が先に CFG を更新する。ここでは表示と記録だけ。 */
@@ -11031,7 +11161,8 @@ function sttLiveSettingsUI(){
   STT_LIVE_PANELS.forEach(function(p){
     var el=$('sttLive_'+p.provider);if(el)el.style.display=(p.provider===id||(id&&p.provider==='common'))?'':'none';
     p.rows.forEach(function(r){
-      var row=$('sttLiveRow_'+(r.prop||r.combo));if(row&&r.only)row.style.display=r.only.indexOf(id)>=0?'':'none';
+      var row=r.info?$(r.info):$('sttLiveRow_'+(r.prop||r.combo));
+      if(row&&(r.only||r.when))row.style.display=(!r.only||r.only.indexOf(id)>=0)&&(!r.when||r.when())?'':'none';
       if(r.combo&&$(r.combo)){
         var hit=r.presets.filter(function(x){return Object.keys(x[2]).every(function(k){return String(CFG[k])===x[2][k];});})[0];
         $(r.combo).value=hit?hit[0]:'custom';
@@ -11039,6 +11170,10 @@ function sttLiveSettingsUI(){
     });
   });
   if(!id)return;
+  var order=$('sttFallbackOrder');
+  if(order)order.textContent='切り替えの順：'+sttFallbackPlan(id).map(function(p,i){
+    return sttLiveName(p)+(i===0?'（選択中）':sttLiveKey(p)?'':'（キーが無いので飛ばす）');}).join(' → ')
+    +(sttFallbackPlan(id).length<2?'（予備が選ばれていません）':'');
   var a=STT_LIVE_PROVIDERS[id],perf=a.performance(),keys=Object.keys(perf);
   $('sttLiveSummary').textContent='ストリーミング認識の設定（'+(id==='openai'?'':a.label+'：')
     +keys.slice(0,2).map(function(k){return k+' '+perf[k];}).join(' / ')+(keys.length>2?' …':'')+'）';
@@ -11564,14 +11699,15 @@ function startAll(){
           })
       );
     } else if (isStreamingStt()) {
+      var micHost=null;
       jobs.push(
         ensureMic().then(function(st){
           if(!captureCurrent(st,false))return;
           var seat=ms.length>1?null:ms[0];
-          var live=new SttLiveHost(sttLiveProviderId(),seat,st,{isMic:true,ownsStream:false});
-          engines.push(live);
-          return live.start();
-        }).then(function(){toast(sttLiveMsg('mic'),true);})
+          micHost=new SttLiveHost(sttLiveProviderId(),seat,st,{isMic:true,ownsStream:false});
+          engines.push(micHost);
+          return micHost.start();
+        }).then(function(){toast(sttLiveMsg('mic',micHost)+sttFallbackNotice(),true);})
           .catch(function(err){
             if(!S.running||sessionGen!==startGen)return;
             if(err&&err.cancelled)return;
@@ -11634,7 +11770,7 @@ function startAll(){
         if(CFG.sttProvider==='webspeech'){eng=new WebSpeechTrackEngine(dispSeat,tr,{ownsStream:true,stream:st});engines.push(eng);eng.start();}
         else if(isStreamingStt()){
           eng=new SttLiveHost(sttLiveProviderId(),dispSeat,st,{isMic:false,ownsStream:true});engines.push(eng);
-          return eng.start().then(function(){renderAudioRouteWarning();toast(sttLiveMsg('vb'),true);});
+          return eng.start().then(function(){renderAudioRouteWarning();toast(sttLiveMsg('vb',eng)+sttFallbackNotice(),true);});
         }
         else{eng=new StreamEngine(dispSeat,st,{isMic:false,meter:false,ownsStream:true});engines.push(eng);eng.start();}
         renderAudioRouteWarning();
@@ -11653,7 +11789,7 @@ function startAll(){
         var eng;
         if(isStreamingStt()){
           eng=new SttLiveHost(sttLiveProviderId(),dispSeat,info.stream,{isMic:false,ownsStream:info.ownsStream});
-          engines.push(eng);return eng.start().then(function(){toast(sttLiveMsg('display'),true);});
+          engines.push(eng);return eng.start().then(function(){toast(sttLiveMsg('display',eng)+sttFallbackNotice(),true);});
         }
         eng=new StreamEngine(dispSeat,info.stream,{isMic:false,meter:false,ownsStream:info.ownsStream});
         engines.push(eng);eng.start();toast('共有音声を外部STT APIへ送信します',true);
@@ -13925,6 +14061,7 @@ var DIAG_ROWS = [
   {section:"settings",order:5,label:'有効なSTT通信方式',value:function(ctx){ return diagSttTransport(); }},
   {section:"settings",order:6,label:'gpt-live発話確定',value:function(ctx){ return isStreamingStt() ? 'カードを閉じる合図 '+sttLiveCardClose(sttLiveProviderId())+' / '+ (segEnabled()?'逐次部分翻訳＋文脈・無音・文字停止でカード確定／TTS待ちとは独立':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）') : '(未使用)'; }},
   {section:"settings",order:6.1,label:'ストリーミング認識の設定',value:function(ctx){ var o=sttLiveOptions();return o?o.provider+' / '+o.model+' / '+JSON.stringify(o.performance):'(未使用)'; }},
+  {section:"settings",order:6.15,label:'自動フォールバック',value:function(ctx){ return sttLiveFallbackSummary(); }},
   {section:"settings",order:6.2,label:'ストリーミング認識の計測',value:function(ctx){ return (STT_LIVE_STATS.counts.cards||isStreamingStt())?sttLiveStatsSummary():'(未使用)'; }},
   {section:"settings",order:7,label:'共有音声STT経路',value:function(ctx){ return CFG.displaySttRoute+' → '+effectiveDisplaySttRoute(); }},
   {section:"settings",order:8,label:'共有Track直接Web Speech候補',value:function(ctx){ return overlayCapabilities().speechTrackInput; }},

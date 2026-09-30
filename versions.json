@@ -352,10 +352,19 @@
     "v1.51.0": {
       "build": "20260929-v1510-stt-multi-provider",
       "extension": "1.4.52",
+      "commit": "8cdc341",
       "indexHtmlSha256": "6142bdc1060c3fcc8058b6d163efd0e4068ee5ea9c92c86fb4ea0e17b4e6203a",
       "extensionAppJsSha256": "1e84a9d86c075073a38d0adb32f7917773e780eba76fa86e9c564beb7b098703",
       "extensionZipSha256": "017f87da9f6befa5781ea852f353634a20799007b89fc07c2d1aa8d176b9e699",
       "summary": "ElevenLabs Scribe v2 Realtime・AssemblyAI Universal-3.5 Pro Realtime・Soniox v5 Realtime のストリーミング認識を足した（STTマルチプロバイダ開発仕様書 Phase 2〜4 と Phase 5 の一部）。受け取った音を AudioWorklet で PCM16・16kHz にして WebSocket で送り、接続ごとに各社の一時資格情報を作る（翻訳のキーは借りない）。性能設定はすべてプルダウン（既定は公式の既定値）。カードを閉じる合図（早いほう／Provider だけ／Duo だけ）、会社ごとのエラー分類と1分3回までの再接続。gpt-live の挙動は v1.49.39 と同じまま"
+    },
+    "v1.52.0": {
+      "build": "20260930-v1520-stt-auto-fallback",
+      "extension": "1.4.53",
+      "indexHtmlSha256": "9ad5a9172c8293affc3559d8330c5f35693f534931462e6bfc67904aab33008e",
+      "extensionAppJsSha256": "1fd1fb1678d7de37ff85c820c52e28a67ad61d023efb0bf51862e65e93a88dff",
+      "extensionZipSha256": "d9fadd86b9576dd47152fc524ebe8b4ebfada721d0ceba631272f8750a44cd5e",
+      "summary": "ストリーミング認識に自動フォールバックを足した（STTマルチプロバイダ開発仕様書 §14.3、D-3 追記）。ON／OFF の選択式で既定は OFF。ON のときは利用者が先に決めた予備1〜3の順で、選んだ会社へ開始時につながらないとき・再接続を1分に3回使い切ったとき・gpt-live の WebRTC が failed になったときに、同じ音声を次の会社へ切り替える。選んだ会社のキー・設定の誤りでは切り替えない。予備はその会社のキーと既定のモデルだけを使い、予備の OpenAI にほかの会社のキーを送らない。OFF のときの挙動は v1.51.0 と同じ"
     }
   }
 }

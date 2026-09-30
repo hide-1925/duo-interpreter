@@ -18,7 +18,7 @@ function region(from,to){
   assert.ok(a>=0&&b>a,'region not found: '+from+' .. '+to);
   return lines.slice(a,b).join('\n');
 }
-const CODE=[block('var STT_LIVE_CHOICES={'),region('function isLiveTranscribe(){','/* ── 設定欄（開発仕様書 §10）'),
+const CODE=[lines.find(l=>l.startsWith('var STT_FALLBACK_TARGETS=')),block('var STT_LIVE_CHOICES={'),region('function isLiveTranscribe(){','/* ── 設定欄（開発仕様書 §10）'),
   block('function knownSecrets('),block('function redact(')].join('\n');
 const LONG='long-lived-account-key-0123456789';
 function world(fetchImpl){

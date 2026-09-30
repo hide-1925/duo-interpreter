@@ -28,7 +28,7 @@ const SHARED=[line('var SEG_PERIOD_WAIT_MS'),block('function segPeriodHold('),bl
   block('function segSemanticTail(text,lang){'),block('function segSemanticDecision(input){'),
   block('function segInit('),block('function segJoin('),block('function segReceiveDisplay('),
   block('function segUpdate('),block('function segDraft('),block('function segCheck(')].join('\n');
-const NEW=[block('var STT_LIVE_CHOICES={'),region('function isLiveTranscribe(){','/* ── 設定欄（開発仕様書 §10）'),
+const NEW=[lines.find(l=>l.startsWith('var STT_FALLBACK_TARGETS=')),block('var STT_LIVE_CHOICES={'),region('function isLiveTranscribe(){','/* ── 設定欄（開発仕様書 §10）'),
   region('function segLiveClose(','function segFinalizeEntry(')].join('\n');
 
 function world(segmentMode,impl){

@@ -20,7 +20,7 @@ function region(from,to){
   return lines.slice(a,b).join('\n');
 }
 /* sttLiveChoice から STT_LIVE_PROVIDERS の終わりまで（Host は入れない）。 */
-const CODE=[block('var STT_LIVE_CHOICES={'),region('function sttLiveChoice(prop,raw){','/* ストリーミング型 STT のカード・区切り・計測・停止')].join('\n');
+const CODE=[lines.find(l=>l.startsWith('var STT_FALLBACK_TARGETS=')),block('var STT_LIVE_CHOICES={'),region('function sttLiveChoice(prop,raw){','/* ストリーミング型 STT のカード・区切り・計測・停止')].join('\n');
 function world(cfg){
   const ctx={console,String,Number,Object,JSON,Math,Array,Error,isFinite,RegExp,Float32Array,Int16Array,Uint8Array,URLSearchParams,
     btoa:(s)=>Buffer.from(s,'binary').toString('base64'),
@@ -121,7 +121,10 @@ test('assemblyai: mode is sent, overrides only when chosen, language_codes only 
   assert.equal(u.origin+u.pathname,'wss://streaming.assemblyai.com/v3/ws');
   assert.equal(u.searchParams.get('token'),'tok');assert.equal(u.searchParams.get('language_codes'),'["ja"]');
   assert.equal(u.searchParams.get('continuous_partials'),'true');
-  c.CFG.sttModel='universal-3-6-pro';assert.ok(!('language_codes' in J(a.options(host))));
+  c.CFG.sttModel='universal-3-6-pro';c.CFG.sttProvider='assemblyai';assert.ok(!('language_codes' in J(a.options(host))));
+  /* モデル名の欄は選んでいる会社のもの。自動フォールバックの予備として使うときは、その会社の既定のモデル（§14.3）。 */
+  c.CFG.sttProvider='soniox';assert.equal(J(a.options(host)).speech_model,'universal-3-5-pro');
+  assert.equal(c.STT_LIVE_PROVIDERS.elevenlabs.model(),'scribe_v2_realtime');
   assert.equal(a.bye(),'{"type":"Terminate"}');
   const pcm=new Int16Array([5,6,7]);const f=a.frame(pcm);assert.equal(f.byteLength,6);assert.deepEqual([...new Int16Array(f)],[5,6,7]);
 });
@@ -154,7 +157,7 @@ test('soniox: the config message carries the temporary key and the v5 endpoint c
   assert.deepEqual(o.context,{terms:['control valve','MSV','A very long technical term that exceeds'],text:'Steam turbine meeting'});
   const hello=JSON.parse(a.hello(o,{secret:'temp-key'}));
   assert.equal(hello.api_key,'temp-key');assert.equal(a.url(o,{secret:'temp-key'}),'wss://stt-rt.soniox.com/transcribe-websocket');
-  c.CFG.sttModel='stt-rt-v3';const v3=J(a.options(host));
+  c.CFG.sttModel='stt-rt-v3';c.CFG.sttProvider='soniox';const v3=J(a.options(host));
   assert.ok(!('endpoint_latency_adjustment_level' in v3)&&!('endpoint_sensitivity' in v3),'v5-only controls are not sent to other models');
   assert.equal(a.bye(),'');
 });
