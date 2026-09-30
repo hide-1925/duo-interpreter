@@ -151,6 +151,39 @@ const tests=[];
     assert.match(fb.msg,/Soniox につながらないため、自動フォールバックで AssemblyAI に切り替えました/);
     assert.match(fb.diag,/切替 soniox→assemblyai$/);assert.equal(fb.last,'{"type":"Terminate"}');
     tests.push('fallback ON: the same audio moves to the first backup, cards come from it, and stop ends it');
+
+    /* 発行経路（§8.3）。relay は内容スクリプトの代わりをページ内に置き、broker は偽の Broker。
+       どちらも、発行元へのページからの fetch が無いこと、WebSocket に返ってきた一時キーが載ることを見る。 */
+    const route=await page.evaluate(async()=>{
+      const out={};CFG.sttAutoFallback='off';
+      window.__relaySeen=[];
+      window.addEventListener('duo-stt-token-request',(e)=>{const d=JSON.parse(e.detail);window.__relaySeen.push(d.request);
+        window.dispatchEvent(new CustomEvent('duo-turn-reply',{detail:JSON.stringify({id:d.id,ok:true,status:200,text:'{"token":"relay-tok-000555"}'})}));});
+      window.dispatchEvent(new CustomEvent('duo-turn-bridge',{detail:JSON.stringify({ready:true,stt:true})}));
+      CFG.sttProvider='assemblyai';CFG.sttModel='universal-3-5-pro';CFG.sttCredentialRoute='relay';
+      window.__ws=[];window.__fetch=[];
+      let h=new SttLiveHost('assemblyai','A',window.__stream,{isMic:true});
+      let started=h.start();await new Promise(r=>setTimeout(r,80));
+      let ws=window.__ws[0];ws.emit({type:'Begin',id:'s3',expires_at:0});await started;
+      out.relay={fetch:window.__fetch.map(f=>f.url),seen:window.__relaySeen,token:new URL(ws.url).searchParams.get('token'),diag:sttCredentialSummary()};
+      h.stop();
+      CFG.sttProvider='soniox';CFG.sttModel='stt-rt-v5';CFG.sttCredentialRoute='broker';CFG.sttBrokerUrl='https://broker.example.com/duo';
+      const saved=KEYS['stt:soniox'];delete KEYS['stt:soniox'];
+      window.__ws=[];window.__fetch=[];
+      h=new SttLiveHost('soniox','A',window.__stream,{isMic:true});
+      await h.start();await new Promise(r=>setTimeout(r,300));ws=window.__ws[0];
+      out.broker={fetch:window.__fetch.map(f=>({url:f.url,method:f.method,headers:f.headers})),hello:JSON.parse(ws.sent[0]),
+        frames:ws.sent.filter(x=>x instanceof ArrayBuffer).length};
+      h.stop();KEYS['stt:soniox']=saved;CFG.sttCredentialRoute='direct';CFG.sttBrokerUrl='';
+      return out;
+    });
+    assert.deepEqual(route.relay.fetch,[],'relay: the page itself does not call the issuer');
+    assert.deepEqual(route.relay.seen,[{provider:'assemblyai',key:'account-key-abcdef'}]);
+    assert.equal(route.relay.token,'relay-tok-000555');assert.equal(route.relay.diag,'relay（拡張：接続済み）');
+    tests.push('relay: the key goes to the extension bridge, and the WebSocket uses the temporary key it returns');
+    assert.deepEqual(route.broker.fetch,[{url:'https://broker.example.com/duo/token/stt/soniox',method:'POST',headers:{'Content-Type':'application/json'}}]);
+    assert.equal(route.broker.hello.api_key,'tmp-tok-123456','the broker contract field (token), not Soniox\'s own api_key');assert.ok(route.broker.frames>=1);
+    tests.push('broker: with no Soniox key on the page, the broker token opens the stream and audio flows');
     assert.deepEqual(pageErrors,[],'no page errors');tests.push('no page errors');
     console.log(JSON.stringify({passed:tests.length,tests},null,2));
   }finally{

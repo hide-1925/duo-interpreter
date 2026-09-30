@@ -227,7 +227,8 @@ function relayHarness(reply){
 }
 test('the content script announces the relay the moment it attaches',()=>{
   const h=relayHarness();
-  assert.deepEqual(h.grab('duo-turn-bridge'),[{ready:true}],
+  /* stt:true は、ストリーミング認識の一時キーの中継（stt-relay.js）にも対応していること。 */
+  assert.deepEqual(h.grab('duo-turn-bridge'),[{ready:true,stt:true}],
     'the page cannot see chrome.* , so it can only learn this by being told');
 });
 test('the page can ask whether the relay is there',()=>{

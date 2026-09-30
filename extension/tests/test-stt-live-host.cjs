@@ -367,6 +367,12 @@ test('fallback ON: gpt-live whose WebRTC connection fails mid-session moves on; 
   f=fbWorld({primary:'openai'});h=f.host();await h.start();
   assert.equal(h.lost('transient',{liveStage:'peer'}),false);assert.equal(h.provider,'openai');
 });
+test('fallback ON with a Token Broker: backups need no key on the page and are not skipped',async()=>{
+  const f=fbWorld({cfg:Object.assign({sttCredentialRoute:'broker',sttBrokerUrl:'https://broker.example.com'},ON),keys:{},result:{soniox:{status:503}}}),h=f.host();
+  await h.start();
+  assert.equal(h.provider,'assemblyai');assert.deepEqual(J(f.calls.filter(x=>x[1]!=='close')),[['soniox',''],['assemblyai','']]);
+  assert.equal(f.logs().filter(l=>l.m==='live-fallback-skip').length,0);
+});
 test('diagnostics: the order, missing keys and the switches of this session',async()=>{
   const f=fbWorld({cfg:ON,keys:{'stt:soniox':'soniox-account-key','stt:assemblyai':'aai-account-key'},result:{soniox:{status:503}}});
   f.c.isLiveTranscribe=()=>false;

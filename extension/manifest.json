@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.53",
-  "version_name": "1.4.53 HTML v1.52.0 と対。ストリーミング認識の自動フォールバックを ON／OFF と予備1〜3の順で選べるようにする",
+  "version": "1.4.54",
+  "version_name": "1.4.54 HTML v1.53.0 と対。ストリーミング認識の一時キーの発行経路に「拡張が中継」と「Token Broker」を足す",
   "optional_host_permissions": [
     "https://*/*"
   ],

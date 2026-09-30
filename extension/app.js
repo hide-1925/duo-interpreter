@@ -801,8 +801,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.52.0';
-var APP_BUILD = '20260930-v1520-stt-auto-fallback';
+var APP_VERSION = 'v1.53.0';
+var APP_BUILD = '20260930-v1530-stt-credential-routes';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -938,7 +938,10 @@ var STT_LIVE_CHOICES={
   sttAutoFallback:{def:'off',values:[['off','OFF — 止めて知らせる'],['on','ON — 予備の順に切り替える']]},
   sttFallback1:{def:'',values:STT_FALLBACK_TARGETS},
   sttFallback2:{def:'',values:STT_FALLBACK_TARGETS},
-  sttFallback3:{def:'',values:STT_FALLBACK_TARGETS}
+  sttFallback3:{def:'',values:STT_FALLBACK_TARGETS},
+  /* 一時資格情報の発行経路（§8.3）。既定は今までどおり、このページから発行元へ直接頼む。 */
+  sttCredentialRoute:{def:'direct',values:[['direct','直接 — このページから各社の発行元へ'],['relay','拡張が中継 — Chrome／Edge 拡張が発行だけを中継'],
+    ['broker','Token Broker — 組織のサーバーが発行']]}
 };
 var TTS_MODELS = [
   {id:'gpt-4o-mini-tts', note:'自然・安価（おすすめ）'},
@@ -1057,6 +1060,8 @@ var CONFIG_SCHEMA = [
   { prop:"sttAutoFallback", key:'di.sttAutoFallback', embed:'sttAutoFallback', def:STT_LIVE_CHOICES.sttAutoFallback.def, coerce:function(raw){ return sttLiveChoice('sttAutoFallback',raw); }, portable:true, el:"sttAutoFallback" },
   { prop:"sttFallback1", key:'di.sttFallback1', embed:'sttFallback1', def:STT_LIVE_CHOICES.sttFallback1.def, coerce:function(raw){ return sttLiveChoice('sttFallback1',raw); }, portable:true, el:"sttFallback1" },
   { prop:"sttFallback2", key:'di.sttFallback2', embed:'sttFallback2', def:STT_LIVE_CHOICES.sttFallback2.def, coerce:function(raw){ return sttLiveChoice('sttFallback2',raw); }, portable:true, el:"sttFallback2" },
+  { prop:"sttCredentialRoute", key:'di.sttCredentialRoute', embed:'sttCredentialRoute', def:STT_LIVE_CHOICES.sttCredentialRoute.def, coerce:function(raw){ return sttLiveChoice('sttCredentialRoute',raw); }, portable:true, el:"sttCredentialRoute" },
+  { prop:"sttBrokerUrl", key:'di.sttBrokerUrl', embed:'sttBrokerUrl', def:'', coerce:function(raw){ return sttBrokerNormalize(raw); }, portable:true, el:"sttBrokerUrl", bind:'custom' },
   { prop:"sttFallback3", key:'di.sttFallback3', embed:'sttFallback3', def:STT_LIVE_CHOICES.sttFallback3.def, coerce:function(raw){ return sttLiveChoice('sttFallback3',raw); }, portable:true, el:"sttFallback3" },
   { prop:"segmentMode", key:'di.segmentMode', embed:'segmentMode', def:'balanced', portable:true, el:"segmentMode", bind:'custom' },
   { prop:"segmentBoundary", key:'di.segmentBoundary', embed:'segmentBoundary', def:'semantic', portable:true, el:"segmentBoundary", bind:'custom' },
@@ -3283,11 +3288,21 @@ function verifySttKey(){
       return Promise.resolve('ブラウザ内蔵の音声認識はAPIキー不要です。');
     if (prov !== 'openai' && STT_LIVE_PROVIDERS[prov]){
       /* 一時キーの発行が通ること＝キーの有効性と、ブラウザから発行元へ届くか（CORS）。音声は送らない。 */
-      var live=STT_LIVE_PROVIDERS[prov],liveKey=sttLiveKey(prov),liveHost=new SttLiveHost(prov,S.listenSeat||'A',null,{});
-      if(!liveKey)return Promise.reject(new Error(prov==='elevenlabs'?'APIキーが未入力です（音声認識欄か、読み上げ欄の ElevenLabs のキー）':'APIキーが未入力です（'+live.label+' のキーを音声認識欄に入れてください）'));
+      var live=STT_LIVE_PROVIDERS[prov],liveKey=sttLiveKey(prov),liveHost=new SttLiveHost(prov,S.listenSeat||'A',null,{}),route=sttCredentialRoute(prov);
+      if(!liveKey&&route!=='broker')return Promise.reject(new Error(prov==='elevenlabs'?'APIキーが未入力です（音声認識欄か、読み上げ欄の ElevenLabs のキー）':'APIキーが未入力です（'+live.label+' のキーを音声認識欄に入れてください）'));
       liveHost.startedAt=Date.now();
-      return live.credential(liveHost,liveKey,live.options(liveHost)).then(function(){
-        return 'このキーで '+live.label+' の一時キーを発行できました。この画面から接続できます。';
+      /* 選んでいる発行経路（§8.3）で試す。relay なら拡張の中継、broker なら Token Broker が通るかも分かる。 */
+      return liveHost.credential(liveKey,live.options(liveHost)).then(function(){
+        return route==='broker'?'Token Broker から '+live.label+' の一時キーを受け取れました。この画面から接続できます。'
+          :route==='relay'?'拡張の中継で、このキーから '+live.label+' の一時キーを発行できました。この画面から接続できます。'
+          :'このキーで '+live.label+' の一時キーを発行できました。この画面から接続できます。';
+      });
+    }
+    /* gpt-live を Token Broker で使うときは、ページに OpenAI のキーが無くてもよい。Broker が発行できるかを試す。 */
+    if (prov === 'openai' && isLiveTranscribe() && sttCredentialRoute('openai') === 'broker'){
+      var bh=new SttLiveHost('openai',S.listenSeat||'A',null,{});bh.startedAt=Date.now();
+      return bh.brokerCredential({model:'gpt-live-transcribe',session:STT_LIVE_PROVIDERS.openai.session(bh)}).then(function(){
+        return 'Token Broker から gpt-live-transcribe のクライアントシークレットを受け取れました。この画面から接続できます。';
       });
     }
     var key = sttKey();
@@ -9999,6 +10014,32 @@ function sttLiveModel(id,def){
 }
 /* トーストに出す名前。OpenAI はモデルまで書く（OpenAI には録音ファイル型の音声認識もあるため）。 */
 function sttLiveName(id){return id==='openai'?'OpenAI gpt-live':(STT_LIVE_PROVIDERS[id]?STT_LIVE_PROVIDERS[id].label:String(id));}
+/* ── 一時資格情報の発行経路（§8.3・§8.4）──────────────────────────────
+   direct：このページが各社の発行元へ直接頼む（既定・今まで）。
+   relay：Chrome／Edge 拡張の service worker が、各社の固定の発行元へ発行だけを中継する（stt-relay.js）。
+          HTML 版（GitHub Pages）で発行元が CORS を許さないとき用。ページが渡すのは会社名とキーだけ。
+   broker：利用者が指定した HTTPS の Token Broker が発行する。ページは各社のキーを持たない。
+   どの経路でも、音声の WebSocket はこのページから各社へ直接つなぎ、使うのは一時資格情報だけ。 */
+/* Token Broker の URL。HTTPS だけで、認証情報・クエリ・フラグメントを含むものは受け付けない（turn-proxy.js と同じ規則）。 */
+function sttBrokerNormalize(raw){
+  var v=String(raw==null?'':raw).trim(),u;if(!v)return '';
+  try{u=new URL(v);}catch(e){return '';}
+  if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash)return '';
+  return (u.origin+u.pathname).replace(/\/+$/,'');
+}
+/* その会社で使う経路。OpenAI（gpt-live）はブラウザからの発行を受け付け、SDP の交換もページから直接するので、中継は使わない。 */
+function sttCredentialRoute(provider){
+  var r=sttLiveChoice('sttCredentialRoute',CFG.sttCredentialRoute);
+  return r==='relay'&&provider==='openai'?'direct':r;
+}
+/* その会社へつなぐ用意があるか。Token Broker のときは、ページに各社のキーが要らない。 */
+function sttLiveReady(provider){return sttCredentialRoute(provider)==='broker'||!!sttLiveKey(provider);}
+/* 拡張の中継の返事（{status,text}）を fetch の応答の形にする。後の処理（状態・文言・JSON）を直接と同じにするため。 */
+function sttRelayResponse(r){
+  var text=String(r&&r.text||''),status=Number(r&&r.status)||0;
+  return {ok:status>=200&&status<300,status:status,headers:{get:function(){return '';}},
+    text:function(){return Promise.resolve(text);},json:function(){return Promise.resolve().then(function(){return JSON.parse(text);});}};
+}
 /* ── 自動フォールバック（§14.3・D-3）────────────────────────────────
    既定 OFF。ON のときは、選んだ会社の次に、予備1→2→3 の順で切り替える。順は利用者が先に決めておく。 */
 var STT_FALLBACK_SLOTS=['sttFallback1','sttFallback2','sttFallback3'];
@@ -10023,16 +10064,24 @@ function sttLiveErrorClass(err){
 /* 開始のトーストに足す注意。ON なのに使える予備が無いこと、キーの無い予備を飛ばすことを知らせる。 */
 function sttFallbackNotice(){
   var id=sttLiveProviderId();if(!id||!sttFallbackOn())return '';
-  var rest=sttFallbackPlan(id).slice(1),miss=rest.filter(function(p){return !sttLiveKey(p);});
+  var rest=sttFallbackPlan(id).slice(1),miss=rest.filter(function(p){return !sttLiveReady(p);});
   if(!rest.length)return '<br>自動フォールバックは ON ですが、予備が選ばれていません。';
   if(miss.length)return '<br>自動フォールバックの予備のうち '+miss.map(sttLiveName).join('・')+' はキーが無いので飛ばします。';
   return '';
+}
+/* 診断の1行。発行経路と、relay なら拡張とつながっているか、broker なら接続先のオリジン（パスは書かない）。 */
+function sttCredentialSummary(){
+  var id=sttLiveProviderId();if(!id)return '(未使用)';
+  var r=sttCredentialRoute(id);
+  if(r==='relay')return 'relay（拡張：'+(TurnBridge.mode()==='runtime'?'拡張の画面':TurnBridge.mode()==='event'?(TurnBridge.stt?'接続済み':'中継に未対応'):'未接続')+'）';
+  if(r==='broker'){var b=sttBrokerNormalize(CFG.sttBrokerUrl);return 'broker（'+(b?new URL(b).origin:'URL 未設定')+'）';}
+  return 'direct';
 }
 /* 診断の1行。順（キーの無いものに印）と、この回に切り替えた記録。 */
 function sttLiveFallbackSummary(){
   var id=sttLiveProviderId();if(!id)return '(未使用)';
   if(!sttFallbackOn())return 'OFF';
-  return 'ON / 順 '+sttFallbackPlan(id).map(function(p){return p+(sttLiveKey(p)?'':'(キーなし)');}).join(' → ')
+  return 'ON / 順 '+sttFallbackPlan(id).map(function(p){return p+(sttLiveReady(p)?'':'(キーなし)');}).join(' → ')
     +' / 切替 '+(STT_LIVE_STATS.switches.length?STT_LIVE_STATS.switches.join(', '):'なし');
 }
 /* カードを閉じる合図（§6.3）。provider は Provider が発話ごとに区切りを出すときだけ選べる。
@@ -10206,6 +10255,10 @@ var STT_LIVE_PROVIDERS={
     connect:function(host,key,track){
       var self=this,sessionCfg=this.session(host),tr=sessionCfg.audio.input.transcription;
       dlog('stt','live-connect',{model:'gpt-live-transcribe',seat:host.seat||'auto',transport:'webrtc',languages:tr.languages||(tr.language?[tr.language]:[]),trackState:track.readyState,trackMuted:!!track.muted});
+      /* Token Broker（§8.4）。session 設定ごと Broker へ渡し、返ってきたクライアントシークレットで SDP を交換する。 */
+      if(sttCredentialRoute('openai')==='broker')return host.brokerCredential({model:'gpt-live-transcribe',session:sessionCfg}).then(function(c){
+        dlog('stt','live-secret-ok',{ms:Date.now()-host.startedAt,route:'broker'});return self.peer(host,c.secret,track);
+      });
       return host.request('secret','https://api.openai.com/v1/realtime/client_secrets',{
         method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({session:sessionCfg})
       },12000,true).then(function(j){
@@ -10329,9 +10382,9 @@ var STT_LIVE_PROVIDERS={
       return o;
     },
     init:function(st,opts){st.manual=opts.commit_strategy==='manual';},
-    credential:function(host,key){
+    credential:function(host,key,opts,route){
       return host.request('token','https://api.elevenlabs.io/v1/single-use-token/realtime_scribe',
-        {method:'POST',headers:{'xi-api-key':key}},12000,true).then(function(j){
+        Object.assign({method:'POST',headers:{'xi-api-key':key}},route),12000,true).then(function(j){
         if(!j||!j.token)throw new Error('ElevenLabs の一時トークンを受け取れませんでした');return {secret:j.token};
       });
     },
@@ -10389,9 +10442,9 @@ var STT_LIVE_PROVIDERS={
       if(kw.length)o.keyterms_prompt=kw;
       return o;
     },
-    credential:function(host,key){
+    credential:function(host,key,opts,route){
       return host.request('token','https://streaming.assemblyai.com/v3/token?expires_in_seconds=60',
-        {method:'GET',headers:{Authorization:key}},12000,true).then(function(j){
+        Object.assign({method:'GET',headers:{Authorization:key}},route),12000,true).then(function(j){
         if(!j||!j.token)throw new Error('AssemblyAI の一時トークンを受け取れませんでした');return {secret:j.token};
       });
     },
@@ -10447,10 +10500,10 @@ var STT_LIVE_PROVIDERS={
       if(ctx.terms||ctx.text)o.context=ctx;
       return o;
     },
-    credential:function(host,key){
+    credential:function(host,key,opts,route){
       return host.request('token','https://api.soniox.com/v1/auth/temporary-api-key',
-        {method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},
-         body:JSON.stringify({usage_type:'transcribe_websocket',expires_in_seconds:60,single_use:true})},12000,true).then(function(j){
+        Object.assign({method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},
+         body:JSON.stringify({usage_type:'transcribe_websocket',expires_in_seconds:60,single_use:true})},route),12000,true).then(function(j){
         if(!j||!j.api_key)throw new Error('Soniox の一時キーを受け取れませんでした');return {secret:j.api_key};
       });
     },
@@ -10517,19 +10570,24 @@ SttLiveHost.prototype.cancelError=function(){
 SttLiveHost.prototype.clearAborter=function(ctl){
   var i=this.aborters.indexOf(ctl);if(i>=0)this.aborters.splice(i,1);
 };
+/* opts.via が 'relay' なら拡張の中継（URL・ヘッダ・本文は拡張の表で決まり、ここの値は送らない）、
+   'broker' なら Token Broker（応答の本文を文言に入れない）。どちらも状態・文言・中断の扱いは直接と同じ。 */
 SttLiveHost.prototype.request=function(stage,url,opts,timeoutMs,asJson){
-  var self=this,ctl=(typeof AbortController!=='undefined')?new AbortController():null,timer=null,label=this.label();
+  var self=this,ctl=(typeof AbortController!=='undefined')?new AbortController():null,timer=null,label=this.label(),via=opts.via||'',relay=opts.relay;
+  delete opts.via;delete opts.relay;
   this.connectStage=stage;if(ctl){opts.signal=ctl.signal;this.aborters.push(ctl);}
   if(ctl)timer=setTimeout(function(){try{ctl.abort();}catch(e){}},timeoutMs);
-  dlog('stt','live-'+stage+'-request',this.tag({timeoutMs:timeoutMs}));
-  return fetch(url,opts).then(function(r){
+  dlog('stt','live-'+stage+'-request',this.tag(via?{route:via,timeoutMs:timeoutMs}:{timeoutMs:timeoutMs}));
+  var sent=via==='relay'?TurnBridge.sttToken(relay,ctl?ctl.signal:null).then(sttRelayResponse):fetch(url,opts);
+  return sent.then(function(r){
     if(timer)clearTimeout(timer);if(ctl)self.clearAborter(ctl);
     var requestId='';try{requestId=r.headers.get('x-request-id')||'';}catch(e){}
     dlog('stt','live-'+stage+'-response',self.tag({status:r.status,ok:r.ok,ms:Date.now()-self.startedAt,requestId:requestId}));
     if(!r.ok)return r.text().then(function(t){
-      var e=new Error(label+' '+stage+'失敗 '+r.status+': '+String(t||'').slice(0,300));e.liveStage=stage;e.status=r.status;
+      var e=new Error(label+' '+stage+'失敗 '+r.status+(via==='broker'?'':': '+String(t||'').slice(0,300)));e.liveStage=stage;e.status=r.status;
       /* 届いたうえで断られた。キーの問題は CORS と別の文言にする（D-2 の判断材料）。 */
-      if(self.provider!=='openai'&&(r.status===401||r.status===403))e.message=label+' のキーが無効か、音声認識の権限がありません（HTTP '+r.status+'）';
+      if(via==='broker')e.message='Token Broker '+(r.status===401||r.status===403?'が '+label+' の一時キーの発行を断りました':'から '+label+' の一時キーを受け取れませんでした')+'（HTTP '+r.status+'）';
+      else if(self.provider!=='openai'&&(r.status===401||r.status===403))e.message=label+' のキーが無効か、音声認識の権限がありません（HTTP '+r.status+'）';
       throw e;
     });
     return asJson?r.json():r.text();
@@ -10540,10 +10598,16 @@ SttLiveHost.prototype.request=function(stage,url,opts,timeoutMs,asJson){
       var te=new Error(label+' '+stage+'が'+Math.round(timeoutMs/1000)+'秒でタイムアウトしました');te.liveStage=stage;throw te;
     }
     /* 応答を受け取れなかった（HTTP の状態が無い）。ブラウザからは CORS で読めないことがある。 */
+    if(via==='broker'&&err&&err.name==='TypeError'&&!err.status){
+      var be=new Error('ブラウザから Token Broker へ届きません（CORS の可能性。Broker が Duo のページのオリジンを許可しているか確かめてください）');
+      be.liveStage=stage;be.unreachable=true;throw be;
+    }
     if(self.provider!=='openai'&&err&&err.name==='TypeError'&&!err.status){
       var ce=new Error('ブラウザから '+label+' の'+(stage==='token'?'一時キー発行先':'接続先')+'へ届きません（CORS の可能性）。Chrome／Edge 拡張の画面から使うか、発行経路を変えてください');
       ce.liveStage=stage;ce.unreachable=true;throw ce;
     }
+    /* 拡張は届いたが、拡張からも発行元へ届かなかった（通信断など）。 */
+    if(via==='relay'&&err&&err.unreachable&&!err.needsBridge&&!err.errorClass)err.message='拡張の中継でも '+label+' の一時キー発行先へ届きません（'+err.message+'）';
     if(err&&!err.liveStage)err.liveStage=stage;throw err;
   });
 };
@@ -10577,7 +10641,7 @@ SttLiveHost.prototype.recover=function(err){
 };
 SttLiveHost.prototype.open=function(){
   var self=this,a=this.adapter,key=sttLiveKey(this.provider),e;
-  if(!key){e=new Error(a.label+'の音声認識用APIキーが未設定です');e.errorClass='config';return Promise.reject(e);}
+  if(!key&&sttCredentialRoute(this.provider)!=='broker'){e=new Error(a.label+'の音声認識用APIキーが未設定です');e.errorClass='config';return Promise.reject(e);}
   var track=this.stream&&this.stream.getAudioTracks&&this.stream.getAudioTracks()[0];
   if(!track||track.readyState!=='live'){e=new Error('有効な音声Trackがありません');e.errorClass='input';return Promise.reject(e);}
   this.startedAt=Date.now();this.dead=false;this.closing=false;
@@ -10776,14 +10840,32 @@ SttLiveHost.prototype.stop=function(){
   if(this.opts.ownsStream&&this.stream)try{this.stream.getTracks().forEach(function(t){t.stop();});}catch(e){}
   dlog('stt','live-stop',this.tag({model:this.model(),stage:this.connectStage}));
 };
+/* 一時資格情報（§8.3）。direct と relay は Adapter の発行（relay は同じ発行元へ拡張が中継）、broker は Token Broker。 */
+SttLiveHost.prototype.credential=function(key,opts){
+  var route=sttCredentialRoute(this.provider);
+  if(route==='broker')return this.brokerCredential({model:this.model()});
+  return this.adapter.credential(this,key,opts,route==='relay'?{via:'relay',relay:{provider:this.provider,key:key}}:null);
+};
+/* Token Broker の契約（§8.4）：POST {URL}/token/stt/{provider} → {"token":"…","expires_at":"…"}。
+   Cookie は送らない。Broker の応答の本文は記録にもエラーの文言にも入れない。利用者の認証（D-8）はまだ決めていない。 */
+SttLiveHost.prototype.brokerCredential=function(body){
+  var base=sttBrokerNormalize(CFG.sttBrokerUrl),e;
+  if(!base){e=new Error('Token Broker の URL が未設定か、使えない形です（HTTPS で、認証情報・クエリを含まない URL）');e.errorClass='config';e.liveStage='token';return Promise.reject(e);}
+  return this.request('token',base+'/token/stt/'+this.provider,{via:'broker',method:'POST',credentials:'omit',cache:'no-store',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},12000,true).then(function(j){
+    if(!j||typeof j.token!=='string'||!j.token){var x=new Error('Token Broker の応答に token がありません');x.errorClass='config';x.liveStage='token';throw x;}
+    sttLiveSecretAdd(j.token);
+    return {secret:j.token};
+  });
+};
 /* ── WebSocket で PCM を送る Provider（ElevenLabs・AssemblyAI・Soniox）────────────
    一時資格情報 → 接続 → 最初のメッセージ → 準備完了の合図 → 音声の送信、の順。
    一時資格情報は接続ごとに発行し直し、使い回さない（§8.1）。 */
 SttLiveHost.prototype.connectSocket=function(key,track){
   var self=this,a=this.adapter,opts=a.options(this);
   this.st={};if(a.init)a.init(this.st,opts);
-  dlog('stt','live-connect',this.tag({seat:this.seat||'auto',transport:'websocket',options:sttLiveLogOptions(opts),trackState:track.readyState,trackMuted:!!track.muted}));
-  return a.credential(this,key,opts).then(function(cred){
+  dlog('stt','live-connect',this.tag({seat:this.seat||'auto',transport:'websocket',route:sttCredentialRoute(this.provider),options:sttLiveLogOptions(opts),trackState:track.readyState,trackMuted:!!track.muted}));
+  return this.credential(key,opts).then(function(cred){
     if(self.dead)throw self.cancelError();
     sttLiveSecretAdd(cred.secret);
     return self.openSocket(a.url(opts,cred),a.hello(opts,cred));
@@ -10918,7 +11000,7 @@ SttLiveHost.prototype.nextFallback=function(cls){
   if(this.provider===this.plan[0]&&cls!=='rate'&&cls!=='transient')return '';
   for(var i=this.plan.indexOf(this.provider)+1;i<this.plan.length;i++){
     var p=this.plan[i];if(this.tried.indexOf(p)>=0)continue;
-    if(!sttLiveKey(p)){if(this.skipped.indexOf(p)<0){this.skipped.push(p);dlog('stt','live-fallback-skip',{provider:p,reason:'no-key'});}continue;}
+    if(!sttLiveReady(p)){if(this.skipped.indexOf(p)<0){this.skipped.push(p);dlog('stt','live-fallback-skip',{provider:p,reason:'no-key'});}continue;}
     return p;
   }
   return '';
@@ -11103,7 +11185,11 @@ var STT_LIVE_PANELS=[
     {prop:'sttFallback2',label:'予備2',when:sttFallbackOn},
     {prop:'sttFallback3',label:'予備3',when:sttFallbackOn,
      help:'今選んでいる会社と同じもの、キーの無いものは飛ばします。キーは、⚙→音声でその会社を選んで入力すると会社ごとに覚えます（OpenAI は翻訳の OpenAI のキーも使えます）。切り替えは「停止」まで続き、次の「開始」は選んだ会社から始めます。'},
-    {info:'sttFallbackOrder',when:sttFallbackOn}]}
+    {info:'sttFallbackOrder',when:sttFallbackOn},
+    {prop:'sttCredentialRoute',label:'一時キーの発行',
+     help:'「直接」は、このページが各社の発行元へ一時キーを頼みます。HTML 版（GitHub Pages）で「CORS の可能性」と出る会社は、「拡張が中継」にすると Chrome／Edge 拡張が一時キーの発行だけを中継します（ポップアップの「HTML本体を開く」で接続しておきます）。「Token Broker」は組織のサーバーが一時キーを発行し、このページに各社のキーを置きません。OpenAI（gpt-live）は中継を使わず直接です。どれを選んでも、音声はこのページから各社へ直接送ります。'},
+    {prop:'sttBrokerUrl',input:'url',label:'Token Broker の URL',when:function(){return sttLiveChoice('sttCredentialRoute',CFG.sttCredentialRoute)==='broker';},
+     help:'HTTPS の URL（例 https://broker.example.com/duo）。Duo は「URL/token/stt/会社名」へ POST し、{"token":…} を受け取ります。Cookie は送りません。認証情報やクエリを含む URL は使えません。'}]}
 ];
 function sttLiveOptionsHtml(prop){
   var c=STT_LIVE_CHOICES[prop];
@@ -11112,7 +11198,8 @@ function sttLiveOptionsHtml(prop){
 function sttLiveRowHtml(r){
   var html;
   if(r.info)return '<p id="'+r.info+'"></p>';
-  if(r.combo)html='<label>'+realtimeEscape(r.label)+' <select id="'+r.combo+'">'
+  if(r.input)html='<label>'+realtimeEscape(r.label)+' <input type="'+r.input+'" id="'+r.prop+'" placeholder="https://…" autocomplete="off" spellcheck="false"></label>';
+  else if(r.combo)html='<label>'+realtimeEscape(r.label)+' <select id="'+r.combo+'">'
     +r.presets.map(function(p,i){return '<option value="'+p[0]+'">'+realtimeEscape(p[1]+(i===0?'（既定）':''))+'</option>';}).join('')
     +'<option value="custom">個別に選ぶ</option></select></label>';
   else html='<label>'+realtimeEscape(r.label)+' <select id="'+r.prop+'">'+sttLiveOptionsHtml(r.prop)+'</select></label>';
@@ -11146,6 +11233,18 @@ function sttLiveInstall(){
     }
     if(r.info)return;
     var spec=CONFIG_BY_PROP[r.prop],el=spec&&$(spec.el);if(!el)return;
+    /* URL の欄。保存するのは整えた値だけ。使えない形なら保存せずに知らせる。記録には URL を書かない。 */
+    if(r.input){
+      el.value=CFG[r.prop]||'';
+      el.addEventListener('change',function(){
+        var raw=el.value.trim(),v=sttBrokerNormalize(raw);
+        if(raw&&!v){toast('Token Broker の URL は、HTTPS で、認証情報・クエリを含まない形にしてください。');el.value=CFG[r.prop]||'';return;}
+        CFG[r.prop]=v;persistSetting(r.prop,v);el.value=v;
+        dlog('stt','live-setting',{provider:p.provider,prop:r.prop,set:!!v});sttLiveSettingsUI();
+        if(S.running&&isStreamingStt())toast('認識の設定は、次の「開始」から反映されます。',true);
+      });
+      return;
+    }
     el.value=CFG[r.prop];simple(spec);
     /* simple() の onchange が先に CFG を更新する。ここでは表示と記録だけ。 */
     el.addEventListener('change',function(){
@@ -11172,7 +11271,7 @@ function sttLiveSettingsUI(){
   if(!id)return;
   var order=$('sttFallbackOrder');
   if(order)order.textContent='切り替えの順：'+sttFallbackPlan(id).map(function(p,i){
-    return sttLiveName(p)+(i===0?'（選択中）':sttLiveKey(p)?'':'（キーが無いので飛ばす）');}).join(' → ')
+    return sttLiveName(p)+(i===0?'（選択中）':sttLiveReady(p)?'':'（キーが無いので飛ばす）');}).join(' → ')
     +(sttFallbackPlan(id).length<2?'（予備が選ばれていません）':'');
   var a=STT_LIVE_PROVIDERS[id],perf=a.performance(),keys=Object.keys(perf);
   $('sttLiveSummary').textContent='ストリーミング認識の設定（'+(id==='openai'?'':a.label+'：')
@@ -14061,6 +14160,7 @@ var DIAG_ROWS = [
   {section:"settings",order:5,label:'有効なSTT通信方式',value:function(ctx){ return diagSttTransport(); }},
   {section:"settings",order:6,label:'gpt-live発話確定',value:function(ctx){ return isStreamingStt() ? 'カードを閉じる合図 '+sttLiveCardClose(sttLiveProviderId())+' / '+ (segEnabled()?'逐次部分翻訳＋文脈・無音・文字停止でカード確定／TTS待ちとは独立':'文脈末尾＋音声無音＋文字差分停止（早期650ms／最長3秒で確定）') : '(未使用)'; }},
   {section:"settings",order:6.1,label:'ストリーミング認識の設定',value:function(ctx){ var o=sttLiveOptions();return o?o.provider+' / '+o.model+' / '+JSON.stringify(o.performance):'(未使用)'; }},
+  {section:"settings",order:6.12,label:'一時キーの発行経路',value:function(ctx){ return sttCredentialSummary(); }},
   {section:"settings",order:6.15,label:'自動フォールバック',value:function(ctx){ return sttLiveFallbackSummary(); }},
   {section:"settings",order:6.2,label:'ストリーミング認識の計測',value:function(ctx){ return (STT_LIVE_STATS.counts.cards||isStreamingStt())?sttLiveStatsSummary():'(未使用)'; }},
   {section:"settings",order:7,label:'共有音声STT経路',value:function(ctx){ return CFG.displaySttRoute+' → '+effectiveDisplaySttRoute(); }},
@@ -14499,6 +14599,8 @@ var TurnBridge={
   seq:0,
   pending:{},
   ready:false,
+  /* 内容スクリプトが一時キーの中継（DUO_STT_TOKEN）に対応しているか。拡張 1.4.54 から。 */
+  stt:false,
   wired:false,
   /* 'runtime' 拡張ページから直接 / 'event' HTML本体から内容スクリプト経由 / '' 不可 */
   mode:function(){
@@ -14513,7 +14615,7 @@ var TurnBridge={
     var self=this;
     window.addEventListener('duo-turn-bridge',function(ev){
       var d=null;try{d=JSON.parse(ev.detail);}catch(err){return;}
-      self.ready=!!(d&&d.ready);
+      self.ready=!!(d&&d.ready);self.stt=!!(self.ready&&d.stt);
       if(!self.ready)self.failAll('アドオンとの接続が切れました');
     });
     window.addEventListener('duo-turn-reply',function(ev){
@@ -14538,6 +14640,15 @@ var TurnBridge={
     return m==='runtime'?this.viaRuntime({url:url,headers:headers,body:body},signal)
       :this.viaEvent({url:url,headers:headers,body:body},signal);
   },
+  /* ストリーミング認識の一時キーの発行を拡張に頼む（STTマルチプロバイダ開発仕様書 §8.3 relay）。
+     渡すのは会社名とキーだけ。発行元の URL・ヘッダ・本文は拡張の stt-relay.js の表で決まる。 */
+  sttToken:function(req,signal){
+    var m=this.mode(),e;
+    if(!m)e=new Error('「拡張が中継」を選んでいますが、HTML本体がアドオンに接続されていません（ポップアップの「HTML本体を開く」で接続します）');
+    else if(m==='event'&&!this.stt)e=new Error('アドオンが一時キーの中継に対応していません。拡張を 1.4.54 以降に更新し、HTML本体を開き直してください');
+    if(e){e.errorClass='config';e.needsBridge=true;return Promise.reject(e);}
+    return m==='runtime'?this.viaRuntime(req,signal,'DUO_STT_TOKEN'):this.viaEvent(req,signal,'duo-stt-token-request');
+  },
   /* 中断・二重解決・後始末をここへ集める。個々の経路で書くと片方だけ漏れる。 */
   settleWith:function(signal,work){
     var self=this;
@@ -14559,11 +14670,11 @@ var TurnBridge={
       work(function(reply){self.settle(reply,ok,ng);},ng);
     });
   },
-  viaRuntime:function(req,signal){
+  viaRuntime:function(req,signal,type){
     var self=this;
     return this.settleWith(signal,function(deliver,fail){
       try{
-        chrome.runtime.sendMessage({type:'DUO_TURN_FETCH',request:req},function(reply){
+        chrome.runtime.sendMessage({type:type||'DUO_TURN_FETCH',request:req},function(reply){
           if(chrome.runtime.lastError){
             fail(self.bridgeError(chrome.runtime.lastError.message));return;}
           deliver(reply);
@@ -14571,11 +14682,11 @@ var TurnBridge={
       }catch(err){fail(self.bridgeError(String((err&&err.message)||err)));}
     });
   },
-  viaEvent:function(req,signal){
+  viaEvent:function(req,signal,name){
     var self=this,id='t'+(++this.seq)+'-'+Date.now();
     var task=this.settleWith(signal,function(deliver,fail){
       self.pending[id]=deliver;
-      try{window.dispatchEvent(new CustomEvent('duo-turn-request',
+      try{window.dispatchEvent(new CustomEvent(name||'duo-turn-request',
         {detail:JSON.stringify({id:id,request:req})}));}
       catch(err){delete self.pending[id];fail(self.bridgeError(String((err&&err.message)||err)));}
     });
@@ -14589,6 +14700,8 @@ var TurnBridge={
     var e=new Error(String(reply.error||'アドオンが中継できませんでした'));
     if(reply.needsSetup)e.needsSetup=true;
     if(reply.unreachable)e.unreachable=true;
+    /* 拡張が中継を断った（呼べない経路・中継しない会社・キーの形）。設定の問題として扱う。 */
+    if(reply.denied)e.errorClass='config';
     if(reply.status)e.status=Number(reply.status);
     reject(e);
   },

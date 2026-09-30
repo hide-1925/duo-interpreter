@@ -45,6 +45,7 @@ const SHARED=[
   'function sttPcmDownsample(input,inRate,outRate,st){',
   'SttLiveHost.prototype.openSocket=function(url,hello){',
   'SttLiveHost.prototype.onSocketClose=function(ev){',
+  'SttLiveHost.prototype.credential=function(key,opts){','SttLiveHost.prototype.brokerCredential=function(body){','function sttBrokerNormalize(raw){',
   'function segLiveReconcile(engine,x,text,reason){'
 ];
 

@@ -34,10 +34,24 @@
       text:reply?.text,error:reply?.error,unreachable:!!reply?.unreachable,
       needsSetup:!!reply?.needsSetup});
   }
+  /* ストリーミング認識の一時キーの発行（stt-relay.js）。ページから受け取るのは会社名とキーだけで、
+     発行元の URL などはバックグラウンドの表で決まる。返事は判断層と同じ duo-turn-reply で返す。 */
+  async function sttTokenRequest(event){
+    if(stopped||typeof event.detail!=='string'||event.detail.length>4000)return;
+    let data;try{data=JSON.parse(event.detail);}catch(_){return;}
+    if(typeof data.id!=='string'||data.id.length>80||!data.request||typeof data.request!=='object')return;
+    let reply;
+    try{reply=await chrome.runtime.sendMessage({type:'DUO_STT_TOKEN',
+      request:{provider:String(data.request.provider||''),key:String(data.request.key||'')}});}
+    catch(_){reply={ok:false,unreachable:true,error:'アドオンとの接続が切れました'};}
+    if(stopped)return;
+    turnEmit('duo-turn-reply',{id:data.id,ok:!!reply?.ok,status:reply?.status,
+      text:reply?.text,error:reply?.error,unreachable:!!reply?.unreachable,denied:!!reply?.denied});
+  }
   function turnEmit(name,payload){
     window.dispatchEvent(new CustomEvent(name,{detail:JSON.stringify(payload)}));
   }
-  function turnHello(){if(!stopped)turnEmit('duo-turn-bridge',{ready:true});}
+  function turnHello(){if(!stopped)turnEmit('duo-turn-bridge',{ready:true,stt:true});}
   function conferenceOut(event){
     let data;try{data=JSON.parse(event.detail);}catch(_){return;}
     chrome.runtime.sendMessage({type:'DUO_CONFERENCE_SIGNAL',data}).then(r=>{if(!r?.ok)conferenceIn({kind:'stop'});}).catch(()=>conferenceIn({kind:'stop'}));
@@ -46,6 +60,7 @@
   window.addEventListener('duo-conference-out',conferenceOut);
   window.addEventListener('duo-turn-request',turnRequest);
   window.addEventListener('duo-turn-hello',turnHello);
+  window.addEventListener('duo-stt-token-request',sttTokenRequest);
   function message(m,_sender,respond){
     if(m.type==='DUO_TEAMS_SPEAKERS'){window.dispatchEvent(new CustomEvent('duo-speakers-in',{detail:JSON.stringify(m.data)}));respond({ok:true});return;}
     if(m.type==='DUO_CONFERENCE_HTML'){conferenceIn(m.data);respond({ok:true});return;}
@@ -54,7 +69,7 @@
     if(m.type==='DUO_HTML_COMMAND'){command(m.command||{});if(m.command?.action==='dispose')dispose();respond({ok:true});}
     if(m.type==='DUO_HTML_PING')respond({ok:true,version:'1.1.0'});
   }
-  function dispose(){stopped=true;turnEmit('duo-turn-bridge',{ready:false});window.removeEventListener('duo-turn-request',turnRequest);window.removeEventListener('duo-turn-hello',turnHello);conferenceIn({kind:'stop'});window.removeEventListener('duo-conference-out',conferenceOut);window.removeEventListener('duo-html-audio-request',audioRequest);window.dispatchEvent(new CustomEvent('duo-html-audio-control',{detail:'dispose'}));window.removeEventListener('duo-html-source-data',receive);try{chrome.runtime.onMessage.removeListener(message);}catch(_){} }
+  function dispose(){stopped=true;turnEmit('duo-turn-bridge',{ready:false});window.removeEventListener('duo-turn-request',turnRequest);window.removeEventListener('duo-turn-hello',turnHello);window.removeEventListener('duo-stt-token-request',sttTokenRequest);conferenceIn({kind:'stop'});window.removeEventListener('duo-conference-out',conferenceOut);window.removeEventListener('duo-html-audio-request',audioRequest);window.dispatchEvent(new CustomEvent('duo-html-audio-control',{detail:'dispose'}));window.removeEventListener('duo-html-source-data',receive);try{chrome.runtime.onMessage.removeListener(message);}catch(_){} }
   window.addEventListener('duo-html-source-data',receive);
   window.addEventListener('duo-html-audio-request',audioRequest);
   chrome.runtime.onMessage.addListener(message);

@@ -75,7 +75,7 @@ const tests=[];
       const choice=(prop)=>STT_LIVE_CHOICES[prop];
       for(const id of ['elevenlabs','assemblyai','soniox']){
         prov.value=id;prov.onchange.call(prov);
-        const rows=STT_LIVE_PANELS.filter(x=>x.provider===id||x.provider==='common').flatMap(x=>x.rows).filter(r=>r.prop);
+        const rows=STT_LIVE_PANELS.filter(x=>x.provider===id||x.provider==='common').flatMap(x=>x.rows).filter(r=>r.prop&&!r.input);
         out[id]={panel:vis('sttLivePanel'),own:vis('sttLive_'+id),others:['openai','elevenlabs','assemblyai','soniox'].filter(x=>x!==id).map(x=>vis('sttLive_'+x)),
           chunk:vis('sttLiveRow_sttChunkMs'),model:document.getElementById('sttModel').value,
           fetchHidden:document.getElementById('fetchSttModels').style.display==='none',placeholder:document.getElementById('sttKey').placeholder,
@@ -149,6 +149,32 @@ const tests=[];
     assert.equal(fb.diag,'ON / 順 soniox → assemblyai → openai(キーなし) / 切替 なし');
     assert.equal(fb.backOff,false);
     tests.push('ON shows three backup pull-downs and the resulting order, with backups lacking a key marked');
+
+    /* 一時キーの発行経路（§8.3）。既定は直接。Token Broker を選ぶと URL の欄が出て、使えない形は保存しない。 */
+    const rt=await page.evaluate(()=>{
+      const vis=(id)=>{let el=document.getElementById(id);while(el){if(el.style&&el.style.display==='none')return false;el=el.parentElement;}return true;};
+      const prov=document.getElementById('sttProvider');prov.value='soniox';prov.onchange.call(prov);
+      const sel=document.getElementById('sttCredentialRoute'),url=document.getElementById('sttBrokerUrl');
+      const out={def:CFG.sttCredentialRoute,options:[...sel.options].map(o=>o.value),urlShownDirect:vis('sttLiveRow_sttBrokerUrl'),urlTag:url.tagName+'/'+url.type};
+      sel.value='broker';sel.dispatchEvent(new Event('change'));out.urlShownBroker=vis('sttLiveRow_sttBrokerUrl');
+      url.value='https://user:pw@broker.example.com/?k=1';url.dispatchEvent(new Event('change'));
+      out.bad=[CFG.sttBrokerUrl,localStorage.getItem('di.sttBrokerUrl'),url.value];
+      url.value='https://broker.example.com/duo/';url.dispatchEvent(new Event('change'));
+      out.good=[CFG.sttBrokerUrl,localStorage.getItem('di.sttBrokerUrl'),url.value];
+      out.diag=sttCredentialSummary();out.ready=sttLiveReady('assemblyai');
+      out.logged=(window.DIAG&&JSON.stringify(window.DIAG).includes('broker.example.com'))||false;
+      sel.value='relay';sel.dispatchEvent(new Event('change'));out.relayDiag=sttCredentialSummary();out.urlShownRelay=vis('sttLiveRow_sttBrokerUrl');
+      sel.value='direct';sel.dispatchEvent(new Event('change'));
+      prov.value='openai';prov.onchange.call(prov);fourOSetModel('gpt-live-transcribe');
+      return out;
+    });
+    assert.equal(rt.def,'direct');assert.deepEqual(rt.options,['direct','relay','broker']);
+    assert.equal(rt.urlShownDirect,false);assert.equal(rt.urlShownBroker,true);assert.equal(rt.urlShownRelay,false);assert.equal(rt.urlTag,'INPUT/url');
+    tests.push('the credential route is a pull-down defaulting to direct; the broker URL field shows only for Token Broker');
+    assert.deepEqual(rt.bad,['',null,'']);assert.deepEqual(rt.good,['https://broker.example.com/duo','https://broker.example.com/duo','https://broker.example.com/duo']);
+    assert.equal(rt.diag,'broker（https://broker.example.com）');assert.equal(rt.ready,true);assert.equal(rt.logged,false);
+    assert.equal(rt.relayDiag,'relay（拡張：未接続）');
+    tests.push('a broker URL with credentials or a query is not stored; diagnostics show only the broker origin');
     assert.deepEqual(pageErrors,[],'no page errors');tests.push('no page errors');
     console.log(JSON.stringify({passed:tests.length,tests},null,2));
   }finally{

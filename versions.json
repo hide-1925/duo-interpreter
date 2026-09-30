@@ -361,10 +361,19 @@
     "v1.52.0": {
       "build": "20260930-v1520-stt-auto-fallback",
       "extension": "1.4.53",
+      "commit": "b32399b",
       "indexHtmlSha256": "9ad5a9172c8293affc3559d8330c5f35693f534931462e6bfc67904aab33008e",
       "extensionAppJsSha256": "1fd1fb1678d7de37ff85c820c52e28a67ad61d023efb0bf51862e65e93a88dff",
       "extensionZipSha256": "d9fadd86b9576dd47152fc524ebe8b4ebfada721d0ceba631272f8750a44cd5e",
       "summary": "ストリーミング認識に自動フォールバックを足した（STTマルチプロバイダ開発仕様書 §14.3、D-3 追記）。ON／OFF の選択式で既定は OFF。ON のときは利用者が先に決めた予備1〜3の順で、選んだ会社へ開始時につながらないとき・再接続を1分に3回使い切ったとき・gpt-live の WebRTC が failed になったときに、同じ音声を次の会社へ切り替える。選んだ会社のキー・設定の誤りでは切り替えない。予備はその会社のキーと既定のモデルだけを使い、予備の OpenAI にほかの会社のキーを送らない。OFF のときの挙動は v1.51.0 と同じ"
+    },
+    "v1.53.0": {
+      "build": "20260930-v1530-stt-credential-routes",
+      "extension": "1.4.54",
+      "indexHtmlSha256": "946456d210475a5ab410be01794776f7f935f167f47edc2573842b9f2dfc182f",
+      "extensionAppJsSha256": "f4874cb19a246dbd0b29dadc671562154a57f2709eb3bac265c888c436c3d067",
+      "extensionZipSha256": "d38ef4bfac1ab7bcf4d5a263475797dfe73aa41b1972bca120a49809fbbaf3a7",
+      "summary": "ストリーミング認識の一時キーの発行経路（STTマルチプロバイダ開発仕様書 §8.3・§8.4）に「拡張が中継」と「Token Broker」を足し、Phase 5 のコードが揃った。既定は今までどおり直接。relay は拡張の service worker（stt-relay.js）が ElevenLabs・AssemblyAI・Soniox の固定の発行元へ発行だけを中継し、ページは会社名とキーしか渡せない（呼べるのは拡張の画面と登録済みの HTML本体のタブだけ、Cookie なし、記録なし）。OpenAI は中継しない。broker は利用者が指定した HTTPS の Token Broker に POST {URL}/token/stt/{会社} で頼み、ページに各社のキーは要らない（Cookie なし、応答の本文を文言と記録に入れない、診断はオリジンだけ）。直接のときの挙動は v1.52.0 と同じ"
     }
   }
 }

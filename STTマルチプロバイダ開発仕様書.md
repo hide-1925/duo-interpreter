@@ -3,8 +3,8 @@
 起点：HTML v1.49.39 / Chrome・Edge 拡張 1.4.50（2026-09-29 時点）
 状態：§18 の決定（2026-09-29）を反映済み。**Phase 0（SDK での照合、付録A2）、Phase 1（HTML v1.50.0 / 拡張 1.4.51）、
 Phase 2〜4 と Phase 5 の一部（再接続・カードを閉じる合図）（HTML v1.51.0 / 拡張 1.4.52）、
-自動フォールバック（HTML v1.52.0 / 拡張 1.4.53）を実装済み。**
-Phase 5 の残り（relay・broker の発行経路）と Phase 6 以降は未着手です。
+自動フォールバック（HTML v1.52.0 / 拡張 1.4.53）、発行経路 relay・broker（HTML v1.53.0 / 拡張 1.4.54）を実装済みで、Phase 5 のコードは揃いました。**
+Phase 6 以降は未着手です。D-2・D-8 は実機での挙動を見て決めます。
 実装の進み具合は `次期仕様実装状況.md` の「Realtime STT マルチプロバイダ」に書きます。
 元資料：起草された「Duo Interpreter Realtime STT Multi-Provider 実装計画書」（以下「計画書」。`計画書§n` は計画書の節番号）
 
@@ -408,13 +408,31 @@ Provider の確定を Duo の区切りに合わせます。
 
 認証ヘッダの形と応答のフィールド名は付録A2 で確定しました（AssemblyAI は `Bearer` を付けない）。
 
-### 8.3 発行経路（`sttCredentialRoute`）
+### 8.3 発行経路（`sttCredentialRoute`・HTML v1.53.0 で実装）
 
 |値|何が発行を頼むか|注意|
 |---|---|---|
 |`direct`（既定）|ページが利用者のキーで発行元へ直接頼む|今の OpenAI と同じ。発行元が CORS を許さないと、HTML 版（GitHub Pages）では失敗する|
 |`relay`|拡張の service worker が**発行の要求だけ**を中継する|中継先は §8.2 の固定 URL だけで、任意のオリジンへは中継しない。`turn-proxy.js` と同じく、頼めるのは拡張自身のページと登録済みの HTML 本体のタブだけ。本文とキーを記録しない。拡張の `host_permissions` に発行元を足す|
 |`broker`|利用者が指定した HTTPS の Token Broker が発行する。ページは Provider のキーを持たない|組織で配るとき向け。Duo はサーバーを同梱しない。契約は §8.4|
+
+**relay の作り（拡張 1.4.54）**
+
+- ページ → 内容スクリプト（`html-source-content.js`、CustomEvent `duo-stt-token-request`）→ service worker
+  （`DUO_STT_TOKEN`、`stt-relay.js`）→ 発行元、の順です。拡張の画面（`app.html`）では `chrome.runtime` から直接頼みます。
+  返事は判断層の中継と同じ `duo-turn-reply` で返り、`TurnBridge` が受けます。
+- **ページが渡せるのは会社名とキーだけ**です。発行元の URL・メソッド・ヘッダ・本文は `stt-relay.js` の表（`STT_RELAY_ISSUERS`）で決まり、
+  ページが `url`・`headers`・`body` を付けても使いません。表は direct のときに Adapter が送るものと同じで、`test-stt-relay.cjs` が突き合わせます。
+- 表にあるのは ElevenLabs・AssemblyAI・Soniox だけです。**OpenAI（gpt-live）は中継しません。** OpenAI はブラウザからの発行を受け付け、
+  続く SDP の交換もページから直接するためです（relay を選んでも OpenAI は direct）。
+- 頼めるのは拡張自身のページと登録済みの HTML 本体のタブだけ（`turnSenderAllowed`）。キーは空・512字超・空白を含むものを断ります。
+  Cookie は送らず（`credentials:'omit'`）、応答は 16KB まで、待ち時間は 12 秒。キーと応答は記録しません。
+- 拡張が断ったとき（呼べない経路・表に無い会社・キーの形）は `denied` を返し、ページは設定の問題（`config`）として止めます。
+  拡張から発行元へも届かないときは「拡張の中継でも…届きません」（`transient`）。
+- 内容スクリプトは名乗るときに `{ready:true, stt:true}` を送ります。`stt` が無い古い拡張では、中継を頼まずに
+  「拡張を 1.4.54 以降に更新してください」と出します。HTML本体が拡張につながっていないときは「HTML本体を開く」を案内します。
+- 長期のキーが CustomEvent に載る点は、判断層の中継（`TurnBridge`）と同じです。同じページのほかのスクリプトからは読めますが、
+  キーはもともと同じページの `localStorage` にあるので、露出は増えません。
 
 CORS が問題になるのは **HTML 版（GitHub Pages のタブ）だけ**です。拡張の中のページ（`app.html`）は、
 `host_permissions` にある発行元へは CORS に関係なく要求を送れるので、direct のままで通ります（§8.7 で発行元を足す）。
@@ -427,7 +445,7 @@ HTML 版で direct が通らない Provider をどう扱うかは、**実装後�
   失敗した）ときは「ブラウザから発行元へ届きません（CORS の可能性）。拡張から使うか、発行経路を変えてください」、
   401・403 のときは「キーが無効か、音声認識の権限がありません」。**2つを同じ文言にしません。**
 
-### 8.4 Token Broker の契約
+### 8.4 Token Broker の契約（HTML v1.53.0 で実装）
 
 ```text
 POST {sttBrokerUrl}/token/stt/{provider}      provider = elevenlabs | assemblyai | soniox | openai
@@ -441,6 +459,18 @@ Content-Type: application/json
   Phase 5 では上の契約（URL・要求・応答）だけを実装します。
 - Broker の応答は診断に書きません。
 
+**実装（v1.53.0）**
+
+- 設定は `sttBrokerUrl`。`sttBrokerNormalize` が HTTPS で、認証情報・クエリ・フラグメントを含まない URL だけを受け付け、末尾の `/` を落とします。
+  使えない形は保存せずに知らせます。診断にはオリジンだけを出し（パスは書かない）、設定を変えた記録にも URL を書きません。
+- WebSocket の3社は `{"model":…}`、OpenAI（gpt-live）は `{"model":"gpt-live-transcribe","session":{…}}` を送り、
+  返ってきた `token` をその会社の一時資格情報として使います（OpenAI はそのクライアントシークレットで SDP を交換）。
+  `token` は伏せ字に登録します。
+- **Broker のときはページに各社のキーが要りません。** キーの無い会社でも開始でき、自動フォールバックもキーの有無で予備を飛ばしません。
+- 失敗の文言に Broker の応答の本文を入れません。401・403 は「Token Broker が○○の一時キーの発行を断りました」（`auth`）、
+  そのほかの 4xx は「受け取れませんでした（HTTP n）」（`config`）、届かないときは「Token Broker へ届きません（CORS の可能性…）」。
+- 利用者の認証（D-8）は入れていません。Broker 側で必要なら、実機での挙動を見て決めます。
+
 ### 8.5 キーの持ち方
 
 - 新しいキーの名前：`stt:elevenlabs`、`stt:assemblyai`、`stt:soniox`。区分は stt で、**現行と同じく**「このブラウザに保存する」が ON のとき `localStorage`（`di.keys.stt`）に保存します（**D-1 決定**）。
@@ -449,7 +479,9 @@ Content-Type: application/json
   - `elevenlabs` → `KEYS['stt:elevenlabs']`、空なら `KEYS['eleven']`（同じ会社の読み上げ用キー）。
     ElevenLabs のキーは既定で権限が絞られるので（app.js:3311 の注記）、音声認識の権限が無ければ 🔍 確認がそう言うようにします。
   - `assemblyai`・`soniox` → 自分の区分だけ。
-  - `openai` → 今の `sttKey()` のまま（互換のため変えない）。
+  - `openai` → 選んでいる会社が OpenAI なら今の `sttKey()` のまま（互換のため変えない）。自動フォールバックの予備としての OpenAI は、
+    OpenAI の音声認識のキーか翻訳の OpenAI のキーだけ（§14.3。`sttKey()` は選んでいる会社の欄を読むため）。
+  - 発行経路が broker のときは、どの会社もページのキーを使いません（§8.4）。
 - 書き出し：既存のキーと同じく `portable` ではありません。「APIキーも埋め込む」を ON にしたときは stt 区分として入ります（既存の挙動）。
 
 ### 8.6 診断と伏せ字
@@ -853,10 +885,10 @@ Phase 2〜4 の完了条件（Provider ごと）：
 ### Phase 5 — 共通の仕組み
 
 再接続（§14.2）、自動フォールバック（§14.3）、relay と broker の経路（§8.3–8.4）、`sttCardClose` の3値。
-再接続と `sttCardClose` は HTML v1.51.0、自動フォールバックは HTML v1.52.0 で実装済み。relay と broker は未着手です。
+再接続と `sttCardClose` は HTML v1.51.0、自動フォールバックは HTML v1.52.0、relay と broker は HTML v1.53.0 で実装済み。
 Broker は契約（§8.4）だけを実装し、利用者認証は実装後の挙動を見て決めます（D-8）。
 
-完了条件：□ 異常切断・期限切れ・429 を模擬して、分類どおりに動く □ フォールバックは ON のときだけ、予備の順どおり（検査は済み・実機は未確認） □ relay は固定 URL 以外を中継しない
+完了条件：□ 異常切断・期限切れ・429 を模擬して、分類どおりに動く □ フォールバックは ON のときだけ、予備の順どおり（検査は済み・実機は未確認） □ relay は固定 URL 以外を中継しない（検査は済み：`test-stt-relay.cjs`）
 □ HTML 版で relay・broker を使ったときの挙動を実機で確かめ、D-2・D-8 の判断材料として `次期仕様実装状況.md` に残す
 
 ### Phase 6 — 比較の道具（計画書 Phase 7）

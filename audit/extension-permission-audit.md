@@ -18,6 +18,7 @@
 |---|---|---|
 | 各社の API（OpenAI・xAI・Anthropic・Gemini・Groq・DeepSeek・OpenRouter・Mistral・Together・Google 翻訳・MyMemory・Aivis・ElevenLabs・tts.quest） | 拡張のページから API を呼ぶ | 必要。使わない会社のものも入っているが、呼ぶのは利用者が選んだものだけ |
 | `streaming.assemblyai.com`・`api.soniox.com`（1.4.52 で追加） | ストリーミング認識の一時資格情報を拡張のページから作る（CORS に左右されない）。音声の WebSocket 自体は CSP の `connect-src wss://*` で足り、権限は要らない | 必要。呼ぶのは利用者が AssemblyAI／Soniox を選んだときだけ |
+| （1.4.54）一時キーの発行の中継（`stt-relay.js`・`DUO_STT_TOKEN`） | HTML本体（Pages）から発行元が CORS で読めないときに、上の発行元（ElevenLabs・AssemblyAI・Soniox）へ発行だけを中継する。中継先は固定の表だけで、ページは URL・ヘッダ・本文を選べない。呼べるのは拡張のページと登録済みの HTML本体のタブだけ | 権限の追加なし。既にある host_permissions の範囲 |
 | `127.0.0.1` / `localhost`（http） | ローカルの読み上げエンジン | 必要 |
 | `hide-1925.github.io` | 既定の HTML本体（Pages） | 必要 |
 | Teams（3ドメイン） | 会議のマイク送出・話者の検出 | 必要 |
