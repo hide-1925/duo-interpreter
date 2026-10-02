@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.54",
-  "version_name": "1.4.54 HTML v1.53.0 と対。ストリーミング認識の一時キーの発行経路に「拡張が中継」と「Token Broker」を足す",
+  "version": "1.4.55",
+  "version_name": "1.4.55 HTML v1.53.1 と対。画面取込を閉じたとき、共有音声の認識が黙って止まらないようにする",
   "optional_host_permissions": [
     "https://*/*"
   ],

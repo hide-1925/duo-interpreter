@@ -184,6 +184,51 @@ const tests=[];
     assert.deepEqual(route.broker.fetch,[{url:'https://broker.example.com/duo/token/stt/soniox',method:'POST',headers:{'Content-Type':'application/json'}}]);
     assert.equal(route.broker.hello.api_key,'tmp-tok-123456','the broker contract field (token), not Soniox\'s own api_key');assert.ok(route.broker.frames>=1);
     tests.push('broker: with no Soniox key on the page, the broker token opens the stream and audio flows');
+
+    /* 画面取込を閉じたとき（v1.53.1）。共有音声の認識が黙って止まらず、知らせが出て、開いていたカードは閉じ、
+       ほかの入力（マイク）の認識は残る。同じ回のうちに取り込み直すと、共有音声の認識だけが再開する。 */
+    const ov=await page.evaluate(async()=>{
+      const out={};const toasts=[];const realToast=window.toast;window.toast=(m,ok)=>{toasts.push(m);};
+      CFG.sttProvider='soniox';CFG.sttModel='stt-rt-v5';CFG.sttCredentialRoute='direct';CFG.sttAutoFallback='off';
+      CFG.srcA='mic';CFG.srcB='display';CFG.displaySttRoute='auto';S.running=true;
+      S.entries.slice().forEach(e=>{try{removeEntry(e);}catch(_){}} );
+      const mic={stop(){mic.stopped=true;},stream:null};engines=[mic];
+      const ac=new AudioContext(),mk=()=>{const o=ac.createOscillator(),d=ac.createMediaStreamDestination();o.connect(d);o.start();return d.stream.getAudioTracks()[0];};
+      overlaySession.audioTrack=mk();overlaySession.opened=true;
+      window.__ws=[];window.__fetch=[];
+      out.route=effectiveDisplaySttRoute();
+      const info=await getDisplayAudioForStt();const h=await startDisplayEngine('B',out.route,info);
+      await new Promise(r=>setTimeout(r,250));
+      const ws1=window.__ws[0];
+      ws1.emit({tokens:[{text:'Half a sentence',is_final:false}]});await new Promise(r=>setTimeout(r,150));
+      out.openBefore=S.entries.filter(e=>e.seat==='B').map(e=>e.segment?e.segment.final:!e.interim);
+      const gen=sessionGen;
+      overlaySession.close();
+      out.afterClose={engines:engines.length,micAlive:engines[0]===mic&&!mic.stopped,hostDead:h.dead,
+        toast:toasts[toasts.length-1]||'',gen:overlaySession.sttStoppedGen===gen,
+        cards:S.entries.filter(e=>e.seat==='B').map(e=>({final:e.segment?e.segment.final:!e.interim,reason:e.segment&&e.segment.finalReason}))};
+      overlaySession.audioTrack=mk();
+      out.resumed=overlaySttResume();
+      await new Promise(r=>setTimeout(r,300));
+      out.afterResume={engines:engines.length,micAlive:engines[0]===mic&&!mic.stopped,sockets:window.__ws.length,
+        newHost:engines[1]&&engines[1].constructor.name,seat:engines[1]&&engines[1].seat,flagCleared:overlaySession.sttStoppedGen===null};
+      out.twice=overlaySttResume();
+      engines.slice(1).forEach(e=>e.stop());engines=[];overlaySession.audioTrack=null;overlaySession.opened=false;
+      window.toast=realToast;S.running=true;
+      return out;
+    });
+    assert.equal(ov.route,'api');
+    assert.deepEqual(ov.openBefore,[false],'a card is open when the capture closes');
+    assert.equal(ov.afterClose.engines,1);assert.equal(ov.afterClose.micAlive,true);assert.equal(ov.afterClose.hostDead,true);
+    assert.match(ov.afterClose.toast,/画面取込を閉じたため、共有音声の認識を止めました。マイクの認識は続いています。/);
+    assert.match(ov.afterClose.toast,/もう一度取り込むと、共有音声の認識を再開します/);
+    assert.deepEqual(ov.afterClose.cards,[{final:true,reason:'source-stopped'}],'the open card is closed with its text, not left waiting');
+    assert.equal(ov.afterClose.gen,true);
+    tests.push('closing the capture overlay stops shared-audio recognition with a message, closes its card, and keeps the mic');
+    assert.equal(ov.resumed,true);
+    assert.deepEqual(ov.afterResume,{engines:2,micAlive:true,sockets:2,newHost:'SttLiveHost',seat:'B',flagCleared:true});
+    assert.equal(ov.twice,false,'resumes once');
+    tests.push('capturing again in the same session restarts only the shared-audio recognition');
     assert.deepEqual(pageErrors,[],'no page errors');tests.push('no page errors');
     console.log(JSON.stringify({passed:tests.length,tests},null,2));
   }finally{
