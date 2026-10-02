@@ -2782,8 +2782,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.53.0';
-var APP_BUILD = '20260930-v1530-stt-credential-routes';
+var APP_VERSION = 'v1.53.1';
+var APP_BUILD = '20261002-v1531-overlay-stt-stop';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -4345,7 +4345,7 @@ function overlayStartAudioProbe(track){
 var OverlaySession = {
   state:'IDLE', stream:null, videoTrack:null, audioTrack:null, opened:false,
   controller:null, forwardWheelOn:false,
-  stopping:false, lastError:'', sourceInfo:null, ownsFullscreen:false,
+  stopping:false, lastError:'', sourceInfo:null, ownsFullscreen:false, sttStoppedGen:null,
   transition:function(next, detail){
     this.state = next;
     updateCaptureStatus(detail || '');
@@ -4395,7 +4395,7 @@ var OverlaySession = {
         audio=null;
       }
       requireSharedAudio(stream,selectedSurface);
-      this.stopSource(true);
+      this.stopSource(true,'switch');
       this.controller=controller;this.forwardWheelOn=false;
       this.stream = stream; this.videoTrack = video; this.audioTrack = audio;
       this.transition('CAPTURING_VIDEO','取込映像を接続しています');
@@ -4409,7 +4409,7 @@ var OverlaySession = {
       var self = this;
       video.onended = function(){ self.sourceEnded('共有元から画面共有が終了されました'); };
       if (audio) audio.onended = function(){
-        stopEnginesForTrack(audio,'共有音声Track終了');
+        overlaySttStopped(stopEnginesForTrack(audio,'共有音声Track終了'),'track');
         overlayStopAudioProbe();
         self.audioTrack = null;
         if(self.sourceInfo){self.sourceInfo.audio=false;self.sourceInfo.audioTrack=false;self.sourceInfo.audioDetected=false;}
@@ -4440,7 +4440,9 @@ var OverlaySession = {
       if(audio)overlayStartAudioProbe(audio);
       overlayWakeToolbar();
       dlog('overlay','capture-ok',this.sourceInfo);
-      if(replacing){
+      if(!replacing)overlaySttResume();
+      else{
+        this.sttStoppedGen=null;
         showCaptureNotice('取込対象を切り替えました。注釈は新しい画面用にクリアしました。',3000);
         if(S.running&&(CFG.srcA==='display'||CFG.srcB==='display')){
           dlog('overlay','source-restart-stt',{reason:'取込切替'});
@@ -4463,13 +4465,15 @@ var OverlaySession = {
       overlayWakeToolbar();
     }
   },
-  stopSource:function(quiet){
+  stopSource:function(quiet,why){
     if (this.stopping) return;
     this.stopping = true;
     overlayStopAudioProbe();
     if(this.controller&&this.forwardWheelOn&&this.controller.forwardWheel){try{this.controller.forwardWheel(null).catch(function(){});}catch(e){}}
     var audio=this.audioTrack;
-    if(audio)stopEnginesForTrack(audio,'画面取込停止');
+    /* 取込対象の切替（switch）は、この後で認識を張り直すので知らせない。 */
+    var stopped=audio?stopEnginesForTrack(audio,'画面取込停止'):0;
+    if(why!=='switch')overlaySttStopped(stopped,why||(quiet?'close':'stop'));
     var tracks = this.stream && this.stream.getTracks ? this.stream.getTracks() : [];
     tracks.forEach(function(t){ t.onended=null; try{t.stop();}catch(e){} });
     this.stream=null; this.videoTrack=null; this.audioTrack=null; this.sourceInfo=null;this.controller=null;this.forwardWheelOn=false;
@@ -4480,7 +4484,7 @@ var OverlaySession = {
     if (!quiet) this.transition('IDLE','画面共有を停止しました');
   },
   sourceEnded:function(message){
-    this.stopSource(true);
+    this.stopSource(true,'ended');
     stopSpeaking('共有元終了');
     $('capturePlaceholder').hidden = false;
     this.transition('SOURCE_ENDED',message || '画面共有が終了しました');
@@ -4503,7 +4507,7 @@ var OverlaySession = {
     if (autoStart && !this.stream) this.start();
   },
   close:function(){
-    this.stopSource(true); this.opened=false; this.state='IDLE';
+    this.stopSource(true,'close'); this.opened=false; this.state='IDLE';
     overlayPointerY=Infinity;
     clearTimeout(overlayRailTimer); clearTimeout(overlayToolbarTimer); clearTimeout(overlayNoticeTimer);
     clearTimeout(overlayStateHideTimer);
@@ -12815,6 +12819,9 @@ SttLiveHost.prototype.committed=function(id,ev){
   delete this.items[id];
 };
 SttLiveHost.prototype.stop=function(){
+  /* 認識の途中でこの入力だけが止まったとき（画面取込を閉じたなど）は、開いているカードをその時点の本文で閉じる。
+     閉じないと、全体を止めるまで「続きを待っています」のまま残る。全体の停止では S.running が先に false になる。 */
+  if(S.running&&this.session===sessionGen&&!this.dead)this.closeCards('source-stopped');
   this.dead=true;this.stopBoundaryMonitor();this.closeConnection();
   sttLiveMetricsFlush(this,Date.now(),true);
   Object.keys(this.items).forEach(function(k){var e=this.items[k].entry;if(e&&!e.segment)removeEntry(e);},this);this.items={};
@@ -13062,7 +13069,7 @@ var STT_LIVE_SPEECH_GAP_MS=400;
 /* Provider の区切りだけで閉じるとき（sttCardClose=provider）の安全弁。文字がこれだけ止まったら閉じる。 */
 var STT_LIVE_PROVIDER_IDLE_MS=6000;
 /* Provider が区間を閉じた理由。Duo の区切りと違い、Provider へ確定を送り返さない。 */
-var STT_LIVE_PROVIDER_REASONS=['server-completed','vad','manual','end-of-turn','semantic','finalize','reconnect','fallback'];
+var STT_LIVE_PROVIDER_REASONS=['server-completed','vad','manual','end-of-turn','semantic','finalize','reconnect','fallback','source-stopped'];
 var STT_LIVE_STATS={samples:{},counts:{},switches:[]};
 function sttLiveStatsReset(){STT_LIVE_STATS={samples:{},counts:{},switches:[]};}
 function sttLiveSample(name,ms){
@@ -13676,16 +13683,72 @@ RealtimeEngine.prototype.stop = function(){
    ========================================================================= */
 var engines = [];
 
+/* 止めた認識の数を返す（画面取込を閉じたときの知らせに使う）。 */
 function stopEnginesForTrack(track,why){
-  if(!track||!engines||!engines.length)return;
-  var keep=[];
+  if(!track||!engines||!engines.length)return 0;
+  var keep=[],n=0;
   engines.forEach(function(e){
     var hit=e&&(e.track===track||e.opts&&e.opts.sourceTrack===track);
     if(!hit&&e&&e.stream&&e.stream.getAudioTracks)hit=e.stream.getAudioTracks().indexOf(track)>=0;
-    if(hit){try{e.stop();}catch(_){}dlog('audio','route-stop',{why:why||'Track終了',engine:e.constructor&&e.constructor.name||'engine'});}
+    if(hit){n++;try{e.stop();}catch(_){}dlog('audio','route-stop',{why:why||'Track終了',engine:e.constructor&&e.constructor.name||'engine'});}
     else keep.push(e);
   });
   engines=keep;
+  return n;
+}
+/* ── 画面取込を閉じたときの共有音声の認識（v1.53.1）──────────────────────
+   共有音声の認識は画面取込の音声Trackを使うので、画面取込を閉じる・共有を止めると一緒に止まる。
+   今までは黙って止まり、「認識が途中で止まった」ように見えた。止めたことを知らせ、同じ認識の回の
+   うちに取り込み直したら、共有音声の認識だけを再開する（マイクの認識と読み上げの待ち列には触れない）。 */
+var OVERLAY_STT_WHY={close:'画面取込を閉じたため',stop:'画面取込を止めたため',ended:'画面共有が終了したため',track:'共有音声が途切れたため'};
+function overlaySttSeat(){return CFG.srcA==='display'?'A':(CFG.srcB==='display'?'B':null);}
+/* 取り込み直したときに再開できる経路か。VB-CABLE は画面取込を使わず、Realtime 翻訳は別の経路で始まる。 */
+function overlaySttResumable(){
+  var route=effectiveDisplaySttRoute();
+  return !!overlaySttSeat()&&CFG.sttProvider!=='realtime'&&route!=='vb'&&(route==='direct'||CFG.sttProvider!=='webspeech');
+}
+function overlaySttStopped(count,why){
+  if(!count||!S.running)return false;
+  var resumable=overlaySttResumable(),others=engines.length>0;
+  overlaySession.sttStoppedGen=resumable?sessionGen:null;
+  dlog('overlay','stt-stopped',{engines:count,why:why||'close',resumable:resumable,othersContinue:others});
+  toast((OVERLAY_STT_WHY[why]||OVERLAY_STT_WHY.close)+'、共有音声の認識を止めました。'+(others?'マイクの認識は続いています。':'')
+    +(resumable?'<br>画面取込でもう一度取り込むと、共有音声の認識を再開します。':''));
+  return true;
+}
+function overlaySttResume(){
+  var gen=overlaySession.sttStoppedGen,seat=overlaySttSeat(),route=effectiveDisplaySttRoute();
+  overlaySession.sttStoppedGen=null;
+  if(gen==null||gen!==sessionGen||!S.running||!overlaySttResumable()||!overlaySession.activeAudioTrack())return false;
+  dlog('overlay','source-restart-stt',{reason:'取込再開',seat:seat,route:route});
+  getDisplayAudioForStt().then(function(info){
+    if(!S.running||sessionGen!==gen)return;
+    return startDisplayEngine(seat,route,info);
+  }).catch(function(err){
+    if(!S.running||sessionGen!==gen||(err&&err.cancelled))return;
+    dlog('stt','display-resume-FAIL',{seat:seat,err:String((err&&err.message)||err).slice(0,300)});
+    toast('共有音声の認識を再開できません：'+realtimeEscape(String((err&&err.message)||err)));
+  });
+  return true;
+}
+/* 受け取った共有音声Trackで認識を始める。startAll と、取り込み直し（overlaySttResume）から使う。 */
+function startDisplayEngine(dispSeat,route,info){
+  var eng;
+  if(route==='direct'){
+    eng=new WebSpeechTrackEngine(dispSeat,info.track,{ownsStream:info.ownsStream,stream:info.stream,fromOverlay:!!info.fromOverlay});
+    engines.push(eng);eng.start();
+    dlog('stt','transport-override',{selectedModel:CFG.sttModel,effective:'webspeech-track',reason:'共有音声STT経路=direct'});
+    toast('共有音声Trackの直接Web Speech認識を開始しました'
+      +(isStreamingStt()?'<br>※ '+(isLiveTranscribe()?'gpt-live-transcribe':STT_LIVE_PROVIDERS[sttLiveProviderId()].label)+'を使う場合は、⚙→音声→共有音声の認識経路を「選択したSTTを使う」にしてください。':''),true);
+    return Promise.resolve(eng);
+  }
+  if(isStreamingStt()){
+    eng=new SttLiveHost(sttLiveProviderId(),dispSeat,info.stream,{isMic:false,ownsStream:info.ownsStream});
+    engines.push(eng);return eng.start().then(function(){toast(sttLiveMsg('display',eng)+sttFallbackNotice(),true);return eng;});
+  }
+  eng=new StreamEngine(dispSeat,info.stream,{isMic:false,meter:false,ownsStream:info.ownsStream});
+  engines.push(eng);eng.start();toast('共有音声を外部STT APIへ送信します',true);
+  return Promise.resolve(eng);
 }
 function getDisplayAudioForStt(){
   var existing=overlaySession.activeAudioTrack();
@@ -13829,11 +13892,7 @@ function startAll(){
       jobs.push(
         getDisplayAudioForStt().then(function(info){
           if(!captureCurrent(info.stream,info.ownsStream))return;
-          var eng=new WebSpeechTrackEngine(dispSeat,info.track,{ownsStream:info.ownsStream,stream:info.stream,fromOverlay:!!info.fromOverlay});
-          engines.push(eng);eng.start();
-          dlog('stt','transport-override',{selectedModel:CFG.sttModel,effective:'webspeech-track',reason:'共有音声STT経路=direct'});
-          toast('共有音声Trackの直接Web Speech認識を開始しました'
-            +(isStreamingStt()?'<br>※ '+(isLiveTranscribe()?'gpt-live-transcribe':STT_LIVE_PROVIDERS[sttLiveProviderId()].label)+'を使う場合は、⚙→音声→共有音声の認識経路を「選択したSTTを使う」にしてください。':''),true);
+          return startDisplayEngine(dispSeat,'direct',info);
         }).catch(function(err){
             if(!S.running||sessionGen!==startGen)return;
           dlog('stt','track-FAIL',{seat:dispSeat,err:String(err.message||err),fallback:false});
@@ -13866,13 +13925,7 @@ function startAll(){
     }else{
       jobs.push(getDisplayAudioForStt().then(function(info){
         if(!captureCurrent(info.stream,info.ownsStream))return;
-        var eng;
-        if(isStreamingStt()){
-          eng=new SttLiveHost(sttLiveProviderId(),dispSeat,info.stream,{isMic:false,ownsStream:info.ownsStream});
-          engines.push(eng);return eng.start().then(function(){toast(sttLiveMsg('display',eng)+sttFallbackNotice(),true);});
-        }
-        eng=new StreamEngine(dispSeat,info.stream,{isMic:false,meter:false,ownsStream:info.ownsStream});
-        engines.push(eng);eng.start();toast('共有音声を外部STT APIへ送信します',true);
+        return startDisplayEngine(dispSeat,route,info);
       }).catch(function(err){
             if(!S.running||sessionGen!==startGen)return;
         if(err&&err.cancelled)return;
@@ -15255,7 +15308,7 @@ $('captionPipOpen').onclick = openCaptionPip;
 $('capturePipOpen').onclick = openCaptionPip;
 updateCaptionPipButtons();
 $('captureStart').onclick = function(){ overlaySession.start(!!overlaySession.stream); };
-$('captureStop').onclick  = function(){ overlaySession.stopSource(false); $('capturePlaceholder').hidden=false; };
+$('captureStop').onclick  = function(){ overlaySession.stopSource(false,'stop'); $('capturePlaceholder').hidden=false; };
 $('captureSwitch').onclick=function(){overlaySession.start(true);};
 $('captureForwardWheel').onclick=function(){overlaySession.setForwardWheel(!overlaySession.forwardWheelOn);};
 $('captureClose').onclick = function(){ overlaySession.close(); };
