@@ -72,10 +72,14 @@ const CONTROLS=['turnDecisionMode','turnDecisionLangEn','turnDecisionLangJa','tu
       };
       setKey('jev-direct','TS-SECRET-1234567890');
       setKey('jev-openrouter','OR-SECRET-0987654321');
+      setKey('openai-decisions','OA-SECRET-1122334455');
+      const openaiNote=document.getElementById('turnDecisionKeyNote').textContent;
       const stored=JSON.parse(localStorage.getItem('di.tdKeys.local')||'{}');
       const keyState={
         typesafe:TurnProviders.keyFor('typesafe'),
         openrouter:TurnProviders.keyFor('openrouter'),
+        openai:TurnProviders.keyFor('openai'),
+        openaiNote:openaiNote,
         stored:stored,
         boxValue:keyBox.value,
         boxType:keyBox.type,
@@ -121,14 +125,21 @@ const CONTROLS=['turnDecisionMode','turnDecisionLangEn','turnDecisionLangJa','tu
       const bridged=r.routeLabels.filter(l=>/アドオン経由/.test(l));
       assert.equal(bridged.length,1,'the add-on route must be identifiable in the picker');
       const unverified=r.routeLabels.filter(l=>/未検証/.test(l));
-      assert.equal(unverified.length,1,'the unverified route must say so in the picker');
-      assert.ok(/OpenRouter/.test(unverified[0]),'got: '+unverified[0]);
+      /* OpenAI の Decisions API は公式 SDK で形を照合したが、実機での疎通はまだ。 */
+      assert.ok(r.routes.includes('openai-decisions'),'openai-decisions missing');
+      assert.equal(unverified.length,2,'the unverified routes must say so in the picker: '+unverified.join(' | '));
+      assert.ok(unverified.some(l=>/OpenRouter/.test(l)),'got: '+unverified.join(' | '));
+      assert.ok(unverified.some(l=>/Decisions API/.test(l)),'got: '+unverified.join(' | '));
     });
     test('each route keeps its own key, and switching back does not lose the other',()=>{
       assert.equal(r.keyState.typesafe,'TS-SECRET-1234567890');
       assert.equal(r.keyState.openrouter,'OR-SECRET-0987654321');
       assert.equal(r.keyState.stored.typesafe,'TS-SECRET-1234567890');
       assert.equal(r.keyState.stored.openrouter,'OR-SECRET-0987654321');
+      assert.equal(r.keyState.openai,'OA-SECRET-1122334455');
+      assert.equal(r.keyState.stored.openai,'OA-SECRET-1122334455');
+      assert.ok(/gpt-6-luna/.test(r.keyState.openaiNote)&&/shadow/.test(r.keyState.openaiNote),
+        'the OpenAI route says which model and to check Japanese in shadow first: '+r.keyState.openaiNote);
     });
     test('the key never goes back onto the screen, only its length',()=>{
       assert.equal(r.keyState.boxValue,'','the field must be cleared after saving');
