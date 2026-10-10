@@ -1049,6 +1049,199 @@ test('probe over the relay reports the parsed decision, and the missing relay se
   assert.equal(res.choice,'C_FULL_28');
 });
 
+/* ── OpenAI Decisions API 経路 ─────────────────────────────────────────
+   形は公式 SDK（openai-node 7.30.0 の resources/decisions.ts）で照合したもの。
+   リクエストは model／input／questions（配列。choice は choices[{value,description}]、
+   predicate は instructions だけ）。応答は answers が質問と同じ順の配列で、
+   choice は probabilities が [{value,probability}]、predicate は probability。 */
+const OA={turnDecisionProvider:'openai-decisions',turnDecisionApiKey:'',turnDecisionBaseUrl:'',
+  turnDecisionModel:'',turnDecisionKeys:JSON.stringify({openai:'oa-key',typesafe:'ts-key'})};
+const decisionsWire=(state,over)=>{
+  const id=firstId(state);
+  const b=[{value:'HOLD',probability:0.12}];
+  if(id!=='HOLD')b.push({value:id,probability:0.88});
+  return Object.assign({model:'gpt-6-luna',answers:[
+    {type:'choice',name:'boundary_choice',choice:id,confidence:0.81,probabilities:b},
+    {type:'choice',name:'turn_state',choice:'COMPLETE',confidence:0.84,probabilities:[
+      {value:'COMPLETE',probability:0.9},{value:'CONTINUING',probability:0.05},
+      {value:'SELF_REPAIR',probability:0.03},{value:'UNKNOWN',probability:0.02}]},
+    {type:'predicate',name:'safe_to_speak',probability:0.95},
+    {type:'predicate',name:'repair_likelihood',probability:0.04}],
+    usage:{input_tokens:412,input_tokens_details:{cache_write_tokens:0,cached_tokens:0},
+      output_tokens:0,output_tokens_details:{reasoning_tokens:0},total_tokens:412}},over||{});
+};
+test('the OpenAI route posts model, input and an ordered question list to /v1/decisions',async()=>{
+  reset(OA);
+  const s=stateOf();fetchImpl=reply(decisionsWire(s));
+  const n=await P().get('openai-decisions').evaluate(s,{});
+  assert.ok(n,'the answer must normalize');
+  assert.equal(calls[0].url,'https://api.openai.com/v1/decisions');
+  assert.equal(calls[0].opt.headers.Authorization,'Bearer oa-key','it must use the OpenAI key, not the TypeSafe one');
+  const body=JSON.parse(calls[0].opt.body);
+  assert.equal(Object.keys(body).sort().join(','),'input,model,questions','only the documented fields');
+  assert.equal(body.model,'gpt-6-luna','the route default model');
+  assert.equal(typeof body.input,'string','input is shared evidence as text');
+  const sent=JSON.parse(body.input);
+  assert.equal(sent.currentText,s.currentText,'the text must not be altered');
+  assert.ok(!('sessionId' in sent)&&!('candidateBoundaries' in sent),'input carries the same projection as Jev');
+  assert.equal(body.questions.map(q=>q.name).join(','),'boundary_choice,turn_state,safe_to_speak,repair_likelihood');
+  assert.equal(body.questions.map(q=>q.type).join(','),'choice,choice,predicate,predicate',
+    'the Jev noul maps onto a predicate');
+  for(const q of body.questions)
+    assert.ok(!('criteria' in q),'Decisions has no criteria field: '+q.name);
+  assert.equal(n.boundary.choice,firstId(s));
+  assert.equal(n.turnState.probabilities.CONTINUING,0.05,'the probability list becomes the contract map');
+  assert.equal(n.safeToSpeak,0.95);
+  assert.equal(n.repairLikelihood,0.04);
+  assert.equal(n.model,'gpt-6-luna');
+  assert.equal(n.usage.inputTokens,412);
+  assert.equal(n.probabilitySemantics,'vendor_reported',
+    'OpenAI probabilities are not the scale our thresholds were fitted on');
+  assert.equal(D().thresholds('ja',n.probabilitySemantics).uncalibrated,true,'so the commit side is stricter');
+});
+test('the OpenAI questions carry the Jev wording unchanged and offer exactly our candidates',async()=>{
+  reset(OA);
+  const s=stateOf();fetchImpl=reply(decisionsWire(s));
+  await P().get('openai-decisions').evaluate(s,{});
+  const q=JSON.parse(calls[0].opt.body).questions;
+  const jev=P().questions(s);
+  assert.equal(q[0].instructions,jev.boundary_choice.instructions);
+  assert.equal(q[1].instructions,jev.turn_state.instructions);
+  const values=q[0].choices.map(c=>c.value);
+  const expected=['HOLD'].concat((s.candidateBoundaries||[]).map(c=>c.id));
+  assert.equal(values.join(','),expected.join(','),'the model must not be able to name an offset we did not offer');
+  assert.equal(q[0].choices[0].description,JSON.stringify(P().HOLD_CRITERION),'HOLD keeps its what/not_for/examples');
+  const cand=s.candidateBoundaries[0],d=JSON.parse(q[0].choices[1].description);
+  assert.equal(d.before,String(cand.left||''),'`before` still names the text before the cut');
+  assert.equal(d.after,String(cand.right||''));
+  assert.equal(q[1].choices.map(c=>c.value).join(','),'COMPLETE,CONTINUING,SELF_REPAIR,UNKNOWN');
+  assert.equal(q[1].choices[0].description,P().template.turn_state.criteria.COMPLETE);
+  for(const i of [2,3]){
+    const id=q[i].name,t=P().template[id];
+    assert.ok(q[i].instructions.startsWith(t.instructions),id+' keeps its instructions');
+    assert.ok(q[i].instructions.includes('True means: '+t.criteria['true']),id+' says what true means');
+    assert.ok(q[i].instructions.includes('False means: '+t.criteria['false']),id+' says what false means');
+  }
+});
+test('OpenAI answers are matched by name, and by position only when the name is null',async()=>{
+  reset(OA);
+  const s=stateOf(),w=decisionsWire(s);
+  fetchImpl=reply(Object.assign({},w,{answers:w.answers.slice().reverse()}));
+  let n=await P().get('openai-decisions').evaluate(s,{});
+  assert.ok(n,'named answers in another order still map');
+  assert.equal(n.safeToSpeak,0.95);
+  assert.equal(n.repairLikelihood,0.04,'and do not swap the two predicates');
+  fetchImpl=reply(Object.assign({},w,{answers:w.answers.map(a=>Object.assign({},a,{name:null}))}));
+  n=await P().get('openai-decisions').evaluate(s,{});
+  assert.ok(n,'unnamed answers come back in question order');
+  assert.equal(n.boundary.choice,firstId(s));
+});
+test('a refusal on any OpenAI question falls back to Rules and names the question',async()=>{
+  reset(OA);
+  const s=stateOf(),w=decisionsWire(s);
+  const answers=w.answers.slice();answers[2]={type:'refusal',name:'safe_to_speak'};
+  fetchImpl=reply(Object.assign({},w,{answers}));
+  const err=await P().get('openai-decisions').evaluate(s,{}).then(()=>null,e=>e);
+  assert.ok(err,'a partial answer cannot drive a decision');
+  assert.equal(err.refusal,true);
+  assert.match(err.message,/refusal: safe_to_speak/);
+  assert.ok(!err.status,'a refusal is not a settings error, so the layer must not switch itself off');
+  /* 会話の中では Rules へ落ち、判断層を off にしない。 */
+  reset(Object.assign({},OA,{turnDecisionMode:'shadow',turnDecisionLangJa:'shadow',turnDecisionLangEn:'shadow'}));
+  fetchImpl=reply(Object.assign({},w,{answers}));
+  D().observe(stateOf());
+  await new Promise(r=>setTimeout(r,10));
+  assert.equal(ctx.CFG.turnDecisionMode,'shadow','a refusal must not turn the layer off');
+  assert.ok(logs.some(l=>l[0]==='turn-decision-fallback'&&/refusal/.test(l[1].reason)),'the fallback names the refusal');
+});
+test('malformed OpenAI answers are refused instead of guessed at',async()=>{
+  const s0=stateOf(),id=firstId(s0);
+  const bad=[
+    ['one answer short',w=>{w.answers.pop();}],
+    ['an unknown question name',w=>{w.answers[0].name='boundary';}],
+    ['the same question twice',w=>{w.answers[3].name='safe_to_speak';}],
+    ['probabilities as a map',w=>{w.answers[0].probabilities={HOLD:0.1};}],
+    ['a duplicated option',w=>{w.answers[1].probabilities.push({value:'COMPLETE',probability:0.1});}],
+    ['a boolean where we offered strings',w=>{w.answers[1].probabilities[0].value=true;}],
+    ['a choice we did not offer',w=>{w.answers[0].choice='C_FULL_999';}],
+    ['a predicate with no probability',w=>{delete w.answers[2].probability;}],
+    ['answers as a map (the Jev shape)',w=>{w.answers={};}]
+  ];
+  for(const [why,mut] of bad){
+    reset(OA);
+    const s=stateOf(),w=JSON.parse(JSON.stringify(decisionsWire(s)));mut(w);
+    fetchImpl=reply(w);
+    assert.equal(await P().get('openai-decisions').evaluate(s,{}),null,why);
+  }
+  assert.ok(id);
+});
+test('the OpenAI route never borrows the legacy single key or another vendor key',async()=>{
+  reset(Object.assign({},OA,{turnDecisionApiKey:'old-single-typesafe-key',
+    turnDecisionKeys:JSON.stringify({typesafe:'ts-key',openrouter:'or-key'})}));
+  assert.equal(P().keyFor('openai'),'','the legacy field predates OpenAI and holds another vendor key');
+  assert.equal(P().keyFor('typesafe'),'ts-key');
+  reset({turnDecisionApiKey:'old-single',turnDecisionKeys:''});
+  assert.equal(P().keyFor('openrouter'),'old-single','the legacy fallback still serves the vendors it was for');
+  reset(Object.assign({},OA,{turnDecisionApiKey:'old-single-typesafe-key',turnDecisionKeys:''}));
+  await assert.rejects(()=>P().get('openai-decisions').evaluate(stateOf(),{}),/キーが未設定/);
+  assert.equal(calls.length,0,'nothing may be sent without an OpenAI key');
+});
+test('a Base URL left on another vendor host is not used, so a key never goes to the wrong vendor',async()=>{
+  reset(Object.assign({},OA,{turnDecisionBaseUrl:'https://api.typesafe.ai'}));
+  const s=stateOf();fetchImpl=reply(decisionsWire(s));
+  await P().get('openai-decisions').evaluate(s,{});
+  assert.equal(calls[0].url,'https://api.openai.com/v1/decisions','the OpenAI key must not go to TypeSafe');
+  reset({turnDecisionProvider:'jev-openrouter',turnDecisionApiKey:'',turnDecisionBaseUrl:'https://API.TYPESAFE.AI/',
+    turnDecisionModel:'typesafe/jev-1.13.0',turnDecisionKeys:JSON.stringify({openrouter:'k'})});
+  fetchImpl=reply({choices:[{message:{content:JSON.stringify(wire(s))}}]});
+  await P().get('jev-openrouter').evaluate(stateOf(),{});
+  assert.equal(calls[0].url,'https://openrouter.ai/api/v1/chat/completions','nor the OpenRouter key');
+  reset(Object.assign({},OA,{turnDecisionBaseUrl:'https://relay.example.org/openai'}));
+  fetchImpl=reply(decisionsWire(s));
+  await P().get('openai-decisions').evaluate(stateOf(),{});
+  assert.equal(calls[0].url,'https://relay.example.org/openai/v1/decisions','a URL of the user own is still honoured');
+  reset({turnDecisionProvider:'jev-direct',turnDecisionBaseUrl:'https://api.typesafe.ai'});
+  fetchImpl=reply(wire(s));
+  await P().get('jev-direct').evaluate(stateOf(),{});
+  assert.equal(calls[0].url,'https://api.typesafe.ai/v1/systemone','the same vendor keeps its URL');
+});
+test('the OpenAI route stays inside the same context budget and sends nothing past it',async()=>{
+  reset(OA);
+  const s=stateOf();s.recentTurns=[];
+  for(let i=0;i<400;i++)s.recentTurns.push({speakerKey:'s'+i,language:'ja',text:'あ'.repeat(200)});
+  await assert.rejects(()=>P().get('openai-decisions').evaluate(s,{}),/文脈上限/);
+  assert.equal(calls.length,0);
+});
+test('probe reaches the OpenAI route, parses a decision, and reports a refusal as a refusal',async()=>{
+  reset(OA);
+  const probeAnswer={model:'gpt-6-luna',answers:[
+    {type:'choice',name:'boundary_choice',choice:'C_FULL_28',confidence:0.9,
+      probabilities:[{value:'HOLD',probability:0.1},{value:'C_FULL_28',probability:0.9}]},
+    {type:'choice',name:'turn_state',choice:'COMPLETE',confidence:0.9,
+      probabilities:[{value:'COMPLETE',probability:0.9},{value:'CONTINUING',probability:0.1}]},
+    {type:'predicate',name:'safe_to_speak',probability:0.95},
+    {type:'predicate',name:'repair_likelihood',probability:0.02}]};
+  fetchImpl=reply(probeAnswer);
+  let res=await P().probe('openai-decisions');
+  assert.equal(res.ok,true,JSON.stringify(res));
+  assert.equal(res.choice,'C_FULL_28');
+  assert.equal(calls[0].url,'https://api.openai.com/v1/decisions');
+  const refused=JSON.parse(JSON.stringify(probeAnswer));refused.answers[0]={type:'refusal',name:'boundary_choice'};
+  fetchImpl=reply(refused);
+  res=await P().probe('openai-decisions');
+  assert.equal(res.ok,false);
+  assert.match(res.detail,/refusal: boundary_choice/,'not "could not parse"');
+});
+test('the OpenAI route is offered in the picker as unverified until a real probe',()=>{
+  reset();
+  const r=P().list().find(x=>x.id==='openai-decisions');
+  assert.ok(r,'missing from the picker');
+  assert.equal(r.vendor,'openai');
+  assert.equal(r.verified,false);
+  assert.equal(r.bridge,false,'api.openai.com is called from the page like translation');
+  assert.equal(r.defaultModel,'gpt-6-luna');
+});
+
 (async()=>{
   for(const [name,fn] of queue){ await fn(); tests.push(name); }
   console.log(JSON.stringify({passed:tests.length,tests},null,2));

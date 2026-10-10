@@ -370,10 +370,27 @@
     "v1.53.0": {
       "build": "20260930-v1530-stt-credential-routes",
       "extension": "1.4.54",
+      "commit": "1a67108",
       "indexHtmlSha256": "946456d210475a5ab410be01794776f7f935f167f47edc2573842b9f2dfc182f",
       "extensionAppJsSha256": "f4874cb19a246dbd0b29dadc671562154a57f2709eb3bac265c888c436c3d067",
       "extensionZipSha256": "d38ef4bfac1ab7bcf4d5a263475797dfe73aa41b1972bca120a49809fbbaf3a7",
       "summary": "ストリーミング認識の一時キーの発行経路（STTマルチプロバイダ開発仕様書 §8.3・§8.4）に「拡張が中継」と「Token Broker」を足し、Phase 5 のコードが揃った。既定は今までどおり直接。relay は拡張の service worker（stt-relay.js）が ElevenLabs・AssemblyAI・Soniox の固定の発行元へ発行だけを中継し、ページは会社名とキーしか渡せない（呼べるのは拡張の画面と登録済みの HTML本体のタブだけ、Cookie なし、記録なし）。OpenAI は中継しない。broker は利用者が指定した HTTPS の Token Broker に POST {URL}/token/stt/{会社} で頼み、ページに各社のキーは要らない（Cookie なし、応答の本文を文言と記録に入れない、診断はオリジンだけ）。直接のときの挙動は v1.52.0 と同じ"
+    },
+    "v1.53.1": {
+      "build": "20261002-v1531-overlay-stt-stop",
+      "extension": "1.4.55",
+      "indexHtmlSha256": "a736a65570c21883a9520ec104b101e25cfedddd5846f7d5e2ce076b293c6938",
+      "extensionAppJsSha256": "8d4caa88dbf45db9b986ea083e5a41b7df2bc20e432512bccd89209302d51152",
+      "extensionZipSha256": "03abe1da78acbf2694cf4ff316ef7e8ec3b58f771a7e7b31e3d6370513e7991a",
+      "summary": "画面取込オーバーレイを閉じる・共有を止めると、共有音声の認識が黙って止まり、開いていたカードも残り、取り込み直しても戻らなかった（ElevenLabs の実機で見つけた。経路はほかの音声認識でも同じ）。止めたことを知らせ、開いていたカードはその時点の本文で閉じ、同じ認識の回のうちに取り込み直したら共有音声の認識だけを再開する（マイクの認識と読み上げの待ち列には触れない）"
+    },
+    "v1.54.0": {
+      "build": "20261010-v1540-openai-decisions",
+      "extension": "1.4.56",
+      "indexHtmlSha256": "a5777ff24f811f355315312ee8fe06ba13317fe0725c3b5a1506d385ddb0755a",
+      "extensionAppJsSha256": "2e62cf2279b98d0740ad3fc5e2cd39c305b69ce945b914f63e9842cf7d868d1d",
+      "extensionZipSha256": "800052ab2ab65fd0b284206fd18cdc295ecaf912e956e8707ad95e7dcd208d45",
+      "summary": "判断層（発話交代）の経路に OpenAI の Decisions API（2026-10-06 公開ベータ、/v1/decisions、gpt-6-luna）を足した。形は公式 SDK（openai-node 7.30.0・openai-python）で照合し、質問の文面は Jev と同じまま、map を配列へ・noul を predicate へ写す。応答は name で引き、refusal は Rules へ落とす（判断層は off にしない）。実機の疎通は未確認なので（未検証）と出し、確率は Jev の校正と別物なので切る側の基準を自動で厳しくする。キーは翻訳欄から借りない。あわせて、Base URL の欄に別の会社の送り先（api.typesafe.ai など）が残っていると別の会社のキーをそこへ送っていたのを直し、旧版の単一キー欄を OpenAI へ流さないようにした"
     }
   }
 }

@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.54",
-  "version_name": "1.4.54 HTML v1.53.0 と対。ストリーミング認識の一時キーの発行経路に「拡張が中継」と「Token Broker」を足す",
+  "version": "1.4.56",
+  "version_name": "1.4.56 HTML v1.54.0 と対。判断層の経路に OpenAI の Decisions API を足す",
   "optional_host_permissions": [
     "https://*/*"
   ],

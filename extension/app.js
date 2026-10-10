@@ -509,7 +509,7 @@ function turnDecisionInstall(){
       +'<option value="off">off — 使わない（既定）</option>'
       +'<option value="shadow">shadow — 記録するが動作へ反映しない</option>'
       +'<option value="assist">assist — 待つ判断だけ採用（切る位置はRulesのまま）</option>'
-      +'<option value="active">active — 切る位置もJevが決める</option>'
+      +'<option value="active">active — 切る位置も判断層が決める</option>'
     +'</select></label>'
     +'<label>英語 <select id="turnDecisionLangEn">'
       +'<option value="off">off</option><option value="shadow">shadow</option>'
@@ -520,7 +520,7 @@ function turnDecisionInstall(){
       +'<option value="assist">assist</option><option value="active">active</option>'
     +'</select></label>'
     +'<p>ドイツ語・イタリア語・中国語は既存ルールの接続表現判定を使い、判断層の対象外です。</p>'
-    +'<hr><p><b>判断の経路</b>　Rules（既定）は外部へ何も送りません。Jev を選ぶと会話の内容が外部へ出ます。</p>'
+    +'<hr><p><b>判断の経路</b>　Rules（既定）は外部へ何も送りません。Jev や OpenAI を選ぶと会話の内容が外部へ出ます。</p>'
     +'<details class="settings-help"><summary>経路の選び方と、つなぎ方</summary>'
       +'<p><b>Rules</b>（既定）は既存ルールだけで判定し、外部へ何も送りません。'
       +'<b>Jev</b> を選ぶと、認識中の原文と、下の「音響特徴を渡す」がONなら話速・ピッチ・間も'
@@ -529,6 +529,11 @@ function turnDecisionInstall(){
       +'API が正常に動いていてもページ側では結果を読めません（200 も 404 も区別できません）。'
       +'<b>「Jev — アドオン経由」を選び、アドオンのポップアップ下部「判断層（Jev）の接続先」で'
       +'許可してください。</b>中継するのは許可したオリジン1つだけです。</p>'
+      +'<p><b>OpenAI — Decisions API</b> は、OpenAI が 2026-10 に公開ベータで出した Jev と同じ種類の'
+      +'判断用 API です。選ぶと、Jev と同じ内容（認識中の原文と、ONなら音響特徴）が OpenAI へ送られます。'
+      +'キーは翻訳欄の OpenAI のキーを流用せず、ここで別に入れます。'
+      +'答えの確率は Jev とは物差しが違うので、Duo は「ここで切る」側の基準を自動で厳しくします。'
+      +'まず shadow で記録を見てから assist／active にしてください。</p>'
     +'</details>'
     +'<label>経路 <select id="turnDecisionProvider"></select></label>'
     +'<label>モデル <input id="turnDecisionModel" type="text" spellcheck="false" placeholder="（経路の既定）"></label>'
@@ -680,7 +685,9 @@ function turnDecisionInstall(){
     note.textContent=(r.keyHint||'APIキー')+'。'+(r.contextNote?r.contextNote+'。':'')
       +(r.vendor==='typesafe'?'assist／active では alias（jev-latest／jev-preview）を拒否します。'
         +'既定は jev-1.13.0 です。日本語は公式が「英語と同等では'
-        +'ない」と明記しているので、日本語側は必ず shadow で確かめてください。':'');
+        +'ない」と明記しているので、日本語側は必ず shadow で確かめてください。'
+       :r.vendor==='openai'?'既定のモデルは gpt-6-luna です。公開ベータの API で、日本語での精度は'
+        +'まだ確かめていません。日本語側は必ず shadow で確かめてください。':'');
     help.hidden=false;
   }
   $('turnDecisionKey').onchange=function(){
@@ -733,7 +740,8 @@ function turnDecisionInstall(){
       if(res.unreachable){
         toast('到達できません（'+res.ms+'ms）。<br>'
           +'ブラウザから直接この API を呼べない可能性があります（CORS）。<br>'
-          +'「Jev — アドオン経由」をお試しください。');
+          +(r.vendor==='typesafe'?'「Jev — アドオン経由」をお試しください。'
+            :'ネットワークの遮断か、拡張版で開き直すと届くかをご確認ください。'));
         return;
       }
       toast('サーバまでは届きましたが拒否されました（HTTP '+res.status+'）。<br>'
@@ -801,8 +809,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.53.0';
-var APP_BUILD = '20260930-v1530-stt-credential-routes';
+var APP_VERSION = 'v1.54.0';
+var APP_BUILD = '20261010-v1540-openai-decisions';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -2364,7 +2372,7 @@ function overlayStartAudioProbe(track){
 var OverlaySession = {
   state:'IDLE', stream:null, videoTrack:null, audioTrack:null, opened:false,
   controller:null, forwardWheelOn:false,
-  stopping:false, lastError:'', sourceInfo:null, ownsFullscreen:false,
+  stopping:false, lastError:'', sourceInfo:null, ownsFullscreen:false, sttStoppedGen:null,
   transition:function(next, detail){
     this.state = next;
     updateCaptureStatus(detail || '');
@@ -2414,7 +2422,7 @@ var OverlaySession = {
         audio=null;
       }
       requireSharedAudio(stream,selectedSurface);
-      this.stopSource(true);
+      this.stopSource(true,'switch');
       this.controller=controller;this.forwardWheelOn=false;
       this.stream = stream; this.videoTrack = video; this.audioTrack = audio;
       this.transition('CAPTURING_VIDEO','取込映像を接続しています');
@@ -2428,7 +2436,7 @@ var OverlaySession = {
       var self = this;
       video.onended = function(){ self.sourceEnded('共有元から画面共有が終了されました'); };
       if (audio) audio.onended = function(){
-        stopEnginesForTrack(audio,'共有音声Track終了');
+        overlaySttStopped(stopEnginesForTrack(audio,'共有音声Track終了'),'track');
         overlayStopAudioProbe();
         self.audioTrack = null;
         if(self.sourceInfo){self.sourceInfo.audio=false;self.sourceInfo.audioTrack=false;self.sourceInfo.audioDetected=false;}
@@ -2459,7 +2467,9 @@ var OverlaySession = {
       if(audio)overlayStartAudioProbe(audio);
       overlayWakeToolbar();
       dlog('overlay','capture-ok',this.sourceInfo);
-      if(replacing){
+      if(!replacing)overlaySttResume();
+      else{
+        this.sttStoppedGen=null;
         showCaptureNotice('取込対象を切り替えました。注釈は新しい画面用にクリアしました。',3000);
         if(S.running&&(CFG.srcA==='display'||CFG.srcB==='display')){
           dlog('overlay','source-restart-stt',{reason:'取込切替'});
@@ -2482,13 +2492,15 @@ var OverlaySession = {
       overlayWakeToolbar();
     }
   },
-  stopSource:function(quiet){
+  stopSource:function(quiet,why){
     if (this.stopping) return;
     this.stopping = true;
     overlayStopAudioProbe();
     if(this.controller&&this.forwardWheelOn&&this.controller.forwardWheel){try{this.controller.forwardWheel(null).catch(function(){});}catch(e){}}
     var audio=this.audioTrack;
-    if(audio)stopEnginesForTrack(audio,'画面取込停止');
+    /* 取込対象の切替（switch）は、この後で認識を張り直すので知らせない。 */
+    var stopped=audio?stopEnginesForTrack(audio,'画面取込停止'):0;
+    if(why!=='switch')overlaySttStopped(stopped,why||(quiet?'close':'stop'));
     var tracks = this.stream && this.stream.getTracks ? this.stream.getTracks() : [];
     tracks.forEach(function(t){ t.onended=null; try{t.stop();}catch(e){} });
     this.stream=null; this.videoTrack=null; this.audioTrack=null; this.sourceInfo=null;this.controller=null;this.forwardWheelOn=false;
@@ -2499,7 +2511,7 @@ var OverlaySession = {
     if (!quiet) this.transition('IDLE','画面共有を停止しました');
   },
   sourceEnded:function(message){
-    this.stopSource(true);
+    this.stopSource(true,'ended');
     stopSpeaking('共有元終了');
     $('capturePlaceholder').hidden = false;
     this.transition('SOURCE_ENDED',message || '画面共有が終了しました');
@@ -2522,7 +2534,7 @@ var OverlaySession = {
     if (autoStart && !this.stream) this.start();
   },
   close:function(){
-    this.stopSource(true); this.opened=false; this.state='IDLE';
+    this.stopSource(true,'close'); this.opened=false; this.state='IDLE';
     overlayPointerY=Infinity;
     clearTimeout(overlayRailTimer); clearTimeout(overlayToolbarTimer); clearTimeout(overlayNoticeTimer);
     clearTimeout(overlayStateHideTimer);
@@ -10834,6 +10846,9 @@ SttLiveHost.prototype.committed=function(id,ev){
   delete this.items[id];
 };
 SttLiveHost.prototype.stop=function(){
+  /* 認識の途中でこの入力だけが止まったとき（画面取込を閉じたなど）は、開いているカードをその時点の本文で閉じる。
+     閉じないと、全体を止めるまで「続きを待っています」のまま残る。全体の停止では S.running が先に false になる。 */
+  if(S.running&&this.session===sessionGen&&!this.dead)this.closeCards('source-stopped');
   this.dead=true;this.stopBoundaryMonitor();this.closeConnection();
   sttLiveMetricsFlush(this,Date.now(),true);
   Object.keys(this.items).forEach(function(k){var e=this.items[k].entry;if(e&&!e.segment)removeEntry(e);},this);this.items={};
@@ -11081,7 +11096,7 @@ var STT_LIVE_SPEECH_GAP_MS=400;
 /* Provider の区切りだけで閉じるとき（sttCardClose=provider）の安全弁。文字がこれだけ止まったら閉じる。 */
 var STT_LIVE_PROVIDER_IDLE_MS=6000;
 /* Provider が区間を閉じた理由。Duo の区切りと違い、Provider へ確定を送り返さない。 */
-var STT_LIVE_PROVIDER_REASONS=['server-completed','vad','manual','end-of-turn','semantic','finalize','reconnect','fallback'];
+var STT_LIVE_PROVIDER_REASONS=['server-completed','vad','manual','end-of-turn','semantic','finalize','reconnect','fallback','source-stopped'];
 var STT_LIVE_STATS={samples:{},counts:{},switches:[]};
 function sttLiveStatsReset(){STT_LIVE_STATS={samples:{},counts:{},switches:[]};}
 function sttLiveSample(name,ms){
@@ -11695,16 +11710,72 @@ RealtimeEngine.prototype.stop = function(){
    ========================================================================= */
 var engines = [];
 
+/* 止めた認識の数を返す（画面取込を閉じたときの知らせに使う）。 */
 function stopEnginesForTrack(track,why){
-  if(!track||!engines||!engines.length)return;
-  var keep=[];
+  if(!track||!engines||!engines.length)return 0;
+  var keep=[],n=0;
   engines.forEach(function(e){
     var hit=e&&(e.track===track||e.opts&&e.opts.sourceTrack===track);
     if(!hit&&e&&e.stream&&e.stream.getAudioTracks)hit=e.stream.getAudioTracks().indexOf(track)>=0;
-    if(hit){try{e.stop();}catch(_){}dlog('audio','route-stop',{why:why||'Track終了',engine:e.constructor&&e.constructor.name||'engine'});}
+    if(hit){n++;try{e.stop();}catch(_){}dlog('audio','route-stop',{why:why||'Track終了',engine:e.constructor&&e.constructor.name||'engine'});}
     else keep.push(e);
   });
   engines=keep;
+  return n;
+}
+/* ── 画面取込を閉じたときの共有音声の認識（v1.53.1）──────────────────────
+   共有音声の認識は画面取込の音声Trackを使うので、画面取込を閉じる・共有を止めると一緒に止まる。
+   今までは黙って止まり、「認識が途中で止まった」ように見えた。止めたことを知らせ、同じ認識の回の
+   うちに取り込み直したら、共有音声の認識だけを再開する（マイクの認識と読み上げの待ち列には触れない）。 */
+var OVERLAY_STT_WHY={close:'画面取込を閉じたため',stop:'画面取込を止めたため',ended:'画面共有が終了したため',track:'共有音声が途切れたため'};
+function overlaySttSeat(){return CFG.srcA==='display'?'A':(CFG.srcB==='display'?'B':null);}
+/* 取り込み直したときに再開できる経路か。VB-CABLE は画面取込を使わず、Realtime 翻訳は別の経路で始まる。 */
+function overlaySttResumable(){
+  var route=effectiveDisplaySttRoute();
+  return !!overlaySttSeat()&&CFG.sttProvider!=='realtime'&&route!=='vb'&&(route==='direct'||CFG.sttProvider!=='webspeech');
+}
+function overlaySttStopped(count,why){
+  if(!count||!S.running)return false;
+  var resumable=overlaySttResumable(),others=engines.length>0;
+  overlaySession.sttStoppedGen=resumable?sessionGen:null;
+  dlog('overlay','stt-stopped',{engines:count,why:why||'close',resumable:resumable,othersContinue:others});
+  toast((OVERLAY_STT_WHY[why]||OVERLAY_STT_WHY.close)+'、共有音声の認識を止めました。'+(others?'マイクの認識は続いています。':'')
+    +(resumable?'<br>画面取込でもう一度取り込むと、共有音声の認識を再開します。':''));
+  return true;
+}
+function overlaySttResume(){
+  var gen=overlaySession.sttStoppedGen,seat=overlaySttSeat(),route=effectiveDisplaySttRoute();
+  overlaySession.sttStoppedGen=null;
+  if(gen==null||gen!==sessionGen||!S.running||!overlaySttResumable()||!overlaySession.activeAudioTrack())return false;
+  dlog('overlay','source-restart-stt',{reason:'取込再開',seat:seat,route:route});
+  getDisplayAudioForStt().then(function(info){
+    if(!S.running||sessionGen!==gen)return;
+    return startDisplayEngine(seat,route,info);
+  }).catch(function(err){
+    if(!S.running||sessionGen!==gen||(err&&err.cancelled))return;
+    dlog('stt','display-resume-FAIL',{seat:seat,err:String((err&&err.message)||err).slice(0,300)});
+    toast('共有音声の認識を再開できません：'+realtimeEscape(String((err&&err.message)||err)));
+  });
+  return true;
+}
+/* 受け取った共有音声Trackで認識を始める。startAll と、取り込み直し（overlaySttResume）から使う。 */
+function startDisplayEngine(dispSeat,route,info){
+  var eng;
+  if(route==='direct'){
+    eng=new WebSpeechTrackEngine(dispSeat,info.track,{ownsStream:info.ownsStream,stream:info.stream,fromOverlay:!!info.fromOverlay});
+    engines.push(eng);eng.start();
+    dlog('stt','transport-override',{selectedModel:CFG.sttModel,effective:'webspeech-track',reason:'共有音声STT経路=direct'});
+    toast('共有音声Trackの直接Web Speech認識を開始しました'
+      +(isStreamingStt()?'<br>※ '+(isLiveTranscribe()?'gpt-live-transcribe':STT_LIVE_PROVIDERS[sttLiveProviderId()].label)+'を使う場合は、⚙→音声→共有音声の認識経路を「選択したSTTを使う」にしてください。':''),true);
+    return Promise.resolve(eng);
+  }
+  if(isStreamingStt()){
+    eng=new SttLiveHost(sttLiveProviderId(),dispSeat,info.stream,{isMic:false,ownsStream:info.ownsStream});
+    engines.push(eng);return eng.start().then(function(){toast(sttLiveMsg('display',eng)+sttFallbackNotice(),true);return eng;});
+  }
+  eng=new StreamEngine(dispSeat,info.stream,{isMic:false,meter:false,ownsStream:info.ownsStream});
+  engines.push(eng);eng.start();toast('共有音声を外部STT APIへ送信します',true);
+  return Promise.resolve(eng);
 }
 function getDisplayAudioForStt(){
   var existing=overlaySession.activeAudioTrack();
@@ -11848,11 +11919,7 @@ function startAll(){
       jobs.push(
         getDisplayAudioForStt().then(function(info){
           if(!captureCurrent(info.stream,info.ownsStream))return;
-          var eng=new WebSpeechTrackEngine(dispSeat,info.track,{ownsStream:info.ownsStream,stream:info.stream,fromOverlay:!!info.fromOverlay});
-          engines.push(eng);eng.start();
-          dlog('stt','transport-override',{selectedModel:CFG.sttModel,effective:'webspeech-track',reason:'共有音声STT経路=direct'});
-          toast('共有音声Trackの直接Web Speech認識を開始しました'
-            +(isStreamingStt()?'<br>※ '+(isLiveTranscribe()?'gpt-live-transcribe':STT_LIVE_PROVIDERS[sttLiveProviderId()].label)+'を使う場合は、⚙→音声→共有音声の認識経路を「選択したSTTを使う」にしてください。':''),true);
+          return startDisplayEngine(dispSeat,'direct',info);
         }).catch(function(err){
             if(!S.running||sessionGen!==startGen)return;
           dlog('stt','track-FAIL',{seat:dispSeat,err:String(err.message||err),fallback:false});
@@ -11885,13 +11952,7 @@ function startAll(){
     }else{
       jobs.push(getDisplayAudioForStt().then(function(info){
         if(!captureCurrent(info.stream,info.ownsStream))return;
-        var eng;
-        if(isStreamingStt()){
-          eng=new SttLiveHost(sttLiveProviderId(),dispSeat,info.stream,{isMic:false,ownsStream:info.ownsStream});
-          engines.push(eng);return eng.start().then(function(){toast(sttLiveMsg('display',eng)+sttFallbackNotice(),true);});
-        }
-        eng=new StreamEngine(dispSeat,info.stream,{isMic:false,meter:false,ownsStream:info.ownsStream});
-        engines.push(eng);eng.start();toast('共有音声を外部STT APIへ送信します',true);
+        return startDisplayEngine(dispSeat,route,info);
       }).catch(function(err){
             if(!S.running||sessionGen!==startGen)return;
         if(err&&err.cancelled)return;
@@ -13274,7 +13335,7 @@ $('captionPipOpen').onclick = openCaptionPip;
 $('capturePipOpen').onclick = openCaptionPip;
 updateCaptionPipButtons();
 $('captureStart').onclick = function(){ overlaySession.start(!!overlaySession.stream); };
-$('captureStop').onclick  = function(){ overlaySession.stopSource(false); $('capturePlaceholder').hidden=false; };
+$('captureStop').onclick  = function(){ overlaySession.stopSource(false,'stop'); $('capturePlaceholder').hidden=false; };
 $('captureSwitch').onclick=function(){overlaySession.start(true);};
 $('captureForwardWheel').onclick=function(){overlaySession.setForwardWheel(!overlaySession.forwardWheelOn);};
 $('captureClose').onclick = function(){ overlaySession.close(); };
@@ -14931,12 +14992,17 @@ var TurnProviders={
 
   /* vendor ごとのAPIキー。TypeSafe直とOpenRouterでは別のキーが要り、将来 OpenAI や
      Claude が増えればさらに増える。1本の欄を使い回すと経路を切り替えるたびに貼り
-     直しになるので、vendor名→キーのmapで持つ。旧の単一欄は読み出しだけ互換を残す。 */
+     直しになるので、vendor名→キーのmapで持つ。旧の単一欄は読み出しだけ互換を残す。
+     旧の単一欄があったのは TypeSafe と OpenRouter だけの頃なので、中身はそのどちらかの
+     キーである。後から足した vendor（OpenAI）へ流すと TypeSafe のキーを OpenAI へ
+     送ることになるので、互換は当時の vendor に限る。 */
+  LEGACY_KEY_VENDORS:['typesafe','openrouter'],
   keyFor:function(vendor){
     var raw=CFG.turnDecisionKeys,map=null;
     if(raw){try{map=typeof raw==='string'?JSON.parse(raw):raw;}catch(err){map=null;}}
     var k=map&&typeof map==='object'?String(map[vendor]||''):'';
-    return k||String(CFG.turnDecisionApiKey||'');
+    if(k)return k;
+    return this.LEGACY_KEY_VENDORS.indexOf(vendor)>=0?String(CFG.turnDecisionApiKey||''):'';
   },
   setKey:function(vendor,value){
     var raw=CFG.turnDecisionKeys,map=null;
@@ -14978,6 +15044,77 @@ var TurnProviders={
     +'The user message holds `state` and `questions`. Each question carries its own `instructions` '
     +'and `criteria`. Answer every question using only the options its `criteria` lists. '
     +'Return probabilities that sum to 1 within each question. Do not add commentary.',
+
+  /* OpenAI の Decisions API へ渡す形。Jev と同じく「型の付いた質問に確率で答える」
+     API なので、質問の文面は Jev へ送るものから1文字も変えない。変えると
+     questionSetHash が同じなのに経路ごとに実際の入力がずれ、shadow の比較が濁る。
+     埋めるのは形の違いだけ（公式 SDK openai-node 7.30.0 の resources/decisions.ts で照合）。
+       ・state は `input`（質問に共通の証拠）へ JSON の文字列で入れる
+       ・questions は map ではなく順のある配列で、質問IDは name に書く
+       ・choice の criteria は choices[].description。説明が項目立て（what／not_for／
+         before／after）のものは、Jev へ送るのと同じ JSON のまま渡す。文面の
+         `before` と `after` がそのまま同じ名前の項目を指せるように
+       ・Jev の noul にあたるのは predicate。criteria の欄が無いので、true／false の
+         意味は instructions の後ろへ足す */
+  DECISIONS_ORDER:['boundary_choice','turn_state','safe_to_speak','repair_likelihood'],
+  decisionsInput:function(state){return JSON.stringify(this.project(state));},
+  decisionsQuestions:function(state){
+    var q=this.questions(state),out=[],i,id,x,keys,k,choices,c;
+    var text=function(v){return typeof v==='string'?v:JSON.stringify(v);};
+    for(i=0;i<this.DECISIONS_ORDER.length;i++){
+      id=this.DECISIONS_ORDER[i];x=q[id];
+      if(x.type==='choice'){
+        choices=[];keys=Object.keys(x.criteria||{});
+        for(k=0;k<keys.length;k++)choices.push({value:keys[k],description:text(x.criteria[keys[k]])});
+        out.push({type:'choice',name:id,instructions:x.instructions,choices:choices});
+      }else{
+        c=x.criteria||{};
+        out.push({type:'predicate',name:id,instructions:x.instructions
+          +(c['true']?'\nTrue means: '+c['true']:'')+(c['false']?'\nFalse means: '+c['false']:'')});
+      }
+    }
+    return out;
+  },
+  /* 応答の answers は質問と同じ順の配列で、各要素が name を持つ（名前の無い質問は
+     null）。name で引き、null なら順番で引く。choice の probabilities は
+     {value, probability} の配列なので map へ直し、predicate の probability を Jev の
+     noul に当てて fromAnswers へ渡す。正規化を1本に保つため、ここでは形しか見ない。
+     質問ごとに refusal（答えない）が返ることがある。1つでも欠けたら判断に使えないので、
+     理由を名前で残して Rules へ落とす。 */
+  fromDecisions:function(raw,state,meta){
+    if(!raw||typeof raw!=='object'||!Array.isArray(raw.answers))return null;
+    var order=this.DECISIONS_ORDER,a=raw.answers,by={},refused=[],i,x,id;
+    if(a.length!==order.length)return null;
+    for(i=0;i<a.length;i++){
+      x=a[i];if(!x||typeof x!=='object')return null;
+      id=x.name==null?order[i]:String(x.name);
+      if(order.indexOf(id)<0||Object.prototype.hasOwnProperty.call(by,id))return null;
+      by[id]=x;if(x.type==='refusal')refused.push(id);
+    }
+    if(refused.length){
+      var e=new Error('OpenAI が答えを返しませんでした（refusal: '+refused.join(', ')+'）');
+      e.refusal=true;throw e;
+    }
+    /* 選択肢の値は型付き（文字列の "true" と真偽値の true は別物）。こちらが出したのは
+       全部文字列なので、文字列以外の値や同じ値の重複は契約外として捨てる。 */
+    var choice=function(x){
+      if(!x||x.type!=='choice'||typeof x.choice!=='string'||!Array.isArray(x.probabilities))return null;
+      var p={},j,v;
+      for(j=0;j<x.probabilities.length;j++){
+        v=x.probabilities[j];
+        if(!v||typeof v!=='object'||typeof v.value!=='string')return null;
+        if(Object.prototype.hasOwnProperty.call(p,v.value))return null;
+        p[v.value]=v.probability;
+      }
+      return {type:'choice',choice:x.choice,confidence:x.confidence,probabilities:p};
+    };
+    var predicate=function(x){return x&&x.type==='predicate'?{type:'noul',noul:x.probability}:null;};
+    var b=choice(by.boundary_choice),t=choice(by.turn_state),
+        s=predicate(by.safe_to_speak),r=predicate(by.repair_likelihood);
+    if(!b||!t||!s||!r)return null;
+    return this.fromAnswers({model:raw.model,usage:raw.usage,answers:{boundary_choice:b,
+      turn_state:t,safe_to_speak:s,repair_likelihood:r}},state,meta);
+  },
 
   /* ── 経路レジストリ ───────────────────────────────────────────────────
      判断契約は Duo が所有し、経路は「宣言」で足す。1経路が書くのは
@@ -15102,6 +15239,35 @@ var TurnProviders={
         if(!inner.model)inner.model=json.model||meta.model;
         return TurnProviders.fromAnswers(inner,state,meta);
       }
+    },
+
+    /* OpenAI の Decisions API（2026-10-06 に公開ベータ）。Jev と同じ種類の判断用 API で、
+       形の違いは decisionsQuestions／fromDecisions が埋める。形は公式 SDK で照合したが、
+       実機での疎通はまだなので verified:false。確率は Duo の閾値を決めた Jev の校正とは
+       別の物差しなので vendor_reported とし、thresholds() が commit 側を厳しくする。
+       api.openai.com は翻訳・読み上げでページから直接呼んでいるので、中継は用意しない。 */
+    'openai-decisions':{
+      label:'OpenAI — Decisions API',
+      vendor:'openai',
+      verified:false,
+      semantics:'vendor_reported',
+      defaultBase:'https://api.openai.com',
+      defaultModel:'gpt-6-luna',
+      keyHint:'OpenAI の API キー（翻訳欄のキーは流用しません）',
+      /* 文脈の上限は SDK に書かれていない。Jev と同じ保守値で運用し、超えたら送らない。
+         input は JSON を文字列に入れるぶん、同じ state でも Jev より少し長くなる。 */
+      contextNote:'文脈の上限は未確認（Jev と同じ保守値で運用）',
+      maxBodyChars:24000,
+      capabilities:{probabilitySemantics:'vendor_reported',supportsChoice:true,supportsNoul:true,
+        structuredOutput:true,abortable:true,maxChoices:255,textOnly:true,local:false},
+      path:'/v1/decisions',
+      headers:function(key){return {'Authorization':'Bearer '+key};},
+      body:function(state,model){
+        /* questions は候補を組むので完全な state を見る。input に入れるのは projection。 */
+        return {model:model,input:TurnProviders.decisionsInput(state),
+          questions:TurnProviders.decisionsQuestions(state)};
+      },
+      parse:function(json,state,meta){return TurnProviders.fromDecisions(json,state,meta);}
     }
   },
 
@@ -15124,6 +15290,22 @@ var TurnProviders={
         e.unreachable=true;e.cause=String((err&&err.message)||err).slice(0,80);
         throw e;
       });
+  },
+
+  /* Base URL の欄は全経路で1つを共有している。Jev 用に api.typesafe.ai を入れたまま
+     OpenAI や OpenRouter へ切り替えると、その vendor のキーを TypeSafe へ送ってしまう。
+     欄の値が「別の vendor の経路の既定」と同じオリジンなら、この経路では使わず
+     自分の既定へ戻す。自前の中継など、どの経路の既定でもない値はそのまま使う。 */
+  baseFor:function(route){
+    var base=String(CFG.turnDecisionBaseUrl||'');
+    if(!base)return route.defaultBase;
+    var origin=function(u){var m=/^(https?:\/\/[^\/?#]+)/i.exec(String(u||''));return m?m[1].toLowerCase():'';};
+    var mine=origin(base),k,r;
+    for(k in this.ROUTES)if(Object.prototype.hasOwnProperty.call(this.ROUTES,k)){
+      r=this.ROUTES[k];
+      if(r.vendor!==route.vendor&&origin(r.defaultBase)===mine)return route.defaultBase;
+    }
+    return base;
   },
 
   /* 経路を安全に引く。TurnProviders 自身のメソッド名（normalize 等）を
@@ -15157,7 +15339,7 @@ var TurnProviders={
     var route=this.ROUTES[id];
     if(!route)return Promise.resolve({ok:false,status:0,detail:'未知の経路'});
     var key=this.keyFor(route.vendor);
-    var base=String(CFG.turnDecisionBaseUrl||'')||route.defaultBase;
+    var base=TurnProviders.baseFor(route);
     var model=String(CFG.turnDecisionModel||'')||route.defaultModel;
     var state={schemaVersion:TURN_STATE_SCHEMA,sessionId:'probe',utteranceId:'probe',revision:0,
       speakerKey:'probe',sourceLanguage:'en',currentText:'This is a connectivity check.',
@@ -15180,11 +15362,12 @@ var TurnProviders={
          「疎通は通ったのに会議では何も起きない」が再発する。 */
       var j;try{j=JSON.parse(r.text);}catch(err){
         return {ok:false,ms:ms,status:r.status,parsed:false,detail:'JSONではない応答'};}
-      var norm=null;
+      var norm=null,perr=null;
       try{norm=route.parse(j,state,{provider:id,model:model,semantics:route.semantics,
-        latencyMs:ms,questionSetHash:TurnDecision.questionSetHash()});}catch(err){norm=null;}
+        latencyMs:ms,questionSetHash:TurnDecision.questionSetHash()});}catch(err){norm=null;perr=err;}
       if(!norm)return {ok:false,ms:ms,status:r.status,parsed:false,
-        detail:'契約の形に解析できません: '+String(r.text||'').slice(0,120)};
+        detail:perr&&perr.refusal?perr.message
+          :'契約の形に解析できません: '+String(r.text||'').slice(0,120)};
       return {ok:true,ms:ms,status:r.status,parsed:true,
         choice:norm.boundary&&norm.boundary.choice,model:norm.model};
     },function(err){
@@ -15204,7 +15387,7 @@ var TurnProviders={
       evaluate:function(state,opts){
         var key=TurnProviders.keyFor(route.vendor);
         if(!key)return Promise.reject(new Error(route.label+' の API キーが未設定です'));
-        var base=String(CFG.turnDecisionBaseUrl||'')||route.defaultBase;
+        var base=TurnProviders.baseFor(route);
         if(!/^https:\/\//.test(base))return Promise.reject(new Error('判断層のURLはHTTPSのみ許可します'));
         var model=String(CFG.turnDecisionModel||'')||route.defaultModel;
         /* 判断を採用するモード（assist／active）では alias ではなく校正済み version を
@@ -15805,7 +15988,8 @@ var TurnDecision={
             :err.needsSetup?('判断層へ到達できません。<br>アドオンのポップアップで接続先を'
               +'許可してください。<br>Rules で動作を続けます。')
             :('判断層へ到達できません。<br>ブラウザから直接この API を呼べない可能性があります'
-              +'（CORS）。<br>アドオン経由の経路をお試しください。<br>Rules で動作を続けます。'));
+              +'（CORS）。<br>'+(routeInfo&&routeInfo.vendor==='typesafe'?'アドオン経由の経路をお試しください。<br>':'')
+              +'Rules で動作を続けます。'));
         }
         if(status&&TurnProviders.NEVER_RETRY.indexOf(status)>=0){
           self.circuitFail(id,lang,reason);

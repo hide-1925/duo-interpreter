@@ -26,7 +26,7 @@ Duo Interpreter はサーバーを持たず、ブラウザ（と Chrome/Edge 拡
 | 無料翻訳 | Google 翻訳の非公式エンドポイント（`translate.googleapis.com`）、MyMemory | 認識した本文（APIキーなし） |
 | 音声認識 | ブラウザ内蔵（Chrome は音声を Google へ送ります）、OpenAI、Groq、OpenRouter、ElevenLabs・AssemblyAI・Soniox（ストリーミング） | 音声、APIキー（ストリーミングの3社は下の一時資格情報） |
 | 読み上げ | OpenAI・Aivis・ElevenLabs・xAI・Google Cloud TTS・OpenRouter・Groq・VOICEVOX（tts.quest またはローカル）・ブラウザ内蔵 | 訳文、APIキー |
-| 判断層（既定OFF） | TypeSafe（Jev）など、利用者が選んだ経路 | 未確定の本文の末尾、音響特徴の要約、APIキー |
+| 判断層（既定OFF） | TypeSafe（Jev）・OpenAI（Decisions API）など、利用者が選んだ経路 | 未確定の本文の末尾、音響特徴の要約、APIキー |
 | 議事録生成 | 翻訳に選んだプロバイダ | 会話の本文 |
 
 APIキーは、そのキーの発行元の API にだけ `Authorization` などのヘッダで送ります。
@@ -37,6 +37,7 @@ APIキーは、そのキーの発行元の API にだけ `Authorization` など�
 予備の会社と順（予備1〜3）を選んだときだけ、選んだ会社へつながらないときに**音声の送り先がその予備の会社へ変わります**
 （その会社の料金がかかります）。キーや設定の誤りでは切り替えません。切り替えた先でも、その会社のキーだけを使います
 （予備の OpenAI は OpenAI のキーだけで、ほかの会社の欄のキーを送りません）。切り替えたときはトーストで知らせ、診断ログに残します。
+判断層のキーは経路の会社ごとに別々に持ち、選んだ経路の会社へだけ送ります。OpenAI の経路は翻訳欄の OpenAI のキーを借りません。判断層の Base URL の欄は全経路で1つですが、欄に**別の会社の経路の既定の送り先**（例：Jev 用の `https://api.typesafe.ai`）が残っていれば、その経路では使わず自分の既定へ戻します（OpenAI や OpenRouter のキーを TypeSafe へ送らないため）。旧版の単一のキー欄は TypeSafe と OpenRouter の経路でだけ読み、OpenAI へは送りません。
 拡張の判断層の中継（`turn-proxy.js`）は、利用者がポップアップで許可した **1つのオリジン** にだけ転送し、ヘッダは既知のものだけを通し、記録しません。
 
 ストリーミング認識の一時キーの発行経路は3つから選べます（既定は「直接」）。
