@@ -391,6 +391,14 @@
       "extensionAppJsSha256": "2e62cf2279b98d0740ad3fc5e2cd39c305b69ce945b914f63e9842cf7d868d1d",
       "extensionZipSha256": "800052ab2ab65fd0b284206fd18cdc295ecaf912e956e8707ad95e7dcd208d45",
       "summary": "判断層（発話交代）の経路に OpenAI の Decisions API（2026-10-06 公開ベータ、/v1/decisions、gpt-6-luna）を足した。形は公式 SDK（openai-node 7.30.0・openai-python）で照合し、質問の文面は Jev と同じまま、map を配列へ・noul を predicate へ写す。応答は name で引き、refusal は Rules へ落とす（判断層は off にしない）。実機の疎通は未確認なので（未検証）と出し、確率は Jev の校正と別物なので切る側の基準を自動で厳しくする。キーは翻訳欄から借りない。あわせて、Base URL の欄に別の会社の送り先（api.typesafe.ai など）が残っていると別の会社のキーをそこへ送っていたのを直し、旧版の単一キー欄を OpenAI へ流さないようにした"
+    },
+    "v1.54.1": {
+      "build": "20261013-v1541-live-cadence",
+      "extension": "1.4.57",
+      "indexHtmlSha256": "4a4ca9ff08edaf80628cbbacc109450ae11b7a45772abc27a0465e49085a3afa",
+      "extensionAppJsSha256": "0eedca25cfc49f363880233069293d8ff6fccbc46082a1748e5480f7bf96803d",
+      "extensionZipSha256": "9a2c4b09f2e73e6f36c633e4072d460ea05e9373daaa563800a9f583f581fb3c",
+      "summary": "ElevenLabs のストリーミング認識で、語や文の途中で翻訳・読み上げに回っていた。途中経過は約1秒ごとに全文で送り直され、末尾に仮の「。」が付くのに、Duo は文字が0.3〜0.4秒変わらなければ確定していたため、次の途中経過が届く前に仮の「。」までを文として確定していた（v1.54.0 の実測で確定54件のうち18件が確定後に書き換わった）。gpt-live 以外のストリーミング認識では、安定待ちを途中経過の間隔（直近5回の最大）＋0.1秒（最初は1秒とみなす、上限1.6秒）より短くしない。gpt-live は追記だけなので対象外。診断に live-cadence と commit の windowMs を足した"
     }
   }
 }

@@ -380,4 +380,74 @@ test('diagnostics: the order, missing keys and the switches of this session',asy
   assert.equal(f.c.sttLiveFallbackSummary(),'ON / 順 soniox → assemblyai → openai(キーなし) → elevenlabs(キーなし) / 切替 soniox→assemblyai');
   f.c.CFG.sttAutoFallback='off';assert.equal(f.c.sttLiveFallbackSummary(),'OFF');
 });
+/* ── 途中経過の間隔に合わせた安定待ち（ElevenLabs のように約1秒ごとに全文を送り直す Provider） ──
+   途中経過の末尾の仮の「。」「.」を、次の途中経過が届く前に文として確定しない。gpt-live は
+   追記だけなので、今までどおり 0.3〜0.4 秒で確定する。 */
+const cadenceWorld=(provider)=>{
+  const r=world('fast'),h=r.host();if(provider)h.provider=provider;
+  r.ctx.segPolicyFor=(e)=>r.ctx.segLiveStability(e,{min:8,max:28,stability:300,silence:400,debt:8,mode:'fast'});
+  /* 文字の変化だけを見る（音量計なし）。カードは次の途中経過までに閉じない長さにしておく。 */
+  return {r,h,commits:()=>r.w.logs.filter(l=>l.m==='commit').map(l=>l.d)};
+};
+const walk=(r,h,ms)=>{for(let t=0;t<ms;t+=50)r.tick(h,50);};
+test('a provisional sentence end from a snapshot provider is not committed before the next partial',()=>{
+  const {r,h,commits}=cadenceWorld();
+  h.onMessage([{type:'partial',key:'s1',text:'We will meet.'}]);
+  walk(r,h,950);
+  assert.equal(commits().length,0,'the period at the end of a partial is provisional for about a second');
+  h.onMessage([{type:'partial',key:'s1',text:'We will meet tomorrow at noon.'}]);
+  walk(r,h,200);
+  const e=r.w.entries[0];
+  assert.ok(!e.segments.some(s=>s.revised),'nothing committed had to be rewritten');
+  assert.ok(!commits().some(c=>c.text==='We will meet.'),'the half sentence never went to translation');
+  h.onMessage([{type:'committed',key:'s1',text:'We will meet tomorrow at noon.'}]);walk(r,h,200);
+  assert.deepEqual(J(e.segments.filter(s=>s.committedAt).map(s=>s.sourceText)),['We will meet tomorrow at noon.']);
+});
+test('gpt-live keeps its short wait: the floor is only for providers that rewrite their partials',()=>{
+  const {r,h,commits}=cadenceWorld('openai');
+  h.onMessage([{type:'partial',key:'s1',text:'We will meet.'}]);
+  walk(r,h,400);
+  assert.equal(commits().length,1,'0.3 s of no change is enough for an append-only stream');
+  assert.equal(commits()[0].windowMs,undefined,'and the commit row is the same as before');
+  assert.equal(r.w.entries[0].liveCadenceMs,undefined);
+  assert.equal(r.w.logs.filter(l=>l.m==='live-cadence').length,0);
+});
+test('a sentence end that survives the next partial is committed right after it, with the wait recorded',()=>{
+  const {r,h,commits}=cadenceWorld();
+  h.onMessage([{type:'partial',key:'s1',text:'We will meet.'}]);walk(r,h,1000);
+  h.onMessage([{type:'partial',key:'s1',text:'We will meet. Then'}]);walk(r,h,150);
+  const c=commits();
+  assert.equal(c.length,1);assert.equal(c[0].text,'We will meet.');
+  assert.equal(c[0].windowMs,1100,'the initial cadence of 1 s plus 0.1 s');
+  assert.ok(c[0].stabilityMs>=1100&&c[0].stabilityMs<1300,'committed about 1.1 s after it last changed: '+c[0].stabilityMs);
+  const cad=r.w.logs.filter(l=>l.m==='live-cadence').map(l=>l.d);
+  assert.equal(cad.length,1);assert.equal(cad[0].cadenceMs,1000);assert.equal(cad[0].stabilityMs,1100);
+  assert.ok(!JSON.stringify(cad).includes('meet'),'the cadence row carries no text');
+});
+test('the cadence is the slowest of the last five gaps, unchanged partials count, pauses do not',()=>{
+  const {r}=cadenceWorld(),c=r.ctx,eng={};
+  assert.equal(c.sttLiveCadence(eng),1000,'before two gaps, assume about one second');
+  [0,1000,2006,3273,4273,5273].forEach(t=>c.sttLiveCadenceNote(eng,100000+t));
+  assert.equal(c.sttLiveCadence(eng),1267,'a late partial (1.27 s) sets the wait for the next five');
+  [6273,7273,8273,9273,10273].forEach(t=>c.sttLiveCadenceNote(eng,100000+t));
+  assert.equal(c.sttLiveCadence(eng),1000,'and drops out after five more');
+  c.sttLiveCadenceNote(eng,100000+20273);
+  assert.equal(c.sttLiveCadence(eng),1000,'a 10 s pause between utterances is not a cadence');
+  const {r:r2,h}=cadenceWorld();
+  h.onMessage([{type:'partial',key:'s1',text:'Hello'}]);r2.w.now+=900;
+  h.onMessage([{type:'partial',key:'s1',text:'Hello'}]);r2.w.now+=900;
+  h.onMessage([{type:'partial',key:'s1',text:'Hello'}]);
+  assert.deepEqual(J(h.cadence.gaps),[900,900],'a partial with the same text still shows the provider is alive');
+});
+test('the floor: never shorter than the user setting, capped at 1.6 s, and only with a measured provider',()=>{
+  const {r}=cadenceWorld(),c=r.ctx;
+  let p=c.segLiveStability({liveCadenceMs:1267},{stability:300});
+  assert.equal(p.stability,1367);assert.equal(p.cadenceFloor,true);
+  p=c.segLiveStability({liveCadenceMs:2400},{stability:300});
+  assert.equal(p.stability,1600,'a slow provider does not hold text for ever');
+  p=c.segLiveStability({liveCadenceMs:1000},{stability:2000});
+  assert.equal(p.stability,2000,'a longer wait the user chose is kept');assert.equal(p.cadenceFloor,undefined);
+  p=c.segLiveStability({},{stability:400});
+  assert.equal(p.stability,400,'Web Speech, 4o and gpt-live cards carry no cadence');
+});
 chain.then(()=>console.log(JSON.stringify({passed:tests.length,tests},null,2))).catch(err=>{console.error(err);process.exit(1);});

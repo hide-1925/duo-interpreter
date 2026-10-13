@@ -809,8 +809,8 @@ function duoNextInstall(){
   duoConferenceAudioUI();
 }
 
-var APP_VERSION = 'v1.54.0';
-var APP_BUILD = '20261010-v1540-openai-decisions';
+var APP_VERSION = 'v1.54.1';
+var APP_BUILD = '20261013-v1541-live-cadence';
 var INITIAL_FEED_EMPTY = null;
 function syncBuildBadges(){
   document.title='Duo Interpreter '+APP_VERSION+' — 多言語 双方向通訳・文字起こし';
@@ -16549,8 +16549,10 @@ function segCheck(e){
     SEG.committed++;
     SEG.committedBySource[s.decisionSource]=(SEG.committedBySource[s.decisionSource]||0)+1;
     SEG.lastReason=d.reasons.join(' + ');
-    dlog('segment','commit',{cardId:e.id,seq:s.seq,text:s.sourceText,chars:s.sourceText.length,reason:d.reasons,
-      decisionSource:s.decisionSource,stabilityMs:s.stabilityMs,debtEstimateSeconds:debt,mark:d.mark||null});segDraft(e);
+    var commitLog={cardId:e.id,seq:s.seq,text:s.sourceText,chars:s.sourceText.length,reason:d.reasons,
+      decisionSource:s.decisionSource,stabilityMs:s.stabilityMs,debtEstimateSeconds:debt,mark:d.mark||null};
+    if(p.cadenceFloor)commitLog.windowMs=p.stability;
+    dlog('segment','commit',commitLog);segDraft(e);
     if(d.mark)segJoin(e);
   }
 }
@@ -17162,6 +17164,37 @@ function segMapCardEnds(old,text,ends){
     previous=Math.max(previous,mapped);return previous;
   });
 }
+/* 途中経過を「区間の全文」で一定の間隔ごとに送り直す Provider（ElevenLabs は約1秒ごと）では、
+   途中経過の末尾に仮の「。」が付き、次の途中経過で語の続きや別の語に書き換わる。
+   segment 層は「文字が p.stability（0.3〜0.4秒）動かなかったら安定」と見るので、
+   次の途中経過が届く前に、仮の「。」までを文として確定してしまう。v1.54.0 の実測
+   （ElevenLabs・fast）で、確定 54 件のうち 18 件が確定後に書き換わり、3文字で切れた
+   部分がそのまま読み上げられた。確定はどれも、途中経過が届いてから 0.3〜0.38 秒後。
+   次の途中経過が届くまでは「動かなかった」とは言えないので、安定待ちを実測の間隔より
+   少し長くする。間隔は文字が変わらなかった途中経過も数える。発話の切れ目の長い間は
+   区間の外なので数えない。gpt-live は追記だけで、確定した文字が後から変わらないので
+   対象外にする（v1.49.39 との一致の検査を保つ）。 */
+var SEG_LIVE_CADENCE={samples:5,minGap:50,maxGap:2500,initial:1000,margin:100,cap:1600};
+function sttLiveCadenceNote(engine,now){
+  var c=engine.cadence||(engine.cadence={at:0,gaps:[]}),gap=now-c.at;
+  if(c.at&&gap>=SEG_LIVE_CADENCE.minGap&&gap<=SEG_LIVE_CADENCE.maxGap){
+    c.gaps.push(gap);if(c.gaps.length>SEG_LIVE_CADENCE.samples)c.gaps.shift();
+  }
+  c.at=now;
+}
+/* 直近の間隔の最大。平均だと、少し遅れて届いた途中経過（実測で 1.27 秒）の前に確定してしまう。
+   2回測るまでは、ElevenLabs の公称に近い1秒とみなす。 */
+function sttLiveCadence(engine){
+  var g=engine.cadence&&engine.cadence.gaps||[];
+  return g.length>=2?Math.max.apply(null,g):SEG_LIVE_CADENCE.initial;
+}
+function segLiveStability(e,p){
+  var c=e&&e.liveCadenceMs;
+  if(!(c>0))return p;
+  var floor=Math.min(SEG_LIVE_CADENCE.cap,Math.round(c+SEG_LIVE_CADENCE.margin));
+  if(floor>p.stability){p.stability=floor;p.cadenceFloor=true;}
+  return p;
+}
 /* ストリーミング型 STT の正規化イベントを segment 層へ渡す（開発仕様書 §6.2）。
    partial は区間の全文。追記だけの Provider（gpt-live）では、差分が今までの delta と
    同じになる。書き換えのときは、閉じたカードの終わりと開いているカードの始まりを
@@ -17173,6 +17206,7 @@ function segLiveEvent(engine,ev){
   engine.segmentCompleted=engine.segmentCompleted||{};
   if(engine.segmentCompleted[id])return true;
   var had=engine.items[id],old=had?had.text:'',text=String(ev.text||'');
+  if(t==='partial'&&engine.provider!=='openai')sttLiveCadenceNote(engine,Date.now());
   if(t==='partial'&&text===old)return true;
   var x=engine.item(id),now=Date.now(),previousDeltaAt=x.lastDeltaAt;
   if(t==='committed'){
@@ -17202,6 +17236,14 @@ function segLiveEvent(engine,ev){
     removeEntry(x.entry);x.entry=null;return true;
   }
   var entry=engine.ensureEntry(x),prev=entry.segment?entry.segment.text:'';
+  if(engine.provider!=='openai'){
+    entry.liveCadenceMs=sttLiveCadence(engine);
+    if(!engine.cadenceLogged||Math.abs(engine.cadenceLogged-entry.liveCadenceMs)>=150){
+      engine.cadenceLogged=entry.liveCadenceMs;
+      dlog('stt','live-cadence',engine.tag({cadenceMs:entry.liveCadenceMs,
+        stabilityMs:Math.min(SEG_LIVE_CADENCE.cap,entry.liveCadenceMs+SEG_LIVE_CADENCE.margin)}));
+    }
+  }
   TurnDecision.liveResumed(entry,x,now,delta);
   if(!x.segmentLogAt||now-x.segmentLogAt>=1000){
     dlog('stt','live-segment-delta',engine.tag({item:id,cardId:entry.id,chars:local.length,deltaChars:delta.length,arrivalGapMs:previousDeltaAt?now-previousDeltaAt:null}));x.segmentLogAt=now;
@@ -17525,13 +17567,13 @@ function segAdaptiveState(e,debt){
   a.decision=next;return next;
 }
 function segPolicyFor(e,debt){
-  if(e.segment.mode!=='adaptive'){var fixed=segPolicy(e.segment.mode);fixed.mode=e.segment.mode;return fixed;}
+  if(e.segment.mode!=='adaptive'){var fixed=segPolicy(e.segment.mode);fixed.mode=e.segment.mode;return segLiveStability(e,fixed);}
   var a=segAdaptiveState(e,debt),p=segPolicy('balanced');
   p.mode=a.mode;p.max=a.max;
   if(!Number(CFG.segmentMin))p.min=a.min;
   if(!Number(CFG.segmentStability))p.stability=a.stability;
   if(!Number(CFG.segmentSilence))p.silence=a.silence;
-  return p;
+  return segLiveStability(e,p);
 }
 function segOverlapFor(e,debt){
   if(CFG.segmentOverlap!=='auto')return CFG.segmentOverlap;

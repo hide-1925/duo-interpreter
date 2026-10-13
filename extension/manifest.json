@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Duo Interpreter",
   "short_name": "Duo",
-  "version": "1.4.56",
-  "version_name": "1.4.56 HTML v1.54.0 と対。判断層の経路に OpenAI の Decisions API を足す",
+  "version": "1.4.57",
+  "version_name": "1.4.57 HTML v1.54.1 と対。ElevenLabs で語や文の途中で翻訳に回らないようにする",
   "optional_host_permissions": [
     "https://*/*"
   ],
